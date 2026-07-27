@@ -9,8 +9,10 @@ the merge.
 
 from __future__ import annotations
 
+from typing import cast
+
 from .._clock import now
-from ..contracts import Event, Inbox, Task, TaskView
+from ..contracts import CommitRef, Event, Inbox, Task, TaskView
 from ..storage import Store
 
 __all__ = ["view", "inbox_for", "THREAD_KINDS"]
@@ -37,9 +39,22 @@ def view(store: Store, task_id: str) -> TaskView:
         children=store.tasks.children(task_id),
         neighbours=_neighbours(store, task),
         thread=[e for e in history if e["kind"] in THREAD_KINDS],
-        commits=[str(e["body"].get("sha", "")) for e in history
-                 if e["kind"] == "commit"],
+        commits=[_commit(e) for e in history if e["kind"] == "commit"],
         history=history)
+
+
+def _commit(event: Event) -> CommitRef:
+    """A `commit` event -> the reference a card shows.
+
+    Coerced field by field rather than passed through: the body is an open dict written by whatever
+    taskops version ingested it, and a newer one may not have said `files` at all.
+    """
+    body = event["body"]
+    raw: object = body.get("files")
+    files = cast("list[object]", raw) if isinstance(raw, list) else []
+    return CommitRef(sha=str(body.get("sha", "")), subject=str(body.get("subject", "")),
+                     files=[str(path) for path in files],
+                     actor=event["actor"], ts=event["ts"])
 
 
 def _tasks(store: Store, ids: list[str]) -> list[Task]:

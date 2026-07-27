@@ -8,8 +8,9 @@ skims past — and the cost of missing it is two agents rewriting each other's w
 
 from __future__ import annotations
 
-from ..contracts import Claim, Event, TaskView
-from ._text import STATUS_MARK, ago, bullet, truncate
+from ..contracts import Claim, TaskView
+from ._sections import commits_section, thread_section
+from ._text import STATUS_MARK, bullet, truncate
 from .inbox import render_inbox
 
 __all__ = ["render_view", "render_claim"]
@@ -34,8 +35,8 @@ def render_view(view: TaskView) -> str:
     parts += _collisions(view)
     parts += ["### Spec", "", task["spec"] or "_(no spec — ask before guessing)_", ""]
     parts += _graph(view)
-    parts += _thread(view["thread"])
-    parts += _commits(view)
+    parts += thread_section(view["thread"])
+    parts += commits_section(view)
     return "\n".join(parts)
 
 
@@ -85,20 +86,3 @@ def _graph(view: TaskView) -> list[str]:
                 bullet([f"{STATUS_MARK.get(t['status'], '?')} {t['id']} — "
                         f"{truncate(t['title'], 60)}" for t in view["children"]]), ""]
     return out
-
-
-def _thread(thread: list[Event]) -> list[str]:
-    if not thread:
-        return []
-    lines = [f"**{e['actor']}** ({ago(e['ts'])}): {e['body'].get('text', '')}"
-             for e in thread]
-    return ["### Thread", "", "\n\n".join(lines), ""]
-
-
-def _commits(view: TaskView) -> list[str]:
-    """Short shas. The full forty characters is noise no reader uses — anyone following
-    one up will paste it into git, where twelve is unambiguous."""
-    if not view["commits"]:
-        return []
-    return [f"### Commits ({len(view['commits'])})", "",
-            bullet([sha[:12] for sha in view["commits"]]), ""]

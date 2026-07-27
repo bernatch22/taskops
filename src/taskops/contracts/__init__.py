@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from .actor import Actor
 from .board import Board, Burndown, Card, Column, Fleet, FleetMember, Standup
+from .commit import CommitRef
 from .dep import Dep
 from .event import Event, Inbox
 from .gitstate import BranchState
@@ -42,6 +43,7 @@ __all__ = [
     "Event",
     "Inbox",
     "BranchState",
+    "CommitRef",
     # what the use cases return
     "PlanResult",
     "Claim",

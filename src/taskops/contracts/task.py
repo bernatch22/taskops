@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 from .._types import Status
+from .commit import CommitRef
 from .event import Event
 from .lease import Lease
 
@@ -82,5 +83,12 @@ class TaskView(TypedDict):
     """Comments and directed messages, oldest first. The conversation about this
     task, from every actor that has ever touched it."""
 
-    commits: list[str]
+    commits: list[CommitRef]
+    """The commits bound to this task, oldest first — with their subjects and the files they touched.
+
+    `list[str]` at first, which threw away the subject and the file list the event already carried: a
+    finished card rendered as a column of hashes, and the only substance on the page was whatever the
+    agent happened to put in a comment.
+    """
+
     history: list[Event]
