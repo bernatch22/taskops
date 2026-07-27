@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>taskops — la guía completa</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      colors: {
+        ink: '#12151c', dim: '#6b7280', faint: '#9ca3af',
+        paper: '#fafafa', raised: '#f3f4f6',
+        lime: '#4f9c00', amber: '#b06f00', rojo: '#c2410c', azul: '#1d4ed8',
+      },
+    },
+  },
+}
+</script>
+<style>
+  * { font-weight: 400 !important; border-radius: 0 !important; }
+  pre { line-height: 1.5; }
+  .diagram { letter-spacing: 0; }
+</style>
+</head>
+<body class="font-sans bg-paper text-ink antialiased">
+<div class="max-w-3xl mx-auto px-6 py-16 space-y-20">
+
+<!-- ═══════════════════ HEADER ═══════════════════ -->
+<header class="space-y-4">
+  <p class="font-mono text-sm text-lime">taskops 0.1.0 · 440 tests · todos los gates verdes</p>
+  <h1 class="text-4xl tracking-tight">La guía completa</h1>
+  <p class="text-dim text-lg leading-relaxed">
+    El sustrato de coordinación que a Claude Code le falta: tareas persistentes con un grafo de
+    dependencias, claims atómicos que sobreviven a un agente muerto, cada commit atado a la tarea
+    que lo motivó, y agentes que se hablan entre developers y entre máquinas. Cero dependencias,
+    un SQLite por repo, un log de eventos commiteado, ningún servidor.
+  </p>
+  <nav class="font-mono text-sm text-azul space-x-3 pt-2">
+    <a href="#flow-vida">ciclo de vida</a>
+    <a href="#flow-deps">dependencias</a>
+    <a href="#flow-chat">mensajería</a>
+    <a href="#flow-commit">git-binding</a>
+    <a href="#flow-sync">sincronización</a>
+    <a href="#ui">el studio</a>
+    <a href="#remoto">dos devs remotos</a>
+    <a href="#mcp">las 5 tools</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════ EL MAPA ═══════════════════ -->
+<section class="space-y-4">
+  <h2 class="text-2xl">El mapa entero, en un diagrama</h2>
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+   MÁQUINA DE ANA                                          MÁQUINA DE BERNA
+  ┌────────────────────────────┐                          ┌────────────────────────────┐
+  │  Claude Code (agente 1)    │                          │  Claude Code (agente 2)    │
+  │    │ MCP (5 tools)         │                          │    │ MCP (5 tools)         │
+  │    ▼                       │                          │    ▼                       │
+  │  taskops engine            │                          │  taskops engine            │
+  │    │                       │                          │    │                       │
+  │    ▼                       │       git push/pull      │    ▼                       │
+  │  .taskops/db.sqlite  cache │      ◀──────────────▶    │  .taskops/db.sqlite  cache │
+  │  .taskops/events.jsonl ────┼──── LA VERDAD, en git ───┼─▶ .taskops/events.jsonl    │
+  │    ▲                       │                          │    ▲                       │
+  │    │ SSE                   │                          │    │ SSE                   │
+  │  taskops studio :2140      │                          │  taskops studio :2140      │
+  │  (board en vivo, React)    │                          │  (board en vivo, React)    │
+  └────────────────────────────┘                          └────────────────────────────┘
+
+  el sqlite es un CACHE reconstruible · el jsonl viaja en git y es la única verdad
+  no hay servidor: dos devs convergen con git pull, porque appendear a un archivo
+  con IDs por hash de contenido es el único edit que git mergea sin ayuda</pre>
+</section>
+
+<!-- ═══════════════════ FLOW 1: CICLO DE VIDA ═══════════════════ -->
+<section id="flow-vida" class="space-y-4">
+  <h2 class="text-2xl">Flow 1 — el ciclo de vida de una card</h2>
+  <p class="text-dim leading-relaxed">
+    Todo es una card con ocho estados posibles. La máquina de estados vive en un solo lugar
+    (<span class="font-mono text-sm">engine/machine.py</span>) y el server rechaza cualquier
+    movimiento ilegal con un mensaje que nombra los movimientos legales.
+  </p>
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+              taskops_plan                    taskops_next
+                   │                        (claim atómico)
+                   ▼                              │
+   · backlog ──────────▶ ○ ready ────────────────▶ ◐ claimed
+       ▲   deps abiertas    ▲                        │  │
+       │                    │ lease vence            │  └────────────┐
+       │                    │ o "released"           ▼               ▼
+       │                    └──────────────── ● in_progress ──▶ ◆ review
+       │                                          │  │              │
+       │                                          │  ▼              │
+       │            ✕ blocked ◀───────────────────┘  │ eval ok      │
+       │            (espera humano                   ▼              ▼
+       │             o dependencia)              ✓ done ◀───────────┘
+       │                 │                           │
+       └─────────────────┘                    done desbloquea a
+                                              quien esperaba — solo,
+   — cancelled: legal desde cualquier         sin polling
+     estado abierto, sin guard (no hay
+     trabajo que mostrar, a propósito)
+
+   done es TERMINAL: reabrir haría que el log diga que una tarea
+   terminó dos veces. Lo honesto es una tarea nueva que referencia la vieja.</pre>
+
+  <p class="text-dim leading-relaxed">Y así se ve una card cuando el agente la reclama — el orden es el diseño, porque un agente lee de arriba a abajo y puede parar antes:</p>
+  <pre class="diagram font-mono text-xs bg-raised p-6 overflow-x-auto">
+  ┌─────────────────────────────────────────────────────────────┐
+  │ # tk-4f2a9c — Add the refresh token table                   │ ← qué es
+  │                                                             │
+  │ Claimed. Create the branch and work there:                  │
+  │     git switch -c tk/tk-4f2a9c/add-the-refresh-token-table  │ ← el comando exacto
+  │                                                             │
+  │ ### 📬 1 message(s) for you                                 │ ← el inbox viaja
+  │ **agent:ana/api-1** on tk-8b31d0 (3m ago): ojo con token.py │   con el claim
+  │                                                             │
+  │ ## ◐ claimed · priority 0 · held by agent:berna/w1          │
+  │                                                             │
+  │ ### ⚠ Also touching these files                             │ ← ANTES del spec:
+  │ - tk-8b31d0 (in_progress, agent:ana/api-1) — Issue tokens   │   la colisión que
+  │ _Message them before editing shared files._                 │   evita el merge
+  │                                                             │   conflict
+  │ ### Spec                                                    │
+  │ Migration plus the model. Done when a token round-trips     │ ← el brief completo
+  │ through the store with an expiry. Do not touch sessions.    │
+  │                                                             │
+  │ ### Blocking 2 task(s)                                      │ ← el argumento para
+  │ - tk-2e7f11 — Rotate on use                                 │   terminarla hoy
+  │                                                             │
+  │ ### Thread                                                  │ ← la conversación
+  │ **dev:ana** (2h ago): el ADR quedó en docs/adr-07.md        │
+  └─────────────────────────────────────────────────────────────┘</pre>
+</section>
+
+<!-- ═══════════════════ FLOW 2: DEPENDENCIAS ═══════════════════ -->
+<section id="flow-deps" class="space-y-4">
+  <h2 class="text-2xl">Flow 2 — ¿qué pasa si un agente quiere una card que depende de otra?</h2>
+  <p class="text-dim leading-relaxed">
+    No puede. Ni por accidente ni pidiéndola por id — ese segundo camino era un bug real, cazado
+    siguiendo la guía de uso, y hoy está pineado por un test. La respuesta nombra al blocker,
+    porque el movimiento útil casi siempre es ir a trabajar en él.
+  </p>
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+   ana planeó:   [0] "Plan the API"  ◀─── after: [0] ─── [1] "Implement handlers"
+
+   AGENTE DE BERNA                              TASKOPS
+   ─────────────                                ───────
+   taskops_next task=tk-d7de92  ──────▶  la task está en backlog con deps abiertas
+        (la bloqueada, por id)                  │
+                                                ▼
+   ◀──────────────────────────────  # nothing to claim
+                                    tk-d7de92 is waiting on tk-fca539 — finish
+                                    those first, or claim one of them
+                                                │
+   taskops_next  ─────────────────▶  el scheduler le da tk-fca539 (la ready)
+   ... trabaja, commitea ...                    │
+   taskops_update status=done  ───▶  cierra ────┤
+                                                ▼
+                                    Unblocked 1 task(s):
+                                    - tk-d7de92 — Implement handlers
+                                                │
+   taskops_next  ─────────────────▶  ahora sí: tk-d7de92 es suya
+
+   nada poletea: el desbloqueo pasa EN el write que cierra la dependencia,
+   y update te dice qué acabás de liberar para la flota</pre>
+  <p class="text-dim leading-relaxed">
+    El scheduler además ordena por prioridad y castiga colisiones: una task cuyos
+    <span class="font-mono text-sm">files</span> se solapan con lo que un agente vivo está editando
+    se va al fondo de la cola, por encima de cualquier urgencia — dos agentes en un archivo son dos
+    agentes a punto de deshacerse mutuamente.
+  </p>
+</section>
+
+<!-- ═══════════════════ FLOW 3: MENSAJERÍA ═══════════════════ -->
+<section id="flow-chat" class="space-y-4">
+  <h2 class="text-2xl">Flow 3 — cómo se comunican los agentes</h2>
+  <p class="text-dim leading-relaxed">
+    No hay una sexta tool de chat, a propósito: un mensaje sobre una tarea vive en el hilo de esa
+    tarea, donde se puede encontrar en tres semanas. Mandar es
+    <span class="font-mono text-sm">update</span> con <span class="font-mono text-sm">mentions</span>;
+    recibir no es una tool — el inbox llega solo, por hooks.
+  </p>
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+   AGENTE DE ANA                    TASKOPS                    AGENTE DE BERNA
+   ────────────                     ───────                    ───────────────
+   taskops_update                      │                             │
+     task=tk-8b31d0                    │                             │  (está trabajando,
+     comment="Estoy reescribiendo      │                             │   corre tools)
+       token.py — esperá a que         │                             │
+       lo suba."                       ▼                             │
+     mentions="agent:berna/w1"   Event(kind=message) ──▶ SQLite      │
+                                       │                             │
+                                       │         PostToolUse hook ◀──┤ su SIGUIENTE
+                                       │         `taskops inbox`     │ tool call
+                                       │               │             │
+                                       ▼               ▼             │
+                                 studio lo ve     📬 1 message(s):   │
+                                 EN VIVO (SSE)    agent:ana/api-1 on │
+                                                  tk-8b31d0: "Estoy  ├──▶ lo LEE inyectado
+                                                  reescribiendo..."  │    en su contexto
+                                                                     │
+   la entrega se marca por (actor, evento) — nunca por cursor de tiempo,
+   porque los hooks disparan en un orden que nadie controla y un cursor
+   saltearía el mensaje que llegó tarde. leído una vez = entregado.
+
+   PUNTOS DE ENTREGA (Claude Code no acepta push a mitad de turno):
+     SessionStart  → brief: tus tasks + tus mensajes, al arrancar
+     PostToolUse   → inbox: lo nuevo, en tu siguiente tool call (segundos)
+     taskops_next  → el inbox viaja con el claim
+     Stop          → checkout: tu resumen queda en el hilo (standup gratis)</pre>
+  <p class="text-dim leading-relaxed">
+    Los humanos usan exactamente el mismo canal: el compose del studio postea un comment con
+    mentions, y le llega al agente igual que un mensaje de otro agente. No hay un mecanismo
+    aparte para personas.
+  </p>
+</section>
+
+<!-- ═══════════════════ FLOW 4: GIT BINDING ═══════════════════ -->
+<section id="flow-commit" class="space-y-4">
+  <h2 class="text-2xl">Flow 4 — cada commit atado a su tarea, por la fuerza</h2>
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+   el agente tipea:  git commit -m "Add the token table"
+        │
+        ▼
+   PreToolUse hook (matcher: Bash) ──▶ taskops hook pre-tool-use
+        │
+        ├── no es un commit ─────────────▶ silencio, pasa directo (gratis)
+        │
+        ├── branch tk/&lt;id&gt;/... + lease vivo
+        │        │
+        │        ▼
+        │   REESCRIBE el comando del agente (updatedInput):
+        │   git commit -m 'Add the token table
+        │
+        │   Task: tk-4f2a9c'          ◀── el agente nunca escribe el trailer
+        │                                 ni ve un error por él
+        │
+        └── sin claim / branch ajena ────▶ DENY, y el agente lee:
+              "taskops: agent:ana/w2 holds no live lease on tk-4f2a9c.
+               Claim it (taskops_next task=tk-4f2a9c) before committing"
+        │
+        ▼
+   post-commit hook (git) ──▶ taskops ingest commit HEAD
+        │                     registra el sha contra la task — TAMBIÉN los
+        │                     commits que el guard nunca vio: un commit a mano
+        ▼                     en terminal, un --no-verify, un rebase
+   taskops_update status=done
+        │
+        └── guard: ¿hay commit atado? NO → rechazado.
+            "tk-4f2a9c has no commit bound to it..."
+            (con no_code + justificación escrita, para research/decisiones)
+
+   por qué DOS mecanismos: la branch se puede chequear ANTES de que el commit
+   exista; el trailer sobrevive al squash y al rebase, que es como muere
+   toda branch. el guard falla ABIERTO: si taskops se rompe, tu commit sale.</pre>
+</section>
+
+<!-- ═══════════════════ FLOW 5: SYNC ═══════════════════ -->
+<section id="flow-sync" class="space-y-4">
+  <h2 class="text-2xl">Flow 5 — las tres maneras de sincronizar</h2>
+  <div class="grid gap-px bg-ink text-paper font-mono text-xs">
+    <div class="p-5 space-y-1">
+      <p class="text-lime">1 · MISMA MÁQUINA — sqlite, instantáneo</p>
+      <p class="text-faint">N agentes y el studio comparten .taskops/db.sqlite (WAL: los lectores nunca esperan a un escritor). El claim es un INSERT sobre una primary key — 50 threads compitiendo, exactamente 1 ganador, medido.</p>
+    </div>
+    <div class="p-5 space-y-1">
+      <p class="text-lime">2 · ENTRE MÁQUINAS — git, sin servidor</p>
+      <p class="text-faint">taskops sync exporta a events.jsonl → commit → push. El otro lado hace pull y el hook post-merge importa + materializa + desbloquea, solo. IDs por hash de contenido: importar dos veces es un no-op, no hay conflictos posibles.</p>
+    </div>
+    <div class="p-5 space-y-1">
+      <p class="text-lime">3 · AL BROWSER — SSE, en vivo</p>
+      <p class="text-faint">El studio sigue un cursor sobre la tabla de eventos (cada 0.5s) + el bus in-process para los writes propios. Un write desde CUALQUIER proceso llega al browser — probado con un intérprete separado escribiendo y el frame leído de un socket real.</p>
+    </div>
+  </div>
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+   taskops sync = 4 pasos, en este orden, todos idempotentes:
+
+   import ──▶ replay ──▶ unblock ──▶ export
+   (log →     (eventos →  (re-deriva   (lo local
+    cache)     tasks y     qué está     nuevo →
+               deps)       pickable)    al log)
+
+   import ANTES de export: importar puede cerrar una tarea de la que
+   dependen otras — exportar primero publicaría un grafo ya viejo.
+   replay es el paso que faltaba (bug real): los eventos llegaban y
+   el board quedaba vacío. hoy cada evento `created` lleva el snapshot
+   completo de la task, y engine/replay.py los convierte en filas.</pre>
+</section>
+
+<!-- ═══════════════════ EL UI ═══════════════════ -->
+<section id="ui" class="space-y-4">
+  <h2 class="text-2xl">El studio — sí, está conectado y en vivo</h2>
+  <p class="text-dim leading-relaxed">
+    React 18, bundleado con esbuild <span class="font-mono text-sm">adentro</span> del paquete
+    Python (153 KB, sin CDN): <span class="font-mono text-sm">pip install taskops</span> sirve el
+    board sin node en ningún lado. <span class="font-mono text-sm">taskops studio</span> y listo.
+  </p>
+  <pre class="diagram font-mono text-xs bg-raised p-6 overflow-x-auto">
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ ✓ taskops  team/ana     [buscar títulos y specs…]    2 ready · 5     │
+  │                                                      ● live ← late   │
+  ├──────────────────────────────────────────────┬───────────────────────┤
+  │  ○ Ready (2)    ◐ Claimed (2)   ✕ Blocked(1) │  Fleet (2)            │
+  │  ┌───────────┐  ┌────────────┐  ┌──────────┐ │  ┌─────────────────┐  │
+  │  │P0 tk-ecc5 │  │P1 tk-b6d8  │  │P2 tk-2a2 │ │  │● berna/w1       │  │
+  │  │Plan the   │  │Write the   │  │taskops   │ │  │  tk-b6d845      │  │
+  │  │API     ↓1 │  │README   ◆2 │  │watch  ↑1 │ │  │  Edit README.md │  │
+  │  │           │  │◆ berna/w1  │  │          │ │  ├─────────────────┤  │
+  │  │2m ago     │  │tk/tk-b6d…  │  │1h ago    │ │  │● ana/api-2      │  │
+  │  └───────────┘  └────────────┘  └──────────┘ │  │  SILENT 22m ─────┼─ el que hay
+  │                                              │  └─────────────────┘  │ que mirar
+  │   ↑N esperando a N · ↓N bloqueando a N · ◆N commits                  │
+  │   click en una card → drawer con spec, hilo, deps, commits, compose  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  el board se mueve SOLO: sin botón de refresh, sin polling del browser.
+  el punto verde late con cada evento. SSE y no WebSocket, a propósito:
+  el canal solo empuja (todo write del browser es un POST normal), el
+  engine es sync por invariante, SSE es stdlib y atraviesa nginx sin
+  upgrade. el stream se recicla solo cada 5 min y EventSource reconecta
+  por spec — así el bound de recursos es de diseño, no una apuesta al OS.</pre>
+</section>
+
+<!-- ═══════════════════ DOS DEVS REMOTOS ═══════════════════ -->
+<section id="remoto" class="space-y-6">
+  <h2 class="text-2xl">Configurar dos devs remotos y sus agentes</h2>
+  <p class="text-dim leading-relaxed">
+    El escenario completo: Ana en su máquina, Berna en la suya, un repo compartido en GitHub,
+    los agentes de cada una coordinándose por el log. Paso por paso, verificado — cada comando
+    de acá corrió de verdad antes de escribirse.
+  </p>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">PASO 1 — ana adopta taskops (UNA sola persona hace esto)</p>
+    <pre class="font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">
+cd ~/proyecto                  # su clone del repo compartido
+pip install taskops            # (o desde el checkout: pip install -e ~/taskops)
+taskops init                   # crea .taskops/, hooks de git, toca .gitignore
+taskops sync
+git add .gitignore .taskops/events.jsonl
+git commit -m "taskops: adopt the shared task list"
+git push</pre>
+    <p class="text-dim text-sm">El orden importa: init toca .gitignore, y si dos personas lo crean por separado en un repo que no lo tenía, git se niega a mergear. Una adopta, el resto hereda.</p>
+  </div>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">PASO 2 — berna se suma (y cualquier dev después)</p>
+    <pre class="font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">
+git pull                       # trae .gitignore + events.jsonl
+pip install taskops
+taskops init                   # sus hooks + ADOPTA el log que ya está ahí:
+                               #   "adopted 3 change(s) from the committed log"
+taskops report board           # ← ve las tareas de ana, con specs y deps</pre>
+  </div>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">PASO 3 — cada una conecta sus agentes (una vez por máquina)</p>
+    <pre class="font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">
+claude mcp add taskops -- python3 -m taskops.transports.mcp
+claude plugin install ~/taskops/plugin      # hooks + skills /taskops:*
+
+# identidad por terminal, para que el board distinga a los agentes:
+export TASKOPS_ACTOR="agent:ana/api-1"      # terminal 1 de ana
+export TASKOPS_ACTOR="agent:ana/ui-1"       # terminal 2 de ana
+export TASKOPS_ACTOR="agent:berna/w1"       # terminal de berna
+# (sin la variable, se resuelve de git config user.email → dev:ana)</pre>
+  </div>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">PASO 4 — el ritmo diario</p>
+    <pre class="diagram font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">
+ANA                                      BERNA
+───                                      ─────
+"planeá el refactor de auth" ──▶ agente
+  → taskops_plan (tasks + deps)
+taskops sync && git add .taskops \
+  && git commit -m "plan" && git push
+                                         git pull   ← post-merge sincroniza solo
+                                         "agarrá lo que haya" ──▶ agente
+                                           → taskops_next (nunca choca con
+                                             los claims de ana: viajaron
+                                             con los eventos)
+        ... los agentes se mencionan por task, cada push/pull
+            entrega los mensajes; el studio de cada una muestra
+            TODO el equipo en vivo desde su copia local ...
+taskops studio                           taskops studio
+open http://127.0.0.1:2140               open http://127.0.0.1:2140</pre>
+    <p class="text-dim text-sm">
+      La frecuencia de convergencia entre máquinas es la frecuencia de push/pull — no hay
+      servidor que esperar ni que mantener. Para el board de un equipo en una pantalla:
+      <span class="font-mono">taskops studio --host 0.0.0.0 --readonly --token $(openssl rand -hex 16)</span>
+      detrás de nginx con <span class="font-mono">proxy_buffering off</span>.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════ MCP ═══════════════════ -->
+<section id="mcp" class="space-y-4">
+  <h2 class="text-2xl">Las 5 tools MCP, y las instrucciones que todo agente recibe</h2>
+  <p class="text-dim leading-relaxed">
+    El server MCP inyecta sus instrucciones en el <span class="font-mono text-sm">initialize</span> —
+    es el único texto de taskops que toda sesión ve garantizado, así que lleva el modelo mental y
+    las dos reglas duras, no una repetición de cada tool. El schema de cada tool se genera de los
+    TypedDicts: un parámetro no puede existir en el wire sin existir en el dispatch.
+  </p>
+  <div class="grid gap-px bg-ink text-paper font-mono text-xs">
+    <div class="p-4"><span class="text-lime">taskops_next</span> · reclamar trabajo. Devuelve spec + branch exacta + warning de colisión + tu inbox. Si no hay nada, dice POR QUÉ (todo bloqueado ≠ todo tomado ≠ terminado). El claim es un lease: cada llamada tuya lo renueva; si tu proceso muere, expira en 15 min y la tarea vuelve a la cola.</div>
+    <div class="p-4"><span class="text-lime">taskops_update</span> · progreso, comment, handoff, cierre, y MENSAJERÍA (mentions). status=released devuelve la tarea con tu avance escrito — la jugada honesta al quedarte sin contexto. status=done exige un commit atado (o no_code + justificación).</div>
+    <div class="p-4"><span class="text-lime">taskops_ask</span> · leer una tarea entera: spec, hilo, commits, qué la bloquea, a quién bloquea, y qué otras tareas tocan sus archivos. Con query en vez de task, busca en títulos y specs.</div>
+    <div class="p-4"><span class="text-lime">taskops_plan</span> · una descomposición entera en UNA llamada: tasks + árbol + DAG. after acepta el índice 0-based de una entrada anterior del mismo batch. El spec se escribe para un agente FRESCO sin tu contexto.</div>
+    <div class="p-4"><span class="text-lime">taskops_report</span> · board / standup / fleet. Generados, así que no pueden estar desactualizados ni adular a nadie.</div>
+  </div>
+  <p class="text-dim leading-relaxed">
+    Las dos reglas que el server impone en vez de sugerir: un commit debe salir de la branch de la
+    tarea reclamada (el trailer se inyecta solo), y <span class="font-mono text-sm">done</span>
+    exige evidencia. Esas dos son la razón por la que el board se puede creer sin leer el diff.
+  </p>
+</section>
+
+<!-- ═══════════════════ ESTADO ═══════════════════ -->
+<section class="space-y-4">
+  <h2 class="text-2xl">¿Está todo funcional? Estado honesto</h2>
+  <div class="grid gap-px bg-ink text-paper font-mono text-xs">
+    <div class="p-4"><span class="text-lime">✓ FUNCIONA, verificado hoy contra repos reales</span><br><span class="text-faint">engine + storage + máquina de estados · las 5 tools MCP · CLI de 12 comandos · guard de commits (deny + reescritura del trailer) · hooks de git y de Claude Code · sync multi-dev con materialización · adopción en clone fresco · studio React servido y EN VIVO por SSE (write de otro proceso → frame en el browser, probado en socket real) · mensajería agente↔agente con entrega exactly-once · 440 tests, ruff+mypy+pyright strict, 13 invariantes de arquitectura ejecutables</span></div>
+    <div class="p-4"><span class="text-amber">✕ NO EXISTE todavía</span><br><span class="text-faint">WebSocket (es SSE, decisión documentada — el canal solo empuja) · el relay para chat cross-máquina en vivo (hoy los mensajes entre máquinas viajan a velocidad de push/pull; diseño en PLAN.md §9) · burndown (responde "not implemented yet" a propósito) · taskops watch (tail de transcripts al board) · eval LLM de commits contra el spec · publicación en PyPI</span></div>
+    <div class="p-4"><span class="text-azul">◆ BUGS conocidos hoy</span><br><span class="text-faint">ninguno abierto. Los 8 que existieron (BEGIN IMMEDIATE, claimed→done faltante, hooks sin venv, HEAD unborn, git log --grep, sync sin materializar, init sin adoptar, claim por id salteando deps) están arreglados y cada uno pineado por un test que cuenta la historia.</span></div>
+  </div>
+</section>
+
+<footer class="text-faint font-mono text-xs pt-8">
+  taskops 0.1.0 · ~/taskops · ARCHITECTURE.md para las invariantes · USAGE.md para el paso a paso · PLAN.md §8-9 para lo que falta
+</footer>
+
+</div>
+</body>
+</html>
