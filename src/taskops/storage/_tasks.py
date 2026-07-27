@@ -12,15 +12,15 @@ from ._rows import dumps, to_task
 __all__ = ["TaskTable"]
 
 _COLUMNS = ("id", "title", "spec", "status", "priority", "parent", "labels",
-            "files", "created_by", "created", "updated")
+            "files", "created_by", "assignee", "created", "updated")
 
 
 def _values(task: Task) -> tuple[object, ...]:
     """A task in `_COLUMNS` order. One function, so the two orders cannot drift."""
     return (task["id"], task["title"], task["spec"], task["status"],
             task["priority"], task["parent"], dumps(task["labels"]),
-            dumps(task["files"]), task["created_by"], task["created"],
-            task["updated"])
+            dumps(task["files"]), task["created_by"], task["assignee"],
+            task["created"], task["updated"])
 
 
 class TaskTable:
@@ -65,6 +65,16 @@ class TaskTable:
         if found is None:
             raise NoSuchTask.named(task_id)
         return found
+
+    def set_assignee(self, task_id: str, actor: str, *, when: float) -> None:
+        """Point a card at somebody, or back at the pool with "".
+
+        Its own method rather than a general `update`: assignment changes who the SCHEDULER will
+        offer the card to, which is a different kind of write from editing a title, and the two want
+        different events in the log.
+        """
+        self.db.execute("UPDATE tasks SET assignee=?, updated=? WHERE id=?",
+                        (actor, when, task_id))
 
     def set_status(self, task_id: str, status: Status, *, when: float) -> None:
         self.db.execute("UPDATE tasks SET status=?, updated=? WHERE id=?",

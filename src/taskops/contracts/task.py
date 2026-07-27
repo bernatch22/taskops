@@ -47,6 +47,17 @@ class Task(TypedDict):
     costs a merge conflict rather than a wrong answer."""
 
     created_by: str
+
+    assignee: str
+    """Who this card is FOR, or "" for the open pool.
+
+    Set by a planner that knows who should do the work, and by `dispatch` before it launches a
+    worker. It is not a claim: an assigned card still has to be claimed, so the lease stays the only
+    thing that says somebody is actually on it. What assignment changes is the SCHEDULER — an
+    assigned card is invisible to every other agent, which is what makes "this one is yours" mean
+    something instead of being a label anybody can ignore.
+    """
+
     created: float
     updated: float
 

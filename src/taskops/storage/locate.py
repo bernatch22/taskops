@@ -8,11 +8,13 @@ three the same call, and it is the same convention as `.git` for the same reason
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .._errors import NotInitialized
 
-__all__ = ["PROJECT_DIR", "DB_FILE", "LOG_FILE", "GUIDE_FILE", "resolve_root", "find_root"]
+__all__ = ["PROJECT_DIR", "DB_FILE", "LOG_FILE", "GUIDE_FILE", "ENV_ROOT",
+           "resolve_root", "find_root"]
 
 PROJECT_DIR = ".taskops"
 
@@ -30,8 +32,24 @@ GUIDE_FILE = f"{PROJECT_DIR}/GUIDE.md"
 point: one document, so the two cannot be told different things."""
 
 
+ENV_ROOT = "TASKOPS_ROOT"
+"""Overrides the search entirely. THE mechanism that makes dispatched workers work.
+
+A worker runs in a `git worktree`, which has no `.taskops/` of its own — so walking up would find
+either nothing or, worse, some unrelated project further up the filesystem. With this set, N workers
+in N worktrees all coordinate through ONE board, which is the whole point of dispatching them.
+
+An override and not a fallback: if it is set and wrong, that is an error worth seeing rather than a
+silent walk up to a different project.
+"""
+
+
 def find_root(start: Path | str) -> Path | None:
-    """The nearest ancestor holding `.taskops/`, or None."""
+    """The nearest ancestor holding `.taskops/`, or None. `$TASKOPS_ROOT` wins outright."""
+    forced = os.environ.get(ENV_ROOT, "").strip()
+    if forced:
+        candidate = Path(forced).expanduser().resolve()
+        return candidate if (candidate / PROJECT_DIR).is_dir() else None
     here = Path(start).expanduser().resolve()
     for candidate in (here, *here.parents):
         if (candidate / PROJECT_DIR).is_dir():

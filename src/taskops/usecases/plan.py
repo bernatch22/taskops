@@ -62,7 +62,8 @@ def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
                 parent=field.optional(entry, "parent"),
                 labels=field.strings(entry, "labels"),
                 files=field.strings(entry, "files"),
-                created_by=who, created=when, updated=when)
+                created_by=who, assignee=field.optional(entry, "assignee") or "",
+                created=when, updated=when)
     store.tasks.insert(task)
     # The WHOLE task in the body, not just its title. The log is the source of truth another
     # machine rebuilds from, so an event that omits the spec is an event that cannot reconstruct
@@ -76,7 +77,8 @@ def _snapshot(task: Task) -> dict[str, Any]:
     """Everything needed to recreate this task elsewhere. `id` and `created_by` are already on the
     event, so repeating them would be two places to keep in step."""
     return {"title": task["title"], "spec": task["spec"], "priority": task["priority"],
-            "parent": task["parent"], "labels": task["labels"], "files": task["files"]}
+            "parent": task["parent"], "labels": task["labels"], "files": task["files"],
+            "assignee": task["assignee"]}
 
 
 def _wire(store: Store, entries: list[dict[str, Any]],
@@ -88,14 +90,24 @@ def _wire(store: Store, entries: list[dict[str, Any]],
     # would be a dependency wired to the WRONG task.
     for entry, task in zip(entries, created, strict=True):
         for reference in field.references(entry):
-            blocker = _resolve(reference, created)
-            store.deps.add(blocker, task["id"])
-            # RECORDED, not just stored. A dependency that exists only in this machine's database
-            # is one a teammate's scheduler will walk somebody straight into after a `git pull`.
-            record(store, task=task["id"], actor=task["created_by"], kind="blocked",
-                   body={"on": blocker})
-            out.append(Dep(task=blocker, blocks=task["id"]))
+            out.append(_edge(store, _resolve(reference, created), task["id"], task["created_by"]))
+        for waiting in field.blocked_ids(entry):
+            # The INVERSE direction: this new card blocks an existing one. Same edge, other way
+            # round, which is what makes the stuck-agent flow a single call.
+            store.tasks.need(waiting)
+            out.append(_edge(store, task["id"], waiting, task["created_by"]))
     return out
+
+
+def _edge(store: Store, blocker: str, waiting: str, who: str) -> Dep:
+    """One dependency, stored AND recorded.
+
+    Recorded because a dependency that exists only in this machine's database is one a teammate's
+    scheduler will walk somebody straight into after a `git pull`.
+    """
+    store.deps.add(blocker, waiting)
+    record(store, task=waiting, actor=who, kind="blocked", body={"on": blocker})
+    return Dep(task=blocker, blocks=waiting)
 
 
 def _resolve(reference: object, created: list[Task]) -> str:

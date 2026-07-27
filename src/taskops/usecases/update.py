@@ -15,11 +15,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from .._clock import now
-from .._errors import BadRequest, NoLease
+from .._errors import BadRequest
 from .._types import Status
 from ..contracts import Task, UpdateResult
-from ..engine import Facts, check_move, open_children, record, unblock
+from ..engine import check_move, record, unblock
 from ..storage import Store
+from ._facts import facts_for
 from ._project import caller, heartbeat, project
 
 __all__ = ["update", "RELEASE"]
@@ -83,18 +84,15 @@ def _move(store: Store, task: Task, who: str, asked: str, comment: str,
           no_code: bool) -> Task:
     """Check the move, then apply it. `released` also drops the lease."""
     target: Status = "ready" if asked == RELEASE else _status(asked)
-    facts = Facts(task=task, actor=who,
-                  has_live_lease=store.leases.held_by(task["id"], who, now()),
-                  commits=len([e for e in store.events.of_task(task["id"], kinds=("commit",))]),
-                  open_children=open_children(store, task["id"]),
-                  no_code=no_code, justification=comment)
+    facts = facts_for(store, task, who, no_code=no_code, justification=comment)
     check_move(facts, target)
     if target in ("ready", "done", "cancelled"):
         store.leases.release(task["id"])
     store.tasks.set_status(task["id"], target, when=now())
     record(store, task=task["id"], actor=who,
            kind="done" if target == "done" else "status",
-           body={"from": task["status"], "to": target, "released": asked == RELEASE})
+           body={"from": task["status"], "to": target, "released": asked == RELEASE,
+                 "unpushed": facts.unpushed})
     return store.tasks.need(task["id"])
 
 
@@ -112,7 +110,3 @@ def _status(asked: str) -> Status:
     return asked            # type: ignore[return-value]
 
 
-def require_lease(store: Store, task_id: str, actor: str) -> None:
-    """The precondition the commit guard checks. Raises with the fix in the message."""
-    if not store.leases.held_by(task_id, actor, now()):
-        raise NoLease.on(task=task_id, actor=actor)

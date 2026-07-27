@@ -54,7 +54,8 @@ def _create(store: Store, event: Event) -> bool:
         spec=str(body.get("spec", "")), status="backlog",
         priority=_int(body.get("priority"), 2), parent=_optional(body.get("parent")),
         labels=_strings(body.get("labels")), files=_strings(body.get("files")),
-        created_by=event["actor"], created=event["ts"], updated=event["ts"]))
+        created_by=event["actor"], assignee=str(body.get("assignee", "")),
+        created=event["ts"], updated=event["ts"]))
     return True
 
 

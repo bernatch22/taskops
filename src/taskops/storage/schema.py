@@ -31,11 +31,15 @@ data that is recoverable anyway is the wrong trade at a hundred agents.
 constraint would reject exactly the events that make the project converge.
 """
 
-_LATE_COLUMNS: tuple[tuple[str, str], ...] = ()
-"""Columns added after a table shipped, applied with ALTER on every open so a
-database written by an older taskops keeps working with no migration step anyone
-has to remember. Empty at 0.1.0 — the mechanism exists before it is needed,
-because the alternative is inventing it under pressure."""
+_LATE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("tasks", "assignee TEXT NOT NULL DEFAULT ''"),
+)
+"""Columns added after a table shipped, applied with ALTER on every open so a database written by an
+older taskops keeps working with no migration step anyone has to remember.
+
+`assignee` is the mechanism's first user, and it worked exactly as intended: a database created
+before dispatch existed gains the column on its next open, and every row defaults to the open pool —
+which is what those rows meant."""
 
 
 def apply(db: sqlite3.Connection) -> None:

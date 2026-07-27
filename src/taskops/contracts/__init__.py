@@ -26,6 +26,7 @@ from .actor import Actor
 from .board import Board, Burndown, Card, Column, Fleet, FleetMember, Standup
 from .dep import Dep
 from .event import Event, Inbox
+from .gitstate import BranchState
 from .lease import Lease
 from .results import Claim, NextResult, PlanResult, UpdateResult
 from .task import Task, TaskView
@@ -40,6 +41,7 @@ __all__ = [
     "Actor",
     "Event",
     "Inbox",
+    "BranchState",
     # what the use cases return
     "PlanResult",
     "Claim",

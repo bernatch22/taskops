@@ -15,11 +15,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from .._clock import now
-from ..contracts import Claim, NextResult
+from ..contracts import Claim, NextResult, Task
 from ..engine import branch_for, counts, ready_tasks, record, unblock
 from ..engine import claim as take_lease
 from ..storage import Store
 from ._project import caller, heartbeat, project
+from ._reasons import why_nothing
 from .view import inbox_for, view
 
 __all__ = ["next_task"]
@@ -40,7 +41,7 @@ def next_task(start: Path | str, *, actor: str = "", session: str = "",
         unblock(store)
         claimed = _take(store, who, session, labels, task)
         if claimed is None:
-            return _result(store, None, _reason(store, labels, task))
+            return _result(store, None, why_nothing(store, labels, task, who))
         return _result(store, claimed, "")
 
 
@@ -48,15 +49,21 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
           wanted: str) -> Claim | None:
     """Walk the ordered pool until a claim lands. None if every candidate was taken.
 
-    A task asked for BY ID must still be `ready`. This check was missing, and following the usage
-    guide found it: `next --task <id>` on a task whose dependency was still open handed it over,
-    which means an agent that was TOLD which task to do — the case where a human is most involved —
-    was the one path that skipped the dependency graph entirely.
+    A task asked for BY ID must still be `ready` AND not assigned to somebody else. Both checks were
+    missing and both were found by RUNNING the thing, not by review:
+
+    - the dependency check, by following the usage guide: `next --task <id>` on a task whose
+      dependency was open handed it over, so the path where a human names the task was the one that
+      skipped the graph.
+    - the assignment check, by watching a dispatched fleet: a worker invented its own actor id and
+      claimed a card assigned to another worker. Filtering `ready_tasks` was not enough, because
+      asking by id never went through it.
     """
     if wanted:
-        pool = [t for t in [store.tasks.need(wanted)] if t["status"] == "ready"]
+        asked_for = store.tasks.need(wanted)
+        pool = [asked_for] if _claimable(asked_for, who) else []
     else:
-        pool = ready_tasks(store, labels=labels)
+        pool = ready_tasks(store, labels=labels, actor=who)
     for candidate in pool:
         lease = take_lease(store, candidate, actor=who, session=session)
         if lease is None:
@@ -70,6 +77,11 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
     return None
 
 
+def _claimable(task: Task, who: str) -> bool:
+    """Ready, and either unassigned or assigned to this caller."""
+    return task["status"] == "ready" and task["assignee"] in ("", who)
+
+
 def _result(store: Store, claim: Claim | None, reason: str) -> NextResult:
     """The answer, always carrying the queue's shape.
 
@@ -79,38 +91,3 @@ def _result(store: Store, claim: Claim | None, reason: str) -> NextResult:
     numbers = counts(store)
     return NextResult(claim=claim, reason=reason, ready=numbers["ready"],
                       working=numbers["working"], blocked=numbers["blocked"])
-
-
-def _reason(store: Store, labels: tuple[str, ...], wanted: str) -> str:
-    """Why there is nothing to do. "Nothing ready" alone sends the agent to ask a
-    human; told WHICH — all blocked, all taken, or genuinely finished — it can act."""
-    if wanted:
-        return _reason_for_one(store, wanted)
-    numbers = counts(store)
-    if numbers["open"] == 0:
-        return "nothing open — the project is finished, or nothing has been planned"
-    if labels:
-        return (f"no ready task carries {', '.join(labels)}. Drop the label filter, "
-                f"or plan the work that is missing")
-    if numbers["ready"] == 0 and numbers["blocked"]:
-        return (f"{numbers['blocked']} task(s) are waiting on a dependency and "
-                f"{numbers['working']} are in flight — unblocking one of those is "
-                f"the useful move")
-    return (f"every ready task was claimed by another agent in the last moment "
-            f"({numbers['working']} in flight) — ask again")
-
-
-def _reason_for_one(store: Store, wanted: str) -> str:
-    """Why THIS task cannot be claimed. Each status has a different useful answer.
-
-    A blocked task names its blockers, because "not ready" alone sends the agent to a human when
-    the actionable move is usually to go work on the blocker instead.
-    """
-    task = store.tasks.need(wanted)
-    if task["status"] == "backlog":
-        blockers = ", ".join(store.deps.open_blockers_of(wanted)) or "unresolved deps"
-        return (f"{wanted} is waiting on {blockers} — finish those first, or claim one "
-                f"of them with taskops_next")
-    if task["status"] in ("done", "cancelled"):
-        return f"{wanted} is already {task['status']} — nothing to do there"
-    return f"{wanted} is {task['status']}, held by someone else — read it with taskops_ask"

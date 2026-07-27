@@ -18,7 +18,7 @@ from tests.contracts.shape import assert_shape
 def a_task(**over: object) -> Task:
     base = Task(id=new_task_id(), title="Add the lease sweep", spec="Full brief.",
                 status="backlog", priority=1, parent=None, labels=["storage"],
-                files=["src/taskops/storage/_leases.py"], created_by="dev:berna",
+                files=["src/taskops/storage/_leases.py"], created_by="dev:berna", assignee="",
                 created=CLOCK, updated=CLOCK)
     return Task(**{**base, **over})          # type: ignore[typeddict-item]
 

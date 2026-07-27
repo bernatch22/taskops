@@ -1,22 +1,22 @@
-"""The live feed as HTTP: server-sent events, one long response per browser.
+"""The live feed: a WEBSOCKET for the browser, server-sent events as the fallback.
 
-**Why SSE and not WebSocket.** The plan called for a WebSocket; this is deliberately not one, and
-every reason points the same way:
+One route, two envelopes, one source. `usecases.follow` produces the events and the only difference
+is the framing — so there is no second feed to keep in step.
 
-- The channel is **one-directional**. Everything the browser sends is an ordinary POST (a comment,
-  a status change); everything the server sends is an event. WebSocket buys bidirectional binary
-  framing, and taskops needs neither half of that.
-- The engine is **sync**, and that is an enforced invariant. A WebSocket means asyncio or a
-  hand-rolled framing layer inside a threaded handler — either one adds a whole concurrency model
-  to a package whose storage story is "sqlite, synchronously".
-- SSE is **stdlib**. Zero runtime dependencies is a product property here: taskops installs into
-  every agent's environment on every machine, so a dependency here is a dependency everywhere.
-- SSE **survives a proxy**. Behind two layers of nginx — which is where this ends up when a team
-  wants the board on a wall — there is no upgrade to negotiate, and a browser reconnects on its
-  own. That last property is load-bearing here, not incidental: see `MAX_TICKS`.
+**Why both.** The websocket is what a browser gets: it is what was asked for, its PING is the
+protocol's own liveness probe (unlike an SSE comment, it gets an answer), and it is the channel that
+can carry a client→server message the day the board needs one. SSE stays because it needs no
+handshake at all, which makes `curl -N /api/live` a working debugging tool and gives a proxy that
+mangles upgrades something to fall back to.
 
-What is left in this file is framing. The tailing itself is `usecases.feed`, because it needs the
-bus and a cursor and a transport may not reach for either.
+**Why neither uses asyncio.** The engine is synchronous by an enforced invariant, so both are served
+by the threaded `ThreadingHTTPServer`: one connection is one thread parked in a generator, and the
+sqlite underneath never learns that a websocket exists. The RFC 6455 framing this needs is small
+enough to write (`_wsframes`) and buys zero runtime dependencies — which matters in a package that
+installs into every agent's environment on every machine.
+
+The tailing itself is `usecases.feed`, because it needs the event bus and a cursor, and a transport
+may not reach for either.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 from ...usecases import follow
+from . import websocket
 from ._wire import Reply, Request
 
 __all__ = ["stream"]
@@ -53,16 +54,51 @@ promptly an operating system reports a dead peer.
 
 
 def stream(root: Path, request: Request) -> Reply:
-    """An endless `text/event-stream`. The server flushes headers, then pulls the iterator.
+    """The live feed. A WEBSOCKET when the client asks to upgrade, SSE otherwise.
 
-    `X-Accel-Buffering: no` is not decoration: nginx buffers a proxied response by default, and
-    with it the entire feed arrives in one lump whenever the buffer happens to fill.
+    One route serving both, because they are the same feed with two envelopes: `usecases.follow`
+    produces the events and the only difference is the framing. The websocket is what the browser
+    gets; SSE stays because it needs no handshake at all, which makes `curl -N /api/live` a working
+    debugging tool and gives a proxy that mangles upgrades something to fall back to.
+
+    `X-Accel-Buffering: no` is not decoration on the SSE path: nginx buffers a proxied response by
+    default, and with it the whole feed arrives in one lump whenever the buffer happens to fill.
     """
+    key = request.headers.get("sec-websocket-key", "")
+    if websocket.is_upgrade(request.headers):
+        return Reply(status=101, stream=lambda: _ws_frames(root),
+                     headers=websocket.handshake_headers(key))
     return Reply(status=200, stream=lambda: _frames(root),
                  headers={"Content-Type": "text/event-stream; charset=utf-8",
                           "Cache-Control": "no-cache, no-transform",
                           "Connection": "keep-alive",
                           "X-Accel-Buffering": "no"})
+
+
+def _ws_frames(root: Path) -> Generator[bytes, None, None]:
+    """The same feed, in websocket frames.
+
+    JSON with a `type` rather than SSE's `event:` line, because a websocket has no per-message event
+    name — so the envelope carries it, and the browser switches on one field.
+
+    A quiet tick sends a PING, not a comment: that is the protocol's own liveness probe, and unlike
+    the SSE keepalive it gets an answer, so the browser can tell a live-but-idle board from a dead
+    socket. Both still end at `MAX_TICKS` for the reason documented there — a parked generator cannot
+    be relied on to notice a departed client.
+    """
+    yield websocket.text_frame(json.dumps({"type": "hello"}))
+    ticks = 0
+    for event in follow(root):
+        if event is not None:
+            yield websocket.text_frame(json.dumps({"type": "change", "event": event},
+                                                  default=str))
+            continue
+        ticks += 1
+        if ticks >= MAX_TICKS:
+            yield websocket.close_frame()
+            return
+        if ticks % KEEPALIVE_TICKS == 0:
+            yield websocket.ping_frame()
 
 
 def _frames(root: Path) -> Generator[bytes, None, None]:

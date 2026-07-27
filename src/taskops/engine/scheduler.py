@@ -70,14 +70,23 @@ def unblock(store: Store, *, at: float | None = None) -> list[str]:
     return changed
 
 
-def ready_tasks(store: Store, *, labels: tuple[str, ...] = ()) -> list[Task]:
-    """Pickable work, best first. Call `unblock` before this, or it lies."""
-    pool = store.tasks.with_status(("ready",))
+def ready_tasks(store: Store, *, labels: tuple[str, ...] = (),
+                actor: str = "") -> list[Task]:
+    """Pickable work for this actor, best first. Call `unblock` before this, or it lies.
+
+    Assignment FILTERS, it does not merely sort: a card assigned to somebody else is not offered at
+    all, and the caller's own assigned cards come before the open pool. Without the filter,
+    "assigned" would be a label any agent could ignore, and dispatch could not promise a worker that
+    the card it was launched for is still there when it asks.
+    """
+    pool = [t for t in store.tasks.with_status(("ready",))
+            if not t["assignee"] or t["assignee"] == actor]
     if labels:
         wanted = set(labels)
         pool = [t for t in pool if wanted & set(t["labels"])]
     busy = _busy_files(store)
-    return sorted(pool, key=lambda t: (score(t, busy), t["created"]))
+    return sorted(pool, key=lambda t: (0 if t["assignee"] == actor and actor else 1,
+                                      score(t, busy), t["created"]))
 
 
 def _busy_files(store: Store) -> set[str]:

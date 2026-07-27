@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-__all__ = ["title_of", "priority_of", "optional", "strings", "references"]
+__all__ = ["title_of", "priority_of", "optional", "strings", "references", "blocked_ids"]
 
 DEFAULT_PRIORITY = 2
 """The middle of the 0-3 band. A caller with no opinion about urgency has not said
@@ -42,6 +42,26 @@ def optional(entry: dict[str, Any], key: str) -> str | None:
 def strings(entry: dict[str, Any], key: str) -> list[str]:
     """A list field, tolerating the comma-separated string a model reaches for anyway."""
     found: object = entry.get(key)
+    if isinstance(found, str):
+        return [part.strip() for part in found.split(",") if part.strip()]
+    if isinstance(found, list):
+        items = cast("list[object]", found)
+        return [str(item).strip() for item in items if str(item).strip()]
+    return []
+
+
+def blocked_ids(entry: dict[str, Any]) -> list[str]:
+    """`blocks` — the EXISTING tasks this new card must finish before.
+
+    The inverse of `after`, and it exists for one flow: an agent mid-task discovers a prerequisite
+    and needs "create this card AND make my current task wait for it" to be ONE call. Two calls meant
+    two chances to do only the first, and the missing half is always the edge — leaving a card nobody
+    is waiting for and a task that looks ready and is not.
+
+    Ids only, never indexes: a card cannot block one created after it in the same batch without a
+    cycle, so accepting an index here would only ever be a mistake worth rejecting.
+    """
+    found: object = entry.get("blocks")
     if isinstance(found, str):
         return [part.strip() for part in found.split(",") if part.strip()]
     if isinstance(found, list):

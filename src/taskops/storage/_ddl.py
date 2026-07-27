@@ -20,11 +20,13 @@ CREATE TABLE IF NOT EXISTS tasks (
     labels TEXT NOT NULL DEFAULT '[]',      -- JSON array
     files TEXT NOT NULL DEFAULT '[]',       -- JSON array
     created_by TEXT NOT NULL,
+    assignee TEXT NOT NULL DEFAULT '',
     created REAL NOT NULL,
     updated REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 
 -- `task` must finish before `blocks` can start. Queried from BOTH ends, so both
 -- directions are indexed: the primary key covers one, idx_deps_blocks the other.

@@ -12,7 +12,7 @@ claiming, closing a task with nothing to show, or discovering a shared file at m
 
 from __future__ import annotations
 
-__all__ = ["NEXT", "UPDATE", "ASK", "PLAN", "REPORT"]
+__all__ = ["NEXT", "UPDATE", "ASK", "PLAN", "REPORT", "DISPATCH"]
 
 NEXT = (
     "CLAIM the next piece of work — the call to make when you are ready to code, and the "
@@ -67,4 +67,16 @@ REPORT = (
     "file). Nobody writes these by hand, so they cannot be out of date — use `standup` "
     "when a human asks how it is going, and `fleet` when you need to know whether another "
     "agent is still working or has gone quiet holding a claim."
+)
+
+DISPATCH = (
+    "LAUNCH worker agents — one real Claude Code process per card, each in its own git worktree, "
+    "each already assigned the card it was started for. This is how you get parallel work: you plan, "
+    "then you dispatch, and the workers claim, code, commit and close on their own while you carry on. "
+    "Use it right after `taskops_plan` when the cards are independent, and use `count` to say how "
+    "many — every worker costs a model, so three is the default and twelve is the ceiling. Assignment "
+    "happens BEFORE launch, so a dispatched worker cannot wander off and claim somebody else's card, "
+    "and no other agent will be offered one that is assigned. Workers are detached: they outlive your "
+    "session, their output is on disk, and `taskops_report fleet` shows what they are doing. If one "
+    "dies, its lease expires and the card returns to the queue — nothing is stranded."
 )

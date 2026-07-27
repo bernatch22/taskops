@@ -15,7 +15,7 @@ from typing import Any, cast
 
 from ..._errors import BadRequest
 
-__all__ = ["Missing", "repo", "text", "optional", "flag", "csv", "entries"]
+__all__ = ["Missing", "repo", "text", "optional", "flag", "csv", "count", "entries"]
 
 
 class Missing(BadRequest):
@@ -63,6 +63,23 @@ def csv(arguments: dict[str, Any], name: str) -> tuple[str, ...]:
     if isinstance(value, str):
         return tuple(part.strip() for part in value.split(",") if part.strip())
     return ()
+
+
+def count(arguments: dict[str, Any], name: str = "count") -> int:
+    """A non-negative integer, or 0 for "no opinion".
+
+    `bool` is excluded explicitly: `True == 1` in Python, so `count: true` would silently mean one
+    worker. A string of digits is accepted because a model that has been told a field is a number
+    still sends "3" often enough to matter.
+    """
+    value = arguments.get(name)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return 0
 
 
 def entries(arguments: dict[str, Any]) -> list[dict[str, Any]]:

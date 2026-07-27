@@ -28,6 +28,8 @@ _GITIGNORE = f"""
 {PROJECT_DIR}/db.sqlite-wal
 {PROJECT_DIR}/db.sqlite-shm
 {PROJECT_DIR}/GUIDE.md
+{PROJECT_DIR}/workers/
+{PROJECT_DIR}/trees/
 """
 """Why GUIDE.md is ignored rather than committed, which looks wrong at first.
 

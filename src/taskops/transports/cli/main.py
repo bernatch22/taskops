@@ -19,6 +19,7 @@ from ..._errors import TaskopsError
 from ..._version import __version__
 from .commands import (
     ask,
+    dispatch,
     guard,
     hook,
     ingest,
@@ -34,8 +35,8 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, next_, update, ask, plan, report, studio, guard, hook, ingest,
-             session, sync)
+_COMMANDS = (init, next_, update, ask, plan, dispatch, report, studio, guard, hook,
+             ingest, session, sync)
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -18,7 +18,7 @@ from tests.conftest import CLOCK
 
 def a_task(status: Status) -> Task:
     return Task(id="tk-aaaaaa", title="t", spec="s", status=status, priority=2,
-                parent=None, labels=[], files=[], created_by="dev:berna",
+                parent=None, labels=[], files=[], created_by="dev:berna", assignee="",
                 created=CLOCK, updated=CLOCK)
 
 
@@ -26,7 +26,7 @@ def facts(status: Status, **over: object) -> Facts:
     base: dict[str, object] = {"task": a_task(status), "actor": "agent:berna/one",
                                "has_live_lease": True, "commits": 1,
                                "open_children": 0, "no_code": False,
-                               "justification": ""}
+                               "justification": "", "unpushed": 0}
     return Facts(**{**base, **over})          # type: ignore[arg-type]
 
 
@@ -102,6 +102,13 @@ def test_releasing_is_always_allowed() -> None:
     """
     for status in ("claimed", "in_progress"):
         check_move(facts(status, has_live_lease=False, commits=0), "ready")
+
+
+def test_unpushed_work_does_not_block_closing() -> None:
+    """It is RECORDED, not enforced. Pushing is not always the closer's job — a task can finish on
+    a branch somebody else lands — and a repository with no remote at all would otherwise be unable
+    to close anything, which is the most common way taskops is first tried."""
+    check_move(facts("in_progress", unpushed=3), "done")
 
 
 def test_cancelling_is_always_allowed_from_an_open_status() -> None:

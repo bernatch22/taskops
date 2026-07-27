@@ -8,8 +8,17 @@ activity source) and how a board is drawn should not move when it does.
 from __future__ import annotations
 
 from .._clock import HEARTBEAT_GRACE, now
-from ..contracts import Event, Fleet, FleetMember, Lease, Standup, Task
+from ..contracts import (
+    BranchState,
+    Event,
+    Fleet,
+    FleetMember,
+    Lease,
+    Standup,
+    Task,
+)
 from ..storage import Store
+from .gitstate import branch_states, unknown
 
 __all__ = ["standup", "fleet"]
 
@@ -56,21 +65,30 @@ def fleet(store: Store, *, at: float | None = None) -> Fleet:
     """
     when = now() if at is None else at
     doing = store.events.latest_by_task("activity")
+    # ONE subprocess for the whole fleet, not one per member: this runs on every board refresh, and
+    # a git call per agent is what turns a live board into a spinning one at ten agents.
+    branches = branch_states(store.root)
     return Fleet(repo=str(store.root),
-                 members=[_member(lease, doing.get(lease["task"]), when)
+                 members=[_member(lease, doing.get(lease["task"]), when, branches)
                           for lease in store.leases.live(when)])
 
 
-def _member(lease: Lease, activity: Event | None, when: float) -> FleetMember:
+def _member(lease: Lease, activity: Event | None, when: float,
+            branches: dict[str, BranchState]) -> FleetMember:
     """One live session. `last_seen` falls back to the CLAIM, not to zero.
 
     An agent whose hooks are not installed reports no activity at all, and reading
     that as "last seen at the epoch" would mark every such session dead — which is
     every session running plain Claude Code without the plugin.
+
+    `git` separates three states a board used to collapse into one: pushed, unpushed, and a branch
+    this clone cannot see at all because the agent is on another machine. Only the last is genuinely
+    unknown, and `unknown()` says so instead of reporting a clean zero.
     """
     last_seen = activity["ts"] if activity else lease["acquired"]
     summary = activity["body"].get("summary", "") if activity else ""
     return FleetMember(actor=lease["actor"], session=lease["session"],
                        task=lease["task"], branch=lease["branch"],
                        alive=(when - last_seen) < HEARTBEAT_GRACE,
-                       last_seen=last_seen, doing=str(summary))
+                       last_seen=last_seen, doing=str(summary),
+                       git=branches.get(lease["branch"], unknown(lease["branch"])))

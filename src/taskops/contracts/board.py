@@ -11,6 +11,7 @@ from typing import TypedDict
 
 from .._types import Status
 from .event import Event
+from .gitstate import BranchState
 from .lease import Lease
 from .task import Task
 
@@ -82,6 +83,13 @@ class FleetMember(TypedDict):
     """The most recent `activity` event's summary — what tool touched what file.
     Empty when the agent has not reported any, which a session without the plugin
     installed never will."""
+
+    git: BranchState
+    """Whether this agent's work is reachable by anybody else yet.
+
+    The question a standup actually asks. An agent can be busy, alive, and holding three unpushed
+    commits that exist on one laptop — which looks identical to progress on a board that only shows
+    activity."""
 
 
 class Fleet(TypedDict):

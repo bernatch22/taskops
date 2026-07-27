@@ -40,6 +40,9 @@ class Facts:
     justification: str
     """The comment accompanying `no_code`. A claim with no reasoning is a bypass."""
 
+    unpushed: int
+    """Commits on this branch no remote has. Recorded on close, never blocking — see `_closing`."""
+
 
 Guard = Callable[[Facts], str | None]
 """None means allowed; a string is the reason, written for the agent that is stuck."""
@@ -89,6 +92,11 @@ def _closing(facts: Facts) -> str | None:
 
     Children first: being told to write a commit for an epic whose subtasks are
     unfinished sends the agent to do the wrong work.
+
+    `unpushed` is deliberately NOT a rule here. It is recorded on the `done` event and shown on the
+    board instead, because pushing is not always the closer's job — a task can finish on a branch
+    somebody else lands — and a repository with no remote at all would otherwise be unable to close
+    anything, which is the most common way taskops is first tried.
     """
     return _needs_children_closed(facts) or _needs_evidence(facts)
 

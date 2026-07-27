@@ -15,13 +15,15 @@ from __future__ import annotations
 from . import replay
 from .activity import fleet, standup
 from .bus import BUS, EventBus
+from .gitstate import branch_state, branch_states
 from .identity import parse, resolve
 from .log import build, record, relay
 from .machine import Facts, allowed_from, check_move
 from .project import board, counts
 from .scheduler import branch_for, claim, open_children, ready_tasks, sweep_dead, unblock
+from .worker import Launched, launch
 
 __all__ = ["Facts", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "ready_tasks", "claim",
            "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet",
-           "counts", "replay"]
+           "counts", "replay", "branch_state", "branch_states", "launch", "Launched"]

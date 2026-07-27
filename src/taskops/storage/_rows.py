@@ -60,6 +60,9 @@ def to_task(row: sqlite3.Row) -> Task:
         labels=as_list(row["labels"]),
         files=as_list(row["files"]),
         created_by=str(row["created_by"]),
+        # `or ""` and not `str(...)`: a row that predates the column reads as NULL after the ALTER,
+        # and `str(None)` would put the string "None" in it — an assignee nobody can be.
+        assignee=str(row["assignee"] or ""),
         created=float(row["created"]),
         updated=float(row["updated"]),
     )
