@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>taskops — los flujos, exactos</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: { extend: {
+    fontFamily: { sans: ['Inter','ui-sans-serif'], mono: ['JetBrains Mono','ui-monospace'] },
+    colors: { ink:'#12151c', dim:'#6b7280', faint:'#9ca3af', paper:'#fafafa',
+              lime:'#4f9c00', amber:'#b06f00', rojo:'#c2410c', azul:'#1d4ed8' },
+  } },
+}
+</script>
+<style>* { font-weight:400 !important; border-radius:0 !important; }</style>
+</head>
+<body class="font-sans bg-paper text-ink antialiased">
+<div class="max-w-3xl mx-auto px-6 py-16 space-y-20">
+
+<header class="space-y-4">
+  <p class="font-mono text-sm text-lime">taskops 0.1.0 · 493 tests · verificado contra repos reales</p>
+  <h1 class="text-4xl tracking-tight">Los flujos, exactos</h1>
+  <p class="text-dim text-lg leading-relaxed">
+    Cómo se crean las cards, cómo un agente invoca a otros y les asigna trabajo, cómo se levanta
+    el UI, y cómo funciona el WebSocket. Todo lo de acá corrió de verdad antes de escribirse.
+  </p>
+</header>
+
+<!-- ══════ 1. CREAR CARDS ══════ -->
+<section class="space-y-5">
+  <h2 class="text-2xl">1 · Cómo se crean las cards</h2>
+  <p class="text-dim leading-relaxed">Hay <strong>tres</strong> formas, y son tres situaciones distintas.</p>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">A · MUCHAS de una vez — el caso normal</p>
+    <p class="text-dim text-sm leading-relaxed">
+      Le decís al agente <em>"planeá esto"</em> y llama <code class="font-mono">taskops_plan</code> una vez
+      con la lista entera. Es batch por una razón: <strong>las dependencias</strong>. De a una no podés
+      decir "esta va después de la anterior" porque no conocés su id hasta que existe.
+    </p>
+    <pre class="font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">taskops_plan tasks=[
+  {"title":"Tabla de tokens", "spec":"Migración + modelo. Listo cuando…", "files":["models/token.py"]},
+  {"title":"Emitir en login",  "spec":"…", "after":[0]},          ← índice de la entrada anterior
+  {"title":"Rotar al usar",    "spec":"…", "after":[1]}
+]</pre>
+  </div>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">B · UNA sola — lista de un elemento</p>
+    <pre class="font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">taskops_plan tasks=[{"title":"Arreglar el timeout", "spec":"…"}]</pre>
+  </div>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">C · ME TRABÉ, creo la card que me bloquea — <span class="text-azul">una sola llamada</span></p>
+    <p class="text-dim text-sm leading-relaxed">
+      Un agente laburando en <code class="font-mono">tk-A</code> descubre que falta algo antes. Con
+      <code class="font-mono">blocks</code> crea la card <strong>y</strong> deja su propia tarea esperándola,
+      atómicamente. Antes eran dos llamadas y la que se perdía siempre era la arista.
+    </p>
+    <pre class="diagram font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">taskops_plan tasks=[{
+  "title": "Migrar el schema de sesiones",
+  "spec":  "Lo descubrí haciendo tk-A: sin esto el token no persiste.",
+  "blocks": ["tk-A"]                    ← mi tarea actual pasa a esperar esta
+}]
+
+   ANTES                         DESPUÉS
+   tk-A  ○ ready                 tk-A     · backlog  ↑1  ← esperando
+                                 tk-nueva ○ ready        ← alguien la puede agarrar ya</pre>
+  </div>
+</section>
+
+<!-- ══════ 2. DISPATCH ══════ -->
+<section class="space-y-5">
+  <h2 class="text-2xl">2 · Un agente invoca otros y les asigna una card</h2>
+  <p class="text-dim leading-relaxed">
+    <code class="font-mono">taskops_dispatch</code> lanza un <strong>Claude Code headless real por
+    card</strong>, cada uno en su propio git worktree, cada uno con la card ya asignada. No abrís
+    terminales: el planner descompone y dispara.
+  </p>
+
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+   TU SESIÓN                          TASKOPS                        LOS WORKERS
+   ─────────                          ───────                        ───────────
+   "planeá el refactor"
+        │
+        ▼
+   taskops_plan  ─────────▶  3 cards + su DAG
+        │
+   taskops_dispatch count=3 ──▶ por cada card, EN ESTE ORDEN:
+        │                        1. assignee = agent:berna/w1
+        │                           (ANTES de lanzar — si fuera después,
+        │                            el worker podría agarrar otra cosa)
+        │                        2. git worktree add .taskops/trees/tk-xxx
+        │                           -b tk/tk-xxx/slug
+        │                        3. claude -p "sos agent:berna/w1, reclamá
+        │                             tk-xxx…"  --allowedTools …
+        │                           con TASKOPS_ROOT=<el repo>  ────────▶ ● w1 arranca
+        │                                                       ────────▶ ● w2 arranca
+        ▼                                                       ────────▶ ● w3 arranca
+   # dispatched 3 worker(s)                                              │
+   | worker          | task     | pid   | branch                  |      │ cada uno:
+   | agent:berna/w1  | tk-d993a0| 39498 | tk/tk-d993a0/add-greet  |      │  taskops_next task=…
+   | agent:berna/w2  | tk-04e4f4| 39507 | tk/tk-04e4f4/add-fare…  |      │  codea en SU worktree
+                                                                         │  commitea en SU rama
+   vos seguís laburando; son detached y te sobreviven                     │  taskops_update done
+                                                                         ▼
+   taskops_report fleet  ◀────── qué están haciendo ahora ──────────  y mueren</pre>
+
+  <div class="grid gap-px bg-ink text-paper font-mono text-xs">
+    <div class="p-4"><span class="text-lime">un worktree por worker</span><br><span class="text-faint">Dos agentes editando un mismo working tree se pisan, y ningún lease arregla eso: un lease coordina quién es DUEÑO de una tarea, no de qué bytes hay en disco. Cada worker tiene su directorio y su rama, y se mergean por git como dos personas.</span></div>
+    <div class="p-4"><span class="text-lime">TASKOPS_ROOT — la línea que sostiene todo</span><br><span class="text-faint">El worktree no tiene <code>.taskops/</code>, así que sin esto cada worker resolvería un proyecto vacío dentro de su propio directorio y no coordinaría con nadie. UN board, N working trees.</span></div>
+    <div class="p-4"><span class="text-lime">assignee filtra, no ordena</span><br><span class="text-faint">Una card asignada es INVISIBLE para todo otro agente — ni la ve en la cola ni la puede pedir por id. Sin eso, "asignada" sería una etiqueta que cualquiera ignora.</span></div>
+    <div class="p-4"><span class="text-amber">límites, a propósito</span><br><span class="text-faint">3 workers por default, 12 de techo. Cada uno es un proceso con un modelo atrás, así que el que quiere veinte lo tiene que pedir. Tools por allowlist, sin red (ni WebFetch ni WebSearch).</span></div>
+    <div class="p-4"><span class="text-azul">si un worker muere</span><br><span class="text-faint">Su lease vence y la card vuelve a la cola. Nada queda colgado, y no hay que limpiar nada a mano.</span></div>
+  </div>
+
+  <p class="text-dim text-sm leading-relaxed">
+    <strong>Dos bugs que encontró este flujo</strong> corriendo de verdad, invisibles a la revisión:
+    un worker sin identidad en el prompt <em>se inventó una</em> (<code class="font-mono">agent:claude/worker</code>)
+    y reclamó una card de otro — porque pedir por id nunca pasaba por el filtro de asignación.
+    Los dos están arreglados y pineados por tests.
+  </p>
+</section>
+
+<!-- ══════ 3. EL UI ══════ -->
+<section class="space-y-5">
+  <h2 class="text-2xl">3 · Cómo se levanta el UI, y dónde se registran los proyectos</h2>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-lime">se levanta así, desde el repo</p>
+    <pre class="font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">cd ~/mi-repo
+taskops studio                       # → http://127.0.0.1:2140/
+taskops studio --port 3000
+taskops studio --readonly            # para una pantalla en la pared
+taskops studio --host 0.0.0.0 --token "$(openssl rand -hex 16)"</pre>
+  </div>
+
+  <div class="space-y-2">
+    <p class="font-mono text-sm text-amber">los proyectos NO se registran en ningún lado</p>
+    <p class="text-dim text-sm leading-relaxed">
+      Y eso es una decisión, no un olvido. <strong>Un studio = un repositorio.</strong> No hay
+      registry global, no hay lista de proyectos, no hay base de datos central. El estado vive
+      dentro del repo (<code class="font-mono">.taskops/</code>), así que el proyecto <em>es</em> el
+      directorio: <code class="font-mono">cd</code> y levantás. Dos proyectos = dos studios en dos
+      puertos.
+    </p>
+    <pre class="diagram font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">~/proyecto-a/.taskops/  ──▶  taskops studio --port 2140
+~/proyecto-b/.taskops/  ──▶  taskops studio --port 2141
+
+la búsqueda: el comando camina hacia ARRIBA buscando .taskops/, igual que git con .git
+así que funciona desde cualquier subdirectorio. $TASKOPS_ROOT lo pisa (es lo que
+usan los workers dispatchados desde su worktree).</pre>
+    <p class="text-dim text-sm leading-relaxed">
+      El multi-proyecto con usuarios e invitaciones que querés en bernardocastro.dev es
+      <strong>otra cosa y no existe todavía</strong>: necesita un registry, cuentas y permisos, o sea
+      un servidor con estado propio. Hoy taskops es deliberadamente local.
+    </p>
+  </div>
+</section>
+
+<!-- ══════ 4. WS ══════ -->
+<section class="space-y-5">
+  <h2 class="text-2xl">4 · Cómo funciona el WebSocket</h2>
+  <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
+   BROWSER                       SERVER (threaded, sin asyncio)          SQLITE
+   ───────                       ──────────────────────────────          ──────
+   new WebSocket("/api/live")
+        │  Upgrade: websocket
+        ▼
+   ┌─────────────────────┐   handshake: sha1(key + GUID) en base64
+   │ 101 Switching        │◀── un thread por conexión, parado en un generador
+   └─────────────────────┘
+        │
+        │◀── {"type":"hello"}          ← al instante; el UI refetchea el board
+        │
+        │                          usecases.follow() ──▶ polea un CURSOR
+        │                                                events.after_seq()
+        │                                                cada 0.5s        │
+        │                                                     ▲          │
+        │                          + bus in-process ───────────┘          │
+        │                            (para los writes propios,            │
+        │                             que así aparecen ya)                │
+        │                                                                 │
+        │                       ┌── otro agente escribe ──────────────────┤
+        │◀── {"type":"change",  │   (OTRO PROCESO: cada agente MCP        │
+        │     "event":{…}}      │    es su propio proceso)                │
+        │                                                                 │
+        │◀── PING cada 2s en silencio  ← el probe del protocolo, se contesta
+        │
+        │◀── close a los 5 min → EventSource/WS reconecta solo, y el UI
+        │                        refetchea en cada open
+
+   POR QUÉ POLEA UN CURSOR y no sólo escucha el bus: cada agente es un PROCESO
+   distinto (MCP es stdio, cada hook de git es un intérprete nuevo). Un bus
+   in-process no ve ninguno. El cursor sí — es un scan sobre un entero indexado.
+
+   POR QUÉ 5 MIN DE VIDA: medido. Los writes a un socket local cerrado siguen
+   funcionando +7 segundos, así que "detectar que el cliente se fue" no es
+   confiable. Cerrar solo invierte el problema: el bound es de diseño.</pre>
+
+  <div class="grid gap-px bg-ink text-paper font-mono text-xs">
+    <div class="p-4"><span class="text-lime">WS a mano, sin dependencias</span><br><span class="text-faint">La librería <code>websockets</code> es asyncio, y el engine es sync por invariante testeada. Metería un event loop, un puente de threadpool y un segundo modelo de concurrencia. El framing de RFC 6455 que esto necesita son ~100 líneas (<code>_wsframes.py</code>) y deja el paquete en CERO dependencias.</span></div>
+    <div class="p-4"><span class="text-lime">SSE sigue ahí como fallback</span><br><span class="text-faint">Misma ruta, mismo feed, otro sobre. Si el upgrade no pasa (un proxy que lo mastica), el UI cae a SSE solo. Y hace que <code>curl -N /api/live</code> sea una herramienta de debug que funciona.</span></div>
+    <div class="p-4"><span class="text-lime">el browser sólo escucha</span><br><span class="text-faint">Todo lo que el UI escribe es un POST normal (un comment, un cambio de status). Por eso el canal es unidireccional y por eso el fallback a SSE no pierde nada.</span></div>
+  </div>
+</section>
+
+<!-- ══════ ESTADO ══════ -->
+<section class="space-y-4">
+  <h2 class="text-2xl">Estado honesto</h2>
+  <div class="grid gap-px bg-ink text-paper font-mono text-xs">
+    <div class="p-4"><span class="text-lime">✓ ANDA, verificado hoy</span><br><span class="text-faint">crear cards (3 formas) · dispatch de workers reales que codean, commitean y cierran solos · assignee que no se puede evadir · deps con desbloqueo automático · mensajería agente↔agente exactly-once · guard de commits (deny + inyección del trailer) · studio React en vivo por WS con fallback SSE · sync multi-dev por git · conciencia de branches (pushed / unpushed / no visible) · 493 tests, ruff+mypy+pyright strict, 15 invariantes ejecutables</span></div>
+    <div class="p-4"><span class="text-amber">✕ NO existe</span><br><span class="text-faint">el server multi-proyecto con usuarios e invitaciones (necesita registry, cuentas, permisos — es otro sistema) · relay para chat cross-máquina en vivo (hoy los mensajes entre máquinas viajan a velocidad de push/pull) · editar el spec/título de una card después de crearla ← <strong>hueco real</strong> · burndown · taskops watch</span></div>
+  </div>
+</section>
+
+<footer class="text-faint font-mono text-xs pt-8">
+  ~/taskops · USAGE.md paso a paso · ARCHITECTURE.md las invariantes · docs/guia.html los otros flujos
+</footer>
+
+</div>
+</body>
+</html>
