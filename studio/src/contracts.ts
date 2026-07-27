@@ -71,6 +71,35 @@ export interface Board {
   total: number;
 }
 
+export type EntryKind = "prompt" | "thinking" | "text" | "tool" | "result" | "other";
+
+export interface LogEntry {
+  kind: EntryKind;
+  text: string;
+  /* For a tool call, a one-line summary — which file, which command — never the whole payload. */
+  tool: string;
+  ts: number;
+  session: string;
+}
+
+export interface SessionLog {
+  task: string;
+  sessions: string[];
+  entries: LogEntry[];
+  /* Where the transcripts were read from. Shown when there is nothing, because an empty pane cannot
+   * distinguish "the agent said nothing" from "we looked in the wrong place". */
+  source: string;
+  truncated: boolean;
+}
+
+export interface CommitRef {
+  sha: string;
+  subject: string;
+  files: string[];
+  actor: string;
+  ts: number;
+}
+
 export interface TaskView {
   task: Task;
   lease: Lease | null;
@@ -79,7 +108,7 @@ export interface TaskView {
   children: Task[];
   neighbours: Task[];
   thread: Event[];
-  commits: string[];
+  commits: CommitRef[];
   history: Event[];
 }
 

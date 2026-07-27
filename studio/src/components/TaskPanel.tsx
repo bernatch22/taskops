@@ -4,8 +4,9 @@
 
 import { useState } from "react";
 import { api } from "../api";
-import type { Event, Task, TaskView } from "../contracts";
+import type { CommitRef, Event, Task, TaskView } from "../contracts";
 import { Actor, MARK, Priority, ago } from "./bits";
+import { Conversation } from "./Conversation";
 
 const CLOSING = ["in_progress", "review", "done", "blocked", "released", "cancelled"];
 
@@ -17,9 +18,16 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
   onDone: () => void;
 }): JSX.Element {
   const { task } = view;
+  /* ONE sidebar, two views. A second drawer over the first makes a person track which layer they are
+   * closing, and there is never a reason to see the task and its transcript at once. */
+  const [showing, setShowing] = useState<"task" | "log">("task");
   return (
     <div className="drawer" onClick={onClose}>
       <div className="panel" onClick={(click) => click.stopPropagation()}>
+        {showing === "log" ? (
+          <Conversation task={task.id} onBack={() => setShowing("task")} />
+        ) : (
+        <>
         <header className="panel-head">
           <div>
             <code className="id big">{task.id}</code>
@@ -28,6 +36,12 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
               {MARK[task.status]} {task.status}
             </span>
           </div>
+          {/* Always offered, never conditional on a session id: whether a transcript exists is a
+            * question about a file on disk, and the panel says so when there is none rather than
+            * hiding the button and leaving somebody wondering. */}
+          <button className="convo-open" onClick={() => setShowing("log")}>
+            conversation
+          </button>
           <button className="close" onClick={onClose} aria-label="close">✕</button>
         </header>
 
@@ -75,7 +89,9 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
         {view.commits.length > 0 ? (
           <section>
             <h3>Commits <span className="tally">{view.commits.length}</span></h3>
-            <div className="files">{view.commits.map((sha) => <code key={sha}>{sha.slice(0, 12)}</code>)}</div>
+            <ul className="commits">
+              {view.commits.map((commit) => <Commit commit={commit} key={commit.sha} />)}
+            </ul>
           </section>
         ) : null}
 
@@ -83,8 +99,31 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
         {readonly
           ? <p className="dim">Read-only studio — start it without <code>--readonly</code> to reply.</p>
           : <Compose task={task} onDone={onDone} />}
+        </>
+        )}
       </div>
     </div>
+  );
+}
+
+/* A commit with its subject and the files it touched. The subject is the point: this rendered bare
+ * twelve-character hashes for a while, which made a finished card look like it had recorded nothing
+ * while the event underneath had carried all of this the whole time. */
+function Commit({ commit }: { commit: CommitRef }): JSX.Element {
+  return (
+    <li className="commit">
+      <div className="commit-head">
+        <code className="sha">{commit.sha.slice(0, 12)}</code>
+        <span className="subject">{commit.subject || "(no subject)"}</span>
+      </div>
+      {commit.files.length > 0 ? (
+        <div className="files">
+          {commit.files.slice(0, 6).map((path) => <code key={path}>{path}</code>)}
+          {commit.files.length > 6
+            ? <code className="dim">+{commit.files.length - 6} more</code> : null}
+        </div>
+      ) : null}
+    </li>
   );
 }
 
