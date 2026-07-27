@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from . import _fields as f
 
 __all__ = ["PlanParams", "NextParams", "UpdateParams", "AskParams", "ReportParams",
-           "DispatchParams"]
+           "DispatchParams", "RecoverParams"]
 
 
 class _Target(TypedDict):
@@ -78,6 +78,14 @@ class DispatchParams(_Target, total=False):
     prefix: Annotated[str, f.PREFIX]
     model: Annotated[str, f.MODEL]
     dry_run: Annotated[bool, f.DRY_RUN]
+    actor: f.Actor
+
+
+class RecoverParams(_Target, total=False):
+    """Hand back the cards of workers that died. The other half of dispatching a fleet."""
+
+    force: Annotated[bool, f.RECOVER_FORCE]
+    grace: Annotated[int, f.RECOVER_GRACE]
     actor: f.Actor
 
 

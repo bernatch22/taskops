@@ -166,3 +166,41 @@ def test_the_render_flags_the_salvage(project: Path) -> None:
     text = render_recover(recover(project, actor="dev:berna"))
     assert "UNCOMMITTED work survives" in text
     assert "partial.py" in text
+
+
+def test_recover_is_reachable_over_mcp(project: Path) -> None:
+    """An ORCHESTRATOR has to be able to unstick the board from inside a session.
+
+    It could not, and that was the miss: `recover` shipped as a CLI command only, so an agent asked to
+    "reassign the stale cards" had no tool to call. Recovering a dead fleet is the other half of
+    dispatching one — the half that runs when the first half went wrong.
+    """
+    from taskops.transports.mcp import listing, respond
+
+    assert "taskops_recover" in {t["name"] for t in listing()}
+
+    claimed = next_task(project, actor="agent:berna/dead")
+    assert claimed["claim"] is not None
+    go_silent(project, claimed["claim"]["view"]["task"]["id"])
+
+    reply = respond({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                     "params": {"name": "taskops_recover",
+                                "arguments": {"repo_path": str(project), "actor": "dev:berna"}}})
+    assert reply is not None
+    text = str(reply["result"]["content"][0]["text"])
+    assert "isError" not in reply["result"]
+    assert "recovered 1 card" in text
+
+
+def test_no_dead_field_survives_in_the_field_descriptions() -> None:
+    """Every description constant must be referenced by a contract.
+
+    A leftover one is dead text nobody reads and nobody can reach — which is exactly what `SPAWN`
+    became when the field was removed from the MCP surface, and it sat there looking authoritative.
+    """
+    from taskops.contracts import _fields, tools
+
+    source = Path(tools.__file__).read_text(encoding="utf-8")
+    unused = [name for name in _fields.__all__
+              if name.isupper() and f"f.{name}" not in source]
+    assert not unused, f"unreferenced description constants: {unused}"

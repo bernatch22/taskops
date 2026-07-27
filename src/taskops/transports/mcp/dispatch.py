@@ -1,8 +1,9 @@
 """One tool call -> the text the agent reads. A TABLE, never a chain of ifs.
 
-The handlers live in `_handlers`; what is left here is the routing and the ONE place a typed engine
-failure becomes a sentence an agent can act on. That is the whole reason the CLI, MCP and HTTP
-surfaces cannot drift — none of them is where a decision lives.
+The handlers live in `_reads` and `_writes`, split by what they DO rather than by tool count: one
+group answers questions and changes nothing, the other enters a use case that enforces a rule. What is
+left here is the routing and the ONE place a typed engine failure becomes a sentence an agent can act
+on — which is the whole reason the CLI, MCP and HTTP surfaces cannot drift apart.
 """
 
 from __future__ import annotations
@@ -10,7 +11,8 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from ..._errors import TaskopsError
-from . import _handlers as h
+from . import _reads as read
+from . import _writes as write
 from .answers import Answer, answer, failure, from_engine
 
 __all__ = ["call_tool", "HANDLERS"]
@@ -18,12 +20,13 @@ __all__ = ["call_tool", "HANDLERS"]
 Handler = Callable[[dict[str, Any]], str]
 
 HANDLERS: dict[str, Handler] = {
-    "taskops_plan": h.plan_,
-    "taskops_next": h.next_,
-    "taskops_update": h.update_,
-    "taskops_ask": h.ask_,
-    "taskops_dispatch": h.dispatch_,
-    "taskops_report": h.report_,
+    "taskops_next": write.next_,
+    "taskops_update": write.update_,
+    "taskops_ask": read.ask_,
+    "taskops_plan": write.plan_,
+    "taskops_dispatch": write.dispatch_,
+    "taskops_recover": write.recover_,
+    "taskops_report": read.report_,
 }
 
 

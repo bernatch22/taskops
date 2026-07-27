@@ -25,6 +25,7 @@ from ...contracts.tools import (
     DispatchParams,
     NextParams,
     PlanParams,
+    RecoverParams,
     ReportParams,
     UpdateParams,
 )
@@ -49,6 +50,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool("taskops_ask", text.ASK, AskParams),
     Tool("taskops_plan", text.PLAN, PlanParams),
     Tool("taskops_dispatch", text.DISPATCH, DispatchParams),
+    Tool("taskops_recover", text.RECOVER, RecoverParams),
     Tool("taskops_report", text.REPORT, ReportParams),
 )
 """Ordered by how often an agent needs them, not alphabetically.

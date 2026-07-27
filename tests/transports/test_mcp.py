@@ -165,10 +165,11 @@ def test_the_mcp_surface_cannot_ask_taskops_to_spawn_a_process() -> None:
     schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_dispatch")
     assert "spawn" not in schema["properties"], "MCP is advertising a way to spawn processes"
 
-    from taskops.transports.mcp import _handlers
+    from taskops.transports.mcp import _reads, _writes
 
-    source = Path(_handlers.__file__).read_text(encoding="utf-8")
-    assert '"spawn"' not in source, "the MCP handler reads `spawn` — it must never pass it"
+    for module in (_reads, _writes):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert '"spawn"' not in source, f"{module.__name__} reads `spawn` — it must never pass it"
 
 
 def test_dispatch_over_mcp_returns_briefs_and_starts_nothing(tmp_path: Path) -> None:

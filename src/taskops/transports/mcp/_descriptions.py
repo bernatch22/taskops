@@ -12,7 +12,7 @@ claiming, closing a task with nothing to show, or discovering a shared file at m
 
 from __future__ import annotations
 
-__all__ = ["NEXT", "UPDATE", "ASK", "PLAN", "REPORT", "DISPATCH"]
+__all__ = ["NEXT", "UPDATE", "ASK", "PLAN", "REPORT", "DISPATCH", "RECOVER"]
 
 NEXT = (
     "CLAIM the next piece of work — the call to make when you are ready to code, and the "
@@ -81,4 +81,18 @@ DISPATCH = (
     "first, so no other agent is offered a card you prepared — and IF YOU DO NOT SPAWN THEM, run "
     "recovery, because otherwise those cards sit assigned to workers that never existed and are "
     "invisible to everybody else. This tool never starts a process itself."
+)
+
+RECOVER = (
+    "UNSTICK the board: hand back every card whose worker died, and say what survived. Call it when "
+    "the board shows work in flight that is not moving — cards sitting `claimed` by agents that were "
+    "killed, or assigned to workers somebody dispatched and never spawned. Both cases are covered, "
+    "and the second has no lease at all, so nothing else finds it: those cards are invisible to every "
+    "other agent and claimable by nobody until this runs. It does not wait for a lease to expire, "
+    "because if you are looking at the board you have already noticed. It clears the ASSIGNMENT as "
+    "well as the claim, so the card returns to the open pool. And it writes on each card what "
+    "survived: commits are safe in git, and any UNCOMMITTED work is named with its full path — a "
+    "killed agent writes before it commits, so that path is often real work. Read it before letting "
+    "anybody start the task over. Workers still reporting are left alone and named in the reply; pass "
+    "`force` to release those too."
 )

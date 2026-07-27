@@ -127,7 +127,7 @@ def code_lines(module: str) -> int:
     and rewards deleting the explanation to fit. It also cannot be gamed the other
     way: logic does not fit inside a docstring.
     """
-    skip = _docstring_lines(module) | class_attribute_docs(module)
+    skip = _docstring_lines(module) | class_attribute_docs(module) | _prose_assignments(module)
     n = 0
     for i, line in enumerate(source_of(module).splitlines(), start=1):
         stripped = line.strip()
@@ -135,6 +135,34 @@ def code_lines(module: str) -> int:
             continue
         n += 1
     return n
+
+
+def _prose_assignments(module: str) -> set[int]:
+    """Lines of a module-level assignment whose value is only string literals.
+
+    `TOOL_DESCRIPTION = ("…" "…")` is PROSE that happens to be addressable from Python. It contains no
+    logic by construction — a string literal cannot — so charging it to the code budget punishes the
+    same thing raw line counting did, and `transports/mcp/_descriptions` is a whole module of it.
+
+    Deliberately narrow: only module level, only when every part is a string constant. An f-string is
+    excluded, because interpolation is behaviour.
+    """
+    out: set[int] = set()
+    for node in _tree(module).body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        if _only_strings(node.value):
+            out |= set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    return out
+
+
+def _only_strings(node: ast.expr) -> bool:
+    """A string constant, or a concatenation of nothing but string constants."""
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, str)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _only_strings(node.left) and _only_strings(node.right)
+    return False
 
 
 def _docstring_lines(module: str) -> set[int]:

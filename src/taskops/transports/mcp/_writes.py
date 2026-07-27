@@ -1,8 +1,8 @@
-"""One handler per tool: read the arguments, call the use case, pick a renderer.
+"""Handlers that CHANGE the board: plan, claim, update, dispatch, recover.
 
-Split from `dispatch` so that module stays what it is — a table plus the one place a typed failure
-becomes an agent-readable sentence. Each function here is a few lines because it is allowed to be:
-the use cases hold the behaviour and `render/` holds the words.
+Split from `_handlers` because there are seven tools and one file of them stopped being readable. The
+seam is what a handler DOES: every one of these writes, so each is the entry point of a use case that enforces a rule —
+a guard, a lease, an assignment — and none of them may make that decision here.
 """
 
 from __future__ import annotations
@@ -10,30 +10,22 @@ from __future__ import annotations
 from typing import Any
 
 from ...render import (
-    render_board,
     render_dispatch,
-    render_fleet,
     render_next,
     render_plan,
-    render_search,
-    render_standup,
+    render_recover,
     render_update,
-    render_view,
 )
 from ...usecases import (
-    ask,
-    board,
     dispatch,
-    fleet,
     next_task,
     plan,
-    search,
-    standup,
+    recover,
     update,
 )
 from . import arguments as arg
 
-__all__ = ["plan_", "next_", "update_", "ask_", "dispatch_", "report_"]
+__all__ = ["plan_", "next_", "update_", "dispatch_", "recover_"]
 
 
 def plan_(args: dict[str, Any]) -> str:
@@ -58,20 +50,6 @@ def update_(args: dict[str, Any]) -> str:
                                 no_code=arg.flag(args, "no_code")))
 
 
-def ask_(args: dict[str, Any]) -> str:
-    """`task` or `query`, and saying so when neither came.
-
-    Two shapes behind one tool: an agent either knows which task it means or it does not,
-    and making that two tools would have it choose wrong half the time.
-    """
-    if wanted := arg.optional(args, "task"):
-        return render_view(ask(arg.repo(args), wanted,
-                               actor=arg.optional(args, "actor")))
-    if query := arg.optional(args, "query"):
-        return render_search(search(arg.repo(args), query), query)
-    raise arg.Missing("pass `task` to read one, or `query` to search")
-
-
 def dispatch_(args: dict[str, Any]) -> str:
     return render_dispatch(dispatch(arg.repo(args), tasks=arg.csv(args, "tasks"),
                                     count=arg.count(args), actor=arg.optional(args, "actor"),
@@ -82,17 +60,13 @@ def dispatch_(args: dict[str, Any]) -> str:
                                     dry_run=arg.flag(args, "dry_run")))
 
 
-def report_(args: dict[str, Any]) -> str:
-    kind = arg.optional(args, "kind") or "board"
-    where = arg.repo(args)
-    if kind == "standup":
-        return render_standup(standup(where, since=arg.optional(args, "since") or "24h",
-                                      actor=arg.optional(args, "actor")))
-    if kind == "fleet":
-        return render_fleet(fleet(where))
-    if kind == "burndown":
-        return ("burndown is not implemented yet — `board` shows the current state and "
-                "`standup` shows a window")
-    return render_board(board(where))
+def recover_(args: dict[str, Any]) -> str:
+    """`grace` of 0 means "use the default", which is what an omitted integer reads as."""
+    from ..._clock import HEARTBEAT_GRACE
+
+    asked = arg.count(args, "grace")
+    return render_recover(recover(arg.repo(args), actor=arg.optional(args, "actor"),
+                                  force=arg.flag(args, "force"),
+                                  grace=float(asked) or HEARTBEAT_GRACE))
 
 
