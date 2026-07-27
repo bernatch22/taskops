@@ -29,6 +29,7 @@ from .dep import Dep
 from .event import Event, Inbox
 from .gitstate import BranchState
 from .lease import Lease
+from .log import EntryKind, LogEntry, SessionLog
 from .results import Claim, NextResult, PlanResult, UpdateResult
 from .task import Task, TaskView
 from .tools import AskParams, NextParams, PlanParams, ReportParams, UpdateParams
@@ -44,6 +45,9 @@ __all__ = [
     "Inbox",
     "BranchState",
     "CommitRef",
+    "LogEntry",
+    "SessionLog",
+    "EntryKind",
     # what the use cases return
     "PlanResult",
     "Claim",

@@ -18,6 +18,7 @@ from .dispatch import DispatchResult, dispatch
 from .feed import follow
 from .guard import Verdict, check_command, check_commit
 from .ingest import ingest_branch, ingest_commit
+from .log import session_log
 from .plan import plan
 from .recover import Recovered, recover
 from .report import board, fleet, standup
@@ -33,5 +34,5 @@ __all__ = [
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",
-    "brief", "Brief", "inbox", "checkout", "track", "sync", "rebuild", "follow", "locate",
+    "brief", "Brief", "inbox", "checkout", "track", "sync", "rebuild", "follow", "locate", "session_log",
 ]
