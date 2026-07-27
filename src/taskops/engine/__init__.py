@@ -12,6 +12,7 @@ is two state machines, and the convenient one always forgets the guard.
 
 from __future__ import annotations
 
+from . import replay
 from .activity import fleet, standup
 from .bus import BUS, EventBus
 from .identity import parse, resolve
@@ -23,4 +24,4 @@ from .scheduler import branch_for, claim, open_children, ready_tasks, sweep_dead
 __all__ = ["Facts", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "ready_tasks", "claim",
            "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet",
-           "counts"]
+           "counts", "replay"]

@@ -68,9 +68,13 @@ def _needs_evidence(facts: Facts) -> str | None:
     if facts.no_code:
         return ("no_code needs a `comment` saying what was produced instead — "
                 "an unexplained exemption is indistinguishable from a shortcut")
-    return (f"{facts.task['id']} has no commit bound to it. Commit your work (the "
-            f"guard adds the trailer), or pass no_code with a comment if this task "
-            f"legitimately produced none")
+    # "on the task's branch" and not "the guard adds the trailer", which was the earlier wording:
+    # the trailer is only injected inside Claude Code, where a hook can rewrite the command. From a
+    # terminal the BRANCH is what binds the commit, so naming the branch is the advice that is true
+    # in both places.
+    return (f"{facts.task['id']} has no commit bound to it. Commit your work on the "
+            f"task's branch, or pass no_code with a comment if this task legitimately "
+            f"produced none")
 
 
 def _needs_children_closed(facts: Facts) -> str | None:

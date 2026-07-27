@@ -5,11 +5,12 @@ COMMITTED. That is the whole mechanism: two developers' agents converge by `git
 pull`, because appending to different ends of a file is the one edit git merges
 without help, and content-hash ids make importing the same event twice a no-op.
 
-What this deliberately does NOT do is resolve conflicts, because there are none to
-resolve: events are facts about the past, so the union of two logs IS the correct
-log. The only derived value that can disagree is a task's current status, settled
-by `updated` in `_tasks.upsert` — and recoverable either way, since both edits are
-in the log.
+What this module deliberately does NOT do is decide what an event MEANS. It moves bytes; turning
+events into tasks and dependencies is `engine.replay`, which is also where the one genuine conflict
+— two machines changing a task's status — is settled by timestamp.
+
+There are no conflicts in the LOG to resolve: events are facts about the past, so the union of two
+logs is the correct log.
 
 `activity` never leaves the machine (`LOCAL_ONLY_KINDS`): it is a per-tool-call
 heartbeat, and replicating it would add thousands of lines a day to a file whose
@@ -28,7 +29,7 @@ from ._rows import as_dict
 from .locate import LOG_FILE
 from .store import Store
 
-__all__ = ["export_events", "import_events", "rebuild", "read_log"]
+__all__ = ["export_events", "import_events", "all_events", "read_log"]
 
 
 def export_events(store: Store, *, limit: int = 1000) -> int:
@@ -57,18 +58,23 @@ def _append(path: Path, events: list[Event]) -> None:
                                     separators=(",", ":")) + "\n")
 
 
-def import_events(store: Store) -> int:
-    """Load the log into the cache. Returns how many were NEW here.
+def import_events(store: Store) -> list[Event]:
+    """Load the log into the cache. Returns the events that were NEW here.
 
-    Reads the whole file every time. At tens of thousands of events that is a few
-    milliseconds, and the alternative — a byte offset into a file `git pull`
-    rewrites from the middle — is a cursor that silently skips a merge.
+    The events themselves and not a count, because the caller has to do something with them:
+    materialising tasks from them is `engine.replay`'s job, and it must see exactly the new ones.
+    Returning a number was the earlier signature, and it is how the board stayed empty after a
+    teammate's `git pull` — the events arrived and nothing turned them into tasks.
+
+    Reads the whole file every time. At tens of thousands of events that is a few milliseconds, and
+    the alternative — a byte offset into a file `git pull` rewrites from the middle — is a cursor
+    that silently skips a merge.
     """
-    new = 0
+    fresh: list[Event] = []
     for event in read_log(store.root):
         if store.events.append(event, exported=True):
-            new += 1
-    return new
+            fresh.append(event)
+    return fresh
 
 
 def read_log(root: Path) -> Iterator[Event]:
@@ -113,11 +119,11 @@ def _parse(line: str) -> Event | None:
                  ts=float(fields.get("ts", 0.0)))
 
 
-def rebuild(store: Store) -> int:
-    """Replay the log into the cache. The disaster-recovery path.
+def all_events(root: Path) -> list[Event]:
+    """The whole log, for a caller that has to re-apply state rather than fill gaps.
 
-    Additive rather than truncate-and-replay: leases are live state the log does
-    not describe, so wiping the cache would drop every agent's claim in order to
-    rebuild rows the log can reconcile anyway.
+    Separate from `import_events` because they answer different questions: that one says "what is
+    new here", this one says "what does the log say" — and a cache being rebuilt from a deleted
+    database needs the second, since by then nothing is new.
     """
-    return import_events(store)
+    return list(read_log(root))

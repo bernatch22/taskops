@@ -29,6 +29,8 @@ def _describe(report: InitReport) -> str:
     leave a project whose commits are only sometimes recorded, which is worse than none."""
     lines = [f"{'created' if report.created else 'already a'} taskops project at "
              f"{report.root}"]
+    if report.adopted:
+        lines.append(f"adopted {report.adopted} change(s) from the committed log")
     if report.hooks:
         lines.append(f"hooks installed: {', '.join(report.hooks)}")
     for skipped in report.skipped:

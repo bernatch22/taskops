@@ -46,8 +46,17 @@ def next_task(start: Path | str, *, actor: str = "", session: str = "",
 
 def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
           wanted: str) -> Claim | None:
-    """Walk the ordered pool until a claim lands. None if every candidate was taken."""
-    pool = [store.tasks.need(wanted)] if wanted else ready_tasks(store, labels=labels)
+    """Walk the ordered pool until a claim lands. None if every candidate was taken.
+
+    A task asked for BY ID must still be `ready`. This check was missing, and following the usage
+    guide found it: `next --task <id>` on a task whose dependency was still open handed it over,
+    which means an agent that was TOLD which task to do — the case where a human is most involved —
+    was the one path that skipped the dependency graph entirely.
+    """
+    if wanted:
+        pool = [t for t in [store.tasks.need(wanted)] if t["status"] == "ready"]
+    else:
+        pool = ready_tasks(store, labels=labels)
     for candidate in pool:
         lease = take_lease(store, candidate, actor=who, session=session)
         if lease is None:
@@ -76,7 +85,7 @@ def _reason(store: Store, labels: tuple[str, ...], wanted: str) -> str:
     """Why there is nothing to do. "Nothing ready" alone sends the agent to ask a
     human; told WHICH — all blocked, all taken, or genuinely finished — it can act."""
     if wanted:
-        return f"{wanted} is claimed by someone else — read it with taskops_ask"
+        return _reason_for_one(store, wanted)
     numbers = counts(store)
     if numbers["open"] == 0:
         return "nothing open — the project is finished, or nothing has been planned"
@@ -89,3 +98,19 @@ def _reason(store: Store, labels: tuple[str, ...], wanted: str) -> str:
                 f"the useful move")
     return (f"every ready task was claimed by another agent in the last moment "
             f"({numbers['working']} in flight) — ask again")
+
+
+def _reason_for_one(store: Store, wanted: str) -> str:
+    """Why THIS task cannot be claimed. Each status has a different useful answer.
+
+    A blocked task names its blockers, because "not ready" alone sends the agent to a human when
+    the actionable move is usually to go work on the blocker instead.
+    """
+    task = store.tasks.need(wanted)
+    if task["status"] == "backlog":
+        blockers = ", ".join(store.deps.open_blockers_of(wanted)) or "unresolved deps"
+        return (f"{wanted} is waiting on {blockers} — finish those first, or claim one "
+                f"of them with taskops_next")
+    if task["status"] in ("done", "cancelled"):
+        return f"{wanted} is already {task['status']} — nothing to do there"
+    return f"{wanted} is {task['status']}, held by someone else — read it with taskops_ask"

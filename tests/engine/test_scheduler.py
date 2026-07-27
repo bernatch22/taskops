@@ -93,6 +93,22 @@ def test_labels_restrict_the_pool(store: Store) -> None:
     assert [t["id"] for t in picked] == ["tk-ui"]
 
 
+def test_a_blocked_task_cannot_be_claimed_even_by_id(store: Store, root: Path) -> None:
+    """Asking by id is not a bypass. THIS WAS A REAL BUG, found by following the usage guide:
+    `next --task <id>` on a task with an open dependency handed it over — so the path where a
+    human explicitly named the task was the one path that skipped the dependency graph."""
+    from taskops.usecases import next_task
+
+    make(store, "tk-first", status="ready")
+    make(store, "tk-second", status="backlog")
+    store.deps.add("tk-first", "tk-second")
+    store.commit()
+
+    refused = next_task(root, actor="agent:berna/one", task="tk-second")
+    assert refused["claim"] is None
+    assert "tk-first" in refused["reason"], "the reason must name the blocker"
+
+
 def test_only_one_of_two_claims_wins(store: Store) -> None:
     task = make(store, "tk-contested")
     first = scheduler.claim(store, task, actor="agent:berna/one", at=CLOCK)

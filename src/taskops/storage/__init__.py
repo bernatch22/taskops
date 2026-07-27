@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from .locate import DB_FILE, GUIDE_FILE, LOG_FILE, PROJECT_DIR, find_root, resolve_root
 from .store import BUSY_TIMEOUT, Store
-from .sync import export_events, import_events, rebuild
+from .sync import all_events, export_events, import_events
 
 __all__ = [
     "Store",
@@ -22,5 +22,5 @@ __all__ = [
     "resolve_root",
     "export_events",
     "import_events",
-    "rebuild",
+    "all_events",
 ]

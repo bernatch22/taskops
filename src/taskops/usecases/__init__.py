@@ -11,15 +11,17 @@ async and calls in from a threadpool, but there is no async twin of the engine.
 
 from __future__ import annotations
 
+from ._project import locate
 from .ask import ask, search
 from .claim import next_task
+from .feed import follow
 from .guard import Verdict, check_command, check_commit
 from .ingest import ingest_branch, ingest_commit
 from .plan import plan
 from .report import board, fleet, standup
 from .session import Brief, brief, checkout, inbox, track
 from .setup import InitReport, init
-from .sync import sync
+from .sync import rebuild, sync
 from .update import update
 
 __all__ = [
@@ -28,5 +30,5 @@ __all__ = [
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",
-    "brief", "Brief", "inbox", "checkout", "track", "sync",
+    "brief", "Brief", "inbox", "checkout", "track", "sync", "rebuild", "follow", "locate",
 ]

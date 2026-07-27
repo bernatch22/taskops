@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from taskops.storage import LOG_FILE
 from taskops.usecases import ask, init, next_task, plan, sync, update
 from taskops.usecases.session import brief, inbox
 
@@ -110,13 +109,16 @@ def test_the_collision_warning_names_the_other_task(shared: Path) -> None:
 
 
 def test_two_clones_converge_through_git(tmp_path: Path) -> None:
-    """Multi-developer sync with NO server: the event log travels by push and pull.
+    """Multi-developer sync with NO server, asserted on the BOARD.
 
-    The whole claim of the design, and the only test that can check it. Two clones, a plan
-    made in one, a comment made in the other, and both ending up with both.
+    The earlier version of this test checked that the events arrived and that the task id appeared
+    in the log file. Both were true and the feature was still broken: importing events created no
+    tasks, so a teammate's `git pull` left them looking at an empty board. That is why every
+    assertion here is about what somebody would actually SEE — the tasks, their specs, and the
+    dependency graph — and none of them is about the log.
     """
     origin = tmp_path / "origin.git"
-    git(tmp_path, "init", "-q", "--bare", str(origin))
+    git(tmp_path, "init", "-q", "--bare", "--initial-branch=main", str(origin))
 
     ana, berna = tmp_path / "ana", tmp_path / "berna"
     for who, email in ((ana, "ana@example.com"), (berna, "berna@example.com")):
@@ -125,21 +127,85 @@ def test_two_clones_converge_through_git(tmp_path: Path) -> None:
         git(who, "config", "user.name", who.name)
         init(who)
 
-    planned = plan(ana, [{"title": "Ana's task", "spec": "from ana"}], actor="dev:ana")
-    task_id = planned["created"][0]["id"]
+    planned = plan(ana, [
+        {"title": "Ana's foundation", "spec": "The full brief, which must travel.",
+         "files": ["api/core.py"], "priority": 0, "labels": ["api"]},
+        {"title": "Ana's follow-up", "spec": "Depends on the first.", "after": [0]},
+    ], actor="dev:ana")
+    first, second = (task["id"] for task in planned["created"])
     sync(ana)
     git(ana, "add", "-A")
     git(ana, "commit", "-q", "-m", "plan")
-    git(ana, "push", "-q", "origin", "HEAD:main")
+    git(ana, "push", "-q", "origin", "main")
 
     git(berna, "fetch", "-q", "origin")
     git(berna, "reset", "-q", "--hard", "origin/main")
     report = sync(berna)
-    assert report.imported >= 1, "berna's clone did not import ana's events"
+    assert report.imported >= 2, "berna's clone did not import ana's events"
+    assert report.applied >= 2, "the events arrived but created no tasks"
 
-    # The events arrived, and with them the task they describe.
-    assert (berna / LOG_FILE).is_file()
-    assert task_id in (berna / LOG_FILE).read_text(encoding="utf-8")
+    # Ana's task, on Berna's board, with everything an agent needs to work on it.
+    landed = ask(berna, first)["task"]
+    assert landed["title"] == "Ana's foundation"
+    assert landed["spec"] == "The full brief, which must travel."
+    assert landed["files"] == ["api/core.py"]
+    assert landed["priority"] == 0
+    assert landed["labels"] == ["api"]
+    assert landed["created_by"] == "dev:ana"
+
+    # And the DAG, which is what stops Berna's agents starting the wrong one first.
+    assert [t["id"] for t in ask(berna, second)["blocked_by"]] == [first]
+    assert ask(berna, first)["task"]["status"] == "ready"
+    assert ask(berna, second)["task"]["status"] == "backlog"
+
+
+def test_a_status_change_travels_and_unblocks_on_the_other_side(tmp_path: Path) -> None:
+    """Ana finishes something; Berna's queue changes. The point of sharing a list at all."""
+    origin = tmp_path / "origin.git"
+    git(tmp_path, "init", "-q", "--bare", "--initial-branch=main", str(origin))
+    ana, berna = tmp_path / "ana", tmp_path / "berna"
+    for who, email in ((ana, "ana@example.com"), (berna, "berna@example.com")):
+        git(tmp_path, "clone", "-q", str(origin), str(who))
+        git(who, "config", "user.email", email)
+        git(who, "config", "user.name", who.name)
+        init(who)
+
+    planned = plan(ana, [{"title": "Blocker", "spec": "x"},
+                         {"title": "Waiter", "spec": "y", "after": [0]}], actor="dev:ana")
+    first, second = (task["id"] for task in planned["created"])
+    update(ana, first, actor="dev:ana", status="cancelled", comment="Not needed after all.")
+    sync(ana)
+    git(ana, "add", "-A")
+    git(ana, "commit", "-q", "-m", "cancel the blocker")
+    git(ana, "push", "-q", "origin", "main")
+
+    git(berna, "fetch", "-q", "origin")
+    git(berna, "reset", "-q", "--hard", "origin/main")
+    report = sync(berna)
+
+    assert ask(berna, first)["task"]["status"] == "cancelled"
+    # A cancelled dependency stops blocking, so `sync` must hand Berna a pickable task.
+    assert second in report.unblocked
+    assert ask(berna, second)["task"]["status"] == "ready"
+
+
+def test_replaying_the_same_log_twice_changes_nothing(tmp_path: Path) -> None:
+    """Idempotence at the REPLAY layer, not just at the event table.
+
+    `git pull` can deliver the same log again, and `taskops sync` is documented as safe to run in a
+    loop — so a second pass must not duplicate a task or resurrect a status somebody moved on from.
+    """
+    from taskops.usecases import rebuild
+
+    init(tmp_path)
+    planned = plan(tmp_path, [{"title": "Once", "spec": "x"}], actor="dev:berna")
+    sync(tmp_path)
+    before = ask(tmp_path, planned["created"][0]["id"])["task"]
+
+    first = rebuild(tmp_path)
+    second = rebuild(tmp_path)
+    assert first.applied == 0 and second.applied == 0, "a replay changed already-correct state"
+    assert ask(tmp_path, planned["created"][0]["id"])["task"] == before
 
 
 def test_importing_the_same_log_twice_changes_nothing(shared: Path) -> None:

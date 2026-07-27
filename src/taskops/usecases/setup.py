@@ -23,10 +23,23 @@ _GUIDE_SOURCE = Path(__file__).resolve().parents[1] / "assets" / "GUIDE.md"
 
 _MARKER = "# taskops"
 _GITIGNORE = f"""
-{_MARKER} — the database is a CACHE, rebuildable from events.jsonl
+{_MARKER} — commit events.jsonl and NOTHING else under {PROJECT_DIR}/
 {PROJECT_DIR}/db.sqlite
 {PROJECT_DIR}/db.sqlite-wal
 {PROJECT_DIR}/db.sqlite-shm
+{PROJECT_DIR}/GUIDE.md
+"""
+"""Why GUIDE.md is ignored rather than committed, which looks wrong at first.
+
+It is GENERATED: it ships inside the package and `_guide` rewrites it on every init, so it always
+describes the version of taskops that is actually installed. Tracking a file that a command
+overwrites would leave `git status` dirty after every init, and two developers on different taskops
+versions would fight over its contents forever.
+
+It also removes a real merge conflict. Following the usage guide end to end, two clones that each
+ran `taskops init` could not `git pull` from one another — git refused, because the incoming commit
+carried files both sides had independently created untracked. Anything generated belongs on this
+side of the line.
 """
 
 
@@ -34,11 +47,18 @@ class InitReport:
     """What init actually did, so the CLI can report it instead of claiming success."""
 
     def __init__(self, *, root: Path, created: bool, hooks: list[str],
-                 skipped: list[str]) -> None:
+                 skipped: list[str], adopted: int = 0) -> None:
         self.root = root
         self.created = created
         self.hooks = hooks
         self.skipped = skipped
+        self.adopted = adopted
+        """Tasks materialised from a log that was already in the working tree.
+
+        Non-zero on a FRESH CLONE, which is the case this exists for. Following the usage guide
+        end to end, a teammate cloned, ran `taskops init`, and saw an empty board: the log was
+        sitting right there in the checkout and nothing had read it. Now init reads it.
+        """
 
 
 def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
@@ -55,10 +75,27 @@ def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
     _ignore(root)
     _guide(root)
     (root / LOG_FILE).touch(exist_ok=True)
-    with Store(root):
-        pass                    # opening applies the schema; nothing else to do here
+    adopted = _adopt(root)
     hooks, skipped = install_hooks(root) if install_git_hooks else ([], [])
-    return InitReport(root=root, created=created, hooks=hooks, skipped=skipped)
+    return InitReport(root=root, created=created, hooks=hooks, skipped=skipped,
+                      adopted=adopted)
+
+
+def _adopt(root: Path) -> int:
+    """Open the database (which applies the schema) and read whatever log is already here.
+
+    THE fresh-clone step, and it was missing: a teammate cloned a repository whose checkout
+    carried the whole event log, ran `taskops init`, and saw an empty board — the log was sitting
+    right there and nothing had read it. Adoption is just an import+replay, both idempotent, so on
+    a brand-new project this is a no-op and on a re-run it changes nothing.
+    """
+    from ..engine import replay, unblock
+    from ..storage import import_events
+
+    with Store(root) as store:
+        applied = replay.apply(store, import_events(store))
+        unblock(store)
+        return applied
 
 
 def _guide(root: Path) -> None:

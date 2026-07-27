@@ -64,9 +64,19 @@ def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
                 files=field.strings(entry, "files"),
                 created_by=who, created=when, updated=when)
     store.tasks.insert(task)
-    record(store, task=task["id"], actor=who, kind="created",
-           body={"title": title, "priority": task["priority"]}, ts=when)
+    # The WHOLE task in the body, not just its title. The log is the source of truth another
+    # machine rebuilds from, so an event that omits the spec is an event that cannot reconstruct
+    # the task — which is exactly what happened: a teammate's `git pull` imported the events and
+    # left them with an empty board. `engine.replay` is the reader.
+    record(store, task=task["id"], actor=who, kind="created", body=_snapshot(task), ts=when)
     return task
+
+
+def _snapshot(task: Task) -> dict[str, Any]:
+    """Everything needed to recreate this task elsewhere. `id` and `created_by` are already on the
+    event, so repeating them would be two places to keep in step."""
+    return {"title": task["title"], "spec": task["spec"], "priority": task["priority"],
+            "parent": task["parent"], "labels": task["labels"], "files": task["files"]}
 
 
 def _wire(store: Store, entries: list[dict[str, Any]],
@@ -80,6 +90,10 @@ def _wire(store: Store, entries: list[dict[str, Any]],
         for reference in field.references(entry):
             blocker = _resolve(reference, created)
             store.deps.add(blocker, task["id"])
+            # RECORDED, not just stored. A dependency that exists only in this machine's database
+            # is one a teammate's scheduler will walk somebody straight into after a `git pull`.
+            record(store, task=task["id"], actor=task["created_by"], kind="blocked",
+                   body={"on": blocker})
             out.append(Dep(task=blocker, blocks=task["id"]))
     return out
 

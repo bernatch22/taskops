@@ -1,44 +1,78 @@
 """`taskops sync` — reconciling with what git brought in.
 
-Import first, then export. That order is not arbitrary: importing can close a task whose
-dependents this machine is about to be asked about, and exporting first would publish a
-view of the graph that was already stale when it was written.
+Four steps, and the order is the design:
 
-Called from `post-merge`, and safe to call at any time. Both directions are idempotent —
-content-hash ids on the way in, an `exported` flag on the way out — so a developer who
-runs it in a loop out of nervousness costs themselves nothing.
+```
+  import   the log's new events into the local cache        (storage)
+  replay   those events into tasks and dependencies         (engine)
+  unblock  re-derive what is now pickable                   (engine)
+  export   this machine's new events into the log           (storage)
+```
+
+**Replay is the step that was missing**, and its absence was a real bug: following the usage guide,
+a teammate's `git pull` imported every event and left them looking at an empty board. Events are the
+source of truth, so something has to turn them into rows — see `engine.replay`.
+
+Import before export, deliberately: importing can close a task whose dependents this machine is
+about to be asked about, and exporting first would publish a view of the graph that was already
+stale when it was written.
+
+Every step is idempotent, so a developer who runs this in a loop out of nervousness costs themselves
+nothing.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..engine import unblock
-from ..storage import export_events, import_events
+from ..engine import replay, unblock
+from ..storage import all_events, export_events, import_events
 from ._project import project
 
-__all__ = ["sync", "SyncReport"]
+__all__ = ["sync", "rebuild", "SyncReport"]
 
 
 class SyncReport:
-    """What moved, in both directions, plus what the import set free."""
+    """What moved, in both directions, plus what the import actually changed."""
 
-    def __init__(self, *, imported: int, exported: int, unblocked: list[str]) -> None:
+    def __init__(self, *, imported: int, applied: int, exported: int,
+                 unblocked: list[str]) -> None:
         self.imported = imported
+        self.applied = applied
+        """Events that changed local state. Lower than `imported` and that is normal — a comment is
+        worth keeping and says nothing about what a task IS."""
+
         self.exported = exported
         self.unblocked = unblocked
 
 
 def sync(start: Path | str) -> SyncReport:
-    """Pull the log into the cache, push local events out, then re-derive readiness.
+    """Pull the log into the cache, apply it, re-derive readiness, push local events out.
 
-    `unblock` at the end is the point of the whole operation: a teammate finishing a
-    task is only useful to this machine once the tasks waiting on it become pickable,
-    and that promotion happens here rather than at the next `next` call — so a developer
-    who runs `git pull` sees the real queue immediately.
+    `unblock` at the end is the point of the whole operation: a teammate finishing a task is only
+    useful here once the tasks waiting on it become pickable, and that promotion happens now rather
+    than at the next `next` call — so somebody who just ran `git pull` sees the real queue.
     """
     with project(start) as store:
-        imported = import_events(store)
-        exported = export_events(store)
-        return SyncReport(imported=imported, exported=exported,
-                          unblocked=unblock(store))
+        fresh = import_events(store)
+        applied = replay.apply(store, fresh)
+        freed = unblock(store)
+        return SyncReport(imported=len(fresh), applied=applied,
+                          exported=export_events(store), unblocked=freed)
+
+
+def rebuild(start: Path | str) -> SyncReport:
+    """Re-apply the ENTIRE log. The disaster-recovery path, for a deleted cache.
+
+    Different from `sync` in one way that matters: it replays every event rather than only the new
+    ones, because after `rm .taskops/db.sqlite` nothing is new — the log is all there is.
+
+    Additive, never a truncate-and-replay: leases are live state the log does not describe, so
+    wiping rows to rebuild them would drop every agent's claim to recreate what the log can
+    reconcile anyway.
+    """
+    with project(start) as store:
+        imported = len(import_events(store))
+        applied = replay.apply(store, all_events(store.root))
+        return SyncReport(imported=imported, applied=applied,
+                          exported=export_events(store), unblocked=unblock(store))

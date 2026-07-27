@@ -23,7 +23,18 @@ from ..contracts import Actor
 from ..engine import identity, sweep_dead
 from ..storage import Store, resolve_root
 
-__all__ = ["project", "caller", "heartbeat"]
+__all__ = ["project", "caller", "heartbeat", "locate"]
+
+
+def locate(start: Path | str) -> Path:
+    """Which project a path belongs to. Raises `NotInitialized` naming the fix.
+
+    Exported because the studio needs the root BEFORE it opens a port — it serves one repository,
+    and binding to a directory with no project would be a server that answers every request with
+    the same error. A transport may not call `storage.resolve_root` itself (an invariant test says
+    so, and it caught exactly this), so the resolution is a use case like any other.
+    """
+    return resolve_root(start)
 
 
 @contextmanager

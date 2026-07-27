@@ -1,0 +1,215 @@
+"""The HTTP surface: routing, the policy, and the endpoints.
+
+Every route is a pure function `Request -> Reply`, so all of this runs with no port open and no
+thread — which is the whole reason `_wire` exists. The one test that DOES bind a socket is the
+live-feed one, because a generator that never gets pulled proves nothing about a stream.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from taskops.transports.http._wire import Reply, Request
+from taskops.transports.http.policy import Policy
+from taskops.transports.http.router import build
+from taskops.usecases import init, next_task, plan
+
+
+def get(path: str, **query: str) -> Request:
+    return Request(method="GET", path=path, query=dict(query), headers={})
+
+
+def post(path: str, payload: dict[str, Any], **headers: str) -> Request:
+    return Request(method="POST", path=path, query={}, headers=headers,
+                   body=json.dumps(payload).encode())
+
+
+def body_of(reply: Reply) -> Any:
+    return json.loads(reply.body)
+
+
+@pytest.fixture
+def project(tmp_path: Path) -> Path:
+    init(tmp_path, install_git_hooks=False)
+    plan(tmp_path, [{"title": "Write the router", "spec": "A table.", "files": ["r.py"]},
+                    {"title": "Then the UI", "spec": "React.", "after": [0]}],
+         actor="dev:berna")
+    return tmp_path
+
+
+@pytest.fixture
+def route(project: Path) -> Any:
+    return build(project, Policy())
+
+
+# ---- routing
+
+
+def test_the_board_serialises_to_the_shape_the_ui_expects(route: Any) -> None:
+    """The contracts ARE the wire format, so this is the check that they still are.
+
+    `studio/src/contracts.ts` mirrors these names by hand. A rename on the Python side that is
+    not mirrored shows up in the UI as `undefined`, and this is where it should fail instead.
+    """
+    payload = body_of(route(get("/api/board")))
+    assert set(payload) == {"repo", "columns", "ready", "total"}
+    card = next(c for column in payload["columns"] for c in column["cards"])
+    assert set(card) == {"task", "lease", "blocked_by", "blocks", "commits"}
+    assert set(card["task"]) >= {"id", "title", "spec", "status", "priority", "files"}
+
+
+def test_a_task_is_read_by_id(route: Any) -> None:
+    board = body_of(route(get("/api/board")))
+    task_id = board["columns"][0]["cards"][0]["task"]["id"]
+    view = body_of(route(get("/api/task", id=task_id)))
+    assert set(view) >= {"task", "lease", "blocked_by", "blocks", "neighbours", "thread"}
+
+
+def test_a_task_without_an_id_is_a_400(route: Any) -> None:
+    reply = route(get("/api/task"))
+    assert reply.status == 400
+    assert body_of(reply)["code"] == "bad_request"
+
+
+def test_a_missing_task_carries_the_engines_own_status(route: Any) -> None:
+    """The taxonomy already knows `NoSuchTask` is a 404, so a new error type gets the right code
+    the day it is added rather than the day somebody remembers to map it."""
+    reply = route(get("/api/task", id="tk-nothing"))
+    assert reply.status == 404
+    assert body_of(reply)["code"] == "no_such_task"
+
+
+def test_an_unknown_api_path_is_a_404(route: Any) -> None:
+    assert route(get("/api/nope")).status == 404
+
+
+def test_a_wrong_method_is_a_405_not_a_404(route: Any) -> None:
+    """The two send a caller to completely different places, and "not found" for a GET on a POST
+    route has cost everyone an afternoon at some point."""
+    reply = route(Request(method="GET", path="/api/comment", query={}, headers={}))
+    assert reply.status == 405
+    assert "POST" in body_of(reply)["error"]
+
+
+def test_an_unknown_non_api_path_serves_the_app(route: Any) -> None:
+    """The UI routes in the browser, so a reload on a deep link must serve index.html rather than
+    404 — the classic broken-refresh bug in a single-page app."""
+    reply = route(get("/task/tk-4f2a9c"))
+    assert reply.status == 200
+    assert b"<!doctype html" in reply.body.lower() or b"studio not built" in reply.body
+
+
+# ---- the policy
+
+
+def test_a_token_is_required_when_one_is_set(project: Path) -> None:
+    route = build(project, Policy(token="secret"))
+    assert route(get("/api/board")).status == 401
+    allowed = Request(method="GET", path="/api/board", query={},
+                      headers={"authorization": "Bearer secret"})
+    assert route(allowed).status == 200
+
+
+def test_the_token_is_also_accepted_in_the_query(project: Path) -> None:
+    """Not laziness: `EventSource` has NO API for request headers, so an SSE stream behind a token
+    can only be authenticated by the URL. Refusing the query form would make the live feed the one
+    endpoint a token locks out."""
+    route = build(project, Policy(token="secret"))
+    assert route(get("/api/board", token="secret")).status == 200
+    assert route(get("/api/board", token="wrong")).status == 401
+
+
+def test_readonly_refuses_writes_and_allows_reads(project: Path) -> None:
+    route = build(project, Policy(readonly=True))
+    assert route(get("/api/board")).status == 200
+    refused = route(post("/api/comment", {"task": "tk-1", "text": "hi"}))
+    assert refused.status == 403
+    assert body_of(refused)["code"] == "readonly"
+
+
+def test_readonly_reaches_the_ui_through_config(project: Path) -> None:
+    """The UI hides its compose box from this, so it must not have to discover read-only by being
+    refused mid-typing."""
+    assert body_of(build(project, Policy(readonly=True))(get("/api/config")))["readonly"] is True
+    assert body_of(build(project, Policy())(get("/api/config")))["readonly"] is False
+
+
+def test_the_rate_limit_bites_and_says_so(project: Path) -> None:
+    route = build(project, Policy(rate_limit=2))
+    assert route(get("/api/board")).status == 200
+    assert route(get("/api/board")).status == 200
+    limited = route(get("/api/board"))
+    assert limited.status == 429
+    assert body_of(limited)["code"] == "rate_limited"
+
+
+def test_a_bad_token_does_not_consume_the_rate_budget(project: Path) -> None:
+    """Auth runs BEFORE the counter, so an unauthenticated caller cannot lock out an
+    authenticated one — which is what the ordering in `Policy.check` is for."""
+    route = build(project, Policy(token="secret", rate_limit=1))
+    assert route(get("/api/board")).status == 401
+    assert route(get("/api/board", token="secret")).status == 200
+
+
+# ---- writes
+
+
+def test_a_comment_reaches_the_thread(route: Any) -> None:
+    board = body_of(route(get("/api/board")))
+    task_id = board["columns"][0]["cards"][0]["task"]["id"]
+    assert route(post("/api/comment", {"task": task_id, "text": "From the studio."})).status == 200
+    view = body_of(route(get("/api/task", id=task_id)))
+    assert view["thread"][-1]["body"]["text"] == "From the studio."
+
+
+def test_a_comment_with_mentions_becomes_a_directed_message(route: Any, project: Path) -> None:
+    """A human talking to an agent goes through exactly the same path as an agent talking to one,
+    so it lands in the same inbox — there is no second mechanism for people."""
+    from taskops.usecases import inbox
+
+    board = body_of(route(get("/api/board")))
+    task_id = board["columns"][0]["cards"][0]["task"]["id"]
+    route(post("/api/comment", {"task": task_id, "text": "Careful with r.py",
+                                "mentions": ["agent:ana/one"]}))
+    waiting = inbox(project, actor="agent:ana/one")
+    assert waiting["messages"][0]["body"]["text"] == "Careful with r.py"
+
+
+def test_mentions_are_accepted_as_a_comma_separated_string(route: Any, project: Path) -> None:
+    """A form field produces one string, a JS array produces a list. A message that silently
+    reached nobody is the worst way for this to fail, so both are read."""
+    from taskops.usecases import inbox
+
+    board = body_of(route(get("/api/board")))
+    task_id = board["columns"][0]["cards"][0]["task"]["id"]
+    route(post("/api/comment", {"task": task_id, "text": "hi",
+                                "mentions": "agent:ana/one, dev:ana"}))
+    assert len(inbox(project, actor="dev:ana")["messages"]) == 1
+
+
+def test_a_refused_status_change_returns_the_engines_reason(route: Any, project: Path) -> None:
+    """The UI shows this string verbatim. A `done` refused for want of a commit explains exactly
+    what is missing, and replacing it with "Failed" throws away the only useful part.
+
+    The claimed task is found by STATUS, not by position on the board: this test used to grab the
+    first card, which happened to be the blocked one — and when claiming a blocked task by id was
+    (correctly) forbidden, the test started exercising a different refusal than the one it names.
+    """
+    claimed = next_task(project, actor="dev:berna")
+    assert claimed["claim"] is not None
+    task_id = claimed["claim"]["view"]["task"]["id"]
+    reply = route(post("/api/status", {"task": task_id, "status": "done"}))
+    assert reply.status == 400
+    assert "no commit bound" in body_of(reply)["error"]
+
+
+def test_a_malformed_body_is_a_400_not_a_traceback(route: Any) -> None:
+    """The reader here is a browser we wrote, but also anything a curious person points at the
+    port."""
+    broken = Request(method="POST", path="/api/comment", query={}, headers={},
+                     body=b"{not json")
+    assert route(broken).status == 400
