@@ -16,6 +16,7 @@ from __future__ import annotations
 from .board import render_board
 from .dispatch import render_dispatch
 from .inbox import render_inbox
+from .recover import render_recover
 from .reports import render_fleet, render_standup
 from .results import (
     render_next,
@@ -29,4 +30,4 @@ from .task import render_claim, render_view
 __all__ = ["render_view", "render_claim", "render_inbox", "render_board",
            "render_standup", "render_fleet", "render_plan", "render_next",
            "render_update", "render_search", "render_dispatch", "render_brief",
-           "render_verdict"]
+           "render_verdict", "render_recover"]

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-__all__ = ["Repo", "Actor", "Session", "TaskId", "TASKS", "DRY_RUN", "STATUS", "COMMENT", "MENTIONS",
+__all__ = ["Repo", "Actor", "Session", "TaskId", "TASKS", "DRY_RUN", "SPAWN", "STATUS", "COMMENT", "MENTIONS",
            "BLOCKED_ON", "NO_CODE", "LABELS", "CLAIM_ONE", "ASK_TASK", "ASK_QUERY",
            "DISPATCH_TASKS", "DISPATCH_COUNT", "PREFIX", "MODEL", "REPORT_KIND",
            "REPORT_ACTOR", "SINCE"]
@@ -86,3 +86,8 @@ SINCE = "how far back a standup looks: '24h', '7d', '30m'"
 
 DRY_RUN = ("show which cards WOULD get a worker and stop — nothing assigned, nothing launched. "
            "Worth doing first when you are about to spend several models on a plan you just wrote")
+
+SPAWN = ("CLI ONLY, and not offered over MCP. Starts detached `claude -p` processes instead of "
+         "preparing briefs. Each one opens a NEW billed session, so this is for a human who "
+         "deliberately wants workers that outlive their terminal — an agent in a session should "
+         "spawn sub-agents from the briefs instead, on the subscription it is already using")

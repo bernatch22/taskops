@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ..contracts import BranchState
 
-__all__ = ["branch_states", "branch_state", "unknown"]
+__all__ = ["branch_states", "branch_state", "unknown", "porcelain"]
 
 _TRACK = re.compile(r"ahead (\d+)|behind (\d+)")
 _SEP = "\x1f"          # unit separator: cannot appear in a ref name, unlike anything printable
@@ -68,6 +68,18 @@ def _state(branch: str, upstream: str, track: str) -> BranchState:
             behind = int(match.group(2))
     return BranchState(branch=branch, upstream=upstream, ahead=ahead, behind=behind,
                        pushed=bool(upstream) and ahead == 0, exists=True)
+
+
+def porcelain(tree: Path) -> list[str]:
+    """The paths `git status` reports as changed or untracked in `tree`, or [] if there is no tree.
+
+    Used by recovery to find what a dead worker never committed. Untracked files count — that is
+    usually exactly what a killed agent leaves, since it writes before it commits.
+    """
+    if not tree.is_dir():
+        return []
+    out = _git(tree, "status", "--porcelain")
+    return [line[3:].strip() for line in out.splitlines() if len(line) > 3]
 
 
 def _git(root: Path, *args: str) -> str:

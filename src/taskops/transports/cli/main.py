@@ -26,6 +26,7 @@ from .commands import (
     init,
     next_,
     plan,
+    recover,
     report,
     session,
     studio,
@@ -35,8 +36,8 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, next_, update, ask, plan, dispatch, report, studio, guard, hook,
-             ingest, session, sync)
+_COMMANDS = (init, next_, update, ask, plan, dispatch, recover, report, studio, guard,
+             hook, ingest, session, sync)
 
 
 def build_parser() -> argparse.ArgumentParser:

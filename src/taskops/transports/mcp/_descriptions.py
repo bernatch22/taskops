@@ -70,13 +70,15 @@ REPORT = (
 )
 
 DISPATCH = (
-    "LAUNCH worker agents — one real Claude Code process per card, each in its own git worktree, "
-    "each already assigned the card it was started for. This is how you get parallel work: you plan, "
-    "then you dispatch, and the workers claim, code, commit and close on their own while you carry on. "
-    "Use it right after `taskops_plan` when the cards are independent, and use `count` to say how "
-    "many — every worker costs a model, so three is the default and twelve is the ceiling. Assignment "
-    "happens BEFORE launch, so a dispatched worker cannot wander off and claim somebody else's card, "
-    "and no other agent will be offered one that is assigned. Workers are detached: they outlive your "
-    "session, their output is on disk, and `taskops_report fleet` shows what they are doing. If one "
-    "dies, its lease expires and the card returns to the queue — nothing is stranded."
+    "PREPARE workers for cards, then spawn them YOURSELF as sub-agents of this session. It assigns "
+    "each card to a named worker, creates a git worktree per card already checked out on that card's "
+    "branch, and returns a ready-to-use BRIEF per card. It starts nothing — you take those briefs and "
+    "spawn one sub-agent each, ALL IN ONE MESSAGE so they run in parallel, on the session you are "
+    "already in. That is the whole flow: plan, dispatch, spawn. Each brief already tells its worker "
+    "which worktree to work in and never to run `git switch`, because sub-agents share this repository "
+    "and switching would move every other worker's branch at once. `count` says how many (default 3, "
+    "ceiling 12); `dry_run` shows which cards would be picked and changes nothing. Assignment happens "
+    "first, so no other agent is offered a card you prepared — and IF YOU DO NOT SPAWN THEM, run "
+    "recovery, because otherwise those cards sit assigned to workers that never existed and are "
+    "invisible to everybody else. This tool never starts a process itself."
 )

@@ -123,6 +123,47 @@ If you discover a dependency mid-task, use `blocked_on` — it adds the edge **a
 blocked. A dependency that lives only in a comment is one the scheduler will walk somebody
 straight into.
 
+## If you are an ORCHESTRATOR: dispatching workers
+
+`taskops_dispatch` assigns cards, creates a git worktree per card, and hands you a **brief per
+card**. It starts nothing. You then spawn ONE SUB-AGENT PER BRIEF, all in a single message so they
+run in parallel — they use the session you are already in.
+
+```
+taskops_plan      →  the cards
+taskops_dispatch  →  N briefs           ← nothing is running yet
+your Agent tool   →  N sub-agents       ← paste one brief each, in ONE message
+```
+
+Two rules for the workers, and both are in the brief already:
+
+- **Each works inside its own worktree** (`.taskops/trees/<id>/`), which is already checked out on
+  the card's branch. A worktree is per CARD, not per agent.
+- **Nobody ever runs `git switch`.** Sub-agents share the repository, so switching would move the
+  branch under every other worker at once. This is the whole reason the worktree exists.
+
+Pass `spawn: true` only if you want detached processes that outlive your session — each one opens a
+NEW billed session, which is rarely what you want.
+
+**If you dispatch and then do not spawn**, the cards sit assigned to workers that never existed. Run
+`taskops recover` to hand them back.
+
+## When a fleet dies
+
+Workers get killed: a session ends, a balance runs out, somebody hits ctrl-C. Their cards stay
+`claimed` until their leases expire, which is fifteen minutes of a board that looks busy and is not.
+
+```
+taskops recover           # releases every card whose worker has gone quiet
+taskops recover --force   # …including the ones still reporting, for a fleet that is alive and wrong
+```
+
+It clears the assignment as well as the lease — a card handed back still assigned to a dead worker is
+one NOBODY can pick up, since the scheduler hides it from everyone else.
+
+And it writes on each card what survived: commits are safe in git, and **uncommitted work is named
+with its path**, because a killed agent writes before it commits. Read that before starting over.
+
 ## Reading the board
 
 - `taskops_report board` — every column, who holds what

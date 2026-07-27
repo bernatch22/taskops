@@ -19,6 +19,7 @@ from .feed import follow
 from .guard import Verdict, check_command, check_commit
 from .ingest import ingest_branch, ingest_commit
 from .plan import plan
+from .recover import Recovered, recover
 from .report import board, fleet, standup
 from .session import Brief, brief, checkout, inbox, track
 from .setup import InitReport, init
@@ -28,7 +29,7 @@ from .update import update
 __all__ = [
     # the five MCP tools
     "plan", "next_task", "update", "ask", "search", "board", "standup", "fleet",
-    "dispatch", "DispatchResult",
+    "dispatch", "DispatchResult", "recover", "Recovered",
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",

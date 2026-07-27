@@ -59,7 +59,19 @@ class AskParams(_Target, total=False):
 
 
 class DispatchParams(_Target, total=False):
-    """Launch worker agents. The tool that turns a plan into work in flight."""
+    """Prepare worker agents for cards. The caller spawns them as its own sub-agents.
+
+    There is deliberately NO `spawn` field here, and its absence is the design rather than an
+    omission. The use case can start detached processes and `taskops dispatch --spawn` does, because
+    that is a human at a terminal asking for it — but a model calling a tool must not be able to make
+    this package launch another Claude Code. An agent inside a session already HAS a way to run work
+    in parallel: its own sub-agent tool, on the subscription that is already paid for. Spawning from
+    here opens a new billed session per worker, which is how a real fleet drained an API balance
+    mid-run and left six cards claimed by processes that no longer existed.
+
+    A capability the engine has and a transport withholds is a normal thing for this codebase — the
+    surfaces are thin, not identical.
+    """
 
     tasks: Annotated[str, f.DISPATCH_TASKS]
     count: Annotated[int, f.DISPATCH_COUNT]

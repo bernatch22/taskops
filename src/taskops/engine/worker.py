@@ -16,12 +16,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..contracts import Task
+from ._briefs import brief_for, prompt_for
 from ._process import make_worktree, spawn
 from .identity import ENV_ACTOR
 from .scheduler import branch_for
 
-__all__ = ["Launched", "launch", "worktree_for", "prompt_for", "WORKERS_DIR", "TREES_DIR",
-           "TOOLS"]
+__all__ = ["Launched", "launch", "prepare", "worktree_for", "brief_for", "prompt_for",
+           "WORKERS_DIR", "TREES_DIR", "TOOLS"]
 
 WORKERS_DIR = ".taskops/workers"
 """Where a worker's log goes. Under `.taskops/` so one gitignore rule covers it."""
@@ -45,44 +46,34 @@ class Launched:
     """A worker that was started, and where to look at it."""
 
     def __init__(self, *, actor: str, task: str, pid: int, tree: Path, log: Path,
-                 branch: str) -> None:
+                 branch: str, brief: str = "") -> None:
         self.actor = actor
         self.task = task
         self.pid = pid
+        """0 when no process was started — the default, where the caller spawns a sub-agent."""
+
         self.tree = tree
         self.log = log
         self.branch = branch
+        self.brief = brief
+        """The prompt to hand a sub-agent, verbatim. Empty for a spawned worker, which got it as an
+        argument instead."""
 
 
 def worktree_for(root: Path, task: Task) -> Path:
     return root / TREES_DIR / task["id"]
 
 
-def prompt_for(task: Task, actor: str = "") -> str:
-    """What the worker is told. Short on purpose — the SPEC lives in the task.
+def prepare(root: Path, task: Task, *, actor: str) -> Launched:
+    """Make the worktree and write the brief. Starts NO process.
 
-    It names the claim explicitly (`task=<id>`), because a worker launched for one card must not go
-    shopping in the pool: the card is already assigned to it, and a bare `taskops_next` would hand it
-    whatever sorts first.
-
-    It NAMES the worker's actor id, and that is not cosmetic. A dispatched worker that was not told
-    who it is invents an identity — one called itself `agent:claude/worker` and claimed a card
-    assigned to a different worker, which is exactly the failure `engine.identity` warns about. The
-    id is also in `$TASKOPS_ACTOR`, so this is belt and braces on purpose: the environment is what
-    the tools read, and the prompt is what stops the model from overriding it with an argument.
-
-    The last sentence is the important one. A background agent that guesses when the spec is wrong
-    produces work nobody asked for and a commit somebody has to read; told to release instead, it
-    leaves the next agent everything it learned.
+    The default half of dispatch: the caller passes `.brief` to its own sub-agent tool, so the worker
+    runs on the session's existing subscription rather than opening a new billed one.
     """
-    return (f"You are taskops worker `{actor}`. Do NOT use any other actor id — it is already "
-            f"set in your environment, so never pass `actor` to a taskops tool. "
-            f"Read .taskops/GUIDE.md, then run "
-            f"`taskops_next task={task['id']}` to claim your task and read its spec. "
-            f"Do the work, commit it on the branch the claim names, then close the task with "
-            f"`taskops_update task={task['id']} status=done` and a comment saying what you did. "
-            f"If you get stuck or the spec is wrong, do NOT guess: use "
-            f"`taskops_update status=released` with a comment explaining where you got to.")
+    tree = worktree_for(root, task)
+    make_worktree(root, tree, branch_for(task))
+    return Launched(actor=actor, task=task["id"], pid=0, tree=tree, log=Path(""),
+                    branch=branch_for(task), brief=brief_for(root, task, actor, tree))
 
 
 def launch(root: Path, task: Task, *, actor: str, model: str = "") -> Launched:
@@ -104,4 +95,4 @@ def launch(root: Path, task: Task, *, actor: str, model: str = "") -> Launched:
     pid = spawn(command, cwd=tree if usable else root, log=log,
                 env={"TASKOPS_ROOT": str(root), ENV_ACTOR: actor})
     return Launched(actor=actor, task=task["id"], pid=pid, tree=tree, log=log,
-                    branch=branch)
+                    branch=branch, brief="")

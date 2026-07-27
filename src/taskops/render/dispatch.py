@@ -34,6 +34,8 @@ class Worker(Protocol):
     def pid(self) -> int: ...
     @property
     def branch(self) -> str: ...
+    @property
+    def brief(self) -> str: ...
 
 
 class DispatchLike(Protocol):
@@ -46,6 +48,8 @@ class DispatchLike(Protocol):
     def skipped(self) -> Sequence[str]: ...
     @property
     def planned(self) -> bool: ...
+    @property
+    def spawned(self) -> bool: ...
 
 
 def render_dispatch(result: DispatchLike) -> str:
@@ -63,15 +67,38 @@ def render_dispatch(result: DispatchLike) -> str:
     rows = [[w.actor, w.task, "—" if preview else str(w.pid), w.branch]
             for w in result.launched]
     heading = (f"# would dispatch {len(result.launched)} worker(s) — NOTHING STARTED"
-               if preview else f"# dispatched {len(result.launched)} worker(s)")
+               if preview else
+               f"# dispatched {len(result.launched)} worker(s)" if result.spawned else
+               f"# prepared {len(result.launched)} worker(s) — SPAWN THEM BELOW")
     parts = [heading, "", table(["worker", "task", "pid", "branch"], rows)]
     if result.skipped:
         parts += ["", f"⚠ NOT started: {', '.join(result.skipped)}",
                   "_Not ready, already assigned, or the process failed to start._"]
     if preview:
-        parts += ["", "A preview: no card was assigned, no worktree made, no process started. "
-                  "Drop `dry_run` to launch these."]
-    elif result.launched:
-        parts += ["", "They are detached and running now. Watch them with "
+        parts += ["", "A preview: no card was assigned, no worktree made, nothing started. "
+                  "Drop `dry_run` to go ahead."]
+    elif result.spawned:
+        parts += ["", "They are detached processes, running now. Watch them with "
                   "`taskops_report fleet`; their output is in .taskops/workers/."]
+    elif result.launched:
+        parts += _handover(result)
     return "\n".join(parts)
+
+
+def _handover(result: DispatchLike) -> list[str]:
+    """The briefs, and the instruction that the remaining half is the caller's job.
+
+    This is the part that makes the default mode work at all: the cards are assigned and their
+    worktrees exist, but nothing is DOING them until the orchestrator spawns a sub-agent per brief.
+    Saying it plainly matters — a dispatch that returned a table and stopped reads like work in
+    flight, and the cards would sit assigned to workers that were never started.
+    """
+    out = ["", f"ASSIGNED and ready. Now spawn {len(result.launched)} sub-agent(s) IN THIS SESSION "
+           f"— one per brief below, all in one message so they run in parallel. They will use this "
+           f"session's subscription rather than opening new billed ones.", ""]
+    for worker in result.launched:
+        out += [f"── brief for {worker.actor} ({worker.task}) " + "─" * 20, "",
+                worker.brief, ""]
+    out += ["If you do not spawn them, run `taskops recover` to hand the cards back rather than "
+            "leaving them assigned to workers that never existed."]
+    return out

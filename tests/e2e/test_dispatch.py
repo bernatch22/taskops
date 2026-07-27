@@ -155,4 +155,45 @@ def test_the_render_says_loudly_that_nothing_started(project: Path) -> None:
 
     text = render_dispatch(dispatch(project, count=2, dry_run=True, actor="dev:berna"))
     assert "NOTHING STARTED" in text
-    assert "no process started" in text
+    assert "nothing started" in text
+
+
+def test_the_default_mode_prepares_briefs_and_starts_nothing(project: Path) -> None:
+    """THE correction. The first version spawned `claude -p` per card, which opens a NEW billed
+    session each time — a fleet of six drained an API balance mid-run and left six cards claimed by
+    processes that no longer existed. The default now assigns, makes the worktree, and hands back a
+    brief for the caller to spawn as a sub-agent on the session it already pays for.
+    """
+    from taskops.render import render_dispatch
+
+    result = dispatch(project, count=2, actor="dev:berna")
+    assert result.spawned is False
+    assert all(w.pid == 0 for w in result.launched), "the default mode started a process"
+    assert all(w.brief for w in result.launched), "a prepared worker with no brief is unusable"
+
+    text = render_dispatch(result)
+    assert "SPAWN THEM BELOW" in text
+    assert "IN THIS SESSION" in text
+
+
+def test_a_brief_tells_the_subagent_its_worktree_and_not_to_switch(project: Path) -> None:
+    """The two lines that make parallel branches possible with sub-agents.
+
+    A sub-agent SHARES the parent's working directory, so without being told a path it edits `main`,
+    and a `git switch` in a shared checkout moves the branch under every other worker at once. That
+    is the failure that makes people conclude parallel agents cannot use separate branches.
+    """
+    result = dispatch(project, count=1, actor="dev:berna")
+    brief = result.launched[0].brief
+    assert str(result.launched[0].tree) in brief
+    assert "never run `git switch`" in brief
+    assert f"Task: {result.launched[0].task}" in brief, "no trailer means no commit binding"
+
+
+def test_preparing_assigns_the_card(project: Path) -> None:
+    """Assignment happens even without a process, or a sub-agent could be handed a card another
+    agent takes first."""
+    result = dispatch(project, count=1, actor="dev:berna")
+    from taskops.usecases import ask
+
+    assert ask(project, result.launched[0].task)["task"]["assignee"] == result.launched[0].actor

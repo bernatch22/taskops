@@ -20,6 +20,8 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     parser.add_argument("--model", default="", help="model for the workers")
     parser.add_argument("--dry-run", action="store_true", dest="dry_run",
                         help="show what would launch, change nothing")
+    parser.add_argument("--spawn", action="store_true",
+                        help="start detached processes (each a NEW billed session)")
     parser.add_argument("--actor", default="", help="who is dispatching")
     parser.set_defaults(run=run)
 
@@ -28,4 +30,4 @@ def run(args: argparse.Namespace) -> str:
     return render_dispatch(launch_workers(
         repo_of(args), tasks=tuple(str(t) for t in args.tasks), count=int(args.count),
         actor=str(args.actor), prefix=str(args.prefix), model=str(args.model),
-        dry_run=bool(args.dry_run)))
+        dry_run=bool(args.dry_run), spawn=bool(args.spawn)))

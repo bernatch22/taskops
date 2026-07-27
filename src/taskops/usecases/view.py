@@ -15,9 +15,15 @@ from ..storage import Store
 
 __all__ = ["view", "inbox_for", "THREAD_KINDS"]
 
-THREAD_KINDS = ("comment", "message", "handoff")
-"""What counts as conversation. `status` and `commit` events are history, not talk —
-mixing them would bury four sentences of reasoning under forty state changes."""
+THREAD_KINDS = ("comment", "message", "handoff", "released")
+"""What counts as conversation. `status` and `commit` events are history, not talk — mixing them
+would bury four sentences of reasoning under forty state changes.
+
+`released` is in the list, and a test is what put it there. A recovery writes the most important
+sentence a card can carry — "your predecessor died, and there is uncommitted work at THIS path" —
+and with `released` excluded that sentence was recorded and never shown. The next agent would have
+redone from scratch a file sitting two directories down.
+"""
 
 
 def view(store: Store, task_id: str) -> TaskView:

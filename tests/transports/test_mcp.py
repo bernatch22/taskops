@@ -147,3 +147,72 @@ def test_a_stringly_typed_task_list_is_accepted(tmp_path: Path) -> None:
                                    "tasks": '[{"title": "From a string", "spec": "x"}]'})
     assert "isError" not in result
     assert "From a string" in text_of(result)
+
+
+def test_the_mcp_surface_cannot_ask_taskops_to_spawn_a_process() -> None:
+    """THE rule, pinned. A model calling a tool must not be able to make this package launch another
+    Claude Code.
+
+    The use case CAN spawn and `taskops dispatch --spawn` does, because that is a human at a terminal
+    asking for it. Over MCP the field is absent from the schema and unread by the handler, so an agent
+    that sends it gets a prepared brief anyway.
+
+    Why it matters: spawning opens a NEW billed session per worker, and an agent inside a session
+    already has a way to run work in parallel — its own sub-agent tool, on the subscription that is
+    already paid for. A real fleet of six drained an API balance this way and left six cards claimed by
+    processes that no longer existed.
+    """
+    schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_dispatch")
+    assert "spawn" not in schema["properties"], "MCP is advertising a way to spawn processes"
+
+    from taskops.transports.mcp import _handlers
+
+    source = Path(_handlers.__file__).read_text(encoding="utf-8")
+    assert '"spawn"' not in source, "the MCP handler reads `spawn` — it must never pass it"
+
+
+def test_dispatch_over_mcp_returns_briefs_and_starts_nothing(tmp_path: Path) -> None:
+    """The positive half: what an agent gets instead is a brief it can hand to a sub-agent."""
+    from taskops.usecases import init, plan
+
+    init(tmp_path, install_git_hooks=False)
+    plan(tmp_path, [{"title": "Parallel work", "spec": "x"}], actor="dev:berna")
+
+    result = call("taskops_dispatch", {"repo_path": str(tmp_path), "count": 1,
+                                       "spawn": True, "actor": "dev:berna"})
+    assert "isError" not in result
+    text = text_of(result)
+    assert "SPAWN THEM BELOW" in text, "an agent sending spawn=true got a process started"
+    assert "YOUR WORKTREE" in text, "the brief is missing"
+
+
+@pytest.mark.parametrize("tool", TOOLS, ids=lambda t: t.name)
+def test_no_description_tells_an_agent_to_pass_a_field_the_schema_lacks(tool: Any) -> None:
+    """A backticked `name: value` in a description is an INSTRUCTION to pass a parameter. If the
+    schema has no such field, the agent sends it and it is silently dropped.
+
+    THIS TEST WAS WRITTEN BECAUSE IT HAPPENED, AND THEN REWRITTEN TWICE BECAUSE THE FIRST TWO VERSIONS
+    WERE VACUOUS — which is worth recording, because a green invariant that cannot fail is worse than
+    no invariant:
+
+    1. The first regex looked for a backticked word followed by a colon OUTSIDE the backticks. The real
+       text had the colon INSIDE them, so it matched nothing.
+    2. The second filtered candidates to "names that are a field of SOME tool" — to avoid flagging
+       `taskops recover` as an invented parameter. But `spawn` had been removed from EVERY tool, so it
+       failed that filter and was dropped. The test passed against the exact bug it was written for.
+
+    The rule that works is narrower and needs no allowlist: only the `name: value` / `name=value` form
+    counts, because that form is unambiguously an instruction to send something. A BARE `word` is not
+    flagged — it is usually a correct reference to a field, a status or a command, and telling those
+    apart would need guessing. `taskops_update status=released` does not trip it either: the first word
+    inside the backticks is the command, and what follows it is a space rather than a separator.
+
+    Verified by appending the removed sentence to a real description and watching this fail.
+    """
+    import re
+
+    tick = chr(96)
+    pattern = tick + r"(\w+)\s*[:=][^" + tick + r"]*" + tick
+    schema = next(t["inputSchema"] for t in listing() if t["name"] == tool.name)
+    invented = sorted(set(re.findall(pattern, tool.description)) - set(schema["properties"]))
+    assert not invented, (f"{tool.name} tells agents to pass fields it does not accept: {invented}")
