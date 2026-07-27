@@ -28,7 +28,7 @@ from pathlib import Path
 from .._clock import now
 from .._errors import BadRequest
 from ..contracts import Task
-from ..engine import record, unblock
+from ..engine import branch_for, record, unblock
 from ..engine.worker import Launched, launch
 from ..storage import Store
 from ._project import caller, heartbeat, project
@@ -53,27 +53,50 @@ class DispatchResult:
     and never move.
     """
 
-    def __init__(self, *, launched: list[Launched], skipped: list[str]) -> None:
+    def __init__(self, *, launched: list[Launched], skipped: list[str],
+                 planned: bool = False) -> None:
         self.launched = launched
         self.skipped = skipped
+        self.planned = planned
+        """True for a dry run. The renderer says so loudly — a preview that reads like a result is
+        how somebody believes five agents are working when none are."""
 
 
 def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0,
-             actor: str = "", prefix: str = "", model: str = "") -> DispatchResult:
+             actor: str = "", prefix: str = "", model: str = "",
+             dry_run: bool = False) -> DispatchResult:
     """Launch a worker per card. Named cards, or the best `count` ready ones.
 
     `count` rather than "everything ready" as the default shape, because "all" is the request nobody
     means literally on a board with forty cards in it.
+
+    `dry_run` shows the plan and changes NOTHING — no assignment, no worktree, no process. It exists
+    because this is the one call in taskops that spends money: every worker is a model, and a planner
+    that miscounted should be able to look before it commits to five of them. It is also the honest
+    answer to "which cards would you pick", which no amount of reading the scheduler gives you.
     """
     with project(start) as store:
         who = caller(store, actor)
         heartbeat(store, who["id"])
         unblock(store)
         chosen, skipped = _choose(store, tasks, count, who["id"])
+        if dry_run:
+            return DispatchResult(launched=[_preview(t, who["dev"], prefix or "w", i)
+                                            for i, t in enumerate(chosen, start=1)],
+                                  skipped=skipped, planned=True)
         launched = [_start(store, task, who["dev"], prefix or "w", i, model)
                     for i, task in enumerate(chosen, start=1)]
         return DispatchResult(launched=[w for w in launched if w.pid],
                               skipped=skipped + [w.task for w in launched if not w.pid])
+
+
+def _preview(task: Task, dev: str, prefix: str, index: int) -> Launched:
+    """What a worker WOULD be. pid 0 says it does not exist, which the renderer reads."""
+    from ..engine.worker import worktree_for
+
+    return Launched(actor=f"agent:{dev}/{prefix}{index}", task=task["id"], pid=0,
+                    tree=worktree_for(Path("."), task), log=Path(""),
+                    branch=branch_for(task))
 
 
 def _choose(store: Store, wanted: tuple[str, ...], count: int,

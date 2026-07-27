@@ -65,6 +65,7 @@ class DispatchParams(_Target, total=False):
     count: Annotated[int, f.DISPATCH_COUNT]
     prefix: Annotated[str, f.PREFIX]
     model: Annotated[str, f.MODEL]
+    dry_run: Annotated[bool, f.DRY_RUN]
     actor: f.Actor
 
 

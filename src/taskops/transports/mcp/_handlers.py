@@ -76,7 +76,8 @@ def dispatch_(args: dict[str, Any]) -> str:
     return render_dispatch(dispatch(arg.repo(args), tasks=arg.csv(args, "tasks"),
                                     count=arg.count(args), actor=arg.optional(args, "actor"),
                                     prefix=arg.optional(args, "prefix"),
-                                    model=arg.optional(args, "model")))
+                                    model=arg.optional(args, "model"),
+                                    dry_run=arg.flag(args, "dry_run")))
 
 
 def report_(args: dict[str, Any]) -> str:

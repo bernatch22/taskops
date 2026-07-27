@@ -44,6 +44,8 @@ class DispatchLike(Protocol):
     def launched(self) -> Sequence[Worker]: ...
     @property
     def skipped(self) -> Sequence[str]: ...
+    @property
+    def planned(self) -> bool: ...
 
 
 def render_dispatch(result: DispatchLike) -> str:
@@ -57,13 +59,19 @@ def render_dispatch(result: DispatchLike) -> str:
     if not result.launched and not result.skipped:
         return ("nothing to dispatch — no ready, unassigned card. Plan some work, or check "
                 "`taskops_report board` for what is blocked")
-    rows = [[w.actor, w.task, str(w.pid), w.branch] for w in result.launched]
-    parts = [f"# dispatched {len(result.launched)} worker(s)", "",
-             table(["worker", "task", "pid", "branch"], rows)]
+    preview = result.planned
+    rows = [[w.actor, w.task, "—" if preview else str(w.pid), w.branch]
+            for w in result.launched]
+    heading = (f"# would dispatch {len(result.launched)} worker(s) — NOTHING STARTED"
+               if preview else f"# dispatched {len(result.launched)} worker(s)")
+    parts = [heading, "", table(["worker", "task", "pid", "branch"], rows)]
     if result.skipped:
         parts += ["", f"⚠ NOT started: {', '.join(result.skipped)}",
                   "_Not ready, already assigned, or the process failed to start._"]
-    if result.launched:
+    if preview:
+        parts += ["", "A preview: no card was assigned, no worktree made, no process started. "
+                  "Drop `dry_run` to launch these."]
+    elif result.launched:
         parts += ["", "They are detached and running now. Watch them with "
                   "`taskops_report fleet`; their output is in .taskops/workers/."]
     return "\n".join(parts)
