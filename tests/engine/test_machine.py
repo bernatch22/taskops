@@ -1,0 +1,111 @@
+"""The state machine, tested from literals — no database in sight.
+
+That is the whole point of guards being pure functions of `Facts`: "a claimed task
+cannot be closed without a commit" is a three-line test here instead of a fixture
+with a repository, a lease and a git history in it.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from taskops._errors import GuardFailed, IllegalTransition
+from taskops._types import STATUSES, Status
+from taskops.contracts import Task
+from taskops.engine.machine import TRANSITIONS, Facts, allowed_from, check_move
+from tests.conftest import CLOCK
+
+
+def a_task(status: Status) -> Task:
+    return Task(id="tk-aaaaaa", title="t", spec="s", status=status, priority=2,
+                parent=None, labels=[], files=[], created_by="dev:berna",
+                created=CLOCK, updated=CLOCK)
+
+
+def facts(status: Status, **over: object) -> Facts:
+    base: dict[str, object] = {"task": a_task(status), "actor": "agent:berna/one",
+                               "has_live_lease": True, "commits": 1,
+                               "open_children": 0, "no_code": False,
+                               "justification": ""}
+    return Facts(**{**base, **over})          # type: ignore[arg-type]
+
+
+def test_the_table_covers_every_status() -> None:
+    """Anti-vacuum: a status missing from the table would be silently terminal, so
+    every guard test about it would pass by never running."""
+    assert set(TRANSITIONS) == set(STATUSES)
+
+
+def test_done_is_terminal() -> None:
+    """Reopening would make the log say a task finished twice. The honest record of
+    "we shipped it and it was wrong" is a new task referencing the old one."""
+    assert allowed_from("done") == ()
+    with pytest.raises(IllegalTransition):
+        check_move(facts("done"), "in_progress")
+
+
+def test_an_impossible_arrow_names_the_possible_ones() -> None:
+    """A rejected agent must learn the shape of the machine, not guess again."""
+    with pytest.raises(IllegalTransition) as caught:
+        check_move(facts("backlog"), "done")
+    message = str(caught.value)
+    assert "ready" in message and "cancelled" in message
+
+
+def test_working_on_a_task_requires_a_live_lease() -> None:
+    with pytest.raises(GuardFailed) as caught:
+        check_move(facts("claimed", has_live_lease=False), "in_progress")
+    assert "lease" in str(caught.value)
+
+
+def test_closing_requires_a_commit() -> None:
+    """THE guard that makes the board trustworthy: without it, `done` means only
+    that an agent said so — which is what reading a board instead of the diff is
+    meant to avoid."""
+    with pytest.raises(GuardFailed) as caught:
+        check_move(facts("in_progress", commits=0), "done")
+    assert "no commit bound" in str(caught.value)
+
+
+def test_no_code_closes_a_task_only_with_a_justification() -> None:
+    """An unexplained exemption is indistinguishable from a shortcut."""
+    with pytest.raises(GuardFailed) as caught:
+        check_move(facts("in_progress", commits=0, no_code=True), "done")
+    assert "comment" in str(caught.value)
+    check_move(facts("in_progress", commits=0, no_code=True,
+                     justification="Decided to keep the existing scheme; see thread."),
+               "done")
+
+
+def test_an_epic_is_done_when_its_children_are() -> None:
+    with pytest.raises(GuardFailed) as caught:
+        check_move(facts("review", open_children=2), "done")
+    assert "open subtask" in str(caught.value)
+
+
+def test_the_children_check_comes_before_the_commit_check() -> None:
+    """Order matters for the AGENT, not for correctness.
+
+    Told to write a commit for an epic whose subtasks are unfinished, an agent goes
+    and does the wrong work. Told about the subtasks, it does the right one.
+    """
+    with pytest.raises(GuardFailed) as caught:
+        check_move(facts("in_progress", commits=0, open_children=1), "done")
+    assert "open subtask" in str(caught.value)
+
+
+def test_releasing_is_always_allowed() -> None:
+    """Handing work back must never be harder than abandoning it.
+
+    A guard here would make waiting for the lease to lapse the easier move, and a
+    lapsed lease carries none of the context a release comment does.
+    """
+    for status in ("claimed", "in_progress"):
+        check_move(facts(status, has_live_lease=False, commits=0), "ready")
+
+
+def test_cancelling_is_always_allowed_from_an_open_status() -> None:
+    """A human deciding a task should not happen cannot be blocked by a guard about
+    evidence — there is deliberately no work to show."""
+    for status in ("backlog", "ready", "claimed", "in_progress", "blocked", "review"):
+        check_move(facts(status, has_live_lease=False, commits=0), "cancelled")

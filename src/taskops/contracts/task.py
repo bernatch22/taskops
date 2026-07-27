@@ -1,0 +1,75 @@
+"""The task, and the whole of what an agent needs to read to work on one.
+
+`Task` is the row. `TaskView` is the answer to "what am I doing and what does it
+touch" — assembled once so an agent does not have to make five calls to find out
+that something else is already editing the file it was about to rewrite.
+"""
+
+from __future__ import annotations
+
+from typing import TypedDict
+
+from .._types import Status
+from .event import Event
+from .lease import Lease
+
+__all__ = ["Task", "TaskView"]
+
+
+class Task(TypedDict):
+    """One unit of work. Flat on purpose: this IS the row and the wire format."""
+
+    id: str
+    title: str
+
+    spec: str
+    """The brief, complete enough that an agent reads it and needs nothing else.
+
+    The single most important field in the system and the one most often written
+    badly. A title is a label; a spec says what done looks like, what must not
+    change, and where to look — because the reader is a fresh context that was
+    not in the room when the work was decided.
+    """
+
+    status: Status
+    priority: int
+    """0 urgent … 3 someday. Lower sorts first, which is why it is not a Literal:
+    a project that wants five bands should not need an engine change."""
+
+    parent: str | None
+    """An epic's id. The TREE is here; the DAG is `deps` — they answer different
+    questions ("what is this part of" vs "what must happen first")."""
+
+    labels: list[str]
+    files: list[str]
+    """The edit surface, as the planner understands it. A hint, never a lock: the
+    scheduler uses it to avoid handing two agents the same file, and being wrong
+    costs a merge conflict rather than a wrong answer."""
+
+    created_by: str
+    created: float
+    updated: float
+
+
+class TaskView(TypedDict):
+    """Everything about one task, in one read."""
+
+    task: Task
+    lease: Lease | None
+    blocked_by: list[Task]
+    """Open dependencies. Empty is the whole reason a task is pickable."""
+
+    blocks: list[Task]
+    """What is waiting on this one — the argument for finishing it today."""
+
+    children: list[Task]
+    neighbours: list[Task]
+    """Tasks whose `files` intersect this one's. The collision warning: an agent
+    that reads this knows who to message before it starts, not after the merge."""
+
+    thread: list[Event]
+    """Comments and directed messages, oldest first. The conversation about this
+    task, from every actor that has ever touched it."""
+
+    commits: list[str]
+    history: list[Event]

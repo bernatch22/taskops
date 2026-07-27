@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Every static gate, in one command. CI runs THIS, not inline steps.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# The project venv wins over whatever the shell happens to have, so the gate a
+# developer sees does not depend on their machine.
+[ -d .venv/bin ] && PATH="$PWD/.venv/bin:$PATH"
+
+for tool in ruff mypy pyright python; do
+    command -v "$tool" >/dev/null || {
+        echo "$tool is not installed — run: uv sync --group dev" >&2
+        exit 1
+    }
+done
+
+echo "==> ruff"
+ruff check .
+
+echo "==> mypy"
+mypy
+
+echo "==> pyright"
+pyright
+
+echo "==> architecture invariants"
+python -m pytest tests/architecture -q
+
+echo "all static gates green"

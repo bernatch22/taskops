@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Autofix what a linter can decide: import order, unused imports, the mechanical
+# half of ruff's rules.
+#
+# `ruff format` is NOT run here, and that is deliberate rather than an oversight.
+# This codebase is hand-wrapped: SQL is aligned to be read as SQL, and tuples are
+# grouped by meaning rather than one-per-line. ruff format puts a collection
+# either entirely on one line or one element per line, so it turns an 11-element
+# tuple that reads fine in two lines into thirteen — which spends the 100-line
+# file budget on style instead of content. megabrain-v3, the reference
+# implementation, has the same rule for the same reason: 221 of its 300 files
+# would be reformatted, so it plainly never runs it either.
+#
+# The budget IS the formatter here: `tests/architecture` fails a file over 100
+# lines or a function over 30, which is a constraint on how much a reader must
+# hold rather than on where the commas go.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[ -d .venv/bin ] && PATH="$PWD/.venv/bin:$PATH"
+ruff check --fix .

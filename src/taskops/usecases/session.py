@@ -1,0 +1,117 @@
+"""A session opening and closing — and how a message reaches another agent.
+
+Claude Code cannot be pushed to mid-turn: a session only ever "listens" when a hook
+fires. That is the constraint the whole delivery design follows from, and it is worth
+stating plainly rather than pretending otherwise.
+
+```
+SessionStart  -> brief()     the agent starts knowing its tasks and its messages
+PostToolUse   -> inbox()     anything that arrived since lands in its next tool call
+Stop          -> checkout()  its work becomes a comment on the task, unprompted
+```
+
+So "real time" here means: within one tool call of the sender writing it, which for a
+working agent is seconds. The human-facing real time is the studio, which sees the
+event the moment it is committed.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from .._clock import now
+from ..contracts import Event, Inbox, Lease
+from ..engine import record
+from ..storage import Store
+from ._project import caller, heartbeat, project
+from .view import inbox_for
+
+__all__ = ["brief", "inbox", "checkout", "track", "Brief"]
+
+
+class Brief:
+    """What a session needs to know before its first prompt."""
+
+    def __init__(self, *, actor: str, session: str, held: list[Lease],
+                 messages: list[Event], ready: int) -> None:
+        self.actor = actor
+        self.session = session
+        self.held = held
+        self.messages = messages
+        self.ready = ready
+
+
+def brief(start: Path | str, *, session: str = "", actor: str = "") -> Brief:
+    """The SessionStart read: who am I, what do I hold, who spoke to me.
+
+    Leases held by this SESSION are re-associated on resume: Claude Code re-runs
+    SessionStart with `source=resume`, and without this an agent that resumed would
+    look like a new actor holding nothing while its claims sat there.
+    """
+    with project(start) as store:
+        who = caller(store, actor)["id"]
+        heartbeat(store, who)
+        held = store.leases.of_actor(who, now())
+        if session:
+            _adopt(store, held, session)
+        return Brief(actor=who, session=session, held=held,
+                     messages=inbox_for(store, who)["messages"],
+                     ready=len(store.tasks.with_status(("ready",))))
+
+
+def _adopt(store: Store, held: list[Lease], session: str) -> None:
+    """Point this actor's leases at the session that is now running them.
+
+    A resumed session gets a NEW id, so the lease's old one names a process that is gone
+    — and the live board would show a claim whose transcript nobody can open.
+    """
+    for lease in held:
+        if lease["session"] != session:
+            store.leases.set_session(task_id=lease["task"], session=session)
+
+
+def inbox(start: Path | str, *, actor: str = "") -> Inbox:
+    """The PostToolUse read: messages this actor has not seen, marked delivered.
+
+    Cheap on purpose — one indexed query and usually zero rows. It runs after every
+    tool call an agent makes, so anything expensive here is a tax on all of its work.
+    """
+    with project(start) as store:
+        who = caller(store, actor)["id"]
+        heartbeat(store, who)
+        return inbox_for(store, who)
+
+
+def track(start: Path | str, *, summary: str, task: str = "", actor: str = "") -> Event | None:
+    """The heartbeat with content: what tool touched what file, for the live board.
+
+    Local-only (`LOCAL_ONLY_KINDS`), so it never reaches the committed log. Without the
+    task it is dropped rather than filed under an empty id: an activity event nobody
+    can attribute is noise that would still cost a row per tool call.
+    """
+    with project(start) as store:
+        who = caller(store, actor)["id"]
+        heartbeat(store, who)
+        held = store.leases.of_actor(who, now())
+        target = task or (held[0]["task"] if len(held) == 1 else "")
+        if not target:
+            return None
+        return record(store, task=target, actor=who, kind="activity",
+                      body={"summary": summary})
+
+
+def checkout(start: Path | str, *, summary: str, session: str = "",
+             actor: str = "") -> list[Event]:
+    """The Stop read: the session's own account of itself, on every task it holds.
+
+    An auto-standup, and the reason a task's thread is worth reading at 9am: an agent
+    that was killed mid-thought still leaves what it had. Leases are deliberately NOT
+    released — a session ending is not the same as work being handed back, and Claude
+    Code ends a session every time a developer closes a terminal.
+    """
+    with project(start) as store:
+        who = caller(store, actor)["id"]
+        heartbeat(store, who)
+        return [record(store, task=lease["task"], actor=who, kind="comment",
+                       body={"text": summary, "session": session, "auto": True})
+                for lease in store.leases.of_actor(who, now())]

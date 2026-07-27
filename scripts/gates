@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# THE gate. A phase is not done until this is green — nothing else counts.
+# Both halves, always: running only the tests is how three megabrain releases
+# shipped with lint broken.
+set -euo pipefail
+cd "$(dirname "$0")"
+./lint
+echo
+./test
+echo
+echo "════ all gates green"

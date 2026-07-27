@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taskops"
+dynamic = ["version"]                       # single-sourced from _version.py
+description = "The coordination substrate for Claude Code agents: persistent tasks with a dependency DAG, atomic claims, git-bound commits, and a live board."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Bernardo Castro", email = "me@bernardocastro.dev" }]
+keywords = ["claude-code", "mcp", "agents", "task-management", "orchestration",
+            "multi-agent", "kanban", "developer-tools"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Typing :: Typed",                      # advertises py.typed on PyPI
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+]
+# ZERO runtime dependencies, deliberately. sqlite3, json, hashlib and argparse
+# are stdlib, and this package gets installed into every agent's environment on
+# every machine a developer runs Claude Code on — a dependency here is a
+# dependency everywhere. The websocket transport is the one thing that cannot be
+# done in the stdlib, so it is an EXTRA: the engine never imports it.
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "pyright>=1.1.380"]
+
+[project.optional-dependencies]
+# The live board. Studio serves the UI and the JSON API on the stdlib's own
+# http.server; only the push channel needs this, and SSE covers the same job
+# without it (see transports/http/live.py).
+live = ["websockets>=12"]
+
+[project.scripts]
+taskops = "taskops.transports.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/bernatch22/taskops"
+Repository = "https://github.com/bernatch22/taskops"
+Changelog = "https://github.com/bernatch22/taskops/blob/master/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["taskops*"]
+
+[tool.setuptools.package-data]
+# The studio bundle and the agent-facing guide ship INSIDE the package: a wheel
+# has to be able to serve the UI without a node toolchain, and `taskops init`
+# has to be able to write GUIDE.md into a repo it was installed into.
+taskops = ["py.typed", "assets/*", "transports/http/ui/*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "taskops._version.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
+xfail_strict = true            # an xfail that passes is a FAILURE
+filterwarnings = ["error"]     # a new deprecation fails the suite that day
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "ARG", "FA102", "T201"]
+ignore = [
+  "E501",    # tool descriptions, tables and URLs legitimately run long
+  # ARG002 flags a METHOD that ignores a parameter it declares. Guards and
+  # renderers implement a common signature whether or not each one reads every
+  # part of it — a transition guard that ignores the actor is correct, not
+  # sloppy. ARG001 stays on: a plain function with an unused parameter IS a bug.
+  "ARG002",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["taskops"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "T201"]
+"scripts/*" = ["T201"]
+# T201 exists to keep the LIBRARY silent — a function that writes to stdout
+# cannot be called from a server. The CLI is the one place where writing to a
+# terminal IS the product, so the ban is lifted exactly here and nowhere deeper.
+"src/taskops/transports/cli/*" = ["T201"]
+
+[tool.mypy]
+python_version = "3.10"
+strict_equality = true
+warn_unreachable = true
+warn_return_any = true
+disallow_any_generics = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = false     # off: would fight pyright's ignores
+warn_redundant_casts = false    # idem
+files = ["src/taskops"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.10"          # the OLDEST supported, not the newest
+include = ["src/taskops"]
+reportImportCycles = false      # lazy imports make this noisy
+reportPrivateUsage = false
+reportImplicitOverride = false  # @override needs typing_extensions on 3.10/3.11

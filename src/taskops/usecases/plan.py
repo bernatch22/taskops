@@ -1,0 +1,102 @@
+"""Decomposition: a whole plan — tasks, tree and DAG — created in one call.
+
+One call and not N, because the graph is the point. An agent that creates five tasks
+with five calls has to invent its own scheme for referring to the ones it just made, and
+the dependencies land in a second pass a context limit can cut short. Here `after`
+accepts the INDEX of an earlier entry in the same batch, so the plan arrives whole or not
+at all.
+
+taskops does not decompose anything itself. The session calling this already read the
+code and thought about the work; asking a second model to re-derive that from a title
+would be worse and slower. What this owns is that the result is persistent, ordered, and
+legible to every other agent — including ones on other machines.
+
+Field reading lives in `_entry`: this module builds a graph, that one decides what a
+model meant by a field it spelled its own way.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from .._clock import now
+from .._errors import BadRequest
+from .._ids import new_task_id
+from ..contracts import Dep, PlanResult, Task
+from ..engine import record, unblock
+from ..storage import Store
+from . import _entry as field
+from ._project import caller, heartbeat, project
+
+__all__ = ["plan"]
+
+
+def plan(start: Path | str, entries: list[dict[str, Any]], *,
+         actor: str = "") -> PlanResult:
+    """Create every task in `entries`, wire the dependencies, return what unblocked."""
+    if not entries:
+        raise BadRequest("`tasks` is empty — a plan with no tasks is not a plan")
+    with project(start) as store:
+        who = caller(store, actor)["id"]
+        heartbeat(store, who)
+        created = [_create(store, entry, who) for entry in entries]
+        deps = _wire(store, entries, created)
+        return PlanResult(created=created, deps=deps, unblocked=unblock(store))
+
+
+def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
+    """One entry -> a stored task. Starts in `backlog`; `unblock` promotes it.
+
+    Deliberately never created `ready`: whether a task is pickable is a property of the
+    dependency graph, and letting a creator assert it directly is how the column starts
+    disagreeing with the edges.
+    """
+    title = field.title_of(entry)
+    if not title:
+        raise BadRequest("every task needs a `title`")
+    when = now()
+    task = Task(id=new_task_id(), title=title,
+                spec=str(entry.get("spec", "")).strip(), status="backlog",
+                priority=field.priority_of(entry),
+                parent=field.optional(entry, "parent"),
+                labels=field.strings(entry, "labels"),
+                files=field.strings(entry, "files"),
+                created_by=who, created=when, updated=when)
+    store.tasks.insert(task)
+    record(store, task=task["id"], actor=who, kind="created",
+           body={"title": title, "priority": task["priority"]}, ts=when)
+    return task
+
+
+def _wire(store: Store, entries: list[dict[str, Any]],
+          created: list[Task]) -> list[Dep]:
+    """Resolve every `after` into an edge: an index means this batch, a string an id."""
+    out: list[Dep] = []
+    # strict=True asserts the invariant rather than trusting it: `created` is built one
+    # per entry, so a length mismatch means `_create` skipped one — and the symptom
+    # would be a dependency wired to the WRONG task.
+    for entry, task in zip(entries, created, strict=True):
+        for reference in field.references(entry):
+            blocker = _resolve(reference, created)
+            store.deps.add(blocker, task["id"])
+            out.append(Dep(task=blocker, blocks=task["id"]))
+    return out
+
+
+def _resolve(reference: object, created: list[Task]) -> str:
+    """An `after` entry -> a task id.
+
+    An out-of-range index is an ERROR, never a skipped edge: a plan whose dependencies
+    silently did not apply looks finished and schedules wrongly, which is the most
+    expensive way for this to fail. `bool` is rejected before `int` because `True == 1`
+    would otherwise resolve to the first task in the batch.
+    """
+    if isinstance(reference, bool):
+        raise BadRequest(f"`after` got {reference!r} — expected an index or a task id")
+    if isinstance(reference, int):
+        if not 0 <= reference < len(created):
+            raise BadRequest(f"`after` index {reference} is outside this batch of "
+                             f"{len(created)} — indexes are 0-based")
+        return created[reference]["id"]
+    return str(reference)
