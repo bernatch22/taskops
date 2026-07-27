@@ -63,16 +63,23 @@ def directories_for(root: Path, tree: Path) -> list[Path]:
     return [path for path in found if path.is_dir()]
 
 
-def read_entries(directory: Path, *, branch: str = "") -> Iterator[dict[str, Any]]:
+def read_entries(directory: Path, *, branch: str = "",
+                 sessions: tuple[str, ...] = ()) -> Iterator[dict[str, Any]]:
     """Every raw entry in every transcript in `directory`, oldest file first.
 
-    `branch` filters by the entry's own `gitBranch`, which is how the shared project directory can be
-    read without mixing in other cards' conversations. Empty means take everything, which is correct
-    for a per-card worktree directory.
+    Two filters, and the second is what rescues the ordinary case. `branch` matches the entry's own
+    `gitBranch`, which is how the shared project directory can be read without mixing in other cards'
+    conversations — but it only works for an agent that made a branch. A person who claimed a card and
+    worked on `main` produces entries the branch filter throws away, so `sessions` names transcripts
+    directly: a file whose stem is a recorded session id belongs to the card by record, and its entries
+    are taken whatever branch they were on.
+
+    Both empty means take everything, which is correct for a per-card worktree directory.
     """
     for path in sorted(directory.glob("*.jsonl"), key=_mtime):
+        named = path.stem in sessions
         for entry in _lines(path):
-            if branch and entry.get("gitBranch") not in (branch, None):
+            if branch and not named and entry.get("gitBranch") not in (branch, None):
                 continue
             yield entry
 

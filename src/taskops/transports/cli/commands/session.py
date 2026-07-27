@@ -45,7 +45,8 @@ def _inbox(args: argparse.Namespace) -> str:
 def _track(args: argparse.Namespace) -> str:
     """Silent by design. It runs after EVERY tool call, so its output would otherwise be
     injected into the session hundreds of times to say nothing new."""
-    track(repo_of(args), summary=str(args.summary), task=str(args.task), actor=args.actor)
+    track(repo_of(args), summary=str(args.summary), task=str(args.task),
+          actor=args.actor, session=args.session)
     return ""
 
 

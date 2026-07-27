@@ -65,7 +65,7 @@ def post_tool_use(payload: dict[str, Any]) -> dict[str, Any]:
     ever makes.
     """
     where = cwd(payload)
-    track(where, summary=_summary(payload))
+    track(where, summary=_summary(payload), session=session_of(payload))
     return _context("PostToolUse", render_inbox(inbox(where)))
 
 

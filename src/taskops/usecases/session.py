@@ -82,22 +82,39 @@ def inbox(start: Path | str, *, actor: str = "") -> Inbox:
         return inbox_for(store, who)
 
 
-def track(start: Path | str, *, summary: str, task: str = "", actor: str = "") -> Event | None:
+def track(start: Path | str, *, summary: str, task: str = "", actor: str = "",
+          session: str = "") -> Event | None:
     """The heartbeat with content: what tool touched what file, for the live board.
 
-    Local-only (`LOCAL_ONLY_KINDS`), so it never reaches the committed log. Without the
-    task it is dropped rather than filed under an empty id: an activity event nobody
-    can attribute is noise that would still cost a row per tool call.
+    It also STAMPS the session id onto the actor's leases, and that half is what makes a conversation
+    findable. A dispatched worker is easy — it runs in a per-card worktree, so its transcript has a
+    directory of its own. A card worked on interactively has neither, and every `claimed` event in a
+    real project turned out to carry an empty `session`, because nothing was passing one: the tool
+    accepts it and no caller supplied it. This hook receives it on every tool call, so stamping it
+    here costs nothing and closes the gap.
+
+    Local-only (`LOCAL_ONLY_KINDS`), so it never reaches the committed log. Without a task it is
+    dropped rather than filed under an empty id: an activity event nobody can attribute is noise that
+    would still cost a row per tool call.
     """
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
         held = store.leases.of_actor(who, now())
+        if session:
+            _stamp(store, held, session)
         target = task or (held[0]["task"] if len(held) == 1 else "")
         if not target:
             return None
         return record(store, task=target, actor=who, kind="activity",
-                      body={"summary": summary})
+                      body={"summary": summary, "session": session})
+
+
+def _stamp(store: Store, held: list[Lease], session: str) -> None:
+    """Record which session is working each held card. Cheap, idempotent, and only writes on change."""
+    for lease in held:
+        if lease["session"] != session:
+            store.leases.set_session(task_id=lease["task"], session=session)
 
 
 def checkout(start: Path | str, *, summary: str, session: str = "",

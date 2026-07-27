@@ -8,7 +8,12 @@ it would ever read them — the axion-v3 workers' conversations were recoverable
 Two directories are searched, in this order:
 
 1. **the card's worktree** — one directory per card, so everything in it belongs to this card
-2. **the repository itself** — shared by every session anybody ran there, so filtered by `gitBranch`
+2. **the repository itself** — shared by every session anybody ran there, so it needs a filter
+
+For (2) there are two ways to prove an entry belongs, and the path computation alone is not enough. A
+dispatched agent makes a branch, so `gitBranch` identifies it. A person who claimed a card in their own
+terminal usually stays on `main`, and every one of their entries would be discarded — so the card also
+remembers WHICH sessions worked it, and a transcript named by a recorded session id is read whole.
 
 Nothing is copied into the event log. A transcript is 200 KB for 40 turns, `events.jsonl` is committed,
 and the value of that file is that a human can read its diff. The consequence is stated plainly in the
@@ -43,11 +48,27 @@ def session_log(start: Path | str, task_id: str, *, limit: int = MAX_ENTRIES) ->
         places = directories_for(store.root, tree)
         if not places:
             return _empty(task_id, _nowhere(store, tree))
-        entries = _gather(places, tree, branch)
+        entries = _gather(places, tree, branch, _recorded(store, task_id))
+        if not entries:
+            return _empty(task_id, _silent(store, task_id, places))
         return _bounded(task_id, entries, ", ".join(str(p) for p in places), limit)
 
 
-def _gather(places: list[Path], tree: Path, branch: str) -> list[LogEntry]:
+def _recorded(store: Store, task_id: str) -> tuple[str, ...]:
+    """The session ids known to have worked this card — from its live lease and from its own history.
+
+    The lease is the current holder; the events are every past one, which matters because a card that
+    was released and re-claimed has more than one conversation and both are worth reading.
+    """
+    held = store.leases.get(task_id)
+    found = [held["session"]] if held else []
+    found += [str(event["body"].get("session", ""))
+              for event in store.events.of_task(task_id)]
+    return tuple(dict.fromkeys(name for name in found if name))
+
+
+def _gather(places: list[Path], tree: Path, branch: str,
+            sessions: tuple[str, ...]) -> list[LogEntry]:
     """Read every place, flatten every line, then order by time.
 
     Sorted at the END rather than per file: two sessions on one card can overlap, and a viewer showing
@@ -58,7 +79,7 @@ def _gather(places: list[Path], tree: Path, branch: str) -> list[LogEntry]:
         # The worktree's directory holds only this card's sessions, so it needs no filter. The
         # repository's is shared, so an entry has to prove it belongs by naming the card's branch.
         wanted = "" if place.name.endswith(tree.name) else branch
-        for raw in read_entries(place, branch=wanted):
+        for raw in read_entries(place, branch=wanted, sessions=sessions):
             out += flatten(raw)
     return sorted(out, key=lambda entry: entry["ts"])
 
@@ -83,6 +104,22 @@ def _sessions(entries: list[LogEntry]) -> list[str]:
 
 def _empty(task_id: str, why: str) -> SessionLog:
     return SessionLog(task=task_id, sessions=[], entries=[], source=why, truncated=False)
+
+
+def _silent(store: Store, task_id: str, places: list[Path]) -> str:
+    """The directory exists and holds nothing for this card. Say which of the two reasons it is.
+
+    An empty pane that only prints a path reads as a broken viewer — it was reported as one. The
+    difference that matters to the reader: nobody ever worked this card in a Claude Code session (there
+    is nothing to show, and that is fine), versus somebody did but the entries cannot be attributed,
+    which happens for interactive work done before the card started recording its sessions.
+    """
+    looked = ", ".join(str(place) for place in places)
+    if _recorded(store, task_id):
+        return (f"a session is recorded for this card but none of its entries were found in {looked}. "
+                f"The transcript may have been written under a different Claude Code home.")
+    return ("no Claude Code session is recorded against this card, so there is no conversation to "
+            f"show. Sessions are recorded from the claim onwards; searched {looked}.")
 
 
 def _nowhere(store: Store, tree: Path) -> str:

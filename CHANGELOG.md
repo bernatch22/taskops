@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — a card remembers which sessions worked it
+
+- **The conversation viewer found nothing for interactively-worked cards.** A card's transcript was
+  located by path plus a `gitBranch` filter, which identifies a dispatched agent (it makes a branch)
+  and loses the most ordinary case there is: a person who claims a card in their own terminal and
+  never leaves `main`. Every one of their entries failed the filter. The `PostToolUse` hook now
+  stamps its session id onto the leases the actor holds, and a transcript named by a recorded session
+  id is read whole, whatever branch it was on. Nothing passed a session before — the tool accepted
+  one and no caller supplied it, so every `claimed` event in a real project carried an empty string.
+- **An empty pane now says which kind of nothing it is.** "No conversation found" plus a path reads
+  as a broken viewer, and was reported as one. Three cases are now distinguished: no transcript
+  directory at all (check `$CLAUDE_CONFIG_DIR`), a directory with no session recorded against this
+  card (normal, nothing to show), and a recorded session whose entries are missing.
+
+Cards worked before this shipped stay unrecoverable, and that is a real limit rather than a bug: with
+no session id and entries on `main`, there is no evidence tying them to a card.
+
 ## 0.1.0 — the engine, the enforcement, and the plugin
 
 First release. The coordination substrate works end to end: an agent can claim work nobody else

@@ -201,3 +201,40 @@ def test_a_malformed_line_does_not_lose_the_conversation(project: Path,
         "{not json at all\n" + entry("user", "still here") + "\n", encoding="utf-8")
 
     assert [e["text"] for e in session_log(project, task)["entries"]] == ["still here"]
+
+
+def test_an_interactive_card_is_found_by_its_RECORDED_session(project: Path,
+                                                             tmp_path: Path) -> None:
+    """The branch filter alone loses the most ordinary case there is.
+
+    A person who claims a card in their own terminal usually never leaves `main`, so every entry they
+    produce fails the `gitBranch` test and the pane comes up empty — which is exactly how this was
+    reported. The card therefore remembers WHICH sessions worked it: the PostToolUse hook stamps the
+    session id onto the lease on every tool call, and a transcript named by a recorded id is read whole,
+    whatever branch it was on.
+    """
+    from taskops.usecases import next_task, track
+
+    task = next_task(project, actor="dev:berna")["claim"]["view"]["task"]["id"]   # type: ignore[index]
+    track(project, summary="Edit parser.py", actor="dev:berna", session="sess-int")
+    write_transcript(tmp_path / "claude-home", project,
+                     [entry("user", "worked on main", branch="main", session="sess-int")],
+                     name="sess-int.jsonl")
+
+    assert [e["text"] for e in session_log(project, task)["entries"]] == ["worked on main"]
+
+
+def test_a_found_but_empty_directory_says_WHICH_kind_of_nothing_it_is(project: Path,
+                                                                     tmp_path: Path) -> None:
+    """"No conversation found" plus a path reads as a broken viewer, and was reported as one.
+
+    Two different situations end up here and only one of them is a problem: nobody ever worked this card
+    in a session (nothing to show, and completely normal for a card still in `ready`), versus somebody
+    did and the entries cannot be attributed. The reader can act on the second and should not go looking
+    for a fix to the first.
+    """
+    task = only_task(project)
+    write_transcript(tmp_path / "claude-home", project,
+                     [entry("user", "another card's work", branch="main")])
+
+    assert "no Claude Code session is recorded" in session_log(project, task)["source"]
