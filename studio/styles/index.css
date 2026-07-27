@@ -250,7 +250,14 @@ main {
 .column-blocked .mark { color: var(--red); }
 .column-claimed .mark, .column-in_progress .mark { color: var(--amber); }
 
-.cards { display: flex; flex-direction: column; gap: 8px; }
+.cards { display: flex; flex-direction: column; gap: 8px; min-height: 44px; }
+
+/* An empty column has to look deliberately empty rather than broken, so it keeps the column's own
+ * width and says so — a bare gap reads as something that failed to load. */
+.column-empty {
+  margin: 0; padding: 12px 4px; font-size: 12px; text-align: center;
+  border: 1px dashed var(--line); border-radius: var(--r);
+}
 
 .card {
   background: var(--bg-card);

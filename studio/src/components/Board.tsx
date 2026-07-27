@@ -1,8 +1,10 @@
 /* The board: columns of cards, and nothing that is not on a card.
  *
- * Empty columns are HIDDEN. On a real project four of the eight statuses are usually empty, and
- * showing them turns a readable board into a row of placeholders. The count in each heading is
- * what tells you the shape at a glance. */
+ * EVERY column is shown, always, with a placeholder where one is empty. Hiding them was the first
+ * version, on the theory that four of eight statuses are usually empty and showing them turns a
+ * readable board into a row of placeholders. It reads as a BUG instead: somebody who cannot see a
+ * `done` column cannot tell whether nothing is finished or whether the board has no such state, and
+ * "where are my done cards" is the question it produced. */
 
 import type { Board as BoardData, Card as CardData } from "../contracts";
 import { Actor, COLUMN_LABEL, Counts, MARK, Priority, ago } from "./bits";
@@ -11,11 +13,12 @@ export function Board({ board, onOpen }: {
   board: BoardData;
   onOpen: (id: string) => void;
 }): JSX.Element {
-  const columns = board.columns.filter((column) => column.cards.length > 0);
-  if (columns.length === 0) return <Empty />;
+  /* The empty-PROJECT case is still special: a board with no tasks at all wants instructions, not
+   * eight empty columns. An empty COLUMN on a populated board wants to be visible. */
+  if (board.total === 0) return <Empty />;
   return (
     <div className="board">
-      {columns.map((column) => (
+      {board.columns.map((column) => (
         <section className={`column column-${column.status}`} key={column.status}>
           <header className="column-head">
             <span className="mark">{MARK[column.status]}</span>
@@ -23,9 +26,11 @@ export function Board({ board, onOpen }: {
             <span className="tally">{column.cards.length}</span>
           </header>
           <div className="cards">
-            {column.cards.map((card) => (
-              <Card card={card} key={card.task.id} onOpen={onOpen} />
-            ))}
+            {column.cards.length === 0
+              ? <p className="column-empty dim">Nothing here.</p>
+              : column.cards.map((card) => (
+                  <Card card={card} key={card.task.id} onOpen={onOpen} />
+                ))}
           </div>
         </section>
       ))}

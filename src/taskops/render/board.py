@@ -15,13 +15,20 @@ __all__ = ["render_board"]
 
 
 def render_board(board: Board) -> str:
-    """Columns with content only. An empty column is noise on a fifty-task project."""
+    """EVERY column, always, with a line where one is empty.
+
+    Hiding empty columns was the first version, on the theory that four of eight are usually empty and
+    showing them is noise. It reads as a bug instead: a reader who cannot see a `done` column cannot
+    tell whether nothing is finished or whether the board has no such state — and "where are my done
+    cards" is the question it produced. An empty column that says it is empty answers that in place.
+    """
     parts = [f"# board — {board['total']} task(s), {board['ready']} ready", ""]
     for column in board["columns"]:
-        if not column["cards"]:
-            continue
         parts += [f"## {STATUS_MARK.get(column['status'], '?')} {column['status']} "
                   f"({len(column['cards'])})", ""]
+        if not column["cards"]:
+            parts += ["_none_", ""]
+            continue
         rows = [[card["task"]["id"], truncate(card["task"]["title"], 46),
                  str(card["task"]["priority"]),
                  card["lease"]["actor"] if card["lease"] else "—",
