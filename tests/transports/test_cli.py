@@ -159,3 +159,47 @@ def test_tasks_edit_with_no_flags_says_so_instead_of_pretending(
 
     assert main(["tasks", "edit", task, "--repo", str(root)]) == 1
     assert "nothing to edit" in capsys.readouterr().err
+
+
+def test_open_never_echoes_the_credential_it_just_opened(
+        root: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str]) -> None:
+    """A terminal is a thing people screenshot, paste into issues and share on a call. The
+    browser is already holding the secret; a second copy in the scrollback is pure exposure."""
+    from taskops.usecases import add_remote
+
+    add_remote(root, "https://boards.example.com/axion", token="tk_secret")
+    monkeypatch.setattr("webbrowser.open", lambda _url: True)
+
+    assert main(["open", "--repo", str(root)]) == 0
+    assert "tk_secret" not in capsys.readouterr().out
+
+
+def test_open_shows_the_url_when_there_is_no_browser_to_hand_it_to(
+        root: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str]) -> None:
+    """Over SSH the URL is the only useful output there is — withholding it there would leave
+    the caller with nowhere to go, which is a different failure from leaking it."""
+    from taskops.usecases import add_remote
+
+    add_remote(root, "https://boards.example.com/axion", token="tk_secret")
+    monkeypatch.setattr("webbrowser.open", lambda _url: False)
+
+    assert main(["open", "--repo", str(root)]) == 0
+    assert "tk_secret" in capsys.readouterr().out
+
+
+def test_open_print_gives_the_url_and_opens_nothing(
+        root: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str]) -> None:
+    from taskops.usecases import add_remote
+
+    add_remote(root, "https://boards.example.com/axion", token="tk_secret")
+    monkeypatch.setattr("webbrowser.open", _refuse)
+
+    assert main(["open", "--repo", str(root), "--print"]) == 0
+    assert capsys.readouterr().out.strip().endswith("/axion/?token=tk_secret")
+
+
+def _refuse(url: str) -> bool:
+    raise AssertionError(f"--print must not open a browser, but it opened {url}")

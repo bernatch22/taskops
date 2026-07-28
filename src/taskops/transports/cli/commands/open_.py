@@ -11,6 +11,11 @@ from inside a checkout has already said which board they meant.
 `webbrowser` and not `open`: the same command has to work on the Linux boxes this is deployed
 to, and the stdlib already knows the answer per platform. `--print` is the escape hatch for a
 terminal with no browser at all — over SSH, the URL is the useful output.
+
+**The URL is not printed when the browser took it.** It carries a credential, and a terminal is
+a thing people screenshot, paste into issues and share on a call; the browser is already holding
+the secret, so echoing it only adds a copy nobody needed. It appears when it is the only way
+forward — `--print`, or no browser to hand it to.
 """
 
 from __future__ import annotations
@@ -40,10 +45,15 @@ def run(args: argparse.Namespace) -> str:
     url, note = _target(args)
     if args.print_only:
         return url
-    # A browser that will not start is not a failure worth an exit code: the URL is right
-    # there, and printing it leaves the caller exactly one copy-paste from where they wanted.
-    opened = webbrowser.open(url)
-    return f"{note}\n  {url}" if opened else f"open this yourself — no browser here:\n  {url}"
+    # The URL is NOT echoed on success. It carries the credential, and a terminal is a thing
+    # people screenshot, paste into issues and share on a call — printing it would put the
+    # secret somewhere the browser was about to hold for us anyway. `--print` is the one place
+    # it appears, because there the caller asked for it.
+    if webbrowser.open(url):
+        return note
+    # No browser at all — over SSH, say. Here the URL is the only useful output there is, and
+    # a command that refused to show it would leave the caller with nowhere to go.
+    return f"no browser here — open this yourself:\n  {url}"
 
 
 def _target(args: argparse.Namespace) -> tuple[str, str]:
