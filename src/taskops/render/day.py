@@ -1,8 +1,12 @@
-"""The daily dossier as markdown: what closed, what is still moving, what was said.
+"""The dossier as markdown: what closed, what is still moving, what was said.
 
 Ordered by what a person reads first at the end of a day — the finished work, then the work
 that is not finished, then the conversation, then who did it. A reader who stops after the
-first section has still got the answer to "what shipped today", which is the question.
+first section has still got the answer to "what shipped", which is the question.
+
+ONE function for a day and for a month. A wider window changes exactly two things — the title
+is a label rather than a date, and the closed cards get a heading per day — and nothing else,
+so a range report is the report somebody already knows how to read.
 
 Pure like every renderer here: this is reproducible from a literal dict, with no database and
 no git in sight.
@@ -10,14 +14,14 @@ no git in sight.
 
 from __future__ import annotations
 
-from ..contracts import DayReport, Task
-from ._dossier import card_block
+from ..contracts import PeriodReport, Task
+from ._closed_days import closed_section
 from ._text import STATUS_MARK, bullet, table, truncate
 
 __all__ = ["render_day"]
 
 
-def render_day(day: DayReport) -> str:
+def render_day(day: PeriodReport) -> str:
     """The whole day. An empty day says so in one line rather than printing four empty
     headings — a report made of section titles reads as broken, not as quiet.
 
@@ -26,21 +30,16 @@ def render_day(day: DayReport) -> str:
     the sections instead would have called it silent.
     """
     if not day["actors"]:
-        return f"# {day['date']}\n\nNothing happened on this day."
-    parts = [f"# {day['date']} — {len(day['closed'])} closed · "
+        quiet = ("on this day" if day["from_date"] == day["to_date"]
+                 else "in this window")
+        return f"# {day['label']}\n\nNothing happened {quiet}."
+    parts = [f"# {day['label']} — {len(day['closed'])} closed · "
              f"{len(day['in_flight'])} in flight · {len(day['blocked'])} blocked · "
              f"{day['commits_total']} commit(s) · {len(day['actors'])} actor(s)", ""]
-    return "\n".join(parts + _closed(day) + _moving(day) + _talk(day) + _actors(day))
+    return "\n".join(parts + closed_section(day) + _moving(day) + _talk(day) + _actors(day))
 
 
-def _closed(day: DayReport) -> list[str]:
-    if not day["closed"]:
-        return ["## Cerrado", "", "Nothing closed on this day.", ""]
-    blocks = ["\n".join(card_block(card, day["conversations"])) for card in day["closed"]]
-    return [f"## Cerrado ({len(day['closed'])})", "", "\n\n".join(blocks), ""]
-
-
-def _moving(day: DayReport) -> list[str]:
+def _moving(day: PeriodReport) -> list[str]:
     """In flight and blocked in ONE section, marked by status.
 
     Two headings would imply they are different kinds of answer, and they are not: both are
@@ -56,7 +55,7 @@ def _row(task: Task) -> str:
     return f"{STATUS_MARK[task['status']]} {task['id']} — {truncate(task['title'], 70)}"
 
 
-def _talk(day: DayReport) -> list[str]:
+def _talk(day: PeriodReport) -> list[str]:
     """Every comment and message of the day, in the log's own order — a conversation read
     top-down. Truncated per line so one essay cannot push the rest of the day off screen."""
     if not day["conversations"]:
@@ -66,7 +65,7 @@ def _talk(day: DayReport) -> list[str]:
     return [f"## Conversaciones ({len(lines)})", "", "\n\n".join(lines), ""]
 
 
-def _actors(day: DayReport) -> list[str]:
+def _actors(day: PeriodReport) -> list[str]:
     if not day["actors"]:
         return []
     rows = [[roll["actor"], str(roll["tasks"]), str(roll["commits"]),

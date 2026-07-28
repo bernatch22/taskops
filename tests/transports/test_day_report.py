@@ -61,11 +61,13 @@ def test_the_mcp_serves_day_as_text(project: Path) -> None:
     assert "# " in str(result["content"][0]["text"])
 
 
-def test_the_report_schema_offers_exactly_three_kinds() -> None:
+def test_the_report_schema_offers_exactly_four_kinds() -> None:
     """The enum IS the documentation an agent reads before it guesses a value."""
     schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_report")
-    assert schema["properties"]["kind"]["enum"] == ["board", "standup", "day"]
+    assert schema["properties"]["kind"]["enum"] == ["board", "standup", "day", "range"]
     assert "date" in schema["properties"]
+    for field in ("last", "from_date", "to"):
+        assert field in schema["properties"], f"kind=range cannot be aimed without {field}"
     assert "kind" not in ReportParams.__required_keys__
 
 
@@ -75,3 +77,61 @@ def test_a_removed_kind_is_refused_rather_than_silently_given_a_board(project: P
         result = call("taskops_report", {"repo_path": str(project), "kind": gone})
         assert result.get("isError"), f"{gone} was answered instead of refused"
         assert "board" in str(result["content"][0]["text"])
+
+
+# ---- a range, and the whole project
+
+
+def test_the_cli_reports_a_range_and_labels_it_by_its_ends(project: Path,
+                                                           capsys: pytest.CaptureFixture[str]) -> None:
+    """The label is the heading AND the file name, so a report and its path cannot drift."""
+    assert main(["report", "range", "--repo", str(project), "--last", "7d"]) == 0
+    assert ".." in capsys.readouterr().out.splitlines()[0]
+
+
+def test_report_all_covers_the_project_and_is_called_all(project: Path,
+                                                         capsys: pytest.CaptureFixture[str]) -> None:
+    """The answer to "si quiero evaluar todo, no solo un dia, como hago?" — one command,
+    no dates to work out, and a file called `all.md` that stays the same file."""
+    assert main(["report", "all", "--repo", str(project), "--write"]) == 0
+    assert main(["report", "all", "--repo", str(project)]) == 0
+    out = capsys.readouterr().out
+    assert "reports/all.md" in out and "# all — " in out
+
+
+def test_a_range_with_no_window_is_refused_rather_than_guessed(project: Path,
+                                                               capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["report", "range", "--repo", str(project)]) != 0
+    assert "--last" in capsys.readouterr().err
+
+
+def test_a_span_the_cli_cannot_read_names_the_legal_forms(project: Path,
+                                                          capsys: pytest.CaptureFixture[str]) -> None:
+    """`--last 3fortnights` is refused, never silently widened to something plausible."""
+    assert main(["report", "range", "--repo", str(project), "--last", "3fortnights"]) != 0
+    assert "7d" in capsys.readouterr().err
+
+
+def test_a_day_may_not_borrow_the_range_flags(project: Path,
+                                              capsys: pytest.CaptureFixture[str]) -> None:
+    """`report day --last 7d` means one of two things and the caller would not notice which
+    one won — so neither does taskops."""
+    assert main(["report", "day", "--repo", str(project), "--last", "7d"]) != 0
+    assert "report range" in capsys.readouterr().err
+
+
+def test_last_and_from_together_are_refused(project: Path,
+                                            capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["report", "range", "--repo", str(project), "--last", "7d",
+                 "--from", "2026-07-22"]) != 0
+    assert "pick" in capsys.readouterr().err
+
+
+def test_the_mcp_serves_a_range_and_defaults_it_to_everything(project: Path) -> None:
+    """`kind=range` with no window is the WHOLE project: an agent asked to evaluate what was
+    done here gets everything rather than an empty report for a window it failed to guess."""
+    result = call("taskops_report", {"repo_path": str(project), "kind": "range"})
+    assert "# all" in str(result["content"][0]["text"])
+    aimed = call("taskops_report", {"repo_path": str(project), "kind": "range",
+                                    "last": "7d"})
+    assert ".." in str(aimed["content"][0]["text"])

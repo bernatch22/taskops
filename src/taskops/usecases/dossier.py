@@ -1,9 +1,13 @@
-"""`report day --write` — the daily dossier persisted where git can keep it.
+"""`report … --write` — the dossier persisted where git can keep it.
 
 The only use case here that writes a FILE rather than an event, and deliberately so. Every
 other projection is regenerated on demand because regenerating is always right; this one
 stops being derived the moment a human or `/taskops:digest` writes the narration into it, so
 it is written once, refused a second time, and committed like source.
+
+The window is a `Selector`, not a date: a day, a week and the whole project are the same
+document over different spans, and the file is named by the window's LABEL — `2026-07-28.md`,
+`2026-07-22..2026-07-28.md`, `all.md`.
 
 Which is also why it goes through `render`: the file's shape is a rendering, and the same
 string has to be producible in a test from a literal dict.
@@ -16,52 +20,64 @@ from pathlib import Path
 from .._clock import now
 from .._errors import AlreadyWritten
 from ..contracts import ReportFile
-from ..engine import day_report, missing_events, narrate, stamp, stamped_seq
+from ..engine import (
+    label_of,
+    missing_events,
+    narrate,
+    period_report,
+    stamp,
+    stamped_seq,
+)
 from ..render import is_pending, narrated, render_day, render_report
 from ..storage import REPORTS_DIR, Store
 from ._project import project
-from .report import parse_date
+from ._range import Selector, resolve
 
 __all__ = ["write_report", "read_report", "digest", "report_path"]
 
 
-def write_report(start: Path | str, date_text: str = "", *, force: bool = False) -> Path:
-    """Render the day and write `.taskops/reports/YYYY-MM-DD.md`. Returns where it landed.
+def write_report(start: Path | str, sel: Selector | None = None, *,
+                 force: bool = False) -> Path:
+    """Render the window and write `.taskops/reports/<label>.md`. Returns where it landed.
 
     Refuses an existing file unless `force`, because the file may already carry a narration
     nobody can regenerate — and the report someone linked to yesterday changing under them is
     exactly the thing that makes a written record worthless.
     """
     with project(start) as store:
-        date = parse_date(date_text)
-        path = report_path(store.root, date)
+        span = resolve(store, sel or Selector())
+        path = report_path(store.root, _label(span))
         if path.exists() and not force:
             raise AlreadyWritten(f"{path} already exists — read it, or pass --force to "
                                  f"regenerate it (any narration in it is lost)")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_generate(store, date), encoding="utf-8")
+        path.write_text(_generate(store, span), encoding="utf-8")
         return path
 
 
 def read_report(start: Path | str, date_text: str = "") -> ReportFile:
-    """What is on disk for a day, and whether the day has moved on since.
+    """What is on disk for a DAY, and whether the day has moved on since.
+
+    One day and not a window: this is what the studio polls for staleness, and staleness of a
+    range is a different question — `all.md` is out of date the moment anything happens.
 
     A day with no file still answers with a dossier — the one that would be written — so a
     reader never gets an empty screen and a "generate it" button as the only content.
     """
     with project(start) as store:
-        date = parse_date(date_text)
+        span = resolve(store, Selector(date=date_text))
+        date = span[0]
         path = report_path(store.root, date)
         written = path.read_text(encoding="utf-8") if path.is_file() else ""
-        behind = missing_events(store, date, stamped_seq(written))
+        behind = missing_events(store, date, date, stamped_seq(written))
         return ReportFile(date=date, path=str(path),
-                          dossier_md=written or _generate(store, date),
+                          dossier_md=written or _generate(store, span),
                           exists=bool(written), stale=behind > 0, missing_events=behind)
 
 
-def digest(start: Path | str, date_text: str = "", *, model: str = "",
+def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",
            force: bool = False) -> Path:
-    """Write the day's report if it is missing, then have Claude narrate it. Returns the path.
+    """Write the window's report if it is missing, then have Claude narrate it.
 
     Two failures are kept apart on purpose. The dossier is written FIRST and committed to disk
     before the model is called, so a narration that fails — no `claude`, not logged in, a
@@ -72,11 +88,11 @@ def digest(start: Path | str, date_text: str = "", *, model: str = "",
     somebody may have written it by hand, and this is the one section a machine cannot recover.
     """
     with project(start) as store:
-        date = parse_date(date_text)
-        path = report_path(store.root, date)
+        span = resolve(store, sel or Selector())
+        path = report_path(store.root, _label(span))
         if not path.is_file():
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(_generate(store, date), encoding="utf-8")
+            path.write_text(_generate(store, span), encoding="utf-8")
         report = path.read_text(encoding="utf-8")
         if not is_pending(report) and not force:
             raise AlreadyWritten(f"{path} already carries a narration — read it, or pass "
@@ -85,16 +101,22 @@ def digest(start: Path | str, date_text: str = "", *, model: str = "",
         return path
 
 
-def report_path(root: Path, date: str) -> Path:
-    return root / REPORTS_DIR / f"{date}.md"
+def report_path(root: Path, label: str) -> Path:
+    return root / REPORTS_DIR / f"{label}.md"
 
 
-def _generate(store: Store, date: str) -> str:
+def _label(span: tuple[str, str, str]) -> str:
+    """The window's name, asked of the renderer's own source of truth rather than rebuilt
+    here — a path and a heading that disagree is the bug this indirection exists to stop."""
+    return span[2] or label_of(span[0], span[1])
+
+
+def _generate(store: Store, span: tuple[str, str, str]) -> str:
     """The file's whole text, stamped with the log's max_seq AT THIS MOMENT.
 
     Read after the dossier would be a race with itself — an event landing mid-render would be
     in the report and outside its own fingerprint, and the file would claim to be older than
     it is. Read first, and the worst case is a report that reports itself stale.
     """
-    return render_report(stamp(date, store.events.max_seq(), now()),
-                         render_day(day_report(store, date)))
+    return render_report(stamp(_label(span), store.events.max_seq(), now()),
+                         render_day(period_report(store, *span)))

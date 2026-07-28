@@ -65,10 +65,12 @@ REPORT = (
     "in a window, per actor, and what needs a human), or `day` (ONE calendar day in full — "
     "every card closed with who closed it, how long it was held, each of its commits with "
     "the size of its diff, what is still in flight or blocked, the whole conversation, and "
-    "a roll-up per actor). Nobody writes these by hand, so they cannot be out of date — use "
-    "`standup` when a human asks how it is going, and `day --date yesterday` when they ask "
-    "what got done, because a calendar day is the same report tomorrow while a rolling "
-    "window is not."
+    "a roll-up per actor), or `range` (that same dossier over MANY days, its closed cards "
+    "grouped by day, newest first). Nobody writes these by hand, so they cannot be out of "
+    "date — use `standup` when a human asks how it is going, `day` with date='yesterday' "
+    "when they ask what got done, and `range` when they ask about the project rather than "
+    "about a day: with `last`='7d' for the week, and with NO window fields at all for "
+    "everything since the log began, which is the answer to 'evaluate all of this'."
 )
 
 DISPATCH = (

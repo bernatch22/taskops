@@ -15,7 +15,20 @@ never add one the file does not carry.
 taskops report day --date $1 --write     # $1 defaults to today
 ```
 
-- It prints the path it wrote, under `.taskops/reports/YYYY-MM-DD.md`.
+If the user asked about more than a day — a week, a month, "todo lo que se hizo acá" — the
+same skill applies to a wider window; only the command changes:
+
+```sh
+taskops report range --last 7d --write               # also 2w, 1m
+taskops report range --from 2026-07-22 --to 2026-07-28 --write
+taskops report all --write                           # the whole project
+```
+
+- It prints the path it wrote, under `.taskops/reports/<label>.md` — `2026-07-28.md`,
+  `2026-07-22..2026-07-28.md`, or `all.md`.
+- In a range the closed cards come grouped by day, newest first. Narrate the ARC across the
+  days, not each day in turn: a range report exists because a list of days was already
+  readable one file at a time.
 - If it REFUSES because the file already exists, that is the expected answer, not an error:
   read the file. Somebody may already have narrated it. Only pass `--force` if the user asked
   for a regeneration and you have told them the existing narration is lost.

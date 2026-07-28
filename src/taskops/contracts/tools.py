@@ -90,7 +90,7 @@ class RecoverParams(_Target, total=False):
 
 
 class ReportParams(_Target, total=False):
-    """The three views a model may ask for, and no more.
+    """The four views a model may ask for, and no more.
 
     `fleet` and `burndown` were advertised here and are not any more. One answered a question
     agents stopped having — "who is free" means nothing when a worker is created on demand,
@@ -101,7 +101,10 @@ class ReportParams(_Target, total=False):
     know which claim has gone quiet.
     """
 
-    kind: Annotated[Literal["board", "standup", "day"], f.REPORT_KIND]
+    kind: Annotated[Literal["board", "standup", "day", "range"], f.REPORT_KIND]
     actor: Annotated[str, f.REPORT_ACTOR]
     since: Annotated[str, f.SINCE]
     date: Annotated[str, f.DATE]
+    last: Annotated[str, f.LAST]
+    from_date: Annotated[str, f.FROM_DATE]
+    to: Annotated[str, f.TO_DATE]

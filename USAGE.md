@@ -254,6 +254,17 @@ taskops report day --date yesterday   # ONE calendar day in full: what closed, w
 taskops report day --write            # …and file it under .taskops/reports/YYYY-MM-DD.md,
                                       # committed, stamped with the log position it covers.
                                       # Refuses to overwrite one; --force if you mean it.
+
+# A day is rarely the question. The same dossier over any span of days:
+taskops report range --last 7d                    # also 2w, 1m — inclusive of both ends
+taskops report range --from 2026-07-22 --to 2026-07-28
+taskops report all                                # from the log's first event to today
+taskops report all --digest                       # …and have Claude narrate the whole project
+
+# --write and --digest work on all three. The file is named by the window:
+#   .taskops/reports/2026-07-28.md · 2026-07-22..2026-07-28.md · all.md
+# In a range, `## Cerrado` groups its cards by day, newest first.
+
 taskops report fleet        # which agents are alive right now, on what file
 taskops ask tk-4f2a9c       # one task in full
 taskops ask "refresh"       # search titles and specs

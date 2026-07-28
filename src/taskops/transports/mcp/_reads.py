@@ -17,9 +17,11 @@ from ...render import (
     render_view,
 )
 from ...usecases import (
+    Selector,
     ask,
     board,
     day,
+    period,
     search,
     standup,
 )
@@ -43,7 +45,7 @@ def ask_(args: dict[str, Any]) -> str:
 
 
 def report_(args: dict[str, Any]) -> str:
-    """Three kinds, and an unknown one is REFUSED rather than quietly given a board.
+    """Four kinds, and an unknown one is REFUSED rather than quietly given a board.
 
     `fleet` and `burndown` used to be answerable here. Falling through to the board would
     hand an agent that asked for one of them a report about something else and no way to
@@ -56,8 +58,25 @@ def report_(args: dict[str, Any]) -> str:
                                       actor=arg.optional(args, "actor")))
     if kind == "day":
         return render_day(day(where, arg.optional(args, "date") or "today"))
+    if kind == "range":
+        return render_day(period(where, _span(args)))
     if kind != "board":
-        raise arg.Missing(f"`{kind}` is not a report — ask for `board`, `standup` or `day`")
+        raise arg.Missing(f"`{kind}` is not a report — ask for `board`, `standup`, `day` "
+                          f"or `range`")
     return render_board(board(where))
+
+
+def _span(args: dict[str, Any]) -> Selector:
+    """`range` with nothing to narrow it is the WHOLE project.
+
+    The generous default is the point: an agent asked to evaluate what was done here should
+    get everything by asking for a range, not an empty report because it did not know which
+    of three window fields this tool wanted.
+    """
+    last, first = arg.optional(args, "last"), arg.optional(args, "from_date")
+    to = arg.optional(args, "to")
+    if not (last or first):
+        return Selector(whole=True, to=to)
+    return Selector(date=first, to=to, last=last)
 
 

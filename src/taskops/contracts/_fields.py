@@ -79,11 +79,23 @@ MODEL = ("model for the workers, e.g. claude-sonnet-5. Omit for their default �
 
 REPORT_KIND = ("board (default) every column; standup what changed in a window, per actor; "
                "day the full dossier of ONE calendar day — every card closed with its "
-               "commits and their diff sizes, what is still in flight, and the conversation")
+               "commits and their diff sizes, what is still in flight, and the conversation; "
+               "range the same dossier over MANY days, grouped by day (pass `last`, or "
+               "`from`/`to`, and omit both for the WHOLE project)")
 
 REPORT_ACTOR = "restrict a standup to one actor"
 
 SINCE = "how far back a standup looks: '24h', '7d', '30m'"
+
+LAST = ("with kind=range: how far back from `to`, e.g. '7d', '2w', '1m'. Inclusive of both "
+        "ends — '7d' is seven days of work. Leave `last`, `from` and `to` all empty and a "
+        "range covers the project from its first event, which is what to ask for when "
+        "somebody wants everything evaluated and not just one day")
+
+FROM_DATE = ("with kind=range: the first day, 'YYYY-MM-DD'. Use it instead of `last` when the "
+             "window is a specific span rather than a distance back from today")
+
+TO_DATE = ("with kind=range: the last day, INCLUSIVE, 'YYYY-MM-DD'. Defaults to today")
 
 DATE = ("which day a `day` report covers: 'today' (default), 'yesterday', or a date like "
         "2026-07-28. It is a CALENDAR day in local time, not a rolling window — ask for the "
