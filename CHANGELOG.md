@@ -2,6 +2,19 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **A dispatched worker no longer inherits your Anthropic API key.** `taskops run` spawned
+  `claude` with the full environment, and the CLI prefers an exported `ANTHROPIC_API_KEY` over
+  the logged-in subscription — so every worker silently billed per token while the plan the
+  developer already pays for sat unused, and nothing in the output said so. `engine.worker`
+  now names the variables it removes (`DROPPED_ENV`: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+  `ANTHROPIC_BASE_URL` — a proxy base url is the same class of surprise) and `_process.spawn`
+  grew a `drop` argument, because merging dicts can override a variable but cannot UNSET one and
+  an empty string is still a value the child sees. The capability is not lost: `taskops run
+  --use-api-key` keeps them, with help text that says it bills per token. **CLI only** — no MCP
+  tool can point a fleet at an API balance, the same rule that keeps `spawn` off the tool surface.
+  The run warning now says the workers open a new session against the subscription's limits and
+  names the flag for the other mode. Tests assert on the environment handed to `spawn` with a key
+  exported, in both modes: this is the kind of bug that can only regress in silence.
 - **`taskops tasks edit <id> [--title] [--spec] [--priority]` — a card can finally be
   corrected.** Until now a spec was whatever the planner typed and nothing could change it:
   an agent reading a brief that had since turned out to be wrong had no door back, and the

@@ -143,7 +143,13 @@ Two rules for the workers, and both are in the brief already:
   branch under every other worker at once. This is the whole reason the worktree exists.
 
 Pass `spawn: true` only if you want detached processes that outlive your session — each one opens a
-NEW billed session, which is rarely what you want.
+NEW Claude session, which is rarely what you want.
+
+A spawned worker inherits your environment MINUS the Anthropic credentials
+(`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`). The `claude` CLI prefers an
+exported key over the logged-in subscription, so without this every worker would quietly bill per
+token against a plan you already pay for. `taskops run --use-api-key` asks for the other mode out
+loud; no MCP tool can.
 
 **If you dispatch and then do not spawn**, the cards sit assigned to workers that never existed. Run
 `taskops recover` to hand them back.

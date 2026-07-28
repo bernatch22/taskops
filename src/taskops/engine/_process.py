@@ -39,23 +39,30 @@ def make_worktree(root: Path, tree: Path, branch: str) -> bool:
     return _git(root, "worktree", "add", str(tree), branch)
 
 
-def spawn(command: list[str], *, cwd: Path, log: Path, env: dict[str, str]) -> int:
+def spawn(command: list[str], *, cwd: Path, log: Path, env: dict[str, str],
+          drop: tuple[str, ...] = ()) -> int:
     """Start a detached process, output to `log`. Returns its pid, or 0 if it could not start.
 
     `start_new_session` puts it in its own process group, so a ctrl-C in the terminal that ran
     dispatch does not kill the workers it launched — they are meant to outlive it.
 
     The environment is INHERITED and then extended, because a worker needs the developer's PATH and
-    credentials to run `claude` at all.
+    credentials to run `claude` at all. `drop` is the other direction, and merging alone cannot
+    express it: a key set to `""` is still a key the child sees, so the names in `drop` are POPPED
+    from the merged copy and reach the child as genuinely unset. WHICH names is policy, and policy
+    lives in `worker`.
     """
     log.parent.mkdir(parents=True, exist_ok=True)
+    child = {**os.environ, **env}
+    for name in drop:
+        child.pop(name, None)
     try:
         with log.open("wb") as sink:
             process = subprocess.Popen(command, cwd=cwd, stdout=sink,
                                        stderr=subprocess.STDOUT,
                                        stdin=subprocess.DEVNULL,
                                        start_new_session=True,
-                                       env={**os.environ, **env})
+                                       env=child)
         return process.pid
     except OSError:
         # 0 rather than raising: dispatching five workers where one fails to start should report
