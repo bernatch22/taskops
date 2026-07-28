@@ -12,7 +12,7 @@ claiming, closing a task with nothing to show, or discovering a shared file at m
 
 from __future__ import annotations
 
-__all__ = ["NEXT", "UPDATE", "ASK", "PLAN", "REPORT", "DISPATCH", "RECOVER"]
+__all__ = ["NEXT", "UPDATE", "ASK", "PLAN", "REPORT", "DISPATCH", "RECOVER", "CONTEXT"]
 
 NEXT = (
     "CLAIM the next piece of work — the call to make when you are ready to code, and the "
@@ -37,7 +37,10 @@ UPDATE = (
     "the queue with your progress attached, which is the honest move when you are out of "
     "context or out of depth. `status=done` requires a commit bound to this task (pass "
     "no_code with a comment if the task genuinely produced none) — that guard is the "
-    "reason the board can be trusted."
+    "reason the board can be trusted. If the card carries acceptance criteria it also needs "
+    "evidence: say which criteria were met and what proves each one — a test name, a command, "
+    "a run — or pass no_evidence with the reason they no longer apply, which is recorded on "
+    "the card for whoever reviews it."
 )
 
 ASK = (
@@ -99,4 +102,16 @@ RECOVER = (
     "killed agent writes before it commits, so that path is often real work. Read it before letting "
     "anybody start the task over. Workers still reporting are left alone and named in the reply; pass "
     "`force` to release those too."
+)
+
+CONTEXT = (
+    "READ the standing facts of this project: the current objective, the invariants that must "
+    "never break, and the decisions already settled — what a card cannot carry and a fresh "
+    "agent has no way to guess. Call it at the START of a session, before planning anything, "
+    "because a plan that does not serve the current objective is work nobody wanted. Pass a "
+    "task id and you get the SLICE that applies to that card — every invariant, the objective, "
+    "and only the decisions matching its labels or its files — which is what to hand a worker "
+    "instead of the whole book. Reading it costs one call and stops the two failures that cost "
+    "a day: re-litigating a settled question, and two agents working from different definitions "
+    "of the same rule."
 )

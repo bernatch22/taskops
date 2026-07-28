@@ -29,7 +29,7 @@ import stat
 import sys
 from pathlib import Path
 
-__all__ = ["install_hooks", "HOOKS", "MARKER", "runner"]
+__all__ = ["install_hooks", "HOOKS", "BLOCKING", "MARKER", "runner"]
 
 MARKER = "# >>> taskops >>>"
 
@@ -37,8 +37,10 @@ HOOKS: dict[str, str] = {
     "post-commit": "ingest commit HEAD",
     "post-checkout": "ingest branch",
     "post-merge": "sync",
+    "pre-commit": "precommit",
+    "prepare-commit-msg": 'precommit --message-file "$1"',
 }
-"""Why these three, and why nothing else:
+"""Why these, and what changed.
 
 - **post-commit** catches every commit, including the ones the PreToolUse guard never saw —
   a human's terminal commit, a `--no-verify`, a rebase landing on a task branch.
@@ -46,11 +48,25 @@ HOOKS: dict[str, str] = {
   working without asking it to report that separately.
 - **post-merge** imports what a `git pull` just brought in. That is the moment another
   developer's events become visible, and the only automatic sync point that matters.
+- **pre-commit** refuses an AGENT's commit that no lease covers, and **prepare-commit-msg**
+  writes the trailer onto the ones it allows (the only hook git hands the message file to).
 
-Notably NOT `pre-commit`: refusing a commit is the guard's job, and the guard runs inside
-Claude Code where a refusal reaches the agent as text it can act on. A `pre-commit` refusal
-reaches a human as a failed command with no context, and an agent as an error it will try to
-work around.
+`pre-commit` was deliberately absent here, and the reason it was absent is still TRUE: "a
+refusal reaches a human as a failed command with no context, and a developer cherry-picking
+onto main is doing something legitimate". That reasoning was about HUMANS. What it never
+covered was the agent committing through a script, a rebase, or a harness that is not Claude
+Code — the PreToolUse guard sees a Bash tool call and nothing else, so every other path was
+unguarded. So the hook is ASYMMETRIC: an agent is refused, a human is warned and passes.
+That asymmetry lives in `transports/hooks/commit.py`; the judgement itself is still the one
+use case, `usecases.guard.check_commit`, reached through a second door.
+"""
+
+BLOCKING = frozenset({"pre-commit", "prepare-commit-msg"})
+"""The hooks whose exit code MEANS something, so their line may not end in `|| true`.
+
+Every other line is silenced and forced to succeed, because a recorder that broke somebody's
+commit would be a bug with no upside. These two are the opposite: the exit code IS the
+product, and stderr is where the fix is printed, so neither may be swallowed.
 """
 
 
@@ -79,9 +95,21 @@ def install_hooks(root: Path) -> tuple[list[str], list[str]]:
     installed: list[str] = []
     skipped: list[str] = []
     for name, verb in HOOKS.items():
-        problem = _install_one(hooks_dir / name, f"{runner()} {verb} >/dev/null 2>&1 || true")
+        problem = _install_one(hooks_dir / name, _line(name, verb))
         (skipped if problem else installed).append(f"{name}: {problem}" if problem else name)
     return installed, skipped
+
+
+def _line(name: str, verb: str) -> str:
+    """The shell line a hook runs. Two shapes, and the difference is the exit code.
+
+    `|| exit $?` rather than a bare call so the intent is legible in the file a developer
+    opens when they wonder what stopped their commit — and so an appended line cannot be read
+    as decoration next to the `|| true` ones above it.
+    """
+    if name in BLOCKING:
+        return f"{runner()} {verb} || exit $?"
+    return f"{runner()} {verb} >/dev/null 2>&1 || true"
 
 
 def _install_one(path: Path, command: str) -> str:

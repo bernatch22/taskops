@@ -27,6 +27,7 @@ from ..contracts import EditResult, Task
 from ..engine import record
 from ..storage import Store
 from ._project import caller, heartbeat, project
+from .acceptance import attach, criteria_in
 
 __all__ = ["edit"]
 
@@ -39,12 +40,17 @@ to keep honest."""
 
 def edit(start: Path | str, task_id: str, *, title: str | None = None,
          spec: str | None = None, priority: int | None = None,
-         actor: str = "") -> EditResult:
-    """Apply whatever fields were passed, recording one `edited` event for each."""
+         acceptance: object = None, actor: str = "") -> EditResult:
+    """Apply whatever fields were passed, recording one `edited` event for each.
+
+    `acceptance` is not one of them. It is a LIST, not a column, so it is restated whole through
+    its own event rather than diffed field-by-field — which is also why it may be set on a card
+    whose other fields nobody wants to touch.
+    """
     asked = {"title": title, "spec": spec, "priority": priority}
     wanted = {field: value for field, value in asked.items() if value is not None}
-    if not wanted:
-        raise BadRequest("nothing to edit — pass a `title`, a `spec` or a `priority`")
+    if not wanted and acceptance is None:
+        raise BadRequest("nothing to edit — pass a `title`, a `spec`, a `priority` or `acceptance`")
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
@@ -52,6 +58,8 @@ def edit(start: Path | str, task_id: str, *, title: str | None = None,
         if task["status"] in CLOSED_STATUSES:
             raise BadRequest(CLOSED_REFUSAL)
         changed = [f for f, value in wanted.items() if _apply(store, task, who, f, value)]
+        if attach(store, task_id, criteria_in(acceptance), who)["criteria"]:
+            changed.append("acceptance")
         return EditResult(task=store.tasks.need(task_id), changed=changed)
 
 

@@ -13,6 +13,7 @@ is two state machines, and the convenient one always forgets the guard.
 from __future__ import annotations
 
 from . import replay
+from ._acceptance import Evidence, evidenced
 from .activity import fleet, standup
 from .bus import BUS, EventBus
 from .day import date_of, day_report, first_date, label_of, period_report, shift
@@ -28,7 +29,7 @@ from .scheduler import branch_for, claim, open_children, ready_tasks, sweep_dead
 from .wire import WIRE, Broadcast, is_wire
 from .worker import Launched, launch
 
-__all__ = ["Facts", "check_move", "allowed_from", "resolve", "parse", "record",
+__all__ = ["Facts", "Evidence", "evidenced", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "ready_tasks", "claim",
            "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet", "activity", "day_report", "period_report", "first_date", "label_of", "shift", "date_of",
            "counts", "replay", "narrate", "OnPass", "OnText", "stamp", "stamped_seq", "NO_STAMP", "missing_events", "branch_state", "branch_states", "launch", "Launched", "WIRE", "Broadcast", "is_wire"]

@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from . import _fields as f
 
 __all__ = ["PlanParams", "NextParams", "UpdateParams", "AskParams", "ReportParams",
-           "DispatchParams", "RecoverParams"]
+           "DispatchParams", "RecoverParams", "ContextParams"]
 
 
 class _Target(TypedDict):
@@ -51,6 +51,16 @@ class UpdateParams(_UpdateRequired, total=False):
     mentions: Annotated[str, f.MENTIONS]
     blocked_on: Annotated[str, f.BLOCKED_ON]
     no_code: Annotated[bool, f.NO_CODE]
+    evidence: Annotated[str, f.EVIDENCE]
+    no_evidence: Annotated[str, f.NO_EVIDENCE]
+
+
+class ContextParams(_Target, total=False):
+    """Reading the standing facts. There is no WRITE half on this surface on purpose: an
+    objective or an invariant is a human's call about the project, and a worker that could
+    restate one could quietly rewrite the rules it is judged against."""
+
+    task: Annotated[str, f.CONTEXT_TASK]
 
 
 class AskParams(_Target, total=False):

@@ -127,13 +127,14 @@ The cheaper default is `dispatch` through MCP: the orchestrating session spawns 
 
 ## The MCP tools — for agents
 
-Seven tools. The `inputSchema` of each is generated from its typed contract, so a parameter cannot exist on the wire without existing in the dispatch. Deliberately short: every tool costs every connected agent context.
+Eight tools. The `inputSchema` of each is generated from its typed contract, so a parameter cannot exist on the wire without existing in the dispatch. Deliberately short: every tool costs every connected agent context.
 
 | Tool | What it does |
 |---|---|
 | `taskops_next` | Claim work. Returns the spec, the branch to create, the agent's inbox, and a collision warning naming anyone else in your files. Says *why* when there is nothing. |
 | `taskops_update` | Progress, a comment, a close, a handoff — and `mentions`, which is how agents message each other. |
 | `taskops_ask` | One task in full, or free-text search across titles, specs and comments. |
+| `taskops_context` | The project's standing objective, invariants and settled decisions — or the slice of them that applies to ONE card. |
 | `taskops_plan` | A whole decomposition in one call: tasks, tree, dependencies. |
 | `taskops_dispatch` | Prepare worker briefs — assign cards, create worktrees. The caller spawns its own sub-agents. |
 | `taskops_recover` | Hand back the cards of workers that died. |
@@ -198,6 +199,52 @@ A dependency that lives only in a comment is one the scheduler will walk somebod
 - **Assignment hides.** A card assigned to a worker is invisible to every other agent — not sorted last, *gone* — which is what makes "this one is yours" mean something.
 
 ---
+
+## The three agents the plugin ships
+
+Installing the plugin gives you three sub-agents. They are DATA — a markdown file each in
+`plugin/agents/`, with their name, description, tool list and model in the frontmatter — so a
+project can add its own without touching any Python.
+
+| Agent | Tools it has | What it does |
+|---|---|---|
+| `taskops-manager` | context, board, plan, dispatch — **no Edit, no Write** | Reads the context, the board and the last week of dossiers; creates the cards that serve the current objective with EARS acceptance criteria; names the card blocking everything else; hands work out. It plans and delegates, never implements. |
+| `taskops-worker` | claim, ask, update, and the full edit surface | One card: claim → branch → work → commit → close **with evidence** for each criterion. Hands the card back with notes rather than sitting on it. |
+| `taskops-verifier` | ask, update, Read, Bash — **no Write** | The adversary, on a cheap model. Reads the acceptance criteria and the diff and tries to demonstrate `done` is false. |
+
+A card's `acceptance` is a list of EARS lines — `WHEN <trigger> THE SYSTEM SHALL <response>` —
+set by `taskops_plan`, by `taskops tasks edit --acceptance`, and readable by anybody. Closing a
+card that has them requires `evidence` saying which were met and what proves it, or
+`no_evidence` with a reason, which is written into the card's event log. A card with no
+criteria closes exactly as it always did.
+
+Worked example, one real card:
+
+```
+manager   taskops_context            -> objective: "ship 0.4 by Friday"; invariant: "frozen contract"
+          taskops_plan  tk-9f21aa    title:      "Requeue a card whose lease lapsed"
+                                     acceptance: WHEN a lease expires, THE SYSTEM SHALL return
+                                                 the card to ready
+                                                 WHEN a card is requeued, THE SYSTEM SHALL keep
+                                                 the previous holder's comments
+          spawns one worker on tk-9f21aa
+
+worker    taskops_next task=tk-9f21aa  -> git switch -c tk/9f21aa-requeue
+          ... edits engine/scheduler.py, writes tests/engine/test_sweep.py, commits ...
+          taskops_update status=done
+            evidence="criterion 1: test_a_lapsed_lease_returns_the_card passes
+                      (pytest tests/engine -q, 41 passed). criterion 2:
+                      test_requeue_keeps_the_thread — the comments survive."
+
+verifier  taskops_ask tk-9f21aa        -> reads both criteria and the evidence
+          pytest tests/engine -q       -> 41 passed
+          git show <the card's commit> -> nothing beyond the card
+          taskops_update comment="HOLDS: verified 2 criteria by running the named tests."
+```
+
+Had the verifier found `test_requeue_keeps_the_thread` missing, it would have posted `FAILS`
+naming the criterion and the command that shows it — and the card, already `done`, would have
+a comment on it that a human reads before believing the board.
 
 ## Working as a team
 
@@ -273,6 +320,19 @@ A claim is a single `INSERT` on one primary key. That is the whole collision sto
 So the rhythm is: `taskops pull` when you sit down, `taskops push` when you stand up (or whenever you want your cards visible), and *nothing in between* — the part that had to be atomic already was.
 
 ---
+
+## Daily reports, unattended
+
+`taskops report sweep` narrates **every day that has ended, has events and has no write-up yet** — so it is safe to run late, early, or twice, and the second run costs nothing because it calls no model. Two triggers put it on autopilot, and neither is cron or launchd:
+
+```sh
+taskops schedule install     # writes ~/.claude/scheduled-tasks/taskops-sweep/SKILL.md
+taskops schedule status      # what is on disk, and what is still missing
+```
+
+**Honest limitation: we write the prompt, not the schedule.** Claude Code keeps a scheduled task's time, folder and model inside the app, so `schedule install` writes the file and then prints the one sentence to say to Claude — *"create a daily scheduled task at 00:05 named taskops-sweep that runs /taskops:sweep in \<this folder\>"*. Until you say it, nothing is scheduled. If Claude Code is not on this machine the command refuses instead of creating a config directory nothing will read.
+
+The **backup trigger needs no setup at all**: the plugin's `SessionStart` hook fires the sweep detached, so opening a session in the morning is what gets yesterday written up. It is bounded on purpose — at most one sweep per project per day (a stamp under `.taskops/`), nothing at all for a project with no history and no remote, silent on every failure, and `TASKOPS_NO_SWEEP=1` turns it off. It never delays a session: the child is spawned in its own process group and the hook returns in microseconds.
 
 ## The web interface
 

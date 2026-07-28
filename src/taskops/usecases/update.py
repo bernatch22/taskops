@@ -35,7 +35,8 @@ skipping the queue."""
 
 def update(start: Path | str, task_id: str, *, actor: str = "", status: str = "",
            comment: str = "", mentions: tuple[str, ...] = (), blocked_on: str = "",
-           no_code: bool = False, local: bool = False) -> UpdateResult:
+           no_code: bool = False, evidence: str = "", no_evidence: str = "",
+           local: bool = False) -> UpdateResult:
     """Apply whatever was asked, in the order that keeps the graph honest.
 
     `local` is the server's flag, exactly as in `next_task`: a project with a remote runs
@@ -48,7 +49,7 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
         return update_remotely(start, remote, {
             "task": task_id, "actor": whoami(start, actor), "status": status,
             "comment": comment, "mentions": list(mentions),
-            "blocked_on": blocked_on, "no_code": no_code})
+            "blocked_on": blocked_on, "no_code": no_code, "evidence": evidence, "no_evidence": no_evidence})
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
@@ -58,7 +59,8 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
         if blocked_on:
             _block_on(store, task, who, blocked_on)
         if status:
-            task = _move(store, task, who, status, comment, no_code)
+            task = _move(store, task, who, status, comment, no_code,
+                         evidence=evidence, no_evidence=no_evidence)
         freed = unblock(store)
         return UpdateResult(task=store.tasks.need(task_id),
                             unblocked=[store.tasks.need(i) for i in freed],
@@ -92,10 +94,16 @@ def _block_on(store: Store, task: Task, who: str, blocker: str) -> None:
 
 
 def _move(store: Store, task: Task, who: str, asked: str, comment: str,
-          no_code: bool) -> Task:
-    """Check the move, then apply it. `released` also drops the lease."""
+          no_code: bool, *, evidence: str = "", no_evidence: str = "") -> Task:
+    """Check the move, then apply it. `released` also drops the lease.
+
+    `evidence` and `no_evidence` are carried into the `done` event rather than left in the
+    comment, because the whole point of the escape hatch is that a review can FIND the closures
+    that skipped it — a reason buried in prose is a reason nobody audits.
+    """
     target: Status = "ready" if asked == RELEASE else _status(asked)
-    facts = facts_for(store, task, who, no_code=no_code, justification=comment)
+    facts = facts_for(store, task, who, no_code=no_code, justification=comment,
+                      evidence=evidence, no_evidence=no_evidence)
     check_move(facts, target)
     if target in ("ready", "done", "cancelled"):
         store.leases.release(task["id"])
@@ -103,7 +111,8 @@ def _move(store: Store, task: Task, who: str, asked: str, comment: str,
     record(store, task=task["id"], actor=who,
            kind="done" if target == "done" else "status",
            body={"from": task["status"], "to": target, "released": asked == RELEASE,
-                 "unpushed": facts.unpushed})
+                 "unpushed": facts.unpushed, "evidence": evidence,
+                 "no_evidence": no_evidence})
     return store.tasks.need(task["id"])
 
 

@@ -5,10 +5,10 @@ enforces the second half. A transition table plus one convenient status check
 somewhere is two state machines, and the convenient one is always the one that
 forgot the guard.
 
-Guards are pure functions of `Facts`, not of a database. That is what makes the
-rules testable from literals — "a claimed task cannot be closed without a commit"
-is three lines here, not a fixture with a repository in it — and it means the use
-case that ASSEMBLES the facts is the only thing that needs a store.
+Guards are pure functions of `Facts`, not of a database. That is what makes the rules testable
+from literals — "a claimed task cannot be closed without a commit" is three lines here, not a
+fixture with a repository in it — and it means the use case that ASSEMBLES the facts is the
+only thing that needs a store.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import Callable
 from .._errors import GuardFailed, IllegalTransition
 from .._types import Status
 from ..contracts import Task
+from ._acceptance import Evidence, evidenced
 
 __all__ = ["Facts", "TRANSITIONS", "check_move", "allowed_from"]
 
@@ -42,6 +43,9 @@ class Facts:
 
     unpushed: int
     """Commits on this branch no remote has. Recorded on close, never blocking — see `_closing`."""
+    evidence: Evidence | None = None
+    """The card's criteria and what the closer offered against them. Defaulted, so every card
+    that has none — which is every card written before criteria existed — is unaffected."""
 
 
 Guard = Callable[[Facts], str | None]
@@ -58,11 +62,10 @@ def _needs_lease(facts: Facts) -> str | None:
 def _needs_evidence(facts: Facts) -> str | None:
     """`done` requires a commit, or an argued exemption.
 
-    THE guard that makes the board trustworthy. Without it "done" means "an agent
-    said so", which is exactly the failure a human is trying to avoid by reading a
-    board instead of the diff. The exemption exists because research and decisions
-    are real work — but it has to be declared and reasoned, so that a review can
-    see which closures had no code and why.
+    THE guard that makes the board trustworthy. Without it "done" means "an agent said so",
+    which is exactly the failure a human is trying to avoid by reading a board instead of the
+    diff. The exemption exists because research and decisions are real work — but it has to be
+    declared and reasoned, so a review can see which closures had no code and why.
     """
     if facts.commits > 0:
         return None
@@ -71,10 +74,9 @@ def _needs_evidence(facts: Facts) -> str | None:
     if facts.no_code:
         return ("no_code needs a `comment` saying what was produced instead — "
                 "an unexplained exemption is indistinguishable from a shortcut")
-    # "on the task's branch" and not "the guard adds the trailer", which was the earlier wording:
-    # the trailer is only injected inside Claude Code, where a hook can rewrite the command. From a
-    # terminal the BRANCH is what binds the commit, so naming the branch is the advice that is true
-    # in both places.
+    # "on the task's branch" and not "the guard adds the trailer": the trailer is only injected
+    # inside Claude Code, where a hook can rewrite the command. From a terminal the BRANCH is what
+    # binds the commit, so naming the branch is the advice that is true in both places.
     return (f"{facts.task['id']} has no commit bound to it. Commit your work on the "
             f"task's branch, or pass no_code with a comment if this task legitimately "
             f"produced none")
@@ -88,17 +90,17 @@ def _needs_children_closed(facts: Facts) -> str | None:
 
 
 def _closing(facts: Facts) -> str | None:
-    """Both closing rules, in the order a caller can act on them.
-
-    Children first: being told to write a commit for an epic whose subtasks are
-    unfinished sends the agent to do the wrong work.
+    """The three closing rules, in the order a caller can act on them: children, then code, then
+    the evidence for the card's acceptance criteria (`_acceptance`, a no-op for a card with none).
+    Children first — being told to write a commit for an epic whose subtasks are unfinished sends
+    the agent to do the wrong work.
 
     `unpushed` is deliberately NOT a rule here. It is recorded on the `done` event and shown on the
     board instead, because pushing is not always the closer's job — a task can finish on a branch
-    somebody else lands — and a repository with no remote at all would otherwise be unable to close
-    anything, which is the most common way taskops is first tried.
-    """
-    return _needs_children_closed(facts) or _needs_evidence(facts)
+    somebody else lands — and a repository with no remote would otherwise be unable to close
+    anything, which is the most common way taskops is first tried."""
+    return (_needs_children_closed(facts) or _needs_evidence(facts)
+            or evidenced(facts.evidence))
 
 
 TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
@@ -117,22 +119,21 @@ TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
 }
 """Who may go where.
 
-`claimed → done` exists, so `in_progress` is never MANDATORY. Requiring the
-intermediate step would add a call to the lifecycle of every task in the project in
-exchange for no information the commit does not already carry — and it is the GUARD,
-not the path taken to reach it, that protects the board. An agent that wants its work
-shown in flight sets `in_progress`; one that claimed, coded, committed and closed has
-done nothing wrong. (The missing arrow was found by the end-to-end test, which is the
-kind of bureaucracy only a full run reveals.)
+`claimed → done` exists, so `in_progress` is never MANDATORY. Requiring the intermediate step
+would add a call to every task's lifecycle for no information the commit does not already
+carry — and it is the GUARD, not the path taken to reach it, that protects the board. An agent
+that wants its work shown in flight sets `in_progress`; one that claimed, coded, committed and
+closed has done nothing wrong. (The missing arrow was found by the end-to-end test, which is
+the kind of bureaucracy only a full run reveals.)
 
 `done` is TERMINAL on purpose: reopening would make the log say a task was finished
 twice, and the honest record of "we shipped it and it was wrong" is a new task that
 references the old one.
 
-`→ ready` from a working status is the RELEASE path, and it is deliberately
-unguarded: an agent that is out of context or out of depth must always be able to
-hand work back, and a guard there would make the alternative — abandoning it until
-the lease lapses — the easier move.
+`→ ready` from a working status is the RELEASE path, and it is deliberately unguarded: an
+agent that is out of context or out of depth must always be able to hand work back, and a
+guard there would make the alternative — abandoning it until the lease lapses — the easier
+move.
 """
 
 
@@ -145,9 +146,8 @@ def allowed_from(status: Status) -> tuple[Status, ...]:
 def check_move(facts: Facts, new: Status) -> None:
     """Raise unless this move is legal AND earned. Silent on success.
 
-    Two error types, because they are two different conversations: the arrow does
-    not exist (nothing to do about it), versus the arrow exists and the work is not
-    there yet (do the work).
+    Two error types, because they are two different conversations: the arrow does not exist
+    (nothing to do about it), versus the arrow exists and the work is not there yet (do it).
     """
     old: Status = facts.task["status"]
     outgoing = TRANSITIONS.get(old, {})

@@ -217,3 +217,57 @@ def test_no_description_tells_an_agent_to_pass_a_field_the_schema_lacks(tool: An
     schema = next(t["inputSchema"] for t in listing() if t["name"] == tool.name)
     invented = sorted(set(re.findall(pattern, tool.description)) - set(schema["properties"]))
     assert not invented, (f"{tool.name} tells agents to pass fields it does not accept: {invented}")
+
+
+def test_the_context_tool_answers_project_wide_and_per_card(tmp_path: Path) -> None:
+    """The tool the manager makes its FIRST call, wired end to end.
+
+    It sat in the use cases with no way for an agent to reach it, which is the failure this
+    checks: a capability nothing advertises is a capability nobody has.
+    """
+    from taskops.usecases import context_state, init, plan
+
+    init(tmp_path, install_git_hooks=False)
+    context_state(tmp_path, "objective", "ship 0.4 by Friday", actor="dev:berna")
+    context_state(tmp_path, "invariant", "never break the frozen contract", actor="dev:berna")
+    created = plan(tmp_path, [{"title": "Wire the tool", "spec": "x"}],
+                   actor="dev:berna")["created"]
+
+    whole = call("taskops_context", {"repo_path": str(tmp_path)})
+    assert "isError" not in whole
+    assert "ship 0.4 by Friday" in text_of(whole)
+
+    sliced = call("taskops_context", {"repo_path": str(tmp_path), "task": created[0]["id"]})
+    assert "isError" not in sliced
+    assert "never break the frozen contract" in text_of(sliced), "the slice dropped an invariant"
+
+
+def test_the_context_tool_cannot_write() -> None:
+    """An agent that could restate an objective could rewrite the rules it is judged against.
+    Reading is a tool; stating a fact stays a human's call at the CLI."""
+    schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_context")
+    assert set(schema["properties"]) == {"repo_path", "task"}
+
+
+def test_update_advertises_evidence_and_its_argued_exemption() -> None:
+    """Both halves or neither. `evidence` with no way out gets satisfied by a made-up sentence,
+    and the escape hatch with no field to carry the reason is an unaudited bypass."""
+    schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_update")
+    assert "evidence" in schema["properties"]
+    assert "no_evidence" in schema["properties"]
+
+
+def test_planning_a_card_with_acceptance_criteria_over_the_wire(tmp_path: Path) -> None:
+    """The field a manager fills in, through the real schema and the real dispatch."""
+    from taskops.usecases import init
+    from taskops.usecases.acceptance import acceptance_for
+
+    init(tmp_path, install_git_hooks=False)
+    criterion = "WHEN the card is closed, THE SYSTEM SHALL demand evidence"
+    planned = call("taskops_plan", {"repo_path": str(tmp_path),
+                                    "tasks": [{"title": "Evidence", "spec": "x",
+                                               "acceptance": [criterion]}]})
+    assert "isError" not in planned
+    listed = call("taskops_report", {"repo_path": str(tmp_path)})
+    task_id = [w for w in text_of(listed).split() if w.startswith("tk-")][0]
+    assert acceptance_for(tmp_path, task_id)["criteria"] == [criterion]

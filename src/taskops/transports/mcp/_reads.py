@@ -11,6 +11,7 @@ from typing import Any
 
 from ...render import (
     render_board,
+    render_context,
     render_day,
     render_search,
     render_standup,
@@ -20,6 +21,8 @@ from ...usecases import (
     Selector,
     ask,
     board,
+    context_for,
+    context_show,
     day,
     period,
     search,
@@ -27,7 +30,20 @@ from ...usecases import (
 )
 from . import arguments as arg
 
-__all__ = ["ask_", "report_"]
+__all__ = ["ask_", "context_", "report_"]
+
+
+def context_(args: dict[str, Any]) -> str:
+    """The project's standing facts, or the slice one card gets.
+
+    One tool for both because they are one question asked at two zoom levels, and splitting
+    them would make an agent choose between "the context" and "my context" before it knows
+    which it needs. No WRITE half: see `ContextParams`.
+    """
+    where = arg.repo(args)
+    if wanted := arg.optional(args, "task"):
+        return render_context(context_for(where, wanted))
+    return render_context(context_show(where))
 
 
 def ask_(args: dict[str, Any]) -> str:

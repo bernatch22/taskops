@@ -12,17 +12,20 @@ from __future__ import annotations
 
 from .._clock import now
 from ..contracts import Task
-from ..engine import Facts, branch_state, open_children
+from ..engine import Evidence, Facts, branch_state, open_children
 from ..storage import Store
+from .acceptance import criteria_of
 
 __all__ = ["facts_for", "unpushed_on"]
 
 
 def facts_for(store: Store, task: Task, actor: str, *, no_code: bool,
-              justification: str) -> Facts:
+              justification: str, evidence: str = "", no_evidence: str = "") -> Facts:
     """Everything the guards may ask about, read once."""
     lease = store.leases.get(task["id"])
     return Facts(
+        evidence=Evidence(criteria=tuple(criteria_of(store, task["id"])),
+                          given=evidence, waived=no_evidence),
         task=task, actor=actor,
         has_live_lease=store.leases.held_by(task["id"], actor, now()),
         commits=len(store.events.of_task(task["id"], kinds=("commit",))),

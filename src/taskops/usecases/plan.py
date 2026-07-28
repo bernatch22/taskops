@@ -28,6 +28,7 @@ from ..engine import record, unblock
 from ..storage import Store
 from . import _entry as field
 from ._project import caller, heartbeat, project
+from .acceptance import attach, criteria_in
 
 __all__ = ["plan"]
 
@@ -70,6 +71,10 @@ def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
     # the task — which is exactly what happened: a teammate's `git pull` imported the events and
     # left them with an empty board. `engine.replay` is the reader.
     record(store, task=task["id"], actor=who, kind="created", body=_snapshot(task), ts=when)
+    # Its own event, never a field of the snapshot: criteria are rewritten far more often than a
+    # card is created, and one kind for "what this card promises" is what lets the latest
+    # statement win without replay having to reason about a partially updated `created` body.
+    attach(store, task["id"], criteria_in(entry.get("acceptance")), who)
     return task
 
 

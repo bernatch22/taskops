@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from .ansi import Ink
 from .board import render_board
+from .context import render_context
 from .day import render_day
 from .dispatch import render_dispatch
 from .inbox import render_inbox
@@ -35,7 +36,7 @@ from .status import render_status
 from .task import render_claim, render_view
 from .tasklist import render_tasklist
 
-__all__ = ["render_view", "render_claim", "render_inbox", "render_board",
+__all__ = ["render_view", "render_claim", "render_context", "render_inbox", "render_board",
            "render_standup", "render_fleet", "render_plan", "render_next",
            "render_update", "render_search", "render_edit", "render_dispatch", "render_brief",
            "render_verdict", "render_recover", "render_log", "render_day",

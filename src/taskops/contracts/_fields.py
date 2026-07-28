@@ -13,7 +13,8 @@ from typing import Annotated
 __all__ = ["Repo", "Actor", "Session", "TaskId", "TASKS", "DRY_RUN", "STATUS", "COMMENT",
            "MENTIONS", "BLOCKED_ON", "NO_CODE", "LABELS", "CLAIM_ONE", "ASK_TASK",
            "ASK_QUERY", "DISPATCH_TASKS", "DISPATCH_COUNT", "PREFIX", "MODEL",
-           "RECOVER_FORCE", "RECOVER_GRACE", "REPORT_KIND", "REPORT_ACTOR", "SINCE", "DATE"]
+           "RECOVER_FORCE", "RECOVER_GRACE", "REPORT_KIND", "REPORT_ACTOR", "SINCE", "DATE",
+           "EVIDENCE", "NO_EVIDENCE", "CONTEXT_TASK"]
 
 Repo = Annotated[str, "path to the repository root; a path INSIDE it also works — "
                       "the root is found from .taskops"]
@@ -29,13 +30,15 @@ TaskId = Annotated[str, "a task id, e.g. tk-4f2a9c"]
 
 
 TASKS = ("the tasks to create: a list of {title, spec, priority?, labels?, files?, parent?, "
-         "after?, blocks?, assignee?}. `spec` is the brief a FRESH agent reads to do the work "
+         "after?, blocks?, acceptance?, assignee?}. `spec` is the brief a FRESH agent reads to do the work "
          "with no other context — what done looks like, what must not change, where to start. "
          "`after` lists what must finish BEFORE this card, each an existing id or the 0-based "
          "INDEX of an earlier entry in this same list. `blocks` is the inverse: existing cards "
          "that must wait for this one — that is how an agent mid-task creates the prerequisite it "
          "just discovered and makes its own task wait, in one call. `files` is the edit surface: "
-         "name it and no two agents get the same file")
+         "name it and no two agents get the same file. `acceptance` is the list of EARS criteria "
+         "this card is accepted against — one per line, \"WHEN <trigger> THE SYSTEM SHALL "
+         "<response>\" — and each one should read as a test somebody could write")
 
 STATUS = ("the new status. `released` returns the task to the queue with your progress in "
           "`comment` — the honest move when out of context. `done` needs a commit bound to "
@@ -53,6 +56,18 @@ BLOCKED_ON = ("a task id that must finish first. Adds the dependency AND sets yo
 
 NO_CODE = ("declare that this task produces no commit (research, a decision, docs elsewhere). "
            "Required to close one, and recorded with your comment as the justification")
+
+EVIDENCE = ("what proves the acceptance criteria were met: name the criterion and the test, "
+            "command or run that demonstrates it. Required to close a card that HAS criteria, "
+            "and it is what a verifier reads before it tries to prove you wrong")
+
+NO_EVIDENCE = ("close a card with criteria WITHOUT proving them, giving the reason here — the "
+               "criterion turned out to be wrong, or the work moved. The reason is written into "
+               "the done event, so this is an argued exemption and not a way around the rule")
+
+CONTEXT_TASK = ("a task id: returns the slice of context that applies to THAT card — every "
+                "invariant, the current objective, and only the decisions matching its labels "
+                "or files. Omit for the whole project context")
 
 LABELS = "comma-separated labels to restrict the pick to"
 

@@ -23,6 +23,7 @@ HANDLERS: dict[str, Handler] = {
     "taskops_next": write.next_,
     "taskops_update": write.update_,
     "taskops_ask": read.ask_,
+    "taskops_context": read.context_,
     "taskops_plan": write.plan_,
     "taskops_dispatch": write.dispatch_,
     "taskops_recover": write.recover_,
