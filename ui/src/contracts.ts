@@ -124,3 +124,29 @@ export interface ApiError {
   error: string;
   code: string;
 }
+
+/* The reports. `ReportEntry` is a ROW in the list; `ReportFile` is the one you clicked, with its
+ * markdown. Two shapes and not one, because a listing that carried thirty dossiers would ship a
+ * megabyte of text to draw thirty labels. */
+export interface ReportEntry {
+  /* Opaque: today it is a date, tomorrow it is a range (`2026-07-22..2026-07-28`, `all`). Pass it
+   * back as it came — never parse it. */
+  label: string;
+  path: string;
+  exists: boolean;
+  stale: boolean;
+  missing_events: number;
+  has_narration: boolean;
+  bytes: number;
+}
+
+export interface ReportFile {
+  date: string;
+  path: string;
+  /* The file when there is one, otherwise the dossier that WOULD be written — so a day nobody
+   * wrote up still has something to read instead of an empty pane and a button. */
+  dossier_md: string;
+  exists: boolean;
+  stale: boolean;
+  missing_events: number;
+}

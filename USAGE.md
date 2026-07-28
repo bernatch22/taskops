@@ -284,6 +284,14 @@ What you can do there:
 - **Change a status**, including `released` to hand a stuck task back to the queue.
 - **Watch the fleet panel.** A member marked `SILENT` still holds a claim but has gone quiet. That
   is the row worth acting on, which is why it is shown rather than hidden.
+- **Read the reports.** The third tab, `Reports`, lists everything in `.taskops/reports/` newest
+  first and renders the one you pick — headings, tables and code, with the `## Narración` lifted
+  to the top in its own panel. A row carries a `stale +N` badge when N events landed after the
+  report was generated, and a `✎` when somebody (or Claude) has written the narration. The
+  **Generate / Regenerate** button runs the same `report day --digest` from the browser: it takes
+  about half a minute because it is a model call, and if `claude` is missing or logged out the
+  server's own words reach the screen. It is a write, so `--readonly` refuses it — a board on a
+  screen in a room cannot spend anything by being looked at.
 
 Useful flags:
 

@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import { Activity } from "./components/Activity";
 import { Board, type Grouping } from "./components/Board";
 import { Header, type View } from "./components/Header";
+import { Reports } from "./components/Reports";
 import { TaskPanel } from "./components/TaskPanel";
 import { remembered } from "./remembered";
 import { useStudio } from "./useStudio";
@@ -38,6 +39,8 @@ function App(): JSX.Element {
       <main>
         {view === "activity"
           ? <Activity onOpen={studio.openTask} />
+          : view === "reports"
+          ? <Reports readonly={studio.config?.readonly ?? false} />
           : studio.board
             ? <Board board={studio.board} hideEmpty={hideEmpty} grouping={grouping}
                      onGrouping={setGrouping} onOpen={studio.openTask} />

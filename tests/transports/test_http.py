@@ -265,3 +265,75 @@ def test_commits_reach_the_ui_with_their_subject_and_files(route: Any, project: 
     commits = body_of(route(get("/api/task", id=task_id)))["commits"]
     assert commits[0]["subject"] == "feat: the thing"
     assert commits[0]["files"] == ["src/a.py", "tests/test_a.py"]
+
+
+# ---- the reports
+
+
+def test_the_index_lists_every_report_with_today_at_the_top(route: Any, project: Path) -> None:
+    """A fresh repository has no files, and the list still has a row: today, `exists: false`.
+
+    A Reports view whose list is empty offers nothing to press, and generating today's report is
+    the whole reason somebody opens it.
+    """
+    payload = body_of(route(get("/api/reports")))
+    assert len(payload) == 1
+    assert set(payload[0]) == {"label", "path", "exists", "stale", "missing_events",
+                               "has_narration", "bytes"}
+    assert payload[0]["exists"] is False and payload[0]["bytes"] == 0
+
+    from taskops.usecases import write_report
+    write_report(project, "2026-01-02")
+    write_report(project, "2026-01-03")
+    labels = [row["label"] for row in body_of(route(get("/api/reports")))]
+    assert labels[1:] == ["2026-01-03", "2026-01-02"], "newest first"
+
+
+def test_a_range_label_is_opaque_and_never_parsed_as_a_day(route: Any, project: Path) -> None:
+    """Report ranges land in the same directory named for the range. Anything that read the stem
+    as a date would raise on the first weekly report — so staleness is simply not answered for
+    one, rather than guessed."""
+    directory = project / ".taskops" / "reports"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "2026-01-01..2026-01-07.md").write_text("# a week\n", encoding="utf-8")
+    (directory / "all.md").write_text("# everything\n", encoding="utf-8")
+
+    rows = {row["label"]: row for row in body_of(route(get("/api/reports")))}
+    assert rows["all"]["stale"] is False and rows["all"]["missing_events"] == 0
+    assert rows["2026-01-01..2026-01-07"]["exists"] is True
+
+
+def test_the_index_says_which_reports_carry_a_narration(route: Any, project: Path) -> None:
+    from taskops.render import narrated
+    from taskops.usecases import write_report
+
+    path = write_report(project, "2026-01-02")
+    assert body_of(route(get("/api/reports")))[1]["has_narration"] is False
+    path.write_text(narrated(path.read_text(encoding="utf-8"), "It was a good day."),
+                    encoding="utf-8")
+    assert body_of(route(get("/api/reports")))[1]["has_narration"] is True
+
+
+def test_narrating_is_a_write_and_a_readonly_board_refuses_it(project: Path) -> None:
+    """The one endpoint here that costs money: it shells out to `claude`. A board on a screen in
+    a room must not be able to spend an API key by being looked at."""
+    route = build(project, Policy(readonly=True))
+    refused = route(post("/api/report/digest", {"date": "2026-01-02"}))
+    assert refused.status == 403
+    assert body_of(refused)["code"] == "readonly"
+
+
+def test_narrating_a_label_that_is_not_a_day_is_refused(route: Any) -> None:
+    """`parse_date` is strict, and the refusal names what to pass instead — which is what the UI
+    shows verbatim."""
+    reply = route(post("/api/report/digest", {"date": "last tuesday"}))
+    assert reply.status == 400
+    assert body_of(reply)["code"] == "bad_request"
+
+
+def test_there_is_no_such_route_as_a_get_on_the_digest(route: Any) -> None:
+    """405, not 404: the path exists under POST, and 'not found' for that has cost everyone an
+    afternoon at some point."""
+    assert route(get("/api/report/digest")).status == 405
+    unknown = route(get("/api/reports/nope"))
+    assert unknown.status == 404 and body_of(unknown)["code"] == "no_such_route"

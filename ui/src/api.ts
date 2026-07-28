@@ -3,7 +3,9 @@
  * One module so that a change to how errors are shaped, or how the token travels, is one edit
  * rather than a hunt through components. Components never call `fetch`. */
 
-import type { Activity, Board, Config, Event, Task, TaskView } from "./contracts";
+import type {
+  Activity, Board, Config, Event, ReportEntry, ReportFile, Task, TaskView,
+} from "./contracts";
 
 /* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
  * localStorage so a reload does not lose it. Read once at module load: it cannot change without
@@ -48,6 +50,16 @@ export const api = {
    * refetches on every event. Only the activity view pays for it, and only while it is open. */
   activity: (since: string) => call<Activity>(`/api/activity?since=${encodeURIComponent(since)}`),
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
+  reports: () => call<ReportEntry[]>("/api/reports"),
+  report: (label: string) => call<ReportFile>(`/api/report?date=${encodeURIComponent(label)}`),
+  /* The one call that costs money and takes ~30 seconds: it shells out to `claude`. Nothing
+   * retries it, and the caller shows the server's own words when it fails — `claude` missing or
+   * logged out is a thing the person can fix, and only if they are told. */
+  digest: (label: string, force: boolean) =>
+    call<ReportFile>("/api/report/digest", {
+      method: "POST",
+      body: JSON.stringify({ date: label, force }),
+    }),
   search: (q: string) => call<Task[]>(`/api/search?q=${encodeURIComponent(q)}`),
   comment: (task: string, text: string, mentions: string[]) =>
     call<unknown>("/api/comment", {

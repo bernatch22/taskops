@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from . import api, live, static
+from . import api, live, reports, static
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 
@@ -27,7 +27,9 @@ def build(root: Path, policy: Policy) -> Route:
         ("GET", "/api/task"): partial(api.get_task, root),
         ("GET", "/api/search"): partial(api.get_search, root),
         ("GET", "/api/activity"): partial(api.get_activity, root),
-        ("GET", "/api/report"): partial(api.get_report, root),
+        ("GET", "/api/report"): partial(reports.get_report, root),
+        ("GET", "/api/reports"): partial(reports.get_reports, root),
+        ("POST", "/api/report/digest"): partial(reports.post_digest, root),
         ("POST", "/api/comment"): partial(api.post_comment, root),
         ("POST", "/api/status"): partial(api.post_status, root),
         ("GET", "/api/live"): partial(live.stream, root),
