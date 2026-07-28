@@ -453,6 +453,7 @@ taskops sync                               reconcile with the committed log
 taskops tasks                              one line per open task (same as `tasks list`)
 taskops tasks show <task-id>               read one task in full
 taskops tasks add <title> [--spec …] [--after id,id] [--files …] [--priority N] [--label …]
+taskops tasks edit <task-id> [--title …] [--spec …] [--priority N]   correct a card
 taskops tasks plan <file.json | ->         create tasks from JSON
 taskops tasks done <task-id> [-m …] [--no-code]
 taskops tasks release <task-id> [-m …]     hand it back, unfinished
@@ -460,7 +461,17 @@ taskops tasks log <task-id>                the agent's conversation for a card
 taskops tasks search <text>                search titles and specs
 ```
 
-Every one of these is a wrapper over a top-level verb that still works and still runs — they
+`tasks edit` is the exception: it is the one behaviour this group ADDS, because until it
+existed a card's title and spec were whatever the planner typed and the only way to fix a
+wrong brief was to cancel the card and plan a new one — losing its thread and its commits.
+At least one flag is required; each changed field records an `edited` event, so the fix
+reaches a teammate's clone through the log like everything else. A `done` or `cancelled`
+card refuses: the log is the record of what was delivered, and rewriting the spec of
+finished work rewrites that record. Editing stays out of the MCP tools deliberately —
+correcting a brief is a human act, and an agent that can rewrite its own spec can talk
+itself into having finished.
+
+Every other one is a wrapper over a top-level verb that still works and still runs — they
 are simply no longer listed, because `--help` had grown to nineteen commands serving three
 different readers. The agent protocol (`next`, `update`, `ask`, `plan`, `dispatch`, `log`) is
 what an agent reaches through the MCP tools or its brief; `guard`, `ingest`, `brief`, `inbox`,

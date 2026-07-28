@@ -15,7 +15,7 @@ from .event import Inbox
 from .lease import Lease
 from .task import Task, TaskView
 
-__all__ = ["PlanResult", "Claim", "NextResult", "UpdateResult"]
+__all__ = ["PlanResult", "Claim", "NextResult", "UpdateResult", "EditResult"]
 
 
 class PlanResult(TypedDict):
@@ -70,3 +70,15 @@ class UpdateResult(TypedDict):
 
     notified: list[str]
     """Actors whose inbox this reached — the mentions, resolved."""
+
+
+class EditResult(TypedDict):
+    """The card after a rewrite, and which fields actually moved.
+
+    `changed` rather than a bare task: an edit that asked for a new title and got none —
+    because the value was already there — is worth saying out loud, since the alternative
+    is a caller believing it landed something the log has no event for.
+    """
+
+    task: Task
+    changed: list[str]

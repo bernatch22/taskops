@@ -6,11 +6,11 @@ what to do next, so every one of these ends with the consequence rather than a s
 
 from __future__ import annotations
 
-from ..contracts import NextResult, PlanResult, Task, UpdateResult
+from ..contracts import EditResult, NextResult, PlanResult, Task, UpdateResult
 from ._text import bullet, table, truncate
 from .task import render_claim
 
-__all__ = ["render_plan", "render_next", "render_update", "render_search"]
+__all__ = ["render_plan", "render_next", "render_update", "render_search", "render_edit"]
 
 
 def render_plan(result: PlanResult) -> str:
@@ -63,6 +63,20 @@ def render_search(tasks: list[Task], query: str) -> str:
     lines = [f"- {t['id']} ({t['status']}) — {truncate(t['title'], 60)}" for t in tasks]
     return "\n".join([f"{len(tasks)} task(s) matching `{query}`:", "", *lines, "",
                       "Read one in full with taskops_ask task=<id>."])
+
+
+def render_edit(result: EditResult) -> str:
+    """Which fields moved, and the title as it now reads.
+
+    Says nothing changed when nothing did, rather than printing a card that looks edited:
+    the whole risk of an edit command is believing a rewrite landed when the value passed
+    was the value already stored.
+    """
+    task = result["task"]
+    if not result["changed"]:
+        return f"{task['id']} — nothing changed; the values passed were already stored"
+    return "\n".join([f"{task['id']} — edited {', '.join(result['changed'])}", "",
+                      f"{truncate(task['title'], 70)}  (priority {task['priority']})"])
 
 
 def render_update(result: UpdateResult) -> str:

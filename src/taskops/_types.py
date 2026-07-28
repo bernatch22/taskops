@@ -12,7 +12,7 @@ about cycles. `tests/architecture` enforces that.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, get_args
 
 __all__ = [
     "Status",
@@ -24,6 +24,7 @@ __all__ = [
     "STATUSES",
     "EVENT_KINDS",
     "LOCAL_ONLY_KINDS",
+    "EDITABLE_FIELDS",
 ]
 
 Status = Literal[
@@ -57,6 +58,7 @@ EventKind = Literal[
     "done",
     "message",  # directed chat: agent↔agent, dev↔agent
     "activity",  # a session's heartbeat: a tool ran, a file was touched
+    "edited",  # a field of the card itself changed: title, spec or priority
 ]
 """What happened. The event log is append-only and every projection — the board,
 a standup, an inbox — is derived from it, so a new fact about a task is a new
@@ -73,23 +75,18 @@ STATUSES: tuple[Status, ...] = (
     "cancelled",
 )
 
-EVENT_KINDS: tuple[EventKind, ...] = (
-    "created",
-    "claimed",
-    "released",
-    "status",
-    "comment",
-    "commit",
-    "branch",
-    "blocked",
-    "unblocked",
-    "handoff",
-    "review",
-    "eval",
-    "done",
-    "message",
-    "activity",
-)
+EVENT_KINDS: tuple[EventKind, ...] = get_args(EventKind)
+"""The same values as the `Literal`, DERIVED rather than retyped.
+
+Two hand-written lists is how a kind ends up legal at the type level and unknown to the
+MCP schema that iterates the tuple — a mismatch nothing catches, because the type check
+passes and the runtime list is merely short. `STATUSES` keeps its literal spelling: it is
+also the display order, which is a separate decision that happens to agree today."""
+
+EDITABLE_FIELDS: tuple[str, ...] = ("title", "spec", "priority")
+"""The columns a person may rewrite after a card exists. Named here rather than in
+`storage` because three layers ask the same question — the CLI validates a flag, the
+use case records one event per field, and replay refuses a body naming anything else."""
 
 OPEN_STATUSES: frozenset[str] = frozenset(
     {"backlog", "ready", "claimed", "in_progress", "blocked", "review"}

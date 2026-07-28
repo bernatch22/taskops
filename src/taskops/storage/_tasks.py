@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
-from .._errors import NoSuchTask
-from .._types import Status
+from .._errors import BadRequest, NoSuchTask
+from .._types import EDITABLE_FIELDS, Status
 from ..contracts import Task
 from ._rows import dumps, to_task
 
@@ -75,6 +75,19 @@ class TaskTable:
         """
         self.db.execute("UPDATE tasks SET assignee=?, updated=? WHERE id=?",
                         (actor, when, task_id))
+
+    def set_field(self, task_id: str, field: str, value: object, *, when: float) -> None:
+        """Rewrite ONE editable column — a title, a spec, a priority.
+
+        The column name is interpolated, so it is checked against `EDITABLE_FIELDS` first and
+        nowhere else: a whitelist at the only place that builds the SQL is the difference
+        between a typo and an injection, and every caller above reaches this one door.
+        """
+        if field not in EDITABLE_FIELDS:
+            raise BadRequest(f"`{field}` is not editable — use one of "
+                             f"{', '.join(EDITABLE_FIELDS)}")
+        self.db.execute(f"UPDATE tasks SET {field}=?, updated=? WHERE id=?",
+                        (value, when, task_id))
 
     def set_status(self, task_id: str, status: Status, *, when: float) -> None:
         self.db.execute("UPDATE tasks SET status=?, updated=? WHERE id=?",

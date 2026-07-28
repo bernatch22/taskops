@@ -16,8 +16,9 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from ....render import render_plan, render_tasklist
+from ....render import render_edit, render_plan, render_tasklist
 from ....usecases import board
+from ....usecases import edit as rewrite
 from ....usecases import plan as create
 from ._shared import add_actor, add_target, repo_of
 from ._tasks_args import add_subcommands
@@ -30,7 +31,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     add_target(parser)
     add_actor(parser)
     parser.set_defaults(run=run_list, subcommand="")
-    add_subcommands(parser, listing=run_list, adding=run_add)
+    add_subcommands(parser, listing=run_list, adding=run_add, editing=run_edit)
 
 
 def run_list(args: argparse.Namespace) -> str:
@@ -53,3 +54,13 @@ def run_add(args: argparse.Namespace) -> str:
     if args.priority is not None:
         entry["priority"] = int(args.priority)
     return render_plan(create(repo_of(args), [entry], actor=str(args.actor)))
+
+
+def run_edit(args: argparse.Namespace) -> str:
+    """Rewrite a card. `None` means "not passed" all the way down, which is why the flags
+    default to it rather than to "": an empty spec is a legitimate edit (somebody clearing a
+    brief that was wrong), and a default of "" could not tell that from silence."""
+    return render_edit(rewrite(
+        repo_of(args), str(args.task), title=args.title, spec=args.spec,
+        priority=None if args.priority is None else int(args.priority),
+        actor=str(args.actor)))
