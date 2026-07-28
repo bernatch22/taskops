@@ -19,7 +19,7 @@ from .._errors import BadRequest
 from ..engine import date_of, first_date, shift
 from ..storage import Store
 
-__all__ = ["Selector", "resolve", "parse_date"]
+__all__ = ["is_day", "Selector", "resolve", "parse_date"]
 
 _UNITS = {"d": 1, "w": 7}
 
@@ -92,3 +92,11 @@ def parse_date(text: str) -> str:
         return raw
     raise BadRequest(f"`{text}` is not a day — use `today`, `yesterday`, or a date "
                      f"like 2026-07-28")
+
+
+def is_day(label: str) -> bool:
+    """Whether a report label names one calendar day. The ONE place this shape is read:
+    the index and the report reader both branch on it, and two copies is how one of them
+    keeps accepting a shape the other started refusing."""
+    return (len(label) == 10 and label[4] == "-" and label[7] == "-"
+            and label.replace("-", "").isdigit())

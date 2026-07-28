@@ -33,7 +33,7 @@ from ..engine import (
 from ..render import is_pending, narrated, render_day, render_report
 from ..storage import REPORTS_DIR, Store
 from ._project import project
-from ._range import Selector, resolve
+from ._range import Selector, is_day, resolve
 
 __all__ = ["write_report", "read_report", "digest", "report_path"]
 
@@ -72,7 +72,7 @@ def read_report(start: Path | str, date_text: str = "") -> ReportFile:
     with project(start) as store:
         label = date_text.strip()
         path = report_path(store.root, label) if label else None
-        if path is not None and path.is_file() and not _is_day(label):
+        if path is not None and path.is_file() and not is_day(label):
             written = path.read_text(encoding="utf-8")
             return ReportFile(date=label, path=str(path), dossier_md=written,
                               exists=True, stale=False, missing_events=0)
@@ -85,10 +85,6 @@ def read_report(start: Path | str, date_text: str = "") -> ReportFile:
                           dossier_md=written or _generate(store, span),
                           exists=bool(written), stale=behind > 0, missing_events=behind)
 
-
-def _is_day(label: str) -> bool:
-    return (len(label) == 10 and label[4] == "-" and label[7] == "-"
-            and label.replace("-", "").isdigit())
 
 
 def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",

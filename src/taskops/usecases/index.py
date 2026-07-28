@@ -18,6 +18,7 @@ from ..engine import date_of, missing_events, stamped_seq
 from ..render import is_pending
 from ..storage import REPORTS_DIR, Store
 from ._project import project
+from ._range import is_day
 from .dossier import report_path
 
 __all__ = ["report_index"]
@@ -53,13 +54,9 @@ def _behind(store: Store, label: str, text: str) -> int:
     `all` — has no window to count against. The label is opaque by contract: anything that
     assumed it parses as a date would raise the first time somebody writes a weekly report.
     """
-    if not _is_day(label):
+    if not is_day(label):
         return 0
     # Both ends are the same date: a day IS the one-day window, which is exactly why the
     # range work could generalise `missing_events` without this call meaning something else.
     return missing_events(store, label, label, stamped_seq(text))
 
-
-def _is_day(label: str) -> bool:
-    return (len(label) == 10 and label[4] == "-" and label[7] == "-"
-            and label.replace("-", "").isdigit())
