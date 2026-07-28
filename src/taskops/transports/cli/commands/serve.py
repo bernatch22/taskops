@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ....transports.http import bound_port, mount, serve_route
 from ._serve_init import create
+from ._serve_link import link
 
 __all__ = ["register"]
 
@@ -44,6 +45,14 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     created.add_argument("project", help="its name and its URL segment: [a-z0-9-]")
     _root(created, inherit=True)
     created.set_defaults(run=run_init)
+    linked = inner.add_parser("link", help="tie a project to a GitHub repo, so its "
+                                           "collaborators can log in with `taskops login`")
+    linked.add_argument("project")
+    linked.add_argument("--github", metavar="owner/repo", default="",
+                        help="the repository whose PUSH access grants the board")
+    linked.add_argument("--remove", action="store_true", help="unlink; back to token only")
+    _root(linked, inherit=True)
+    linked.set_defaults(run=run_link)
 
 
 def _root(parser: argparse.ArgumentParser, *, inherit: bool) -> None:
@@ -72,3 +81,9 @@ def run(args: argparse.Namespace) -> str:
 
 def run_init(args: argparse.Namespace) -> str:
     return create(Path(str(args.root)).expanduser().resolve(), str(args.project))
+
+
+def run_link(args: argparse.Namespace) -> str:
+    """Show, set or remove the GitHub repository that stands for this project's access list."""
+    return link(Path(str(args.root)).expanduser().resolve(), str(args.project),
+                slug=str(args.github), remove=bool(args.remove))

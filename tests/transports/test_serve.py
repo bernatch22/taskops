@@ -96,11 +96,19 @@ def test_nothing_at_all_without_a_token(server: Any) -> None:
 
 @pytest.mark.parametrize("path", ["/../etc/passwd", "/..%2F..%2Fetc/api/board",
                                   "/alpha%2F..%2Fbeta/api/board", "/Alpha/api/board",
-                                  "/al pha/api/board", "/api/board", "/"])
+                                  "/al pha/api/board", "/api/board"])
 def test_a_name_that_is_not_a_name_never_reaches_the_filesystem(server: Any, path: str) -> None:
     """The pattern is checked BEFORE a path is built, so traversal is refused as syntax rather
     than caught afterwards by a resolve that somebody could later reorder."""
     assert server(get(path)).status == 404
+
+
+def test_the_front_page_is_public_and_still_names_no_board(server: Any) -> None:
+    """`/` used to be a 404 like any other non-name. It is now the login page — and it is the
+    same answer for everyone, so it may not leak the one thing the 404 below protects."""
+    reply = server(get("/"))
+    assert reply.status == 200
+    assert b"alpha" not in reply.body and b"beta" not in reply.body
 
 
 def test_a_missing_project_is_a_bare_404_that_names_nothing(server: Any) -> None:

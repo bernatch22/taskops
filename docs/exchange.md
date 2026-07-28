@@ -140,3 +140,62 @@ The pathological case — two independent narrations of the same day, on two mac
 synced — has no correct automatic answer, and it lands in rule 4 every time. That is the point:
 the 409 is the honest result, and `force` is the valve for the human who knows which one
 mattered.
+
+---
+
+# Logging in with GitHub — the auth API
+
+Two endpoints at the ROOT of a `taskops serve` server (not under `/<project>/`, because a
+login spans projects), plus the exchange every project route already understands. Frozen:
+the CLI codes against these shapes from `usecases/login.py`.
+
+```
+POST /api/auth/github   {"github_token": "gho_…"}
+  → 200 {"login": "jpolivera", "session": "<32 hex>", "projects": ["axion"]}
+  → 403 {"error": "the GitHub account … has no push access to any repository linked …",
+         "code": "no_access"}
+  → 400 {"error": "a GitHub token is required — …", "code": "bad_request"}
+  → 502 {"error": "github answered 500: …" | "could not reach https://api.github.com: …",
+         "code": "unreachable"}
+
+GET  /api/projects      Authorization: Bearer <session>
+  → 200 {"login": "jpolivera", "projects": [{"name": "axion", "path": "/axion/"}]}
+  → 401 {"error": "that session is unknown or has expired — …", "code": "unauthorized"}
+
+GET  /                  the login page: how to get in, and — with a session in localStorage —
+                        the boards that session opens, as links. It lists NOTHING otherwise.
+```
+
+**The server holds no GitHub credential, and that is the design.** The client sends the token
+its own `gh auth token` prints; the server asks GitHub `GET /repos/{owner}/{repo}` **with that
+token** and believes the answer — 200 plus `permissions.push` true means the account may write
+to the repository, which is exactly the group that should be able to open its board. So there
+is no GitHub App, no OAuth secret and no webhook, and nothing on the server's disk could be
+stolen and used against GitHub. Implementation: `usecases/accounts.py` (the only file that
+talks to api.github.com), `usecases/_sessions.py`, `usecases/_ghlink.py`, served by
+`transports/http/root.py` through the root dispatcher in `transports/http/projects.py`.
+
+* **The GitHub token is used for those calls and DISCARDED.** Never written, never logged,
+  never returned. `tests/transports/test_accounts.py` asserts it appears in no file under the
+  server root after a login, because "we do not store it" is a claim that decays silently.
+* **GitHub is the collaborator list and is never copied.** A project is linked with
+  `taskops serve link <project> --github owner/repo` (`--remove` unlinks, no flag shows), which
+  writes `owner/repo` into `<root>/<project>/github`. There is no list of logins, no team and
+  no role — every one of those would be a second copy of something GitHub already knows, and
+  the copy is the one nobody updates the day access is revoked.
+* **A project with no link is unchanged: token only.** No login can grant it.
+* **`permissions.push`, not read.** Reading a repository is not being on the team that runs it.
+  A repository the account cannot see answers 404 — GitHub declining to confirm it exists — and
+  is treated as "not yours", so a board never becomes an existence oracle. A **403** is not: it
+  is a rate limit or a suspended token far more often than a permission, so it is raised with
+  GitHub's own sentence rather than swallowed into a confusing "you have access to nothing".
+* **The session is the only thing a login leaves behind.** `secrets.token_hex(16)` in
+  `<root>/.sessions.json`, `0600`, holding `{login, projects, created}` and expiring after
+  **7 days** — checked on read, pruned on write, so expiry is true on a server nobody has
+  touched. The leading dot is load-bearing: a project name is `[a-z0-9-]`, so that file can
+  never be shadowed by, or mistaken for, a project.
+* **A session opens the projects it lists, and nothing else.** The mount exchanges it for the
+  project's own token before any route runs, so `router`, every endpoint and the SSE feed see
+  the ordinary bearer token they always saw. **The project token still works on its own** — it
+  is the machine credential, and push, pull and agents keep using it. The project token is
+  never echoed back to the browser: the redirect for `/axion` is built from the ORIGINAL query.
