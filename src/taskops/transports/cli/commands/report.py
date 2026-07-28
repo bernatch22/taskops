@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from ...._errors import BadRequest
 from ....render import render_board, render_day, render_fleet, render_standup
@@ -42,7 +43,7 @@ def run(args: argparse.Namespace) -> str:
     return render_board(board(where))
 
 
-def _day(args: argparse.Namespace, where: str) -> str:
+def _day(args: argparse.Namespace, where: Path) -> str:
     """Printed, or written and its PATH printed.
 
     The path rather than the dossier: what the caller does next is read or commit that file,
