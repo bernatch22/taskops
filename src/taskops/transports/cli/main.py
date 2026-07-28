@@ -29,6 +29,7 @@ from .commands import (
     plan,
     recover,
     report,
+    run_,
     session,
     sync,
     tasks,
@@ -38,8 +39,12 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_VISIBLE = (init, ui, tasks, report, recover, sync)
-"""What `taskops --help` lists: what a PERSON does. Six, from nineteen."""
+_VISIBLE = (init, ui, tasks, run_, report, recover, sync)
+"""What `taskops --help` lists: what a PERSON does. Seven, from nineteen.
+
+`run` is listed even though it is experimental and costs money, because the alternative was
+worse: it lived as `dispatch --spawn`, a flag on a hidden command, so the one thing here
+that spends money was the hardest thing to find and the easiest to hit by accident."""
 
 _HIDDEN = (next_, update, ask, plan, dispatch, log, guard, hook, ingest, session)
 """Registered, parsed and run exactly as before — just not listed.

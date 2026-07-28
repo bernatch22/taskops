@@ -10,6 +10,15 @@
   is `init`, `ui`, `tasks`, `report`, `recover`, `sync`; everything else is registered, parses and
   runs exactly as before, just unlisted — it is written into hooks and scripts that already exist,
   and the help page was what was failing, not the commands.
+- **`taskops run [ids… | --count N]` — the spawn path under a name that says what it does.**
+  It existed as `dispatch --spawn`, a flag on a hidden command, so the one thing in taskops that
+  spends money was the hardest to find and the easiest to hit by accident. `run` is listed in
+  `--help` as *experimental, billed*, prints `⚠ each worker is a NEW billed Claude session — for
+  free parallelism dispatch sub-agents from a session (taskops_dispatch)` to stderr, and asks
+  before starting anything; `--yes` is for unattended callers, `--dry-run` previews for free and
+  never prompts, and no stdin (a hook, CI) counts as no. `dispatch` stays hidden and unchanged
+  with its `--spawn` help now marked deprecated, and the flags are declared once so the two
+  cannot drift. The MCP surface is untouched: a model still cannot make this package spawn.
 - **`taskops tasks list | show | add | plan | done | release | log | search`**, each a wrapper over
   the verb it replaces rather than a reimplementation — `tasks done` IS `update --status done`, so
   the commit guard cannot be skipped through the new door. `tasks add` creates one card from flags
