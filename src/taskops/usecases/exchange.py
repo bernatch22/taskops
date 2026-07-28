@@ -22,7 +22,7 @@ from typing import Any
 from .._errors import BadRequest
 from .._types import LOCAL_ONLY_KINDS
 from ..contracts import Event
-from ..engine import relay
+from ..engine import relay, replay, unblock
 from ..storage import event_from
 from ._project import project
 
@@ -44,14 +44,22 @@ def accept_events(start: Path | str, raw: list[Any]) -> dict[str, int]:
 
     The whole batch is coerced BEFORE anything is written, so a malformed event at index 40
     cannot leave 39 relayed and the caller unsure how far it got.
+
+    Accepted events are MATERIALISED — `replay` then `unblock` — before this returns. Without
+    that, a push landed its events and the server's board stayed empty: the exact bug the git
+    path hit once and `replay.py` tells the story of. The smoke that caught it here asked the
+    server's board for the pushed card and got eight empty columns.
     """
     if len(raw) > MAX_BATCH:
         raise BadRequest(f"{len(raw)} events in one push — send at most {MAX_BATCH} per "
                          f"request and repeat until the cursor stops moving")
     events = [_coerce(item, index) for index, item in enumerate(raw)]
     with project(start) as store:
-        accepted = sum(1 for event in events if event is not None and relay(store, event))
-        return {"accepted": accepted, "max_seq": store.events.max_seq()}
+        fresh = [e for e in events if e is not None and relay(store, e)]
+        if fresh:
+            replay.apply(store, fresh)
+            unblock(store)
+        return {"accepted": len(fresh), "max_seq": store.events.max_seq()}
 
 
 def pull_events(start: Path | str, *, after: int = 0, limit: int = MAX_PAGE) -> dict[str, Any]:

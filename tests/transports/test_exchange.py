@@ -266,3 +266,20 @@ def test_a_get_on_the_put_only_shape_still_lists_its_methods(route: Any) -> None
     reply = route(send("DELETE", "/api/report/file", {}))
     assert reply.status == 405
     assert "PUT" in body_of(reply)["error"]
+
+
+def test_a_pushed_card_appears_on_the_servers_board(tmp_path: Path) -> None:
+    """Accepting events without materialising them is the bug the git path hit once: the log
+    grows and the board stays empty. The server-side smoke caught the same hole here — the
+    pushed card was in the events table and in none of the eight columns."""
+    from taskops.engine import build
+    from taskops.usecases import board, init
+    from taskops.usecases.exchange import accept_events
+
+    init(tmp_path, install_git_hooks=False)
+    created = build(task="tk-9press", actor="dev:x", kind="created",
+                    body={"title": "Pushed from afar", "spec": ""})
+    result = accept_events(tmp_path, [dict(created)])
+    assert result["accepted"] == 1
+    titles = [c["task"]["title"] for col in board(tmp_path)["columns"] for c in col["cards"]]
+    assert "Pushed from afar" in titles, "the event landed but the board never learned"
