@@ -42,6 +42,7 @@ from .gitstate import BranchState
 from .index import ReportEntry
 from .lease import Lease
 from .log import EntryKind, LogEntry, SessionLog
+from .remote import Remote
 from .results import Claim, EditResult, NextResult, PlanResult, UpdateResult
 from .task import Task, TaskView
 from .tools import AskParams, NextParams, PlanParams, ReportParams, UpdateParams
@@ -62,6 +63,7 @@ __all__ = [
     "LogEntry",
     "SessionLog",
     "EntryKind",
+    "Remote",
     # what the use cases return
     "PlanResult",
     "Claim",

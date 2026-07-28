@@ -53,7 +53,17 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     hook and by nothing else, so a person scanning this page for their task list should
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
-    assert listed == {"init", "ui", "serve", "tasks", "run", "report", "recover", "sync"}
+    assert listed == {"init", "ui", "serve", "tasks", "run", "report", "recover", "sync",
+                      "remote", "push", "pull"}
+
+
+def test_the_remote_verbs_are_the_developers_and_are_listed() -> None:
+    """`remote`, `push` and `pull` decide when THIS MACHINE talks to a server, which is a
+    person's call and not an agent's — so they are on the CLI, in the help, and deliberately
+    absent from the MCP tool surface. They sit beside `sync` rather than replacing it: a team
+    with no server still converges through git, and that path is not deprecated."""
+    for verb in ("remote", "push", "pull"):
+        assert "repo" in flags_of(verb), f"{verb} cannot be pointed at a project"
 
 
 @pytest.mark.parametrize("gone", ["guard", "hook", "ingest", "brief", "inbox", "track",

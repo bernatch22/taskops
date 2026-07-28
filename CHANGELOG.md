@@ -88,6 +88,45 @@
     `serve`; sacarlo en un lugar y no en once call sites es lo que impide reintroducirlo. El
     websocket se arma con el mismo `url()` en vez de a mano con `location.host`, que era
     justamente la única llamada que se habría comido el prefijo y se habría llevado el feed.
+- **`taskops remote` + `push`/`pull`: dos boards convergen en segundos, no en un `git pull`.**
+  La mitad CLIENTE del sync remoto. `taskops remote add <url> --token <t>` registra EL servidor
+  del proyecto, `taskops push` manda lo local y se trae lo ajeno, `taskops pull` solo trae. El
+  camino por git (Part 4b de USAGE) sigue vivo y **no queda deprecado**: es la respuesta correcta
+  para un equipo que no quiere operar nada.
+  - **Cero dependencias nuevas.** Todo con `urllib.request` (`usecases/_wireclient.py`), timeout
+    explícito de 30 s y **sin reintentos**. Un retry sería *seguro* — cada write de acá es
+    idempotente — y por eso mismo es mala idea: escondería una red que falla detrás de un comando
+    que siempre parece andar. `pyproject` sigue con `dependencies = []`, que es un feature.
+  - **El token NUNCA llega a git.** `.taskops/remote.json` se crea con `os.open(..., 0o600)` en
+    UN syscall (el `write_text` + `chmod` publica el token a toda la máquina por el ancho de una
+    llamada) y `taskops init` agregó `.taskops/remote.json` a su bloque de gitignore. Ojo, esto
+    no era gratis: ese bloque lista PATHS, no un wildcard, así que un archivo nuevo bajo
+    `.taskops/` nace **trackeado**. Un proyecto inicializado por un taskops viejo gana la línea
+    al re-correr `init` (`_UPGRADES`), o actualizar en el lugar quedaba a un `git add .` de un
+    leak. `tests/e2e/test_remote.py` lo pinea con un `git check-ignore` de verdad.
+  - **Los reportes NO se pisan, y el mensaje lo dice.** El dossier se regenera; la NARRACIÓN se
+    escribió una vez, la pagó un modelo o la escribió una persona, y nada la reconstruye. Gana el
+    `stamped_seq` mayor; un 409 del server sale a pantalla nombrando **los dos seqs** y las dos
+    salidas (`taskops pull` o `push --force`), nunca como "HTTP 409". Dos narraciones
+    independientes del mismo dossier caen siempre ahí, que es la respuesta honesta.
+  - **`pull` REPLAYEA**, y el test pregunta por el BOARD, no por la fila. Traer eventos sin
+    materializarlos ya dejó un board vacío una vez (está contado en el docstring de `replay.py`),
+    y la fila estuvo en la base todo el tiempo — así que `test_a_pull_puts_the_card_on_the_board`
+    mira lo único que una persona mira.
+  - **Se marca exportado SOLO después del 200.** Un push cortado a la mitad re-manda y el server
+    acepta cada evento una sola vez (ids content-hash). Al revés, un evento que nunca salió de la
+    máquina se vuelve un evento que nadie va a mandar nunca. Hay test con un puerto muerto.
+  - **El cursor es del SERVER y se guarda con humildad**: cada sqlite numera lo suyo, así que
+    nunca se compara contra un seq local. Si el server olvida el suyo, el GET contesta desde 0 y
+    re-importar todo es un no-op, no una reparación.
+  - **Offline no es un estado de error**: una línea que nombra la causa y dice que el board local
+    sigue siendo tuyo, exit 1, y nada marcado a medias.
+  - **El bloque de gitignore se mudó a `usecases/_gitignore.py`**, propio, porque dejó de ser un
+    detalle de `init` en el momento en que empezó a custodiar un secreto.
+  - **Hueco conocido del contrato**, comentado en la card del server: `GET /api/report/file`
+    contesta por UN label, así que el cliente no puede DESCUBRIR un reporte que existe solo en el
+    server. `Wire.list_reports` ya pide una lista y **degrada** a los labels locales si el server
+    no la sirve, así que el día que la ruta exista el cliente la aprovecha sin cambios.
 
 - **Tres puertas, una por audiencia — y ahora la separación es real.** El proyecto declaraba
   "el CLI es del dev, el MCP es del agente" y era cosmético: `taskops --help` listaba 7

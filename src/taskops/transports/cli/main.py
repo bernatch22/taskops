@@ -17,16 +17,21 @@ from typing import Sequence
 
 from ..._errors import TaskopsError
 from ..._version import __version__
-from .commands import init, recover, report, run_, serve, sync, tasks, ui
+from .commands import init, pushpull, recover, remote, report, run_, serve, sync, tasks, ui
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, ui, serve, tasks, run_, report, recover, sync)
-"""Every command there is. Eight, and `--help` lists all eight.
+_COMMANDS = (init, ui, serve, tasks, run_, report, recover, sync, remote, pushpull)
+"""Every command there is. Eleven, and `--help` lists all eleven.
 
 `serve` sits next to `ui` because it is the same transport with a different audience: `ui`
 serves the repository you are standing in, `serve` serves a directory of them over the network,
 each behind its own token.
+
+`remote`, `push` and `pull` are the developer's, which is why they are here and NOT on the
+MCP surface: an agent works a board, it does not decide when this machine talks to a server.
+They sit beside `sync` rather than replacing it — a team with no server converges through git
+exactly as before, and that path is not deprecated by this one.
 
 There used to be thirteen more, registered and hidden — the agent protocol (`next`, `update`,
 `ask`, `plan`, `dispatch`, `log`) and the wiring (`guard`, `hook`, `ingest`, `brief`, `inbox`,

@@ -15,47 +15,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..storage import GUIDE_FILE, LOG_FILE, PROJECT_DIR, Store, find_root
+from ._gitignore import ignore
 from .hooks import install_hooks
 
 __all__ = ["init", "InitReport"]
 
 _GUIDE_SOURCE = Path(__file__).resolve().parents[1] / "assets" / "GUIDE.md"
-
-_MARKER = "# taskops"
-
-_REPORTS_NOTE = f"# {PROJECT_DIR}/reports/ is COMMITTED — a written dossier is not derived state"
-"""A COMMENT, not a rule, and that is the point.
-
-`reports/` is tracked, so the correct entry here is no entry at all — but "no entry" is
-indistinguishable from an oversight, and the next person tidying this block would add
-`{PROJECT_DIR}/*` and untrack every report in the project. The line says why the hole exists.
-It also doubles as the marker `_ignore` looks for when upgrading a project written by an older
-taskops, which had this block without the note.
-"""
-
-_GITIGNORE = f"""
-{_MARKER} — commit events.jsonl and NOTHING else under {PROJECT_DIR}/
-{PROJECT_DIR}/db.sqlite
-{PROJECT_DIR}/db.sqlite-wal
-{PROJECT_DIR}/db.sqlite-shm
-{PROJECT_DIR}/GUIDE.md
-{PROJECT_DIR}/workers/
-{PROJECT_DIR}/trees/
-{_REPORTS_NOTE}
-"""
-"""Why GUIDE.md is ignored rather than committed, which looks wrong at first.
-
-It is GENERATED: it ships inside the package and `_guide` rewrites it on every init, so it always
-describes the version of taskops that is actually installed. Tracking a file that a command
-overwrites would leave `git status` dirty after every init, and two developers on different taskops
-versions would fight over its contents forever.
-
-It also removes a real merge conflict. Following the usage guide end to end, two clones that each
-ran `taskops init` could not `git pull` from one another — git refused, because the incoming commit
-carried files both sides had independently created untracked. Anything generated belongs on this
-side of the line.
-"""
-
 
 class InitReport:
     """What init actually did, so the CLI can report it instead of claiming success."""
@@ -86,7 +51,7 @@ def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
     created = existing is None
     root = existing or root
     (root / PROJECT_DIR).mkdir(parents=True, exist_ok=True)
-    _ignore(root)
+    ignore(root)
     _guide(root)
     (root / LOG_FILE).touch(exist_ok=True)
     adopted = _adopt(root)
@@ -125,31 +90,3 @@ def _guide(root: Path) -> None:
     if _GUIDE_SOURCE.is_file():
         destination.write_text(_GUIDE_SOURCE.read_text(encoding="utf-8"),
                                encoding="utf-8")
-
-
-def _ignore(root: Path) -> None:
-    """Add the cache to `.gitignore`, once.
-
-    Matched on the marker rather than on the paths: a developer may reformat those
-    lines, and appending a duplicate block on every init is how a `.gitignore` becomes
-    forty lines of the same thing.
-    """
-    path = root / ".gitignore"
-    current = path.read_text(encoding="utf-8") if path.is_file() else ""
-    if _MARKER in current:
-        _note(path, current)
-        return
-    separator = "" if current.endswith("\n") or not current else "\n"
-    path.write_text(current + separator + _GITIGNORE, encoding="utf-8")
-
-
-def _note(path: Path, current: str) -> None:
-    """Append the reports comment to a block written before reports existed. Idempotent.
-
-    Upgrading in place rather than rewriting the block: the developer may have edited those
-    lines, and a tool that replaces a file it does not own loses whatever they added.
-    """
-    if _REPORTS_NOTE in current:
-        return
-    separator = "" if current.endswith("\n") else "\n"
-    path.write_text(current + separator + _REPORTS_NOTE + "\n", encoding="utf-8")

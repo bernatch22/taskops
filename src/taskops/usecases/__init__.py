@@ -26,7 +26,9 @@ from .index import report_index
 from .ingest import ingest_branch, ingest_commit
 from .log import session_log
 from .plan import plan
+from .pushpull import Exchange, pull, push
 from .recover import Recovered, recover
+from .remote import add_remote, read_remote, remove_remote, require_remote
 from .report import activity, board, day, fleet, period, standup
 from .reportfile import read_report_file, write_report_file
 from .session import Brief, brief, checkout, inbox, track
@@ -47,6 +49,8 @@ __all__ = [
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",
     "brief", "Brief", "inbox", "checkout", "track", "sync", "rebuild", "follow", "locate", "session_log",
+    # the remote: one server, and the two verbs that converge with it
+    "add_remote", "read_remote", "require_remote", "remove_remote", "push", "pull", "Exchange",
     # the live narration: started in the background, watched on the wire
     "narration", "is_wire", "parse_date",
 ]
