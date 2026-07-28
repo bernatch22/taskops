@@ -89,7 +89,8 @@ union of two logs *is* the correct log.
 with real hooks, multi-developer sync, and the plugin. 383 tests, `ruff` + `mypy` + `pyright`
 strict, and 13 executable architecture invariants.
 
-**Not built yet:** the Studio — the live web board. Its design is in `PLAN.md` §8, and the
+**Not built yet:** the burndown chart. The live web board (`taskops ui`) ships; the rest of
+`PLAN.md` §8 does not yet, and the
 pieces it needs (the event bus, the `after_seq` cursor, the projections) exist and are tested.
 `taskops_report burndown` answers "not implemented yet" on purpose rather than returning an
 empty chart.

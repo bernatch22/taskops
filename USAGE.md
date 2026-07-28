@@ -259,11 +259,11 @@ taskops ask "refresh"       # search titles and specs
 ## Part 2 — The live board
 
 ```sh
-taskops studio
+taskops ui
 ```
 
 ```
-taskops studio → http://127.0.0.1:2140/  (/Users/you/your-repo)
+taskops ui → http://127.0.0.1:2140/  (/Users/you/your-repo)
 ```
 
 Open it. The board updates **by itself** as agents work — no refresh button, and no polling from
@@ -283,12 +283,14 @@ What you can do there:
 Useful flags:
 
 ```sh
-taskops studio --port 3000
-taskops studio --readonly              # for a screen in a room: refuses every write
-taskops studio --host 0.0.0.0 --token "$(openssl rand -hex 16)"
+taskops ui --port 3000
+taskops ui --readonly              # for a screen in a room: refuses every write
+taskops ui --host 0.0.0.0 --token "$(openssl rand -hex 16)"
 ```
 
-With `--token`, open the URL the studio prints — it carries the token, and the page remembers it.
+With `--token`, open the URL it prints — the link carries the token, and the page remembers it.
+
+> `taskops studio` was the old name and still runs, printing one deprecation line first.
 
 > **Why SSE and not WebSocket:** the channel only ever pushes, the engine is deliberately
 > synchronous, SSE needs no dependency, and it goes through nginx with no upgrade handling.
@@ -400,10 +402,10 @@ rm .taskops/db.sqlite && taskops sync      # rebuilt from the log
 
 ## Part 5 — Putting the board on a screen
 
-The studio binds to loopback by default. To share it:
+The UI binds to loopback by default. To share it:
 
 ```sh
-taskops studio --host 0.0.0.0 --port 2140 --readonly --rate-limit 120
+taskops ui --host 0.0.0.0 --port 2140 --readonly --rate-limit 120
 ```
 
 Behind nginx:
@@ -438,7 +440,7 @@ taskops update <task> [--status …] [--comment …] [--mentions …] [--blocked
 taskops ask <task-id | text>               read one task, or search
 taskops plan <file.json | ->               create tasks from JSON
 taskops report [board|standup|fleet] [--since 24h]
-taskops studio [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
+taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
 taskops sync                               reconcile with the committed log
 taskops inbox                              messages waiting for you
 ```
@@ -467,7 +469,7 @@ the task the easier move, and an abandoned task loses everything you learned.
 |---|---|
 | `TASKOPS_ACTOR` | Who you are: `agent:<dev>/<name>` or `dev:<name>`. Otherwise resolved from git. |
 | `TASKOPS_SESSION` | The Claude Code session id. The plugin sets it. |
-| `TASKOPS_API_TOKEN` | Default `--token` for the studio. |
+| `TASKOPS_API_TOKEN` | Default `--token` for `taskops ui`. |
 
 ### When something looks wrong
 
@@ -477,13 +479,13 @@ the task the easier move, and an abandoned task loses everything you learned.
 | A commit was denied | Read the message — it names the branch to switch to or the task to claim. Do not use `--no-verify`: `post-commit` records the commit anyway and you get one nobody agreed on. |
 | `taskops_next` says nothing is ready | Read the reason. "Everything blocked" is worth telling a human; "everything claimed" means ask again shortly. |
 | Hooks are not firing | `.git/hooks` is not tracked, so a fresh clone has none. `taskops init` again. |
-| The board says `studio not built` | You are on a checkout with no bundle: `cd studio && npm install && npm run build`. |
+| The board says `ui not built` | You are on a checkout with no bundle: `cd ui && npm install && npm run build`. |
 | A card is stuck in `claimed` | The agent died. Wait for the lease (≤15 min), or `taskops update <id> --status released --comment "…"`. |
 
 ### Changing the UI
 
 ```sh
-cd studio
+cd ui
 npm install
 npm run build        # typechecks, then writes the bundle into the Python package
 npm run check        # build + fail if the committed bundle drifted from its source

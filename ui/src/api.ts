@@ -5,7 +5,7 @@
 
 import type { Activity, Board, Config, Event, Task, TaskView } from "./contracts";
 
-/* The token arrives in the URL (the studio prints a link that carries it) and is kept in
+/* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
  * localStorage so a reload does not lose it. Read once at module load: it cannot change without
  * a navigation, and re-reading storage per request would be a syscall on every poll. */
 const TOKEN = (() => {

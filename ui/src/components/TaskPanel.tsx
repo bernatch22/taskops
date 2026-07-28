@@ -83,7 +83,7 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
 
         <Thread thread={view.thread} />
         {readonly
-          ? <p className="dim">Read-only studio — start it without <code>--readonly</code> to reply.</p>
+          ? <p className="dim">Read-only — start it without <code>--readonly</code> to reply.</p>
           : <Compose task={task} onDone={onDone} />}
       </div>
     </div>

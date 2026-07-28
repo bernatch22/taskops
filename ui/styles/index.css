@@ -1,4 +1,4 @@
-/* The studio's design.
+/* The UI's design.
  *
  * One file, sectioned. Not CSS-in-JS and not a framework: the whole surface is ~15 components, the
  * stylesheet is bundled and minified into one request, and a designer (or a person at 2am) can read
@@ -41,7 +41,7 @@
   --pad: 14px;
 }
 
-/* Light mode is a real second theme, not an inversion. Kept short on purpose: the studio is used
+/* Light mode is a real second theme, not an inversion. Kept short on purpose: the board is used
  * dark next to a terminal, and this exists so a bright room is bearable rather than to be a
  * separately designed product. */
 @media (prefers-color-scheme: light) {

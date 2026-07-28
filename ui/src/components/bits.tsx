@@ -4,7 +4,7 @@
 import type { Status } from "../contracts";
 
 /* One glyph per status, matching `render/_text.py`'s STATUS_MARK exactly.
- * Matching matters: a person reading `taskops report board` in a terminal and the studio in a
+ * Matching matters: a person reading `taskops report board` in a terminal and `taskops ui` in a
  * browser must not have to learn two vocabularies for the same eight states. */
 export const MARK: Record<Status, string> = {
   backlog: "·", ready: "○", claimed: "◐", in_progress: "●",

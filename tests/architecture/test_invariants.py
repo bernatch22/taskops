@@ -84,7 +84,7 @@ def test_contracts_import_only_layer_zero() -> None:
 
     Six readers consume these — storage, engine, render, and the three
     transports — so a contract that imported storage would make the wire format
-    depend on the database, and the studio's mirror of these types could not be
+    depend on the database, and the UI's mirror of these types could not be
     generated from them.
     """
     allowed = set(LAYER_ZERO)
@@ -149,7 +149,7 @@ def test_render_is_pure_text() -> None:
     """`render/` turns a contract into a string, so it can never fail on I/O.
 
     That is what lets the same renderer serve the CLI, the MCP reply and the
-    studio's markdown export, and it is why a rendering bug can be reproduced
+    UI's markdown export, and it is why a rendering bug can be reproduced
     from a literal dict with no database in sight.
     """
     for module in modules_under("render"):

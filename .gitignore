@@ -7,7 +7,7 @@ dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-studio/node_modules/
+ui/node_modules/
 
 .megabrain/
 

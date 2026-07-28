@@ -50,7 +50,7 @@ tailwind.config = {
     <a href="#flow-chat">mensajería</a>
     <a href="#flow-commit">git-binding</a>
     <a href="#flow-sync">sincronización</a>
-    <a href="#ui">el studio</a>
+    <a href="#ui">la UI</a>
     <a href="#remoto">dos devs remotos</a>
     <a href="#mcp">las 5 tools</a>
   </nav>
@@ -72,7 +72,7 @@ tailwind.config = {
   │  .taskops/events.jsonl ────┼──── LA VERDAD, en git ───┼─▶ .taskops/events.jsonl    │
   │    ▲                       │                          │    ▲                       │
   │    │ SSE                   │                          │    │ SSE                   │
-  │  taskops studio :2140      │                          │  taskops studio :2140      │
+  │  taskops ui :2140          │                          │  taskops ui :2140          │
   │  (board en vivo, React)    │                          │  (board en vivo, React)    │
   └────────────────────────────┘                          └────────────────────────────┘
 
@@ -204,7 +204,7 @@ tailwind.config = {
                                        │         `taskops inbox`     │ tool call
                                        │               │             │
                                        ▼               ▼             │
-                                 studio lo ve     📬 1 message(s):   │
+                                 la UI lo ve      📬 1 message(s):   │
                                  EN VIVO (SSE)    agent:ana/api-1 on │
                                                   tk-8b31d0: "Estoy  ├──▶ lo LEE inyectado
                                                   reescribiendo..."  │    en su contexto
@@ -219,7 +219,7 @@ tailwind.config = {
      taskops_next  → el inbox viaja con el claim
      Stop          → checkout: tu resumen queda en el hilo (standup gratis)</pre>
   <p class="text-dim leading-relaxed">
-    Los humanos usan exactamente el mismo canal: el compose del studio postea un comment con
+    Los humanos usan exactamente el mismo canal: el compose de la UI postea un comment con
     mentions, y le llega al agente igual que un mensaje de otro agente. No hay un mecanismo
     aparte para personas.
   </p>
@@ -271,7 +271,7 @@ tailwind.config = {
   <div class="grid gap-px bg-ink text-paper font-mono text-xs">
     <div class="p-5 space-y-1">
       <p class="text-lime">1 · MISMA MÁQUINA — sqlite, instantáneo</p>
-      <p class="text-faint">N agentes y el studio comparten .taskops/db.sqlite (WAL: los lectores nunca esperan a un escritor). El claim es un INSERT sobre una primary key — 50 threads compitiendo, exactamente 1 ganador, medido.</p>
+      <p class="text-faint">N agentes y la UI comparten .taskops/db.sqlite (WAL: los lectores nunca esperan a un escritor). El claim es un INSERT sobre una primary key — 50 threads compitiendo, exactamente 1 ganador, medido.</p>
     </div>
     <div class="p-5 space-y-1">
       <p class="text-lime">2 · ENTRE MÁQUINAS — git, sin servidor</p>
@@ -279,7 +279,7 @@ tailwind.config = {
     </div>
     <div class="p-5 space-y-1">
       <p class="text-lime">3 · AL BROWSER — SSE, en vivo</p>
-      <p class="text-faint">El studio sigue un cursor sobre la tabla de eventos (cada 0.5s) + el bus in-process para los writes propios. Un write desde CUALQUIER proceso llega al browser — probado con un intérprete separado escribiendo y el frame leído de un socket real.</p>
+      <p class="text-faint">La UI sigue un cursor sobre la tabla de eventos (cada 0.5s) + el bus in-process para los writes propios. Un write desde CUALQUIER proceso llega al browser — probado con un intérprete separado escribiendo y el frame leído de un socket real.</p>
     </div>
   </div>
   <pre class="diagram font-mono text-xs bg-ink text-paper p-6 overflow-x-auto">
@@ -299,11 +299,11 @@ tailwind.config = {
 
 <!-- ═══════════════════ EL UI ═══════════════════ -->
 <section id="ui" class="space-y-4">
-  <h2 class="text-2xl">El studio — sí, está conectado y en vivo</h2>
+  <h2 class="text-2xl">La UI — sí, está conectada y en vivo</h2>
   <p class="text-dim leading-relaxed">
     React 18, bundleado con esbuild <span class="font-mono text-sm">adentro</span> del paquete
     Python (153 KB, sin CDN): <span class="font-mono text-sm">pip install taskops</span> sirve el
-    board sin node en ningún lado. <span class="font-mono text-sm">taskops studio</span> y listo.
+    board sin node en ningún lado. <span class="font-mono text-sm">taskops ui</span> y listo.
   </p>
   <pre class="diagram font-mono text-xs bg-raised p-6 overflow-x-auto">
   ┌──────────────────────────────────────────────────────────────────────┐
@@ -391,14 +391,14 @@ taskops sync && git add .taskops \
                                              los claims de ana: viajaron
                                              con los eventos)
         ... los agentes se mencionan por task, cada push/pull
-            entrega los mensajes; el studio de cada una muestra
+            entrega los mensajes; la UI de cada una muestra
             TODO el equipo en vivo desde su copia local ...
-taskops studio                           taskops studio
+taskops ui                               taskops ui
 open http://127.0.0.1:2140               open http://127.0.0.1:2140</pre>
     <p class="text-dim text-sm">
       La frecuencia de convergencia entre máquinas es la frecuencia de push/pull — no hay
       servidor que esperar ni que mantener. Para el board de un equipo en una pantalla:
-      <span class="font-mono">taskops studio --host 0.0.0.0 --readonly --token $(openssl rand -hex 16)</span>
+      <span class="font-mono">taskops ui --host 0.0.0.0 --readonly --token $(openssl rand -hex 16)</span>
       detrás de nginx con <span class="font-mono">proxy_buffering off</span>.
     </p>
   </div>
@@ -431,7 +431,7 @@ open http://127.0.0.1:2140               open http://127.0.0.1:2140</pre>
 <section class="space-y-4">
   <h2 class="text-2xl">¿Está todo funcional? Estado honesto</h2>
   <div class="grid gap-px bg-ink text-paper font-mono text-xs">
-    <div class="p-4"><span class="text-lime">✓ FUNCIONA, verificado hoy contra repos reales</span><br><span class="text-faint">engine + storage + máquina de estados · las 5 tools MCP · CLI de 12 comandos · guard de commits (deny + reescritura del trailer) · hooks de git y de Claude Code · sync multi-dev con materialización · adopción en clone fresco · studio React servido y EN VIVO por SSE (write de otro proceso → frame en el browser, probado en socket real) · mensajería agente↔agente con entrega exactly-once · 440 tests, ruff+mypy+pyright strict, 13 invariantes de arquitectura ejecutables</span></div>
+    <div class="p-4"><span class="text-lime">✓ FUNCIONA, verificado hoy contra repos reales</span><br><span class="text-faint">engine + storage + máquina de estados · las 5 tools MCP · CLI de 12 comandos · guard de commits (deny + reescritura del trailer) · hooks de git y de Claude Code · sync multi-dev con materialización · adopción en clone fresco · UI React servida y EN VIVO por SSE (write de otro proceso → frame en el browser, probado en socket real) · mensajería agente↔agente con entrega exactly-once · 440 tests, ruff+mypy+pyright strict, 13 invariantes de arquitectura ejecutables</span></div>
     <div class="p-4"><span class="text-amber">✕ NO EXISTE todavía</span><br><span class="text-faint">WebSocket (es SSE, decisión documentada — el canal solo empuja) · el relay para chat cross-máquina en vivo (hoy los mensajes entre máquinas viajan a velocidad de push/pull; diseño en PLAN.md §9) · burndown (responde "not implemented yet" a propósito) · taskops watch (tail de transcripts al board) · eval LLM de commits contra el spec · publicación en PyPI</span></div>
     <div class="p-4"><span class="text-azul">◆ BUGS conocidos hoy</span><br><span class="text-faint">ninguno abierto. Los 8 que existieron (BEGIN IMMEDIATE, claimed→done faltante, hooks sin venv, HEAD unborn, git log --grep, sync sin materializar, init sin adoptar, claim por id salteando deps) están arreglados y cada uno pineado por un test que cuenta la historia.</span></div>
   </div>

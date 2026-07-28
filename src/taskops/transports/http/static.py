@@ -20,13 +20,13 @@ _TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=
           ".json": "application/json", ".ico": "image/x-icon",
           ".woff2": "font/woff2", ".png": "image/png"}
 
-_MISSING = (b"<!doctype html><meta charset=utf-8><title>taskops studio</title>"
+_MISSING = (b"<!doctype html><meta charset=utf-8><title>taskops ui</title>"
             b"<body style='font:14px/1.6 ui-monospace,monospace;padding:3rem;"
             b"max-width:44rem;margin:auto;background:#0f1115;color:#e6e8ee'>"
-            b"<h1 style='color:#b8ff3a'>studio not built</h1>"
+            b"<h1 style='color:#b8ff3a'>ui not built</h1>"
             b"<p>The UI bundle is missing from this install. From a checkout:</p>"
             b"<pre style='background:#171a21;padding:1rem;border-radius:6px'>"
-            b"cd studio &amp;&amp; npm install &amp;&amp; npm run build</pre>"
+            b"cd ui &amp;&amp; npm install &amp;&amp; npm run build</pre>"
             b"<p>The JSON API is up either way &mdash; try "
             b"<a style='color:#b8ff3a' href='/api/board'>/api/board</a>.</p>")
 

@@ -30,14 +30,14 @@ from .commands import (
     recover,
     report,
     session,
-    studio,
     sync,
+    ui,
     update,
 )
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, next_, update, ask, plan, dispatch, recover, report, log, studio,
+_COMMANDS = (init, next_, update, ask, plan, dispatch, recover, report, log, ui,
              guard, hook, ingest, session, sync)
 
 

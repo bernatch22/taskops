@@ -5,7 +5,7 @@
 // committed bundle cannot drift from its source — the two failure modes of the alternatives,
 // avoided together.
 //
-// React is BUNDLED, not loaded from a CDN. The studio has to work on a laptop with no network
+// React is BUNDLED, not loaded from a CDN. The UI has to work on a laptop with no network
 // and behind a corporate proxy, and a board that cannot render without reaching the internet is
 // not a local tool.
 import { build } from "esbuild";
@@ -37,4 +37,4 @@ await build({
 });
 
 await copyFile(new URL("index.html", import.meta.url), new URL("index.html", OUT));
-console.log("studio built ->", OUT.pathname);
+console.log("ui built ->", OUT.pathname);
