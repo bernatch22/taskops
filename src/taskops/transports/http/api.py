@@ -16,12 +16,12 @@ from typing import Any, Callable, cast
 
 from ..._errors import TaskopsError
 from ..._version import __version__
-from ...usecases import activity, ask, board, fleet, search, standup, update
+from ...usecases import activity, ask, board, fleet, read_report, search, standup, update
 from ...usecases.report import HISTORY_WINDOW
 from ._wire import Reply, Request, error_reply, json_reply
 
 __all__ = ["config", "get_board", "get_fleet", "get_standup", "get_task", "get_search",
-           "get_activity", "post_comment", "post_status"]
+           "get_activity", "get_report", "post_comment", "post_status"]
 
 
 def config(root: Path, request: Request) -> Reply:
@@ -60,6 +60,16 @@ def get_activity(root: Path, request: Request) -> Reply:
     """
     since = request.param("since", HISTORY_WINDOW)
     return guarded(lambda: json_reply(activity(root, since=since)))
+
+
+def get_report(root: Path, request: Request) -> Reply:
+    """A day's written dossier, and whether the day outran it.
+
+    `?date=` is optional and defaults to today, like the CLI — the endpoint answers for a day
+    that was never written up as readily as for one that was, so a UI can show the report and
+    the "not written yet" state through one call instead of probing for a 404.
+    """
+    return guarded(lambda: json_reply(read_report(root, request.param("date"))))
 
 
 def get_search(root: Path, request: Request) -> Reply:

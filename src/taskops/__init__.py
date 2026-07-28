@@ -13,6 +13,7 @@ MCP host imports it to list tools long before it asks for any work.
 from __future__ import annotations
 
 from ._errors import (
+    AlreadyWritten,
     BadRequest,
     GuardFailed,
     IllegalTransition,
@@ -34,4 +35,5 @@ __all__ = [
     "NoLease",
     "GuardFailed",
     "BadRequest",
+    "AlreadyWritten",
 ]

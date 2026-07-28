@@ -20,6 +20,7 @@ __all__ = [
     "NoLease",
     "GuardFailed",
     "BadRequest",
+    "AlreadyWritten",
 ]
 
 
@@ -111,3 +112,15 @@ class BadRequest(TaskopsError, ValueError):
 
     code = "bad_request"
     http_status = 400
+
+
+class AlreadyWritten(TaskopsError, FileExistsError):
+    """A generated file that exists and would be OVERWRITTEN. 409, never 500.
+
+    A written report is something somebody may have already read, cited, or narrated by
+    hand; silently regenerating it would rewrite history under them. Refusing and naming
+    `--force` leaves the choice with the person who knows whether the old one mattered.
+    """
+
+    code = "already_written"
+    http_status = 409

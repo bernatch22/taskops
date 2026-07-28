@@ -251,6 +251,9 @@ taskops report board        # every column, who holds what
 taskops report standup      # what changed in 24h, and what needs a human
 taskops report day --date yesterday   # ONE calendar day in full: what closed, with the
                                       # commits and diff sizes, and what was said
+taskops report day --write            # …and file it under .taskops/reports/YYYY-MM-DD.md,
+                                      # committed, stamped with the log position it covers.
+                                      # Refuses to overwrite one; --force if you mean it.
 taskops report fleet        # which agents are alive right now, on what file
 taskops ask tk-4f2a9c       # one task in full
 taskops ask "refresh"       # search titles and specs

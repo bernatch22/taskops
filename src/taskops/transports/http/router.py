@@ -27,6 +27,7 @@ def build(root: Path, policy: Policy) -> Route:
         ("GET", "/api/task"): partial(api.get_task, root),
         ("GET", "/api/search"): partial(api.get_search, root),
         ("GET", "/api/activity"): partial(api.get_activity, root),
+        ("GET", "/api/report"): partial(api.get_report, root),
         ("POST", "/api/comment"): partial(api.post_comment, root),
         ("POST", "/api/status"): partial(api.post_status, root),
         ("GET", "/api/live"): partial(live.stream, root),

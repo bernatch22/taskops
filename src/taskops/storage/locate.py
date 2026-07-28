@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .._errors import NotInitialized
 
-__all__ = ["PROJECT_DIR", "DB_FILE", "LOG_FILE", "GUIDE_FILE", "ENV_ROOT",
+__all__ = ["PROJECT_DIR", "DB_FILE", "LOG_FILE", "GUIDE_FILE", "REPORTS_DIR", "ENV_ROOT",
            "resolve_root", "find_root"]
 
 PROJECT_DIR = ".taskops"
@@ -30,6 +30,12 @@ the same line, and appenders never produce one."""
 GUIDE_FILE = f"{PROJECT_DIR}/GUIDE.md"
 """The agent-facing manual `taskops init` writes. Read by humans too, which is the
 point: one document, so the two cannot be told different things."""
+
+
+REPORTS_DIR = f"{PROJECT_DIR}/reports"
+"""COMMITTED, unlike everything else generated here. A daily dossier is written ONCE and
+then narrated by a human or a session — so it stops being derived state the moment somebody
+adds a paragraph to it, and a regenerated copy could not carry that paragraph back."""
 
 
 ENV_ROOT = "TASKOPS_ROOT"

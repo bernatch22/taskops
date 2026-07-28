@@ -22,6 +22,22 @@
   the one somebody guesses without reading anything. The old name is kept as a hidden alias with
   every flag identical — it prints `taskops studio is now taskops ui` to stderr and then serves —
   because a rename that breaks a line in somebody's shell history buys nothing.
+- **`taskops report day --write` — the day, filed and committed.** The dossier lands in
+  `.taskops/reports/YYYY-MM-DD.md` with a fingerprint on line 1
+  (`<!-- taskops:report date=… max_seq=… generated=… -->`) and an empty `## Narración`
+  section for a human — or `/taskops:digest` — to fill in. It REFUSES to overwrite an
+  existing report unless `--force`, because by then the file may carry a narration nobody can
+  regenerate and a report somebody cited must not change under them. `max_seq` and not a
+  timestamp: staleness ("did anything land after this was written") becomes an integer
+  comparison with no clock skew in it, and `GET /api/report?date=…` answers it as `stale` plus
+  `missing_events` — counted inside the day's own window and ignoring heartbeats, or a live
+  agent would make today's report stale within a minute. `reports/` is COMMITTED, and the
+  `.gitignore` block now carries a comment saying so, so the next tidy-up does not untrack it
+  (`init` appends that comment to projects written before this existed).
+- **New skill `/taskops:digest`** — generate the day's file if it is missing, read it, and
+  write the narration from it: what needed a human first, then what moved, the decisions and
+  the risks the log actually shows. Never a fact the dossier does not carry; a gap named is
+  information, a gap filled in is a lie with a timestamp on it.
 - **`taskops report day` — the deterministic daily dossier.** One CALENDAR day, cut at local
   midnight rather than 24 hours back, so the same date asked for tomorrow is the same report.
   Per card closed that day: who closed it, how long it was held (last claim -> done, because a

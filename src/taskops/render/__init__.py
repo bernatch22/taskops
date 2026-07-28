@@ -19,6 +19,7 @@ from .dispatch import render_dispatch
 from .inbox import render_inbox
 from .log import render_log
 from .recover import render_recover
+from .report import NARRATION, PENDING, render_report
 from .reports import render_fleet, render_standup
 from .results import (
     render_next,
@@ -34,4 +35,4 @@ __all__ = ["render_view", "render_claim", "render_inbox", "render_board",
            "render_standup", "render_fleet", "render_plan", "render_next",
            "render_update", "render_search", "render_dispatch", "render_brief",
            "render_verdict", "render_recover", "render_log", "render_day",
-           "render_tasklist"]
+           "render_tasklist", "render_report", "NARRATION", "PENDING"]
