@@ -21,6 +21,7 @@ __all__ = [
     "GuardFailed",
     "BadRequest",
     "AlreadyWritten",
+    "NarrationFailed",
 ]
 
 
@@ -124,3 +125,16 @@ class AlreadyWritten(TaskopsError, FileExistsError):
 
     code = "already_written"
     http_status = 409
+
+
+class NarrationFailed(TaskopsError, RuntimeError):
+    """The `claude` CLI could not write the narration. 502: an upstream did not answer.
+
+    Its own type because the fix is never in taskops — the binary is missing, the session is
+    not logged in, or the model refused — and the message has to say which. Everything else
+    about the report still worked: the dossier is on disk either way, so this never costs the
+    facts, only the prose.
+    """
+
+    code = "narration_failed"
+    http_status = 502

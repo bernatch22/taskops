@@ -16,13 +16,13 @@ from pathlib import Path
 from .._clock import now
 from .._errors import AlreadyWritten
 from ..contracts import ReportFile
-from ..engine import day_report, missing_events, stamp, stamped_seq
-from ..render import render_day, render_report
+from ..engine import day_report, missing_events, narrate, stamp, stamped_seq
+from ..render import is_pending, narrated, render_day, render_report
 from ..storage import REPORTS_DIR, Store
 from ._project import project
 from .report import parse_date
 
-__all__ = ["write_report", "read_report", "report_path"]
+__all__ = ["write_report", "read_report", "digest", "report_path"]
 
 
 def write_report(start: Path | str, date_text: str = "", *, force: bool = False) -> Path:
@@ -57,6 +57,32 @@ def read_report(start: Path | str, date_text: str = "") -> ReportFile:
         return ReportFile(date=date, path=str(path),
                           dossier_md=written or _generate(store, date),
                           exists=bool(written), stale=behind > 0, missing_events=behind)
+
+
+def digest(start: Path | str, date_text: str = "", *, model: str = "",
+           force: bool = False) -> Path:
+    """Write the day's report if it is missing, then have Claude narrate it. Returns the path.
+
+    Two failures are kept apart on purpose. The dossier is written FIRST and committed to disk
+    before the model is called, so a narration that fails — no `claude`, not logged in, a
+    timeout — costs the prose and never the facts. Running it again then narrates the file that
+    is already there rather than starting over.
+
+    An existing narration is refused without `force` for the same reason a written report is:
+    somebody may have written it by hand, and this is the one section a machine cannot recover.
+    """
+    with project(start) as store:
+        date = parse_date(date_text)
+        path = report_path(store.root, date)
+        if not path.is_file():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(_generate(store, date), encoding="utf-8")
+        report = path.read_text(encoding="utf-8")
+        if not is_pending(report) and not force:
+            raise AlreadyWritten(f"{path} already carries a narration — read it, or pass "
+                                 f"--force to replace it (the old one is lost)")
+        path.write_text(narrated(report, narrate(report, model=model)), encoding="utf-8")
+        return path
 
 
 def report_path(root: Path, date: str) -> Path:

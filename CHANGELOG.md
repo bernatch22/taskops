@@ -2,6 +2,18 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **`taskops report day --digest` — el reporte narrado, en un comando.** El dossier ya decía qué
+  pasó; lo que faltaba era qué SIGNIFICA, y hasta ahora sólo existía como un skill que alguien
+  tenía que acordarse de invocar dentro de una sesión. Ahora es un flag: escribe el reporte del
+  día y llama al binario `claude` con el que ya estás logueado para que lo lea y escriba la
+  sección `## Narración`. Sin SDK, sin dependencia nueva y **sin API key** — reusa
+  `worker.DROPPED_ENV`, la misma constante que impide que un worker gaste la key, así que la
+  narración la paga la suscripción y no el token. El modelo ve SÓLO el dossier: ni transcripts
+  ni diffs, así que no puede filtrar una conversación a un archivo committeado ni inventar un
+  hecho que el log no tenga. Si `claude` no está instalado o no hay login, falla nombrando cuál
+  de las dos cosas es — y los hechos quedan en disco igual, porque el archivo se escribe ANTES
+  de llamar al modelo.
+
 - **A dispatched worker no longer inherits your Anthropic API key.** `taskops run` spawned
   `claude` with the full environment, and the CLI prefers an exported `ANTHROPIC_API_KEY` over
   the logged-in subscription — so every worker silently billed per token while the plan the

@@ -11,16 +11,16 @@ committed report is testable without a database, a clock or a disk.
 
 from __future__ import annotations
 
-__all__ = ["render_report", "NARRATION", "PENDING"]
+__all__ = ["render_report", "narrated", "is_pending", "NARRATION", "PENDING"]
 
 NARRATION = "## Narración"
 """The section `/taskops:digest` replaces. A HEADING and not a comment marker, because the
 file is read by people: an editor that hides the narration inside `<!-- -->` fences would be
 optimising for the tool that writes it over the reader it is written for."""
 
-PENDING = "_pendiente — generala con /taskops:digest_"
-"""The placeholder body. It says how to fill it, so a report opened by somebody who has never
-run the skill still tells them what is missing and what produces it."""
+PENDING = "_pendiente — generala con `taskops report day --digest`_"
+"""The placeholder body. It names the COMMAND, so a report opened by somebody who has never
+generated one still tells them what is missing and exactly what produces it."""
 
 
 def render_report(stamp: str, dossier: str) -> str:
@@ -30,3 +30,22 @@ def render_report(stamp: str, dossier: str) -> str:
     the facts first and the narration is read as a reading OF them, which is what it is.
     """
     return "\n".join([stamp, "", dossier.strip("\n"), "", NARRATION, "", PENDING, ""])
+
+
+def narrated(report: str, prose: str) -> str:
+    """The same report with its narration section replaced. Everything above it is untouched.
+
+    Splitting on the heading rather than rewriting the file from the dossier is what makes this
+    safe to run on a report somebody has already edited: the facts on disk stay exactly as they
+    were fingerprinted, and only the last section moves.
+    """
+    head, marker, _ = report.partition(NARRATION)
+    body = head if marker else report.rstrip("\n") + "\n\n"
+    return "\n".join([body.rstrip("\n"), "", NARRATION, "", prose.strip("\n"), ""])
+
+
+def is_pending(report: str) -> bool:
+    """True when nothing has written the narration yet. A report whose prose somebody wrote by
+    hand must not be silently replaced, so the caller checks this before regenerating."""
+    _, marker, tail = report.partition(NARRATION)
+    return not marker or not tail.strip() or PENDING in tail
