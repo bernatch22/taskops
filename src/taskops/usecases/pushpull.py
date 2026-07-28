@@ -15,9 +15,12 @@ whose boards have diverged since this morning, each convinced they are current.
 the server accepts each event exactly once — ids are content hashes — so the failure mode is
 a duplicate request, not a lost event. The other order loses work to a dropped connection.
 
-Note this shares the `exported` flag with the git-log export: on a project with a server,
-`push` is what drains it, and `taskops sync` will find nothing left to append to
-`events.jsonl`. That is the intended trade, not an accident — one project, one way out.
+`push` keeps its OWN cursor (`pushed`, a local seq in remote.json) and never touches the
+`exported` flag — that one belongs to the git-log export. The first version drained
+`exported` instead, and on any project that had ever run `taskops sync` everything was
+already marked: a 370-event board pushed as `0 event(s) out`, silently. Two sinks, two
+cursors, and a project may use both — the jsonl for teammates on git, the server for the
+live board.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from ..engine import relay, replay, unblock
 from ._project import locate, project
 from ._reportsync import ReportSwap, exchange
 from ._wireclient import PAGE, Wire
-from .remote import require_remote, save_cursor
+from .remote import require_remote, save_cursor, save_pushed
 
 __all__ = ["push", "pull", "Exchange"]
 
@@ -64,30 +67,32 @@ def push(start: Path | str, *, force: bool = False) -> Exchange:
     """Send what is local, then pull, then reconcile reports in both directions."""
     remote = require_remote(start)
     wire = Wire(remote["url"], remote["token"])
-    accepted = _send(start, wire)
+    accepted = _send(start, wire, remote["pushed"])
     done = _receive(start, wire, remote["cursor"])
     done.accepted = accepted
     done.reports = exchange(wire, locate(start), upload=True, force=force)
     return done
 
 
-def _send(start: Path | str, wire: Wire) -> int:
-    """Drain the unexported events in batches. Returns how many were new on the server.
+def _send(start: Path | str, wire: Wire, pushed: int) -> int:
+    """Page the LOCAL log past the push cursor. Returns how many were new on the server.
 
-    Local-only kinds are filtered but still MARKED, exactly as the git export does: skipping
-    the mark would make every push re-scan every activity event this machine has ever
-    written, which is most of them.
+    The cursor advances only after the server's 200, so a push cut halfway re-sends and the
+    content-hashed ids make the repeat a no-op. Local-only kinds are filtered out but their
+    seqs still advance the cursor — skipping that would re-scan every activity heartbeat this
+    machine ever wrote, which is most of the log.
     """
     accepted = 0
     while True:
         with project(start) as store:
-            batch = store.events.unexported(limit=PAGE)
+            batch, tail = store.events.page_after(pushed, limit=PAGE)
             if not batch:
                 return accepted
             shared = [e for e in batch if e["kind"] not in LOCAL_ONLY_KINDS]
-            if shared:
-                accepted += int(wire.post_events(cast("list[Any]", shared)).get("accepted", 0))
-            store.events.mark_exported([e["id"] for e in batch])
+        if shared:
+            accepted += int(wire.post_events(cast("list[Any]", shared)).get("accepted", 0))
+        save_pushed(start, tail)
+        pushed = tail
 
 
 def _receive(start: Path | str, wire: Wire, cursor: int) -> Exchange:

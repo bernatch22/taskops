@@ -25,6 +25,15 @@ class Remote(TypedDict):
     token: str
     """The bearer sent on every request. Never printed, never rendered, never committed."""
 
+    pushed: int
+    """The last LOCAL `seq` this machine has sent UP. Its own number, never the server's.
+
+    The first version drained the `exported` flag instead — shared with the git-log export —
+    and on any project that had ever run `taskops sync`, everything was already marked and
+    `push` sent nothing, silently, forever. Found live on the first real project connected:
+    a 370-event board pushed as `0 event(s) out`. Two sinks need two cursors.
+    """
+
     cursor: int
     """The last `seq` this machine imported FROM THAT SERVER.
 

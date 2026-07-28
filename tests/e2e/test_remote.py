@@ -240,3 +240,16 @@ def _lay(root: Path, label: str, text: str) -> None:
     path = root / ".taskops" / "reports" / f"{label}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def test_push_sends_a_board_the_git_path_already_exported(
+        tmp_path: Path, base: str) -> None:
+    """The bug the first real project hit: `sync` had marked every event exported for the
+    git log, and a push that drained the `exported` flag sent nothing — a 370-event board
+    went up as `0 event(s) out`, silently. Push keeps its own cursor now."""
+    from taskops.usecases import sync
+
+    plan(make(tmp_path, base), [{"title": "Ya exportada por git"}], actor="dev:t")
+    sync(tmp_path)                       # marks everything exported, as a git project would be
+    done = push(tmp_path)
+    assert done.accepted > 0, "a git-synced board must still push to a server"
