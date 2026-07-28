@@ -7,15 +7,17 @@ argument-hint: "[window: 24h, 7d]"
 # Standup
 
 1. `taskops_report standup` with `since=$1` (default `24h`).
-2. `taskops_report fleet` — who is alive right now.
+2. If they asked about a DAY ("what got done yesterday"), use `taskops_report` with
+   `kind=day` and `date=yesterday` instead: a calendar day is the same report tomorrow,
+   and it carries the commits and their diff sizes per closed card.
 
 Then write the report for a HUMAN, not a dump of the tool output:
 
-- Lead with what needs them. Blocked tasks and `SILENT` fleet rows are the only two things
-  they can act on; everything else is progress.
-- A `SILENT` agent still holds a claim but has gone quiet past the grace period. Say which
-  task is stuck, and offer to release it (`taskops_update task=<id> status=released
-  comment="…"`) so somebody else can pick it up.
+- Lead with what needs them. Blocked tasks are what they can act on; everything else is
+  progress.
+- A card sitting `claimed` with nothing moving is the other thing worth naming. Offer to
+  release it (`taskops_update task=<id> status=released comment="…"`) so somebody else can
+  pick it up.
 - Group by outcome, not by actor, unless they asked per person.
 - Numbers only where they change a decision. "3 of 8 done" is useful; "17 events" is not.
 

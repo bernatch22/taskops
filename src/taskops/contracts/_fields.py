@@ -13,7 +13,7 @@ from typing import Annotated
 __all__ = ["Repo", "Actor", "Session", "TaskId", "TASKS", "DRY_RUN", "STATUS", "COMMENT",
            "MENTIONS", "BLOCKED_ON", "NO_CODE", "LABELS", "CLAIM_ONE", "ASK_TASK",
            "ASK_QUERY", "DISPATCH_TASKS", "DISPATCH_COUNT", "PREFIX", "MODEL",
-           "RECOVER_FORCE", "RECOVER_GRACE", "REPORT_KIND", "REPORT_ACTOR", "SINCE"]
+           "RECOVER_FORCE", "RECOVER_GRACE", "REPORT_KIND", "REPORT_ACTOR", "SINCE", "DATE"]
 
 Repo = Annotated[str, "path to the repository root; a path INSIDE it also works — "
                       "the root is found from .taskops"]
@@ -78,11 +78,16 @@ MODEL = ("model for the workers, e.g. claude-sonnet-5. Omit for their default �
          "often right for mechanical cards")
 
 REPORT_KIND = ("board (default) every column; standup what changed in a window, per actor; "
-               "burndown open-vs-done by day; fleet which agents are alive right now and on what")
+               "day the full dossier of ONE calendar day — every card closed with its "
+               "commits and their diff sizes, what is still in flight, and the conversation")
 
 REPORT_ACTOR = "restrict a standup to one actor"
 
 SINCE = "how far back a standup looks: '24h', '7d', '30m'"
+
+DATE = ("which day a `day` report covers: 'today' (default), 'yesterday', or a date like "
+        "2026-07-28. It is a CALENDAR day in local time, not a rolling window — ask for the "
+        "same date tomorrow and you get the same report")
 
 DRY_RUN = ("show which cards WOULD get a worker and stop — nothing assigned, nothing launched. "
            "Worth doing first when you are about to spend several models on a plan you just wrote")

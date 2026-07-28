@@ -90,6 +90,18 @@ class RecoverParams(_Target, total=False):
 
 
 class ReportParams(_Target, total=False):
-    kind: Annotated[Literal["board", "standup", "burndown", "fleet"], f.REPORT_KIND]
+    """The three views a model may ask for, and no more.
+
+    `fleet` and `burndown` were advertised here and are not any more. One answered a question
+    agents stopped having — "who is free" means nothing when a worker is created on demand,
+    and the studio dropped the panel for the same reason — while the other was never
+    implemented and replied with a sentence saying so. A tool that lists a kind an agent
+    cannot use spends the description budget teaching it to pick wrong. `fleet` survives as a
+    use case: the HTTP api still serves it, because a human looking at a board does want to
+    know which claim has gone quiet.
+    """
+
+    kind: Annotated[Literal["board", "standup", "day"], f.REPORT_KIND]
     actor: Annotated[str, f.REPORT_ACTOR]
     since: Annotated[str, f.SINCE]
+    date: Annotated[str, f.DATE]

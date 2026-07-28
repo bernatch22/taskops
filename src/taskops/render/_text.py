@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from .._clock import now
 
-__all__ = ["ago", "bullet", "table", "truncate", "STATUS_MARK"]
+__all__ = ["ago", "span", "bullet", "table", "truncate", "STATUS_MARK"]
 
 STATUS_MARK = {"backlog": "·", "ready": "○", "claimed": "◐", "in_progress": "●",
                "blocked": "✕", "review": "◆", "done": "✓", "cancelled": "—"}
@@ -28,10 +28,20 @@ def ago(ts: float, *, at: float | None = None) -> str:
     agree, since these timestamps come from different machines.
     """
     seconds = max(0.0, (now() if at is None else at) - ts)
+    return f"{span(seconds)} ago" if seconds >= 60.0 else "just now"
+
+
+def span(seconds: float) -> str:
+    """`5400.0` -> "1h". A DURATION, where `ago` is a distance from now.
+
+    The same coarseness and the same arithmetic, which is why `ago` is written in terms of
+    it: two rounding rules for two ways of printing the same number is how a card ends up
+    saying it took 2h beside a claim that says 3h ago.
+    """
     for size, unit in ((86400.0, "d"), (3600.0, "h"), (60.0, "m")):
         if seconds >= size:
-            return f"{int(seconds // size)}{unit} ago"
-    return "just now"
+            return f"{int(seconds // size)}{unit}"
+    return "under a minute"
 
 
 def truncate(text: str, limit: int) -> str:

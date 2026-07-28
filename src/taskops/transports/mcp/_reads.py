@@ -11,7 +11,7 @@ from typing import Any
 
 from ...render import (
     render_board,
-    render_fleet,
+    render_day,
     render_search,
     render_standup,
     render_view,
@@ -19,7 +19,7 @@ from ...render import (
 from ...usecases import (
     ask,
     board,
-    fleet,
+    day,
     search,
     standup,
 )
@@ -43,16 +43,21 @@ def ask_(args: dict[str, Any]) -> str:
 
 
 def report_(args: dict[str, Any]) -> str:
+    """Three kinds, and an unknown one is REFUSED rather than quietly given a board.
+
+    `fleet` and `burndown` used to be answerable here. Falling through to the board would
+    hand an agent that asked for one of them a report about something else and no way to
+    tell — so the removal is stated, with what to ask for instead.
+    """
     kind = arg.optional(args, "kind") or "board"
     where = arg.repo(args)
     if kind == "standup":
         return render_standup(standup(where, since=arg.optional(args, "since") or "24h",
                                       actor=arg.optional(args, "actor")))
-    if kind == "fleet":
-        return render_fleet(fleet(where))
-    if kind == "burndown":
-        return ("burndown is not implemented yet — `board` shows the current state and "
-                "`standup` shows a window")
+    if kind == "day":
+        return render_day(day(where, arg.optional(args, "date") or "today"))
+    if kind != "board":
+        raise arg.Missing(f"`{kind}` is not a report — ask for `board`, `standup` or `day`")
     return render_board(board(where))
 
 

@@ -35,6 +35,7 @@ from .board import (
     Standup,
 )
 from .commit import CommitRef
+from .day import ClosedCard, CommitStat, DayReport
 from .dep import Dep
 from .event import Event, Inbox
 from .gitstate import BranchState
@@ -71,6 +72,9 @@ __all__ = [
     "Activity",
     "ActorRoll",
     "Burndown",
+    "DayReport",
+    "ClosedCard",
+    "CommitStat",
     "Fleet",
     "FleetMember",
     # what a tool call carries in

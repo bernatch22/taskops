@@ -62,11 +62,13 @@ PLAN = (
 
 REPORT = (
     "The generated view: `board` (every column, who holds what), `standup` (what changed "
-    "in a window, per actor, and what needs a human), `burndown` (open versus done by "
-    "day), or `fleet` (which agents are alive right now, on what task, touching what "
-    "file). Nobody writes these by hand, so they cannot be out of date — use `standup` "
-    "when a human asks how it is going, and `fleet` when you need to know whether another "
-    "agent is still working or has gone quiet holding a claim."
+    "in a window, per actor, and what needs a human), or `day` (ONE calendar day in full — "
+    "every card closed with who closed it, how long it was held, each of its commits with "
+    "the size of its diff, what is still in flight or blocked, the whole conversation, and "
+    "a roll-up per actor). Nobody writes these by hand, so they cannot be out of date — use "
+    "`standup` when a human asks how it is going, and `day --date yesterday` when they ask "
+    "what got done, because a calendar day is the same report tomorrow while a rolling "
+    "window is not."
 )
 
 DISPATCH = (
