@@ -223,6 +223,8 @@ Reports sync under a rule that refuses to destroy work: the narration is the one
 
 The token is the trust boundary. It is minted by the server, stored at `0600`, covered by the ignore rules so it cannot reach git, and never printed twice.
 
+Opening a locked board in a **browser** does not need the token in the URL: the board answers a navigation without a credential with an access screen — paste the credential once, it is kept in `localStorage`, and every later visit goes straight in. The screen names nothing about what it is locking. A `curl` or a `fetch` still gets the plain `401` JSON it can read, and a local `taskops ui` with no token never shows a screen at all.
+
 ---
 
 ## The web interface
