@@ -45,6 +45,7 @@ from .log import EntryKind, LogEntry, SessionLog
 from .results import Claim, EditResult, NextResult, PlanResult, UpdateResult
 from .task import Task, TaskView
 from .tools import AskParams, NextParams, PlanParams, ReportParams, UpdateParams
+from .wire import WireMessage
 
 __all__ = [
     # the entities
@@ -54,6 +55,7 @@ __all__ = [
     "Lease",
     "Actor",
     "Event",
+    "WireMessage",
     "Inbox",
     "BranchState",
     "CommitRef",

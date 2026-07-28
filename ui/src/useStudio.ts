@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiFailure, subscribe } from "./api";
 import type { Board, Config, TaskView } from "./contracts";
+import { reduce, type Narration } from "./narration";
 
 export interface Studio {
   config: Config | null;
@@ -16,6 +17,10 @@ export interface Studio {
   live: boolean;
   error: string;
   pulse: number;
+  /* The narration currently arriving on the socket, or the last one that finished. It lives
+   * HERE rather than inside the reports view because the subscription does: one socket for the
+   * whole app, and a component that unmounts must not take the stream down with it. */
+  narration: Narration | null;
   openTask: (id: string | null) => void;
   refresh: () => void;
 }
@@ -32,6 +37,7 @@ export function useStudio(): Studio {
   const [live, setLive] = useState(false);
   const [error, setError] = useState("");
   const [pulse, setPulse] = useState(0);
+  const [narration, setNarration] = useState<Narration | null>(null);
 
   /* The open task id in a ref as well as in state: the refetch callback needs to know which task
    * to reload, and closing over the state value would rebuild the subscription on every task
@@ -83,6 +89,10 @@ export function useStudio(): Studio {
         setLive(true);
         void load();
       },
+      /* NO refetch and NO pulse: a delta is not an event, nothing on the server stored it, and
+       * a board that reloaded itself fifty times a second while somebody read a report would be
+       * the most expensive way imaginable to render prose. */
+      (message) => setNarration((was) => reduce(was, message)),
     );
     /* A stream that opens and then dies leaves `live` true forever otherwise. `onerror` is the
      * only signal EventSource gives while it retries. */
@@ -94,5 +104,5 @@ export function useStudio(): Studio {
     };
   }, [load, refresh]);
 
-  return { config, board, open, live, error, pulse, openTask, refresh };
+  return { config, board, open, live, error, pulse, narration, openTask, refresh };
 }

@@ -4,7 +4,8 @@
  * rather than a hunt through components. Components never call `fetch`. */
 
 import type {
-  Activity, Board, Config, Event, ReportEntry, ReportFile, Task, TaskView,
+  Activity, Board, Config, DigestStarted, Event, ReportEntry, ReportFile, Task, TaskView,
+  WireMessage,
 } from "./contracts";
 
 /* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
@@ -52,11 +53,16 @@ export const api = {
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
   reports: () => call<ReportEntry[]>("/api/reports"),
   report: (label: string) => call<ReportFile>(`/api/report?date=${encodeURIComponent(label)}`),
-  /* The one call that costs money and takes ~30 seconds: it shells out to `claude`. Nothing
-   * retries it, and the caller shows the server's own words when it fails — `claude` missing or
-   * logged out is a thing the person can fix, and only if they are told. */
+  /* The one call that costs money — it shells out to `claude` — and it returns IMMEDIATELY.
+   *
+   * It used to hold the connection open for the whole model call, which is where "aprieto
+   * Generate y no hace nada" came from: minutes of a mute spinner, and a dropped request took
+   * the only feedback there was with it. Now it answers "narrating" and the prose arrives on
+   * the live socket. A 409 means one is already running for that report; anything else is the
+   * server's own sentence, shown verbatim, because `claude` missing or logged out is a thing
+   * the person can fix in a minute if they are told. */
   digest: (label: string, force: boolean) =>
-    call<ReportFile>("/api/report/digest", {
+    call<DigestStarted>("/api/report/digest", {
       method: "POST",
       body: JSON.stringify({ date: label, force }),
     }),
@@ -85,8 +91,14 @@ export const api = {
  *
  * `onChange` fires per event; the caller REFETCHES rather than patching state from the payload. The
  * board is a projection the server derives, so re-reading it is both simpler and more correct than
- * replaying events into a copy of it. */
-export function subscribe(onChange: (event: Event) => void, onOpen: () => void): () => void {
+ * replaying events into a copy of it.
+ *
+ * `onNarration` is the exception to that rule, and deliberately so: a narration delta is NOT
+ * stored anywhere, so there is nothing to refetch and the frame IS the payload. It rides this
+ * socket rather than a second one because a second stream is a second subscription and a second
+ * lifetime to leak, for a panel on one screen. */
+export function subscribe(onChange: (event: Event) => void, onOpen: () => void,
+                          onNarration: (message: WireMessage) => void = () => {}): () => void {
   const query = TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "";
   let closed = false;
   let stop = () => {};
@@ -97,6 +109,9 @@ export function subscribe(onChange: (event: Event) => void, onOpen: () => void):
     source.addEventListener("hello", () => onOpen());
     source.addEventListener("change", (message) => {
       onChange(JSON.parse((message as MessageEvent<string>).data) as Event);
+    });
+    source.addEventListener("narration", (message) => {
+      onNarration(JSON.parse((message as MessageEvent<string>).data) as WireMessage);
     });
     /* No manual reconnect: EventSource retries on its own, and `onOpen` refetching on every open is
      * what closes the gap a disconnection left. Our own loop on top would race with it. */
@@ -110,9 +125,11 @@ export function subscribe(onChange: (event: Event) => void, onOpen: () => void):
     let everOpened = false;
 
     socket.onmessage = (message: MessageEvent<string>) => {
-      const frame = JSON.parse(message.data) as { type: string; event?: Event };
+      const frame = JSON.parse(message.data) as
+        { type: string; event?: Event; message?: WireMessage };
       if (frame.type === "hello") onOpen();
       else if (frame.type === "change" && frame.event) onChange(frame.event);
+      else if (frame.type === "narration" && frame.message) onNarration(frame.message);
     };
     socket.onopen = () => { everOpened = true; };
     socket.onclose = () => {

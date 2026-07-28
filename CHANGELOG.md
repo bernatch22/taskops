@@ -2,6 +2,27 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **La narración se VE escribiéndose.** Apretar Generate en la vista Reports "no hacía nada":
+  el `POST /api/report/digest` era una llamada al modelo de varios minutos detrás de un spinner
+  mudo, el archivo decía `_pendiente_` todo ese rato, y un navegador que cortaba la conexión se
+  llevaba el único feedback que había. Ahora el POST **arranca** el digest en un thread y
+  contesta `{"status":"narrating"}` en milisegundos; la prosa viaja por el WebSocket que la
+  board ya tiene abierto (`/api/live`, frames `type: "narration"`; `event: narration` en el
+  fallback SSE) y el panel la renderiza a medida que llega, con markdown y auto-scroll. Un
+  segundo Generate del mismo reporte se rechaza con **409**: dos modelos reescribiendo el mismo
+  archivo no es contención, es corrupción.
+- **Un delta de narración NO es un evento.** Viaja por un canal efímero nuevo (`engine.WIRE`,
+  contrato `contracts.WireMessage`) que no toca la base ni `events.jsonl` — ese archivo va
+  committeado y su valor es que un humano lea su diff, cosa que mil fragmentos de prosa
+  destruirían. No hay cursor y por lo tanto no hay recuperación: un browser que reconecta se
+  perdió lo que pasó, y está bien, porque el **archivo** es la copia durable y el socket sólo la
+  ventana. El fan-out (`Broadcast`) es ahora uno solo, compartido con el `EventBus`.
+- **El .md crece mientras el modelo escribe.** `digest` volcaba la narración al archivo recién
+  al final; un `report all` dejaba `_pendiente_` en disco un cuarto de hora — indistinguible de
+  un reporte que nadie narró — y un crash a los catorce minutos lo hacía permanente. Ahora se
+  flushea cada ~400 caracteres y en cada frontera de pass, con el mismo `render.narrated` que
+  hace la escritura final.
+
 - **El reporte escrito es una BIBLIA de lo que se hizo, no un resumen.** El dossier que se
   imprime en una terminal y el que se escribe a disco eran el mismo texto corto, y el corto
   perdía justo lo que hace falta un mes después: el **spec de cada card** no estaba (así que la

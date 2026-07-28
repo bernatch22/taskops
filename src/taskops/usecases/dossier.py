@@ -30,8 +30,9 @@ from ..engine import (
     stamp,
     stamped_seq,
 )
-from ..render import is_pending, narrated, render_day, render_report
+from ..render import is_pending, render_day, render_report
 from ..storage import REPORTS_DIR, Store
+from ._narrating import Progressive
 from ._project import project
 from ._range import Selector, is_day, resolve
 
@@ -109,6 +110,11 @@ def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",
     to show open cards at all — reads to the model as a day on which nothing happened, and the
     prose says so, accurately and uselessly. Anybody passing `--force` is asking for this report
     to be redone; redoing half of it is the answer nobody wants.
+
+    The prose reaches the file AS IT IS WRITTEN (`_narrating.Progressive`), not at the end. A
+    run of several passes used to leave `_pendiente_` on disk for a quarter of an hour, which
+    is indistinguishable from a report nobody narrated — and a crash at minute fourteen made
+    that permanent.
     """
     with project(start) as store:
         span = resolve(store, sel or Selector())
@@ -120,9 +126,8 @@ def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",
         if not is_pending(report) and not force:
             raise AlreadyWritten(f"{path} already carries a narration — read it, or pass "
                                  f"--force to replace it (the old one is lost)")
-        prose = narrate(report, model=model, on_pass=on_pass, on_text=on_text)
-        path.write_text(narrated(report, prose), encoding="utf-8")
-        return path
+        live = Progressive(path, report, on_pass=on_pass, on_text=on_text)
+        return live.finish(narrate(report, model=model, on_pass=live.passed, on_text=live.text))
 
 
 def report_path(root: Path, label: str) -> Path:
