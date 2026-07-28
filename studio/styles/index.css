@@ -193,20 +193,21 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12px; }
 .hits button:hover { background: var(--bg-hover); }
 .hits code { color: var(--lime); margin-right: 6px; }
 
+/* Sits next to the search because it is the same act: narrowing the board to what you want to see.
+ * Pressed state is a real one — a toggle whose two states look alike is a toggle people click
+ * twice to find out where they are. */
+.squeeze { padding: 4px 9px; font-size: 13px; line-height: 1; color: var(--ink-dim); }
+.squeeze.on {
+  color: var(--lime);
+  border-color: color-mix(in oklab, var(--lime) 40%, transparent);
+  background: color-mix(in oklab, var(--lime) 10%, transparent);
+}
+
 /* ── layout ─────────────────────────────────────────────────────────────────── */
 
-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 16px;
-  padding: 16px;
-  align-items: start;
-}
-
-@media (max-width: 960px) {
-  main { grid-template-columns: minmax(0, 1fr); }
-  .fleet { order: -1; }        /* on a phone, who is working matters more than the full board */
-}
+/* One column, the board, full width. There was a 280px rail here for the fleet — who holds what,
+ * live — and it earned nothing: the same fact is on the card itself, on the card that matters. */
+main { padding: 16px; }
 
 .banner {
   display: flex; align-items: center; gap: 10px;
@@ -234,10 +235,34 @@ main {
   border-radius: var(--r-lg);
   padding: 10px;
 }
-.column-head { display: flex; align-items: center; gap: 7px; padding: 2px 4px 10px; }
+.column-head { display: flex; align-items: center; gap: 7px; padding: 2px 4px 10px; flex-wrap: wrap; }
 .column-head h2 { flex: 1; }
 .column-head .tally { margin-left: auto; }
 .mark { font-family: var(--mono); color: var(--ink-faint); }
+
+/* ── grouped columns ────────────────────────────────────────────────────────── */
+
+/* `done` is where a board's whole history piles up, so it is folded. The group header carries its
+ * own count: a collapsed group that does not say how much is behind it is a thing people never
+ * open. `<details>` rather than state — the browser already has this, including the keyboard. */
+.group-by {
+  flex: 0 0 100%; margin-top: 2px;
+  font-family: var(--mono); font-size: 10.5px; padding: 2px 7px;
+  color: var(--ink-dim);
+}
+.group > summary {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 4px; cursor: pointer; list-style: none;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-dim); border-bottom: 1px solid var(--line-soft);
+}
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary:before { content: "▸"; color: var(--ink-faint); font-size: 9px; }
+.group[open] > summary:before { content: "▾"; }
+.group > summary:hover { color: var(--ink); }
+.group-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group[open] { display: flex; flex-direction: column; gap: 8px; }
+.group[open] > summary { margin-bottom: 2px; }
 
 /* The status colour lives on the column's top edge, not on every card. One coloured line per
  * column says the same thing as fifty coloured cards, without the noise. */
@@ -309,28 +334,6 @@ main {
   text-align: left; margin-top: 14px; padding: 12px;
   background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r);
 }
-
-/* ── fleet ──────────────────────────────────────────────────────────────────── */
-
-.fleet {
-  position: sticky; top: 72px;
-  background: var(--bg-raised);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-lg);
-  padding: 12px;
-}
-.fleet h2 { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
-.fleet ul { display: flex; flex-direction: column; gap: 8px; }
-.fleet li { padding: 9px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); }
-.fleet li.silent { border-color: color-mix(in oklab, var(--red) 40%, transparent); }
-.fleet-top { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
-.fleet-top .linkish { margin-left: auto; }
-.fleet-doing { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fleet-doing code { color: var(--ink-dim); }
-.fleet-foot { font-size: 10.5px; margin-top: 4px; }
-.fleet .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
-.fleet .dot.on { background: var(--lime); box-shadow: 0 0 0 3px color-mix(in oklab, var(--lime) 22%, transparent); }
-.fleet .dot.off { background: var(--red); }
 
 /* ── task drawer ────────────────────────────────────────────────────────────── */
 

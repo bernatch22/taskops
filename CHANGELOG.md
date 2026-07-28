@@ -23,6 +23,19 @@ no session id and entries on `main`, there is no evidence tying them to a card.
   was touched, how it ended — is the thread and the commits, which were already there. The `/api/log`
   route, the studio's `Conversation` view and its wire types are removed; `taskops log <task>` keeps
   working in the terminal, which is where reading a whole session belongs.
+- **The fleet rail is gone, and the board is full width.** "Who is free" is not a question when
+  agents are created on demand — there is no pool to manage — and "who holds this card" was already
+  on the card, next to the work it is about. What is worth keeping from it is history rather than
+  availability, and that belongs in the activity view, not in a sidebar that repeats the board.
+- **Empty columns can be folded away, by choice.** A toggle beside the search hides the columns with
+  no cards. Off by default and remembered per browser: an empty column is information the first time
+  somebody sees it, and clutter once they know the board.
+- **`done` is grouped instead of listed.** Nothing ever leaves that column, so on a board a few weeks
+  old it is longer than every other column combined and pushes the ones needing attention off the
+  screen. Groups are by date (Today / This week / This month / Older), with a toggle to group by
+  feature — the parent task or the first label, both of which the cards already declare, rather than
+  a similarity guessed from titles. The newest group is open, the rest are folded, and each says how
+  many it holds.
 
 ## 0.1.0 — the engine, the enforcement, and the plugin
 

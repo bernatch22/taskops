@@ -1,18 +1,17 @@
 /* The one piece of state the whole app shares, and the live wiring behind it.
  *
- * A single hook rather than a store library: there are four pieces of data (config, board, fleet,
- * the open task) and one refresh path, so anything more would be ceremony. The rule that keeps it
+ * A single hook rather than a store library: there are three pieces of data (config, board, the
+ * open task) and one refresh path, so anything more would be ceremony. The rule that keeps it
  * simple is that events never patch state — they trigger a refetch, because the board is a
  * projection the server derives and re-reading it is more correct than mirroring it here. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiFailure, subscribe } from "./api";
-import type { Board, Config, Fleet, TaskView } from "./contracts";
+import type { Board, Config, TaskView } from "./contracts";
 
 export interface Studio {
   config: Config | null;
   board: Board | null;
-  fleet: Fleet | null;
   open: TaskView | null;
   live: boolean;
   error: string;
@@ -29,7 +28,6 @@ const COALESCE_MS = 120;
 export function useStudio(): Studio {
   const [config, setConfig] = useState<Config | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
-  const [fleet, setFleet] = useState<Fleet | null>(null);
   const [open, setOpen] = useState<TaskView | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState("");
@@ -43,9 +41,7 @@ export function useStudio(): Studio {
 
   const load = useCallback(async () => {
     try {
-      const [nextBoard, nextFleet] = await Promise.all([api.board(), api.fleet()]);
-      setBoard(nextBoard);
-      setFleet(nextFleet);
+      setBoard(await api.board());
       if (openId.current) setOpen(await api.task(openId.current));
       setError("");
     } catch (failure) {
@@ -98,5 +94,5 @@ export function useStudio(): Studio {
     };
   }, [load, refresh]);
 
-  return { config, board, fleet, open, live, error, pulse, openTask, refresh };
+  return { config, board, open, live, error, pulse, openTask, refresh };
 }

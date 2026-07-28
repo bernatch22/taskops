@@ -8,11 +8,13 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Board, Config, Task } from "../contracts";
 
-export function Header({ config, board, live, pulse, onOpen }: {
+export function Header({ config, board, live, pulse, hideEmpty, onHideEmpty, onOpen }: {
   config: Config | null;
   board: Board | null;
   live: boolean;
   pulse: number;
+  hideEmpty: boolean;
+  onHideEmpty: (hide: boolean) => void;
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
@@ -26,6 +28,16 @@ export function Header({ config, board, live, pulse, onOpen }: {
       </div>
 
       <Search onOpen={onOpen} />
+
+      {/* Next to the search because it is the same kind of act: narrowing what is on screen to what
+        * you are looking for. Off by default — an empty column is information the first time you
+        * see it, and clutter only once you already know the board. */}
+      <button className={`squeeze${hideEmpty ? " on" : ""}`}
+              aria-pressed={hideEmpty}
+              title={hideEmpty ? "showing only columns with cards" : "hide empty columns"}
+              onClick={() => onHideEmpty(!hideEmpty)}>
+        {hideEmpty ? "⊟" : "⊞"}
+      </button>
 
       <div className="top-right">
         {board ? (

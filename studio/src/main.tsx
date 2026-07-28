@@ -1,4 +1,4 @@
-/* The app: a header, a board, a fleet, and a drawer. That is the whole component tree.
+/* The app: a header, a board, and a drawer. That is the whole component tree.
  *
  * Deliberately flat. There is no router, no store and no provider: the studio has one screen and
  * one piece of shared state, and every layer of indirection between a click and a fetch is a layer
@@ -6,18 +6,24 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { Board } from "./components/Board";
-import { Fleet } from "./components/Fleet";
+import { Board, type Grouping } from "./components/Board";
 import { Header } from "./components/Header";
 import { TaskPanel } from "./components/TaskPanel";
+import { remembered } from "./remembered";
 import { useStudio } from "./useStudio";
 
 function App(): JSX.Element {
   const studio = useStudio();
+  /* View preferences, not data: they belong to the person and their browser, never to the server.
+   * A second developer looking at the same repository has their own answer for both. */
+  const [hideEmpty, setHideEmpty] = remembered("taskops-hide-empty", false);
+  const [grouping, setGrouping] = remembered<Grouping>("taskops-grouping", "date");
+
   return (
     <>
       <Header config={studio.config} board={studio.board} live={studio.live}
-              pulse={studio.pulse} onOpen={studio.openTask} />
+              pulse={studio.pulse} hideEmpty={hideEmpty} onHideEmpty={setHideEmpty}
+              onOpen={studio.openTask} />
 
       {studio.error ? (
         <div className="banner">
@@ -27,9 +33,10 @@ function App(): JSX.Element {
       ) : null}
 
       <main>
-        {studio.board ? <Board board={studio.board} onOpen={studio.openTask} />
-                      : <div className="loading dim">Reading the board…</div>}
-        {studio.fleet ? <Fleet fleet={studio.fleet} onOpen={studio.openTask} /> : null}
+        {studio.board
+          ? <Board board={studio.board} hideEmpty={hideEmpty} grouping={grouping}
+                   onGrouping={setGrouping} onOpen={studio.openTask} />
+          : <div className="loading dim">Reading the board…</div>}
       </main>
 
       {studio.open ? (
