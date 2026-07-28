@@ -58,15 +58,24 @@ def write_report(start: Path | str, sel: Selector | None = None, *,
 
 
 def read_report(start: Path | str, date_text: str = "") -> ReportFile:
-    """What is on disk for a DAY, and whether the day has moved on since.
+    """What is on disk for a report LABEL — a day, a range, or `all`.
 
-    One day and not a window: this is what the studio polls for staleness, and staleness of a
-    range is a different question — `all.md` is out of date the moment anything happens.
+    A day answers staleness (its window is fixed, so "did anything land after this was
+    written" is a fair question). Any other label answers `stale: False` on purpose: `all.md`
+    is out of date the moment anything happens, and a permanent red badge is noise, not
+    information. This was a real 400 in the UI — clicking `all.md` sent its label through the
+    day parser, which refused the very file the index had just listed.
 
     A day with no file still answers with a dossier — the one that would be written — so a
     reader never gets an empty screen and a "generate it" button as the only content.
     """
     with project(start) as store:
+        label = date_text.strip()
+        path = report_path(store.root, label) if label else None
+        if path is not None and path.is_file() and not _is_day(label):
+            written = path.read_text(encoding="utf-8")
+            return ReportFile(date=label, path=str(path), dossier_md=written,
+                              exists=True, stale=False, missing_events=0)
         span = resolve(store, Selector(date=date_text))
         date = span[0]
         path = report_path(store.root, date)
@@ -75,6 +84,11 @@ def read_report(start: Path | str, date_text: str = "") -> ReportFile:
         return ReportFile(date=date, path=str(path),
                           dossier_md=written or _generate(store, span),
                           exists=bool(written), stale=behind > 0, missing_events=behind)
+
+
+def _is_day(label: str) -> bool:
+    return (len(label) == 10 and label[4] == "-" and label[7] == "-"
+            and label.replace("-", "").isdigit())
 
 
 def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",
