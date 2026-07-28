@@ -71,10 +71,23 @@ class EventTable:
         polls this. Ordering by `ts` there would drop an event whose clock came
         from a machine running slightly behind.
         """
+        return self.page_after(seq, limit=limit)[0]
+
+    def page_after(self, seq: int, *, limit: int) -> tuple[list[Event], int]:
+        """The same read, plus the seq of the LAST row scanned — the replication cursor.
+
+        `Event` carries no `seq` on purpose: seq is this machine's local order, not the event's
+        identity, and putting it in the contract would invite a puller to store another
+        machine's numbering as if it were its own. So a page that ends mid-log has to hand its
+        cursor back beside the events rather than inside them.
+
+        Last SCANNED and not last returned, because a caller that filters the page (the HTTP
+        exchange drops local-only kinds) would otherwise re-scan the dropped tail forever.
+        """
         rows = self.db.execute(
             "SELECT * FROM events WHERE seq > ? ORDER BY seq LIMIT ?", (seq, limit)
         ).fetchall()
-        return [to_event(row) for row in rows]
+        return [to_event(row) for row in rows], int(rows[-1]["seq"]) if rows else seq
 
     def max_seq(self) -> int:
         row = self.db.execute("SELECT COALESCE(MAX(seq), 0) AS n FROM events").fetchone()

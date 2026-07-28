@@ -12,17 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 
 __all__ = [
-    "TaskopsError",
-    "NotInitialized",
-    "NoSuchTask",
-    "IllegalTransition",
-    "LeaseHeld",
-    "NoLease",
-    "GuardFailed",
-    "BadRequest",
-    "AlreadyWritten",
-    "AlreadyNarrating",
-    "NarrationFailed",
+    "TaskopsError", "NotInitialized", "NoSuchTask", "IllegalTransition", "LeaseHeld", "NoLease",
+    "GuardFailed", "BadRequest", "AlreadyWritten", "AlreadyNarrating", "NarrationFailed",
+    "ReportConflict",
 ]
 
 
@@ -148,3 +140,12 @@ class NarrationFailed(TaskopsError, RuntimeError):
 
     code = "narration_failed"
     http_status = 502
+
+
+class ReportConflict(TaskopsError, FileExistsError):
+    """A DIFFERENT narration of one report, not a newer one — `ours`/`theirs` are the stamps."""
+
+    code = "report_conflict"
+    http_status = 409
+    ours = -1
+    theirs = -1

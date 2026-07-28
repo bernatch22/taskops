@@ -10,16 +10,17 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from . import api, live, reports, static
+from . import api, exchange, live, reports, static
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 
 __all__ = ["build"]
 
 
-def build(root: Path, policy: Policy) -> Route:
-    """The one function the server calls per request. Everything else is bound here."""
-    routes: dict[tuple[str, str], Route] = {
+def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
+    """THE surface, as data. Its own function so `build` stays a dispatcher and the table can
+    grow a row without the closure around it growing with it."""
+    return {
         ("GET", "/api/config"): partial(_config, root, policy),
         ("GET", "/api/board"): partial(api.get_board, root),
         ("GET", "/api/fleet"): partial(api.get_fleet, root),
@@ -33,7 +34,16 @@ def build(root: Path, policy: Policy) -> Route:
         ("POST", "/api/comment"): partial(api.post_comment, root),
         ("POST", "/api/status"): partial(api.post_status, root),
         ("GET", "/api/live"): partial(live.stream, root),
+        ("POST", "/api/sync"): partial(exchange.post_sync, root),
+        ("GET", "/api/sync"): partial(exchange.get_sync, root),
+        ("GET", "/api/report/file"): partial(exchange.get_report_file, root),
+        ("PUT", "/api/report/file"): partial(exchange.put_report_file, root),
     }
+
+
+def build(root: Path, policy: Policy) -> Route:
+    """The one function the server calls per request. Everything else is bound here."""
+    routes = _table(root, policy)
 
     def dispatch(request: Request) -> Reply:
         if refusal := policy.check(request):

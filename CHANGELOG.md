@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased — la mitad server del sync remoto: eventos por HTTP, y reportes que no se pisan
+
+- **Cuatro endpoints nuevos, `transports/http/exchange.py`** — la API de intercambio entre dos
+  instalaciones de taskops, documentada en `docs/exchange.md` porque el cliente la codea desde
+  otro repo y un rename acá lo rompe sin que este repo se entere. Pasan por `usecases/exchange.py`
+  (eventos) y `usecases/reportfile.py` (archivos), como todo lo demás: ningún transporte toca
+  `storage` ni `engine`.
+  - `POST /api/sync` relaya un batch por `engine.log.relay` — **el id NO se recalcula**: el id ES
+    el hash del contenido, y recalcularlo bifurca la historia el día que un taskops más nuevo
+    serializa un campo distinto. Devuelve `accepted` = cuántos eran NUEVOS, que es la señal de
+    idempotencia: el mismo batch dos veces contesta 0 la segunda.
+  - `GET /api/sync?after=&limit=` pagina por cursor. **`seq` es LOCAL del server** — por eso
+    ningún evento lleva `seq` en el wire: el cliente guarda un cursor POR REMOTO y nunca mezcla
+    dos. `max_seq` es el último seq ESCANEADO, no el último devuelto, para que las filas
+    filtradas no se re-escaneen para siempre.
+  - `LOCAL_ONLY_KINDS` (`activity`) se filtra en LAS DOS direcciones: afuera porque un heartbeat
+    por tool-call agrega miles de filas por día a lo único que un humano puede leer; adentro
+    porque un server no confía en que el cliente se haya acordado.
+  - Batch tope 500, y el batch entero se coerciona ANTES de escribir nada: un evento malformado
+    en el índice 40 no deja 39 relayados y al que llamó sin saber hasta dónde llegó. El 400
+    nombra el índice.
+- **La regla de no-pisarse de los reportes** — lo que motivó la card. Los eventos mergean por
+  unión (son hechos del pasado); un reporte no: el dossier es regenerable, la **narración no**.
+  `PUT /api/report/file` aplica, en orden: no lo tengo → guardo; idéntico byte a byte → guardo
+  (un re-sync es silencioso); **ambos estampados y el entrante MAYOR → guardo** (vio más log);
+  cualquier otra cosa → **409 con los dos seqs**. Eso incluye el entrante menor, el igual-pero-
+  distinto, y **cualquiera de los dos SIN estampa** — un archivo sin estampa lo escribió o editó
+  una persona, que es justo la copia que nadie puede pisar: "cobertura desconocida" no es
+  "menos cobertura". `force` pisa, y el mensaje del 409 dice qué se pierde.
+  - **El server NUNCA regenera**: `GET` sirve los bytes que tiene y 404ea si no tiene ninguno.
+    Regenerar es del dueño del store — devolver un dossier fresco le haría creer al cliente que
+    acá hay algo que perder.
+  - **El límite está documentado, no escondido**: los `max_seq` de dos máquinas no son
+    rigurosamente comparables (cada sqlite numera lo suyo), así que la regla del mayor es una
+    heurística de "quién vio más". El caso patológico — dos narraciones independientes del mismo
+    día en máquinas que nunca sincronizaron — cae SIEMPRE al 409, que es el resultado honesto.
+- **`ReportConflict`** en `_errors.py` (409, `report_conflict`), con `ours`/`theirs` como
+  números en el body: el próximo paso del cliente es decidir qué copia sobrevive, y una oración
+  que tiene que parsear no es una respuesta.
+- **`do_PUT` en el handler** (sin él la stdlib contesta 501 y el 405 de la tabla de rutas nunca
+  se alcanza) y `MAX_BODY` de 1 MB a 8 MB: la replicación empuja documentos enteros, y `all.md`
+  es un proyecto completo en un archivo.
+- **`EventTable.page_after`** devuelve la página y su cursor (`after_seq` ahora la usa, sin SQL
+  duplicado), y **`storage.event_from`** sale de `_parse` para que el log commiteado y el POST
+  coercionen un evento foráneo con el MISMO código — dos coerciones en dos módulos es cómo los
+  dos caminos empezarían a discrepar sobre qué es un evento válido, y con ids de contenido
+  discrepar significa bifurcar.
+- 24 tests nuevos (`tests/transports/test_exchange.py`), incluidos los cinco casos del PUT.
+
 ## Unreleased — a card remembers which sessions worked it
 
 - **Tres puertas, una por audiencia — y ahora la separación es real.** El proyecto declaraba

@@ -29,7 +29,7 @@ from ._rows import as_dict
 from .locate import LOG_FILE
 from .store import Store
 
-__all__ = ["export_events", "import_events", "all_events", "read_log"]
+__all__ = ["export_events", "import_events", "all_events", "read_log", "event_from"]
 
 
 def export_events(store: Store, *, limit: int = 1000) -> int:
@@ -95,12 +95,7 @@ def read_log(root: Path) -> Iterator[Event]:
 
 
 def _parse(line: str) -> Event | None:
-    """One log line -> an Event, or None.
-
-    Every field is coerced rather than trusted. The producer is another machine's
-    taskops, possibly a newer one, and `json.loads` returns Any — so without this
-    an unexpected type would flow into the database and fail later at a render.
-    """
+    """One log line -> an Event, or None."""
     raw = line.strip()
     if not raw:
         return None
@@ -108,6 +103,21 @@ def _parse(line: str) -> Event | None:
         parsed: Any = json.loads(raw)
     except json.JSONDecodeError:
         return None
+    return event_from(parsed)
+
+
+def event_from(parsed: Any) -> Event | None:
+    """One decoded JSON value -> an Event, or None when it cannot be one.
+
+    Every field is coerced rather than trusted. The producer is another machine's
+    taskops, possibly a newer one, and `json.loads` returns Any — so without this
+    an unexpected type would flow into the database and fail later at a render.
+
+    Split from `_parse` because the committed log is no longer the only way a foreign
+    event arrives: `POST /api/sync` receives them already decoded. Two coercions in two
+    modules is how the two paths would start disagreeing about what a valid event IS —
+    and since the id is the content, disagreeing means forking history.
+    """
     if not isinstance(parsed, dict):
         return None
     fields = cast("dict[str, Any]", parsed)

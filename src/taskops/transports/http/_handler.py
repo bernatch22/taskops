@@ -20,10 +20,13 @@ from ._wire import Reply, Request, Route
 
 __all__ = ["Handler", "MAX_BODY"]
 
-MAX_BODY = 1 << 20
-"""1 MB. Everything this API accepts is a comment and a task id; anything larger is a mistake or a
-probe, and reading a declared length into memory before checking it is how a small server becomes a
-target."""
+MAX_BODY = 8 << 20
+"""8 MB. Reading a declared length into memory before checking it is how a small server becomes a
+target, so there is a ceiling at all; it is this high because replication pushes whole documents —
+a batch of 500 events, or `all.md`, which is every day of a project in one file.
+
+The cap TRUNCATES rather than refuses, which is survivable only because everything above it is
+JSON: a truncated body fails to parse and the endpoint answers 400 for a body it cannot read."""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -36,6 +39,12 @@ class Handler(BaseHTTPRequestHandler):
         self._handle()
 
     def do_POST(self) -> None:                                       # noqa: N802
+        self._handle()
+
+    def do_PUT(self) -> None:                                        # noqa: N802
+        """Replication pushes a report file. Without this the stdlib answers 501 and the route
+        table's own 405 — the one that tells a caller which methods a path takes — is never
+        reached, so the endpoint would look absent rather than unsupported."""
         self._handle()
 
     def log_message(self, format: str, *args: Any) -> None:
