@@ -2,6 +2,31 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **La vista `Reports` en el UI — leer un reporte no es trabajo de terminal.** El reporte diario
+  es lo único que taskops produce para que lo lea una PERSONA: es largo, es prosa, y hasta hoy
+  sólo se veía como ASCII en una terminal, que es la peor superficie posible — nadie scrollea una
+  terminal para leer lo que pasó ayer. Ahora es la tercera solapa, al lado de Board y Activity:
+  a la izquierda los reportes de `.taskops/reports/` (el más nuevo arriba, con badge `stale +N`
+  cuando el día siguió después de escribirlo y `✎` cuando ya tiene narración), a la derecha el
+  elegido RENDERIZADO — con la `## Narración` levantada a su propio panel arriba de todo, porque
+  en el archivo va última (los hechos primero, la prosa como lectura de ellos) pero en pantalla
+  es a lo que viniste. El botón **Generate / Regenerate** corre el mismo `report day --digest`
+  desde el browser: tarda ~30s porque es una llamada al modelo, muestra un spinner, y el error
+  del server llega VERBATIM (que `claude` no esté instalado o no esté logueado es algo que el
+  lector arregla en un minuto, y sólo si se lo dicen). Es una escritura, así que `--readonly` la
+  rechaza por método — un board en una pantalla en una sala no puede gastar nada por ser mirado.
+  Tres endpoints: `GET /api/reports` (el índice, filas sin cuerpos: treinta dossiers serían un
+  megabyte de texto para dibujar treinta etiquetas), `GET /api/report?date=` (ya existía) y
+  `POST /api/report/digest`. El listado vive en un `usecases/index.py` nuevo y trata el `label`
+  como string OPACO — hoy es una fecha, mañana es un rango (`2026-07-22..2026-07-28`, `all`), y
+  lo que lo parseara como día se rompería con el primer reporte semanal; por eso `stale` no se
+  contesta para un label que no es un día, en vez de adivinarse. El markdown lo renderiza
+  `ui/src/markdown.ts`, escrito a mano y sin dependencia: el bundle viaja DENTRO del wheel, así
+  que cada kilobyte lo paga todo `pip install taskops` para siempre — y produce datos, no HTML,
+  de modo que nada toca `dangerouslySetInnerHTML` y un reporte no puede inyectar markup por estar
+  escrito. Una desviación deliberada de CommonMark: una línea indentada NO es un bloque de código,
+  porque la indentación del dossier es la que pone un commit debajo de su card.
+
 - **`taskops report day --digest` — el reporte narrado, en un comando.** El dossier ya decía qué
   pasó; lo que faltaba era qué SIGNIFICA, y hasta ahora sólo existía como un skill que alguien
   tenía que acordarse de invocar dentro de una sesión. Ahora es un flag: escribe el reporte del

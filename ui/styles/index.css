@@ -501,3 +501,82 @@ main { padding: 16px; }
 .commit-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }
 .commit .sha { color: var(--lime); flex: 0 0 auto; }
 .commit .subject { font-size: 13px; }
+
+/* ── reports: the day, read as a document ───────────────────────────────────── */
+
+/* Same two-pane shape as the activity view, and on purpose: the left rail picks, the right pane
+ * is the thing. Nothing new in the palette — a report is text, and text that arrives in six
+ * colours is a report nobody finishes. */
+.reports {
+  display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start;
+}
+@media (max-width: 860px) { .reports { grid-template-columns: minmax(0, 1fr); } }
+
+.report-list { position: sticky; top: 72px; display: flex; flex-direction: column; gap: 8px; }
+.report-list ul { display: flex; flex-direction: column; gap: 6px; }
+.report-row button {
+  width: 100%; text-align: left; padding: 8px 10px;
+  background: var(--bg-raised); border-color: var(--line-soft);
+}
+.report-row.on button {
+  border-color: color-mix(in oklab, var(--lime) 45%, transparent);
+  background: color-mix(in oklab, var(--lime) 8%, transparent);
+}
+.report-row-top { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+.report-row-top code { font-size: 12px; }
+.report-row-top .narr { margin-left: auto; color: var(--lime); font-size: 11px; }
+.report-row-meta { display: flex; align-items: center; gap: 7px; font-size: 11px; font-family: var(--mono); }
+.stale { color: var(--amber); border: 1px solid color-mix(in oklab, var(--amber) 35%, transparent); border-radius: 20px; padding: 0 6px; }
+
+.report-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.report-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.report-head h2 { font-size: 15px; font-family: var(--mono); }
+.report-path { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-head button { margin-left: auto; }
+
+.narrating { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.spinner {
+  width: 11px; height: 11px; flex: 0 0 auto; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--lime);
+  animation: spin 720ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* The narration first, in the accent, framed — it is the only part of a report that was not
+ * mechanically derived, and in the FILE it is last (facts before prose). On a screen the person
+ * came for the reading, and the facts are one scroll down. */
+.narration {
+  padding: 14px 16px; border-radius: var(--r-lg);
+  background: color-mix(in oklab, var(--lime) 6%, var(--bg-raised));
+  border: 1px solid color-mix(in oklab, var(--lime) 30%, transparent);
+}
+.narration h3 { color: var(--lime); margin-bottom: 6px; }
+.narration.pending { background: var(--bg-raised); border-color: var(--line); }
+.narration.pending h3 { color: var(--ink-dim); }
+
+.dossier {
+  padding: 14px 16px; border-radius: var(--r);
+  background: var(--bg-raised); border: 1px solid var(--line);
+}
+
+/* ── the markdown renderer's output ─────────────────────────────────────────── */
+
+.md { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.md-h { margin-top: 6px; font-size: 14px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.md h2.md-h { font-size: 15px; }
+/* `pre-wrap` is load-bearing: the dossier indents a commit under its card, and collapsing that
+ * whitespace turns a structured report into a wall of text. */
+.md-p { margin: 0; white-space: pre-wrap; font-size: 13px; line-height: 1.6; }
+.md-p code, .md-list code, .md-table code { color: var(--lime); font-size: 11.5px; }
+.md-list { display: flex; flex-direction: column; gap: 4px; padding-left: 18px; font-size: 13px; }
+.md-list li { list-style: disc; }
+ol.md-list li { list-style: decimal; }
+.md-code {
+  padding: 10px 12px; overflow-x: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
+}
+.md-rule { border: 0; border-top: 1px solid var(--line-soft); }
+.md-table-wrap { overflow-x: auto; }
+.md-table { border-collapse: collapse; font-size: 12.5px; }
+.md-table th, .md-table td { padding: 5px 10px; border: 1px solid var(--line-soft); text-align: left; }
+.md-table th { color: var(--ink-dim); font-weight: 600; background: var(--bg); }

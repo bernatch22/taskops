@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Board, Config, Task } from "../contracts";
 
-export type View = "board" | "activity";
+export type View = "board" | "activity" | "reports";
 
 export function Header({ config, board, live, pulse, view, onView,
                          hideEmpty, onHideEmpty, onOpen }: {
@@ -32,12 +32,16 @@ export function Header({ config, board, live, pulse, view, onView,
         </div>
       </div>
 
-      {/* Two views, one bar. The board is what is happening; the activity is what happened — and
-        * they are the same events, so they belong to one screen rather than to two apps. */}
+      {/* Three views, one bar. The board is what is happening; the activity is what happened; the
+        * reports are what it MEANT — and all three are the same events, so they belong to one
+        * screen rather than to three apps. The reports especially: they were readable only as
+        * ASCII in a terminal, which is nobody's idea of reading. */}
       <nav className="views">
         <button className={view === "board" ? "on" : ""} onClick={() => onView("board")}>Board</button>
         <button className={view === "activity" ? "on" : ""}
                 onClick={() => onView("activity")}>Activity</button>
+        <button className={view === "reports" ? "on" : ""}
+                onClick={() => onView("reports")}>Reports</button>
       </nav>
 
       <Search onOpen={onOpen} />

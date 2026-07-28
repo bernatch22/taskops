@@ -19,6 +19,7 @@ from .dossier import digest, read_report, report_path, write_report
 from .edit import edit
 from .feed import follow
 from .guard import Verdict, check_command, check_commit
+from .index import report_index
 from .ingest import ingest_branch, ingest_commit
 from .log import session_log
 from .plan import plan
@@ -32,7 +33,7 @@ from .update import update
 __all__ = [
     # the five MCP tools
     "plan", "next_task", "update", "edit", "ask", "search", "board", "standup", "fleet", "activity", "day",
-    "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path", "recover", "Recovered",
+    "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path", "report_index", "recover", "Recovered",
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",

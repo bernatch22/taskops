@@ -39,6 +39,7 @@ from .day import ClosedCard, CommitStat, DayReport, ReportFile
 from .dep import Dep
 from .event import Event, Inbox
 from .gitstate import BranchState
+from .index import ReportEntry
 from .lease import Lease
 from .log import EntryKind, LogEntry, SessionLog
 from .results import Claim, EditResult, NextResult, PlanResult, UpdateResult
@@ -77,6 +78,7 @@ __all__ = [
     "ClosedCard",
     "CommitStat",
     "ReportFile",
+    "ReportEntry",
     "Fleet",
     "FleetMember",
     # what a tool call carries in
