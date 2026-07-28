@@ -66,7 +66,8 @@ What just happened:
 | `.taskops/db.sqlite` | The local cache. Gitignored — rebuildable from the log. |
 | `.taskops/GUIDE.md` | The manual agents read. Gitignored: it is generated, and `init` rewrites it every run so it always matches the installed version. |
 | `.git/hooks/post-commit` etc. | Bind commits to tasks. Chained onto any hooks you already had. |
-| `.taskops/remote.json` | Only once you run `taskops remote add`: the server's URL and your **token**. Mode `0600` and gitignored — a bearer in git history outlives the file. |
+| `.taskops/remote.json` | Only once you run `taskops remote add`: the server's URL and your **token** (or the session from `taskops login`). Mode `0600` and gitignored — a bearer in git history outlives the file. |
+| `~/.taskops/sessions.json` | Not in the repository at all. Written by `taskops login`: one session per server, mode `0600`. A login belongs to the person, not to a checkout. |
 | A block in `.gitignore` | Ignores everything above except the log. |
 
 `taskops init` is safe to re-run, and re-running is how you **repair a fresh clone** — `.git/hooks`
@@ -481,7 +482,8 @@ taskops remote add https://taskops.example.com --token <your-token>
 taskops push
 ```
 
-That is the whole setup. From then on:
+That is the whole setup — and if the server has GitHub auth turned on, it is even shorter:
+see **Entrar con GitHub** just below. From then on:
 
 ```sh
 # you, after an afternoon of work
@@ -559,6 +561,57 @@ they meet.
 **If the server is rebuilt** and forgets where you were, your next `pull` re-reads its whole
 log. That is a no-op, not a repair job: ids are content hashes, so every event is imported
 exactly once no matter how many times it is offered.
+
+### 4a-bis — Entrar con GitHub: `taskops login`
+
+The setup above has one weak step, and it is not technical: *"and issues each developer a
+token"*. Somebody mints a secret, sends it over chat, and rotates it by hand when a person
+leaves — which is to say, never. If the server was started with GitHub auth, nobody mints
+anything. A new teammate's whole day-one is **three commands**:
+
+```sh
+taskops login https://taskops.example.com
+# signed in to https://taskops.example.com as jp
+#   2 project(s) — run one of these in the matching checkout:
+#     axion     taskops remote add https://taskops.example.com/axion
+#     taskops   taskops remote add https://taskops.example.com/taskops
+
+cd ~/code/axion
+taskops remote add https://taskops.example.com/axion    # no --token
+taskops push
+```
+
+`login` reads your GitHub token from **`gh auth token`**; if `gh` is not installed or not
+logged in, it asks for one with the `repo` scope at a **hidden prompt** (nothing is echoed).
+The server checks that account against the repositories its projects point at, and answers
+with your login, the projects you may see, and a **session**.
+
+**What is stored, and where.** The session goes to `~/.taskops/sessions.json`, mode `0600`,
+one entry per server — in your **home directory**, never inside a repository, because a file
+that never enters a work tree can never enter a commit. Your GitHub token is *not* stored: it
+crosses one call and is gone. That asymmetry is the point — a stolen session costs one server
+for one week, a stolen GitHub token costs every repository you can reach, forever.
+
+**What is printed.** Your GitHub login and the projects. Never the session: a terminal is a
+thing people screenshot. When you do need it — the UI's unlock screen asks for it — say so:
+
+```sh
+taskops login https://taskops.example.com --show      # prints the session itself
+taskops login https://taskops.example.com --logout    # forget it on this machine
+```
+
+**A week later the session expires** (seven days, server side) and `push` says so in words
+rather than as a bare `401`:
+
+```
+the session for https://taskops.example.com expired — run
+`taskops login https://taskops.example.com` again and this project keeps working
+```
+
+`taskops remote` then shows `session` where it used to show `token`, and still prints only a
+length. Nothing about the token path changed: `remote add --token <t>` works exactly as
+before, and a server without GitHub auth is served by it. Logging in is an addition, not a
+replacement — and a person with neither is told about *both* ways out.
 
 ### 4b — Through git, with no server
 
@@ -649,7 +702,7 @@ task, and a passer-by should not be able to post as an agent.
 
 ### Commands
 
-`taskops --help` lists **ten**, and ten is all there is. What a person does:
+`taskops --help` lists **twelve**, and twelve is all there is. What a person does:
 
 ```
 taskops init [--no-hooks]                  create .taskops/, install the git hooks
@@ -659,10 +712,15 @@ taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
 taskops recover [--apply]                  release cards held by silent workers
 taskops sync                               reconcile with the committed log
 taskops run [--yes] [--use-api-key]        run ready cards with headless Claude workers
-taskops remote [add <url> --token <t> | remove]    the server this project syncs with
+taskops login <url> [--logout] [--show]    sign in with GitHub; the session serves every checkout
+taskops remote [add <url> [--token <t>] | remove]  the server this project syncs with
 taskops push [--force]                     send this board up, then take theirs
 taskops pull                               take the server's events and reports
 ```
+
+`login` is the only one that touches nothing under `.taskops/` — a session belongs to the
+PERSON on this machine, so it lives in the home directory and serves every checkout at once,
+which is why it takes no `--repo`.
 
 `remote`, `push` and `pull` are the **developer's**, which is why they are here and not on the
 MCP surface: an agent works a board, it does not decide when this machine talks to a server.

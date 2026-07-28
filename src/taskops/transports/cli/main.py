@@ -17,12 +17,29 @@ from typing import Sequence
 
 from ..._errors import TaskopsError
 from ..._version import __version__
-from .commands import init, pushpull, recover, remote, report, run_, serve, sync, tasks, ui
+from .commands import (
+    init,
+    login,
+    pushpull,
+    recover,
+    remote,
+    report,
+    run_,
+    serve,
+    sync,
+    tasks,
+    ui,
+)
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, ui, serve, tasks, run_, report, recover, sync, remote, pushpull)
-"""Every command there is. Eleven, and `--help` lists all eleven.
+_COMMANDS = (init, ui, serve, tasks, run_, report, recover, sync, login, remote, pushpull)
+"""Every command there is. Twelve, and `--help` lists all twelve.
+
+`login` sits with them because it is the first thing a new teammate types and the last thing
+they should have to look for. It is the only command here that touches nothing under
+`.taskops/`: a session belongs to the PERSON on this machine, so it goes to the home
+directory and serves every checkout at once — which is why it takes no `--repo`.
 
 `serve` sits next to `ui` because it is the same transport with a different audience: `ui`
 serves the repository you are standing in, `serve` serves a directory of them over the network,

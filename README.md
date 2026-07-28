@@ -61,7 +61,7 @@ taskops ui        # the live board → http://127.0.0.1:2140
 
 ## The CLI — for people
 
-Eleven commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
+Twelve commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
 
 | Command | What it does |
 |---|---|
@@ -73,6 +73,7 @@ Eleven commands, all of them yours. Agents never use the CLI (they have MCP), an
 | `taskops recover` | Release cards held by workers that went silent. |
 | `taskops sync` | Reconcile with the committed event log (the git path). |
 | `taskops serve` | Host many projects' boards on one port, one token each. |
+| `taskops login` | Sign in to a server with your GitHub account; the remote configures itself. |
 | `taskops remote` | Point this project at a server. |
 | `taskops push` / `pull` | Exchange events and reports with the server. |
 
@@ -216,6 +217,20 @@ taskops remote add https://boards.example.com/myproject --token <token>
 taskops push        # send your events up, take theirs down
 taskops pull
 ```
+
+**Or nobody hands out tokens at all.** If the server was started with GitHub auth, a new
+teammate signs in with the account they already have and the remote configures itself:
+
+```sh
+taskops login https://boards.example.com     # takes your token from `gh auth token`
+taskops remote add https://boards.example.com/myproject    # no --token: it uses the session
+taskops push
+```
+
+`login` trades a GitHub token for a **session** — stored in `~/.taskops/sessions.json` at `0600`,
+outside every repository, scoped to that one server, expiring on its own in seven days. The
+GitHub token itself is never written down: it crosses one call and is gone. Somebody who leaves
+the GitHub org loses the board when their session lapses, with nobody rotating anything by hand.
 
 One port, many projects, one token each. No token, no access — not even reads. With a remote configured, agents' claims and closes execute **in the server's database**: two agents on two continents asking for the same card are two inserts on one primary key again, and exactly one wins. There is no window.
 

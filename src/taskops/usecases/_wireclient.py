@@ -30,6 +30,10 @@ import urllib.request
 from typing import Any, cast
 
 from .._errors import TaskopsError, Unreachable
+from ._sessionfile import bearer_of, expired
+from ._wirereply import cause as _cause
+from ._wirereply import decode as _decode
+from ._wirereply import failure as _message
 
 __all__ = ["Wire", "TIMEOUT", "PAGE"]
 
@@ -106,7 +110,8 @@ class Wire:
             payload = _decode(err.read())
             if err.code in allow:
                 return {**payload, "status": err.code}
-            raise TaskopsError(_message(payload, self.base + path, err.code)) from err
+            stale = expired(self.base, self.token) if err.code == 401 else None
+            raise TaskopsError(stale or _message(payload, self.base + path, err.code)) from err
         except (urllib.error.URLError, OSError) as err:
             raise Unreachable(
                 f"could not reach {self.base}: {_cause(err)} — the local board is still "
@@ -115,27 +120,11 @@ class Wire:
     def _request(self, method: str, path: str, body: Any) -> urllib.request.Request:
         data = None if body is None else json.dumps(body).encode("utf-8")
         request = urllib.request.Request(self.base + path, data=data, method=method)
-        request.add_header("Authorization", f"Bearer {self.token}")
+        if self.token:
+            # Empty means "this route takes no credential" — the GitHub exchange is the one
+            # call in the system made by somebody who has nothing to prove yet, and sending
+            # `Bearer ` there invites a 401 from any proxy that parses the header.
+            request.add_header("Authorization", f"Bearer {bearer_of(self.token)}")
         if data is not None:
             request.add_header("Content-Type", "application/json")
         return request
-
-
-def _decode(raw: bytes) -> dict[str, Any]:
-    """A JSON object, or an empty one. A body that is not JSON is not a crash: an nginx in
-    front of the server answers 502 in HTML, and the reader wants the status, not a
-    traceback through the parser."""
-    try:
-        parsed: Any = json.loads(raw.decode("utf-8", errors="replace") or "{}")
-    except json.JSONDecodeError:
-        return {}
-    return cast("dict[str, Any]", parsed) if isinstance(parsed, dict) else {}
-
-
-def _message(payload: dict[str, Any], where: str, code: int) -> str:
-    told = str(payload.get("error") or "").strip()
-    return told or f"{where} answered {code} and said nothing a person can act on"
-
-
-def _cause(err: Exception) -> str:
-    return str(getattr(err, "reason", "") or err) or err.__class__.__name__

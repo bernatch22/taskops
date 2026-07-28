@@ -25,6 +25,7 @@ from .guard import Verdict, check_command, check_commit
 from .index import report_index
 from .ingest import ingest_branch, ingest_commit
 from .log import session_log
+from .login import is_session, login, logins, logout, session_of
 from .plan import plan
 from .pushpull import Exchange, pull, push
 from .recover import Recovered, recover
@@ -51,6 +52,8 @@ __all__ = [
     "brief", "Brief", "inbox", "checkout", "track", "sync", "rebuild", "follow", "locate", "session_log",
     # the remote: one server, and the two verbs that converge with it
     "add_remote", "read_remote", "require_remote", "remove_remote", "push", "pull", "Exchange",
+    # signing in: one GitHub login per machine, a session per server
+    "login", "logout", "logins", "session_of", "is_session",
     # the live narration: started in the background, watched on the wire
     "narration", "is_wire", "parse_date",
 ]
