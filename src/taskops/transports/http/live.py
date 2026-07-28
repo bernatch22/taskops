@@ -25,11 +25,20 @@ import json
 from collections.abc import Generator
 from pathlib import Path
 
-from ...usecases import follow
+from ...usecases import follow, is_wire
 from . import websocket
 from ._wire import Reply, Request
 
 __all__ = ["stream"]
+
+NARRATION = "narration"
+"""The second thing this feed carries. An event is a stored fact and this is not — it is the
+prose of a report arriving as a model writes it, published to `engine.WIRE`, never to the log.
+
+Same route and same socket on purpose: a browser holds one connection, and a second stream
+would be a second subscription and a second lifetime to leak for a feature that is a panel on
+one screen. The envelope keeps them apart, so a client that has never heard of narration drops
+the frame and keeps rendering the board."""
 
 KEEPALIVE_TICKS = 4
 """Quiet ticks before a comment frame goes out — 4 × 0.5s = 2 seconds.
@@ -89,6 +98,10 @@ def _ws_frames(root: Path) -> Generator[bytes, None, None]:
     yield websocket.text_frame(json.dumps({"type": "hello"}))
     ticks = 0
     for event in follow(root):
+        if is_wire(event):
+            yield websocket.text_frame(json.dumps({"type": NARRATION, "message": event},
+                                                  default=str))
+            continue
         if event is not None:
             yield websocket.text_frame(json.dumps({"type": "change", "event": event},
                                                   default=str))
@@ -117,6 +130,10 @@ def _frames(root: Path) -> Generator[bytes, None, None]:
     quiet = 0
     ticks = 0
     for event in follow(root):
+        if is_wire(event):
+            quiet = 0
+            yield _frame(event, NARRATION)
+            continue
         if event is not None:
             quiet = 0
             yield _frame(event)
@@ -132,6 +149,8 @@ def _frames(root: Path) -> Generator[bytes, None, None]:
             yield b": keepalive\n\n"
 
 
-def _frame(event: object) -> bytes:
+def _frame(event: object, name: str = "change") -> bytes:
+    """One SSE frame. The event NAME is what tells the two feeds apart — the websocket has no
+    such line, which is why its envelope carries a `type` instead."""
     payload = json.dumps(event, default=str)
-    return f"event: change\ndata: {payload}\n\n".encode("utf-8")
+    return f"event: {name}\ndata: {payload}\n\n".encode("utf-8")

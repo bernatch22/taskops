@@ -140,6 +140,27 @@ export interface ReportEntry {
   bytes: number;
 }
 
+/* An EPHEMERAL frame, mirroring `contracts/wire.py`. It arrives on the live socket, under
+ * `type: "narration"`, and it is the opposite of an `Event`: nothing stored it, nothing replays
+ * it, and a browser that reconnects has simply missed whatever went by. The file on disk is the
+ * durable copy — this is the window onto it being written. */
+export interface WireMessage {
+  /* `narration.delta` | `narration.pass` | `narration.done` | `narration.failed`. Open, like
+   * `Event.kind`: an unknown one is dropped, never guessed at. */
+  kind: string;
+  /* Which report. Two narrations can be in flight, and a delta with no label would be appended
+   * to whichever panel happens to be open. */
+  label: string;
+  text: string;
+}
+
+/* What `POST /api/report/digest` answers now: it STARTED. The prose does not come back on the
+ * response — it arrives frame by frame on the socket, because the call takes minutes. */
+export interface DigestStarted {
+  status: string;
+  label: string;
+}
+
 export interface ReportFile {
   date: string;
   path: string;

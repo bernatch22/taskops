@@ -4,17 +4,22 @@ Their own module rather than three more functions in `api.py`, because they are 
 endpoints that touch a FILE — a report is written to disk and committed, unlike every other
 projection here, which is regenerated on demand. Grouping them keeps that difference visible.
 
-`POST /api/report/digest` is the one endpoint in taskops that costs money and takes half a
-minute: it shells out to `claude`. It is a POST for exactly that reason — a write is refused
-under `--readonly` by the policy, by method, so a board on a screen in a room cannot spend an
-API key by being looked at.
+`POST /api/report/digest` is the one endpoint in taskops that costs money and takes MINUTES:
+it shells out to `claude`. It is a POST for exactly that reason — a write is refused under
+`--readonly` by the policy, by method, so a board on a screen in a room cannot spend an API key
+by being looked at.
+
+It does not WAIT for it, though. It starts the narration and answers immediately; the prose
+arrives on `/api/live` as it is written. Holding the response open for a multi-minute model
+call was the whole bug: the browser showed a mute spinner, the file said `_pendiente_`
+throughout, and a connection that dropped took the only feedback there was with it.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ...usecases import Selector, digest, read_report, report_index
+from ...usecases import narration, parse_date, read_report, report_index
 from ._wire import Reply, Request, json_reply
 from .api import guarded
 
@@ -41,14 +46,20 @@ def get_report(root: Path, request: Request) -> Reply:
 
 
 def post_digest(root: Path, request: Request) -> Reply:
-    """Write the report if it is missing, then have Claude narrate it. Answers with the file.
+    """START narrating the report. Answers `{"status": "narrating", "label"}` at once.
 
-    Answering with the whole `ReportFile` and not with a path is what lets the UI render the
-    narration it just paid for without a second round trip — and it is the same shape
-    `GET /api/report` returns, so the view has one way to read a report.
+    Not the finished file, deliberately. The narration is minutes of a model writing, and the
+    only honest thing a request can return in that time is "it began" — the prose itself
+    arrives on `/api/live`, frame by frame, on the socket the board already holds. The UI shows
+    it appearing and refetches the file when the terminal frame lands.
 
-    `force` is the Regenerate button. Without it an existing narration is refused (409): a
-    person may have edited that prose, and it is the one section nothing can recover.
+    The day is parsed HERE, before the thread starts, so a label nobody can read is still a 400
+    with the parser's own sentence in it rather than a `narration.failed` frame two seconds
+    later on a stream the caller may not even be watching.
+
+    `force` is the Regenerate button; without it an existing narration is refused, since a
+    person may have edited that prose. A second request while one is running is refused too
+    (409) — two models rewriting one file is corruption, not contention.
     """
     payload = request.payload()
     label = str(payload.get("date") or payload.get("label") or "")
@@ -57,7 +68,8 @@ def post_digest(root: Path, request: Request) -> Reply:
     def run() -> Reply:
         # A day, named explicitly: the button lives on a day's row, and a window selector is
         # something the UI has no way to express yet.
-        digest(root, Selector(date=label), force=force)
-        return json_reply(read_report(root, label))
+        day = parse_date(label)
+        return json_reply({"status": "narrating",
+                           "label": narration.start(root, day, force=force)})
 
     return guarded(run)

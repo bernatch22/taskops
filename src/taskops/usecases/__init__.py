@@ -11,14 +11,15 @@ async and calls in from a threadpool, but there is no async twin of the engine.
 
 from __future__ import annotations
 
+from . import narration
 from ._project import locate
-from ._range import Selector
+from ._range import Selector, parse_date
 from .ask import ask, search
 from .claim import next_task
 from .dispatch import DispatchResult, dispatch
 from .dossier import digest, read_report, report_path, write_report
 from .edit import edit
-from .feed import follow
+from .feed import follow, is_wire
 from .guard import Verdict, check_command, check_commit
 from .index import report_index
 from .ingest import ingest_branch, ingest_commit
@@ -41,4 +42,6 @@ __all__ = [
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",
     "brief", "Brief", "inbox", "checkout", "track", "sync", "rebuild", "follow", "locate", "session_log",
+    # the live narration: started in the background, watched on the wire
+    "narration", "is_wire", "parse_date",
 ]

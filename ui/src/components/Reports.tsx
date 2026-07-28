@@ -7,20 +7,36 @@
  * Two panes. Left: which reports exist, newest first. Right: the one you picked, rendered — that
  * is the whole point of the view, so the narration gets its own panel above the facts even though
  * the file keeps it last (the file puts facts first so the prose is read as a reading of them; on
- * screen the prose is what you came for, and the facts are one scroll away). */
+ * screen the prose is what you came for, and the facts are one scroll away).
+ *
+ * Generate does NOT wait. The POST answers "narrating" in a few milliseconds and the prose arrives
+ * on the live socket, so this panel renders it AS IT IS WRITTEN — which is the whole difference
+ * between "no hace nada" and watching the day get read. The frames come in through `narration`,
+ * folded by `useStudio` off the one socket the app already holds; this component never opens a
+ * stream of its own. */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiFailure } from "../api";
 import type { ReportEntry, ReportFile } from "../contracts";
+import type { Narration } from "../narration";
 import { Markdown } from "./Markdown";
 import { split } from "../markdown";
 
-export function Reports({ readonly }: { readonly: boolean }): JSX.Element {
+export function Reports({ readonly, narration }:
+                        { readonly: boolean; narration: Narration | null }): JSX.Element {
   const [list, setList] = useState<ReportEntry[] | null>(null);
   const [picked, setPicked] = useState("");
   const [file, setFile] = useState<ReportFile | null>(null);
   const [failed, setFailed] = useState("");
-  const [busy, setBusy] = useState(false);
+  /* The gap between the click and the first frame. It is milliseconds, but without it the button
+   * would sit there saying "Generate" until the model produced its first token — which on a big
+   * dossier is the better part of a minute, and is exactly the silence this card is about. */
+  const [starting, setStarting] = useState(false);
+
+  /* The narration on screen is the one for the report being LOOKED AT. Another report's frames
+   * are still folded (a second narration can be running), they just do not render here. */
+  const live = narration && narration.label === picked ? narration : null;
+  const busy = live ? live.state === "narrating" : starting;
 
   const reload = useCallback(async () => {
     const found = await api.reports();
@@ -36,28 +52,53 @@ export function Reports({ readonly }: { readonly: boolean }): JSX.Element {
 
   useEffect(() => {
     if (!picked) return;
-    let live = true;
+    let current = true;
     setFile(null);
+    setStarting(false);
     api.report(picked)
-      .then((found) => { if (live) { setFile(found); setFailed(""); } })
-      .catch((error: unknown) => { if (live) setFailed(message(error)); });
-    return () => { live = false; };
+      .then((found) => { if (current) { setFile(found); setFailed(""); } })
+      .catch((error: unknown) => { if (current) setFailed(message(error)); });
+    return () => { current = false; };
   }, [picked]);
 
   const narrate = async (force: boolean) => {
-    setBusy(true);
+    setStarting(true);
     setFailed("");
     try {
-      setFile(await api.digest(picked, force));
-      await reload();
+      /* Returns as soon as the work has STARTED. Everything after this arrives on the socket. */
+      await api.digest(picked, force);
     } catch (error: unknown) {
       /* Verbatim. `claude` not installed, or not logged in, is something the reader can fix in a
-       * minute — and only if the message reaches the screen instead of becoming "failed". */
+       * minute — and only if the message reaches the screen instead of becoming "failed". A 409
+       * lands here too: one is already running, and the message says to watch it. */
       setFailed(message(error));
-    } finally {
-      setBusy(false);
+      setStarting(false);
     }
   };
+
+  /* The narration ENDED. Reread the file — the socket carried the prose, but the file is the
+   * durable copy and the one the stale badges and the index are computed from. A ref keyed by
+   * label+state is what stops this firing again on every re-render while `done` is still on
+   * screen. */
+  const handled = useRef("");
+  useEffect(() => {
+    if (!live || live.state === "narrating") return;
+    const key = `${live.label}:${live.state}`;
+    if (handled.current === key) return;
+    handled.current = key;
+    setStarting(false);
+    if (live.state === "failed") { setFailed(live.error); return; }
+    api.report(live.label).then(setFile).catch(() => {});
+    void reload();
+  }, [live, reload]);
+
+  /* Follow the prose as it grows, the way a terminal does. Only while it is being WRITTEN: once
+   * it is finished the reader owns the scroll position, and yanking it to the bottom while they
+   * read the top would be the view fighting them. */
+  const tail = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (live?.state === "narrating") tail.current?.scrollIntoView({ block: "end" });
+  }, [live?.text, live?.state]);
 
   const parts = file ? split(file.dossier_md) : null;
 
@@ -75,7 +116,12 @@ export function Reports({ readonly }: { readonly: boolean }): JSX.Element {
                   {entry.has_narration ? <span className="narr" title="narrated">✎</span> : null}
                 </div>
                 <div className="report-row-meta dim">
-                  {!entry.exists ? <span>not written yet</span> : <span>{size(entry.bytes)}</span>}
+                  {/* A report being narrated says so in the LIST, not only in the panel: the
+                    * person may have clicked away to another row while it runs, and a job with
+                    * no visible trace is the thing this whole card exists to remove. */}
+                  {narration?.label === entry.label && narration.state === "narrating"
+                    ? <span className="running">narrating…</span>
+                    : !entry.exists ? <span>not written yet</span> : <span>{size(entry.bytes)}</span>}
                   {/* Stale is the badge that changes what a person DOES: citing a report that was
                     * written before half the day happened is the failure this whole fingerprint
                     * exists to prevent. */}
@@ -103,7 +149,7 @@ export function Reports({ readonly }: { readonly: boolean }): JSX.Element {
               <button className="primary" disabled={readonly || busy}
                       title={readonly
                         ? "this board is read-only — start it without --readonly"
-                        : "runs `claude` over the dossier; takes about half a minute"}
+                        : "runs `claude` over the dossier; it writes into the panel as it goes"}
                       onClick={() => void narrate(!parts.pending)}>
                 {busy ? "Narrating…" : parts.pending ? "Generate" : "Regenerate"}
               </button>
@@ -111,17 +157,32 @@ export function Reports({ readonly }: { readonly: boolean }): JSX.Element {
 
             {busy ? (
               <p className="dim narrating">
-                <span className="spinner" /> Claude is reading the day. This takes about
-                thirty seconds — the page stays usable.
+                <span className="spinner" />
+                {live?.pass
+                  ? ` Claude is on reading ${live.pass}. `
+                  : " Claude is reading the day. "}
+                It appears below as it is written, and it is being saved to the file at the
+                same time — closing this page does not stop it.
               </p>
             ) : null}
 
-            <div className={`narration${parts.pending ? " pending" : ""}`}>
-              <h3>Narration</h3>
-              {parts.pending
-                ? <p className="dim">Nobody has written this one up yet.</p>
-                : <Markdown source={parts.narration} />}
-            </div>
+            {/* WHILE it is being written, the socket is the source; afterwards, the file is.
+              * Never both at once: the same prose in two panels reads as a rendering bug, and
+              * the file is refetched the moment the last frame lands anyway. */}
+            {live && live.text && (live.state === "narrating" || parts.pending) ? (
+              <div className={`narration${live.state === "narrating" ? " streaming" : ""}`}>
+                <h3>Narration {live.state === "narrating" ? "— being written" : ""}</h3>
+                <Markdown source={live.text} />
+                <div ref={tail} />
+              </div>
+            ) : (
+              <div className={`narration${parts.pending ? " pending" : ""}`}>
+                <h3>Narration</h3>
+                {parts.pending
+                  ? <p className="dim">Nobody has written this one up yet.</p>
+                  : <Markdown source={parts.narration} />}
+              </div>
+            )}
 
             <div className="dossier">
               <Markdown source={parts.dossier} />

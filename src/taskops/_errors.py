@@ -21,6 +21,7 @@ __all__ = [
     "GuardFailed",
     "BadRequest",
     "AlreadyWritten",
+    "AlreadyNarrating",
     "NarrationFailed",
 ]
 
@@ -40,9 +41,8 @@ class NotInitialized(TaskopsError, FileNotFoundError):
 
     @classmethod
     def at(cls, path: str | Path) -> "NotInitialized":
-        return cls(
-            f"no taskops project at or above {path} — run `taskops init` in the repository root"
-        )
+        return cls(f"no taskops project at or above {path} — run `taskops init` in the "
+                   f"repository root")
 
 
 class NoSuchTask(TaskopsError, KeyError):
@@ -78,10 +78,8 @@ class LeaseHeld(TaskopsError, RuntimeError):
 
     @classmethod
     def by(cls, *, task: str, actor: str, seconds: int) -> "LeaseHeld":
-        return cls(
-            f"{task} is claimed by {actor} for another {seconds}s — "
-            f"pick another task, or message them on it"
-        )
+        return cls(f"{task} is claimed by {actor} for another {seconds}s — "
+                   f"pick another task, or message them on it")
 
 
 class NoLease(TaskopsError, RuntimeError):
@@ -93,10 +91,8 @@ class NoLease(TaskopsError, RuntimeError):
 
     @classmethod
     def on(cls, *, task: str, actor: str) -> "NoLease":
-        return cls(
-            f"{actor} holds no live lease on {task} — claim it with "
-            f"taskops_next, or `taskops claim {task}`"
-        )
+        return cls(f"{actor} holds no live lease on {task} — claim it with "
+                   f"taskops_next, or `taskops claim {task}`")
 
 
 class GuardFailed(TaskopsError, ValueError):
@@ -124,6 +120,20 @@ class AlreadyWritten(TaskopsError, FileExistsError):
     """
 
     code = "already_written"
+    http_status = 409
+
+
+class AlreadyNarrating(TaskopsError, RuntimeError):
+    """A narration of that report is already running IN THIS PROCESS. 409.
+
+    Two models writing the same file is not a slow path, it is corruption: both hold the
+    dossier they read at the start and each rewrites the whole file when it flushes, so
+    whichever finishes last silently erases the other. Refusing the second is the only
+    outcome that leaves a readable report — and the first one is still streaming, so the
+    person who clicked twice is already looking at what they asked for.
+    """
+
+    code = "already_narrating"
     http_status = 409
 
 

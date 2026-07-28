@@ -309,10 +309,15 @@ What you can do there:
   first and renders the one you pick — headings, tables and code, with the `## Narración` lifted
   to the top in its own panel. A row carries a `stale +N` badge when N events landed after the
   report was generated, and a `✎` when somebody (or Claude) has written the narration. The
-  **Generate / Regenerate** button runs the same `report day --digest` from the browser: it takes
-  about half a minute because it is a model call, and if `claude` is missing or logged out the
-  server's own words reach the screen. It is a write, so `--readonly` refuses it — a board on a
-  screen in a room cannot spend anything by being looked at.
+  **Generate / Regenerate** button runs the same `report day --digest` from the browser, and you
+  **watch it being written**: the request returns immediately and the prose arrives on the live
+  socket a fragment at a time, rendered as it lands, while the same text is saved to the file on
+  disk as it goes. Closing the page does not stop it, and reopening it shows the file — which is
+  the durable copy; the socket is only the window. The row in the list says `narrating…` while it
+  runs. A model call takes minutes on a big window, so a second Generate for the same report is
+  refused with a 409 (two models rewriting one file is corruption, not contention), and if
+  `claude` is missing or logged out the server's own words reach the screen. It is a write, so
+  `--readonly` refuses it — a board on a screen in a room cannot spend anything by being looked at.
 
 Useful flags:
 
@@ -326,8 +331,11 @@ With `--token`, open the URL it prints — the link carries the token, and the p
 
 > `taskops studio` was the old name and still runs, printing one deprecation line first.
 
-> **Why SSE and not WebSocket:** the channel only ever pushes, the engine is deliberately
-> synchronous, SSE needs no dependency, and it goes through nginx with no upgrade handling.
+> **`/api/live` is a WebSocket, with SSE as the fallback.** One route, two envelopes, one
+> source — the browser upgrades, and anything that cannot (a proxy that mangles the handshake)
+> gets server-sent events, which also makes `curl -N /api/live` a working debugging tool. It
+> carries two things: `change` frames, which are stored events and only a signal to refetch,
+> and `narration` frames, which are ephemeral prose that is never stored anywhere.
 > `src/taskops/transports/http/live.py` has the full argument.
 
 ---

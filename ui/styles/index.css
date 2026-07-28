@@ -554,6 +554,17 @@ main { padding: 16px; }
 .narration.pending { background: var(--bg-raised); border-color: var(--line); }
 .narration.pending h3 { color: var(--ink-dim); }
 
+/* Being written RIGHT NOW, off the socket. The pulsing edge is the only thing on this screen
+ * that says "still going" once the prose is long enough to fill the panel — the spinner above
+ * it has scrolled out of sight by then. */
+.narration.streaming { border-color: color-mix(in oklab, var(--lime) 55%, transparent); }
+.narration.streaming h3 { animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .narration.streaming h3 { animation: none; } }
+
+/* In the LIST, so a narration is visible from a row the reader clicked away from. */
+.report-row-meta .running { color: var(--lime); }
+
 .dossier {
   padding: 14px 16px; border-radius: var(--r);
   background: var(--bg-raised); border: 1px solid var(--line);

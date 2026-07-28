@@ -40,7 +40,7 @@ function App(): JSX.Element {
         {view === "activity"
           ? <Activity onOpen={studio.openTask} />
           : view === "reports"
-          ? <Reports readonly={studio.config?.readonly ?? false} />
+          ? <Reports readonly={studio.config?.readonly ?? false} narration={studio.narration} />
           : studio.board
             ? <Board board={studio.board} hideEmpty={hideEmpty} grouping={grouping}
                      onGrouping={setGrouping} onOpen={studio.openTask} />
