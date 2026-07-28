@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import Sequence
+from typing import Any, Sequence
 
 from ..._errors import TaskopsError
 from ..._version import __version__
@@ -31,14 +31,44 @@ from .commands import (
     report,
     session,
     sync,
+    tasks,
     ui,
     update,
 )
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, next_, update, ask, plan, dispatch, recover, report, log, ui,
-             guard, hook, ingest, session, sync)
+_VISIBLE = (init, ui, tasks, report, recover, sync)
+"""What `taskops --help` lists: what a PERSON does. Six, from nineteen."""
+
+_HIDDEN = (next_, update, ask, plan, dispatch, log, guard, hook, ingest, session)
+"""Registered, parsed and run exactly as before — just not listed.
+
+Two audiences, neither of them the person reading `--help`. `next`/`update`/`ask`/`plan`/
+`dispatch`/`log` are the agent protocol, which an agent learns from the MCP tools or from
+its brief, not from a help page; `guard`/`ingest`/`hook`/`brief`/`inbox`/`track`/`checkout`
+are typed by a git or Claude Code hook and by nothing else. Hiding rather than removing,
+because every one of them is written into hooks and scripts that already exist — and the
+help page is the thing that was failing, not the commands.
+"""
+
+
+class _Unlisted:
+    """A subparsers action that swallows `help`, which is how argparse hides a command.
+
+    `add_parser` only records a listing entry when it was GIVEN a `help`; with none, the
+    parser is registered and runs normally and the listing never mentions it. Going through
+    this proxy means a module does not know or care whether it is visible, so the flags stay
+    declared in exactly one place — the alternative, a second table of names here, is the
+    kind that drifts the first time a command gains an option.
+    """
+
+    def __init__(self, sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+        self._sub = sub
+
+    def add_parser(self, name: str, **kwargs: Any) -> argparse.ArgumentParser:
+        kwargs.pop("help", None)
+        return self._sub.add_parser(name, **kwargs)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,8 +80,10 @@ def build_parser() -> argparse.ArgumentParser:
                     "atomic claims, commits bound to the work that motivated them.")
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True, metavar="<command>")
-    for module in _COMMANDS:
+    for module in _VISIBLE:
         module.register(sub)
+    for module in _HIDDEN:
+        module.register(_Unlisted(sub))    # type: ignore[arg-type]
     return parser
 
 

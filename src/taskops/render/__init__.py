@@ -2,7 +2,7 @@
 
 `tests/architecture` enforces the purity: nothing here may import storage, engine,
 usecases, sqlite3 or subprocess. That is what lets one renderer serve the CLI, the MCP
-reply and the studio's markdown export, and it is why a rendering bug is reproducible from
+reply and the web UI's markdown export, and it is why a rendering bug is reproducible from
 a literal dict.
 
 Split by AUDIENCE rather than by data type — the board (state), results (what an action
@@ -28,8 +28,10 @@ from .results import (
 )
 from .session import render_brief, render_verdict
 from .task import render_claim, render_view
+from .tasklist import render_tasklist
 
 __all__ = ["render_view", "render_claim", "render_inbox", "render_board",
            "render_standup", "render_fleet", "render_plan", "render_next",
            "render_update", "render_search", "render_dispatch", "render_brief",
-           "render_verdict", "render_recover", "render_log", "render_day"]
+           "render_verdict", "render_recover", "render_log", "render_day",
+           "render_tasklist"]

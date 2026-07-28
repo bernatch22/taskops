@@ -10,12 +10,28 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-__all__ = ["add_target", "add_identity", "repo_of"]
+__all__ = ["add_target", "add_actor", "add_identity", "repo_of"]
 
 
-def add_target(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--repo", default=".",
+def add_target(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
+    parser.add_argument("--repo", default=_default(".", inherit),
                         help="path in the repository (default: the current directory)")
+
+
+def add_actor(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
+    parser.add_argument("--actor", default=_default("", inherit),
+                        help="who is calling: agent:<dev>/<name> or dev:<name>")
+
+
+def _default(value: str, inherit: bool) -> object:
+    """`SUPPRESS` when a PARENT parser already carries this flag.
+
+    argparse writes a subparser's defaults into the namespace the parent already filled, so
+    a group whose subcommands re-declare `--repo` would silently reset it: `taskops tasks
+    --repo /x list` would look in the current directory instead. `SUPPRESS` is the only way
+    to say "set nothing when it was not given", which leaves the parent's value standing.
+    """
+    return argparse.SUPPRESS if inherit else value
 
 
 def add_identity(parser: argparse.ArgumentParser) -> None:
