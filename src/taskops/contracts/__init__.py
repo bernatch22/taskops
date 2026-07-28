@@ -44,6 +44,7 @@ from .lease import Lease
 from .log import EntryKind, LogEntry, SessionLog
 from .remote import Remote
 from .results import Claim, EditResult, NextResult, PlanResult, UpdateResult
+from .sweep import Skipped, SweepResult
 from .task import Task, TaskView
 from .tools import AskParams, NextParams, PlanParams, ReportParams, UpdateParams
 from .wire import WireMessage
@@ -84,7 +85,7 @@ __all__ = [
     "OpenedCard",
     "CommitStat",
     "ReportFile",
-    "ReportEntry",
+    "ReportEntry", "Skipped", "SweepResult",
     "Fleet",
     "FleetMember",
     # what a tool call carries in

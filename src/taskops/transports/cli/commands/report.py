@@ -15,8 +15,10 @@ from ....usecases import (
     standup,
     write_report,
 )
+from ....usecases.sweep import LIMIT
 from ._digest import stream_digest
 from ._shared import add_target, repo_of
+from ._sweep import run_sweep
 from ._window import selector
 
 __all__ = ["register", "DOSSIERS"]
@@ -27,13 +29,17 @@ DOSSIERS = ("day", "range", "all")
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("report", help="board, standup, day, range, all, or fleet")
+    parser = sub.add_parser("report", help="board, standup, day, range, all, fleet, or sweep")
     add_target(parser)
     parser.add_argument("kind", nargs="?", default="board",
-                        choices=("board", "standup", "day", "range", "all", "fleet"))
+                        choices=("board", "standup", "day", "range", "all", "fleet", "sweep"))
     parser.add_argument("--since", default="24h", help="standup window: 24h, 7d, 30m")
-    parser.add_argument("--date", default="today",
-                        help="which day the dossier covers: today, yesterday, YYYY-MM-DD")
+    # Empty rather than `today`, which resolves to the same day and is INDISTINGUISHABLE from
+    # not passing the flag — and `report sweep --force` has to be able to tell, because with a
+    # default standing in for an explicit date it would redo today's report on every run.
+    parser.add_argument("--date", default="",
+                        help="which day the dossier covers: today (default), yesterday, "
+                             "YYYY-MM-DD")
     parser.add_argument("--last", default="",
                         help="range: how far back from --to, e.g. 7d, 2w, 1m")
     parser.add_argument("--from", dest="from_date", default="",
@@ -50,11 +56,15 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
                              "(uses your logged-in subscription, never an API key)")
     parser.add_argument("--model", default="",
                         help="with --digest: the model to narrate with")
+    parser.add_argument("--limit", type=int, default=LIMIT, help="sweep: days per run")
+    parser.add_argument("--push", action="store_true", help="sweep: one push at the end")
     parser.set_defaults(run=run)
 
 
 def run(args: argparse.Namespace) -> str:
     where = repo_of(args)
+    if args.kind == "sweep":
+        return run_sweep(where, args)
     if args.kind not in DOSSIERS and (args.write or args.force or args.digest):
         raise BadRequest("--write, --force and --digest only apply to `report day`, "
                          "`report range` and `report all` — a board and a standup are "

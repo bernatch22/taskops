@@ -20,6 +20,11 @@ from .accounts import authenticate
 from .ask import ask, search
 from .browse import board_url, root_url
 from .claim import next_task
+from .context import context_for
+from .context import history as context_log
+from .context import retire as context_retire
+from .context import show as context_show
+from .context import state as context_state
 from .dispatch import DispatchResult, dispatch
 from .dossier import digest, read_report, report_path, write_report
 from .edit import edit
@@ -38,6 +43,7 @@ from .report import activity, board, day, fleet, period, standup
 from .reportfile import read_report_file, write_report_file
 from .session import Brief, brief, checkout, inbox, track
 from .setup import InitReport, init
+from .sweep import LIMIT, sweep
 from .sync import rebuild, sync
 from .update import update
 
@@ -50,6 +56,8 @@ __all__ = [
     # the remote exchange: events and report files over HTTP
     "accept_events", "pull_events", "MAX_BATCH", "MAX_PAGE",
     "read_report_file", "write_report_file",
+    # the unattended barrier: every finished day that nobody wrote up
+    "sweep", "LIMIT",
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",
@@ -58,6 +66,8 @@ __all__ = [
     "add_remote", "read_remote", "require_remote", "remove_remote", "push", "pull", "Exchange",
     # signing in: one GitHub login per machine, a session per server
     "login", "logout", "logins", "session_of", "is_session", "board_url", "root_url",
+    # the standing facts: what we are chasing, what may not break, what was decided
+    "context_state", "context_retire", "context_show", "context_log", "context_for",
     # the live narration: started in the background, watched on the wire
     "narration", "is_wire", "parse_date",
     # who you are: a GitHub login, the sessions it mints, the repository a board is linked to

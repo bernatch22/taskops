@@ -59,6 +59,7 @@ EventKind = Literal[
     "message",  # directed chat: agent↔agent, dev↔agent
     "activity",  # a session's heartbeat: a tool ran, a file was touched
     "edited",  # a field of the card itself changed: title, spec or priority
+    "context",  # a standing fact about the PROJECT: an objective, invariant or decision
 ]
 """What happened. The event log is append-only and every projection — the board,
 a standup, an inbox — is derived from it, so a new fact about a task is a new
