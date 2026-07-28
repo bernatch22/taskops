@@ -10,12 +10,12 @@ from ....render import render_board, render_day, render_fleet, render_standup
 from ....usecases import (
     Selector,
     board,
-    digest,
     fleet,
     period,
     standup,
     write_report,
 )
+from ._digest import stream_digest
 from ._shared import add_target, repo_of
 from ._window import selector
 
@@ -75,7 +75,8 @@ def _dossier(args: argparse.Namespace, where: Path, sel: Selector) -> str:
     and a command that dumps 300 lines it just saved makes the one useful line scroll away.
     """
     if args.digest:
-        return f"narrated {digest(where, sel, model=str(args.model), force=bool(args.force))}"
+        return stream_digest(where, sel, kind=str(args.kind), model=str(args.model),
+                             force=bool(args.force))
     if not args.write:
         return render_day(period(where, sel))
     return f"wrote {write_report(where, sel, force=bool(args.force))}"

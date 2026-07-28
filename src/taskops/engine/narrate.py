@@ -5,98 +5,87 @@ a subprocess running the `claude` binary the developer is already logged into. N
 key, no dependency — the package still installs with nothing, and the narration is paid for by
 the subscription rather than by the token.
 
-**The credential rule is inherited, not re-decided.** `worker.DROPPED_ENV` names the variables a
-spawned agent must not see, and the reason is identical here: an exported `ANTHROPIC_API_KEY`
-makes the CLI bill per token while the plan sits unused. One constant, two callers.
-
 **The model only ever sees the DOSSIER.** Not the transcripts, not the diffs — the facts the
 report already assembled from the log. That is what keeps a narration cheap, reproducible enough
 to argue with, and unable to leak a conversation into a committed file.
+
+This module decides how a long dossier is CUT and STITCHED. What one reading costs, and how the
+text reaches the caller while it is still being written, lives in `_stream`.
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
+from typing import Callable, Optional
 
 from .._errors import NarrationFailed
 from ._chunks import CHUNK_CHARS, slices
 from ._prompts import CHUNK_PROMPT, PROMPT, STITCH_PROMPT
-from .worker import DROPPED_ENV
+from ._stream import TIMEOUT, stream_narration
 
-__all__ = ["narrate", "PROMPT", "TIMEOUT", "CHUNK_CHARS"]
+__all__ = ["narrate", "stream_narration", "PROMPT", "TIMEOUT", "CHUNK_CHARS"]
 
-TIMEOUT = 900.0
-"""Seconds before ONE reading is abandoned. Long enough for a real read, short enough that
-`--digest` cannot hang a terminal somebody left running forever.
+OnPass = Optional[Callable[[int, int], None]]
+"""Told `(this pass, how many)` as each reading starts. A whole-project dossier takes several
+minutes per pass, and a caller that cannot say which one is running has nothing to show but a
+cursor — which is how this looked like a hang."""
 
-240s until a slice of `report all` on axion-v3 (45 closed cards, 340 KB of dossier) ran past
-it and the whole digest was thrown away after twenty minutes of work — five good slices lost
-with it, which is the worst outcome available. The number was sized for a single day's dossier
-answered in three paragraphs; the prompt now asks for a paragraph per card over a slice of up
-to `CHUNK_CHARS`, and that is minutes of generation, not seconds.
-"""
+OnText = Optional[Callable[[str], None]]
+"""Told every delta as it arrives. The engine does not print: it hands the fragment to whoever
+asked, and the transport decides whether that is a terminal, a socket, or nothing."""
 
 
-def narrate(dossier: str, *, model: str = "", timeout: float = TIMEOUT) -> str:
+def narrate(dossier: str, *, model: str = "", timeout: float = TIMEOUT,
+            on_pass: OnPass = None, on_text: OnText = None) -> str:
     """The prose for one dossier. Raises `NarrationFailed` with what to do about it.
 
     ONE reading when the dossier fits (`_chunks.CHUNK_CHARS`), otherwise one reading per slice
     and a final pass that stitches them. The long path costs N+1 calls and is taken on purpose:
     trimming the prompt instead would produce a report that silently forgets the cards that
     happened to sort last, and nothing on the page would say so.
+
+    Both callbacks are optional and default to nothing, so every existing caller keeps working
+    and a narration nobody is watching costs exactly what it did before.
     """
     parts = slices(dossier)
-    if len(parts) == 1:
-        return _ask(PROMPT + dossier, model, timeout)
-    told = [_ask(f"{CHUNK_PROMPT}(slice {i} of {len(parts)})\n\n{part}", model, timeout)
+    total = 1 if len(parts) == 1 else len(parts) + 1
+    ask = _reader(model, timeout, total, on_pass, on_text)
+    if total == 1:
+        return ask(1, PROMPT + dossier)
+    told = [ask(i, f"{CHUNK_PROMPT}(slice {i} of {len(parts)})\n\n{part}")
             for i, part in enumerate(parts, start=1)]
-    return _ask(STITCH_PROMPT + "\n\n---\n\n".join(told), model, timeout)
+    return ask(total, STITCH_PROMPT + "\n\n---\n\n".join(told))
 
 
-def _ask(prompt: str, model: str, timeout: float) -> str:
-    """One `claude` process, one prompt.
+def _reader(model: str, timeout: float, total: int,
+            on_pass: OnPass, on_text: OnText) -> Callable[[int, str], str]:
+    """One pass of the narration: announced, streamed to the watcher, returned whole.
 
-    `-p` is one-shot mode: no session is resumed and none is left behind, so running this twice
-    cannot produce a conversation that drifts — and so the slices of a chunked narration cannot
-    contaminate each other.
+    A closure rather than five arguments threaded through every call site — the three ways a
+    dossier is read (single, slice, stitch) differ only in their prompt, and that is the one
+    thing the returned function takes.
     """
-    command = ["claude", "-p", prompt]
-    if model:
-        command += ["--model", model]
-    try:
-        done = subprocess.run(command, capture_output=True, text=True, timeout=timeout,
-                              check=False, env=_env())
-    except FileNotFoundError as missing:
-        raise NarrationFailed(
-            "`claude` is not on PATH — the narration is written by the Claude Code CLI you are "
-            "already logged into. Install it, or write the section by hand") from missing
-    except subprocess.TimeoutExpired as slow:
-        raise NarrationFailed(f"the narration took longer than {int(timeout)}s and was "
-                              f"abandoned — the dossier is still on disk") from slow
-    return _text(done)
+    def ask(n: int, prompt: str) -> str:
+        if on_pass:
+            on_pass(n, total)
+        written: list[str] = []
+        for delta in stream_narration(prompt, model=model, timeout=timeout):
+            written.append(delta)
+            if on_text:
+                on_text(delta)
+        return _said("".join(written))
+
+    return ask
 
 
-def _text(done: "subprocess.CompletedProcess[str]") -> str:
-    """The prose, or the reason there is none. Never returns empty silently.
+def _said(text: str) -> str:
+    """The prose, never an empty string.
 
-    An empty answer with a zero exit is the failure mode of a CLI that is installed but not
-    logged in, and a report whose narration is a blank section reads as a taskops bug.
+    A CLI that is installed but not logged in can finish cleanly having emitted no text at all,
+    and a report whose narration is a blank section reads as a taskops bug rather than a login
+    problem.
     """
-    if done.returncode != 0:
-        detail = (done.stderr or done.stdout).strip().splitlines()
-        raise NarrationFailed(f"claude exited {done.returncode}: "
-                              f"{detail[-1] if detail else 'no output'}")
-    said = done.stdout.strip()
+    said = text.strip()
     if not said:
         raise NarrationFailed("claude answered with nothing — check `claude` runs and is "
                               "logged in (`claude -p hello`)")
     return said
-
-
-def _env() -> dict[str, str]:
-    """The developer's environment, minus the API credentials."""
-    kept = dict(os.environ)
-    for name in DROPPED_ENV:
-        kept.pop(name, None)
-    return kept
