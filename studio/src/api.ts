@@ -3,7 +3,7 @@
  * One module so that a change to how errors are shaped, or how the token travels, is one edit
  * rather than a hunt through components. Components never call `fetch`. */
 
-import type { Board, Config, Event, Fleet, Task, TaskView } from "./contracts";
+import type { Activity, Board, Config, Event, Task, TaskView } from "./contracts";
 
 /* The token arrives in the URL (the studio prints a link that carries it) and is kept in
  * localStorage so a reload does not lose it. Read once at module load: it cannot change without
@@ -44,7 +44,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   config: () => call<Config>("/api/config"),
   board: () => call<Board>("/api/board"),
-  fleet: () => call<Fleet>("/api/fleet"),
+  /* Its own call, not folded into the board: the history is the expensive read here, and the board
+   * refetches on every event. Only the activity view pays for it, and only while it is open. */
+  activity: (since: string) => call<Activity>(`/api/activity?since=${encodeURIComponent(since)}`),
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
   search: (q: string) => call<Task[]>(`/api/search?q=${encodeURIComponent(q)}`),
   comment: (task: string, text: string, mentions: string[]) =>

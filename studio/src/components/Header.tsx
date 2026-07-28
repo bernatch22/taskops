@@ -8,11 +8,16 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Board, Config, Task } from "../contracts";
 
-export function Header({ config, board, live, pulse, hideEmpty, onHideEmpty, onOpen }: {
+export type View = "board" | "activity";
+
+export function Header({ config, board, live, pulse, view, onView,
+                         hideEmpty, onHideEmpty, onOpen }: {
   config: Config | null;
   board: Board | null;
   live: boolean;
   pulse: number;
+  view: View;
+  onView: (view: View) => void;
   hideEmpty: boolean;
   onHideEmpty: (hide: boolean) => void;
   onOpen: (id: string) => void;
@@ -27,17 +32,28 @@ export function Header({ config, board, live, pulse, hideEmpty, onHideEmpty, onO
         </div>
       </div>
 
+      {/* Two views, one bar. The board is what is happening; the activity is what happened — and
+        * they are the same events, so they belong to one screen rather than to two apps. */}
+      <nav className="views">
+        <button className={view === "board" ? "on" : ""} onClick={() => onView("board")}>Board</button>
+        <button className={view === "activity" ? "on" : ""}
+                onClick={() => onView("activity")}>Activity</button>
+      </nav>
+
       <Search onOpen={onOpen} />
 
       {/* Next to the search because it is the same kind of act: narrowing what is on screen to what
         * you are looking for. Off by default — an empty column is information the first time you
-        * see it, and clutter only once you already know the board. */}
-      <button className={`squeeze${hideEmpty ? " on" : ""}`}
-              aria-pressed={hideEmpty}
-              title={hideEmpty ? "showing only columns with cards" : "hide empty columns"}
-              onClick={() => onHideEmpty(!hideEmpty)}>
-        {hideEmpty ? "⊟" : "⊞"}
-      </button>
+        * see it, and clutter only once you already know the board. Hidden away from the board,
+        * where a control that does nothing would just be a thing to wonder about. */}
+      {view === "board" ? (
+        <button className={`squeeze${hideEmpty ? " on" : ""}`}
+                aria-pressed={hideEmpty}
+                title={hideEmpty ? "showing only columns with cards" : "hide empty columns"}
+                onClick={() => onHideEmpty(!hideEmpty)}>
+          {hideEmpty ? "⊟" : "⊞"}
+        </button>
+      ) : null}
 
       <div className="top-right">
         {board ? (

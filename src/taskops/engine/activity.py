@@ -20,7 +20,7 @@ from ..contracts import (
 from ..storage import Store
 from .gitstate import branch_states, unknown
 
-__all__ = ["standup", "fleet"]
+__all__ = ["standup", "fleet", "tasks_of"]
 
 _IN_FLIGHT = ("claimed", "in_progress", "review")
 
@@ -34,7 +34,7 @@ def standup(store: Store, *, since: float, actor: str = "") -> Standup:
     """
     events = [e for e in store.events.since(since)
               if not actor or e["actor"] == actor]
-    touched = _tasks_of(store, [e["task"] for e in events])
+    touched = tasks_of(store, [e["task"] for e in events])
     return Standup(repo=str(store.root), since=since,
                    actors=sorted({e["actor"] for e in events}), events=events,
                    done=[t for t in touched if t["status"] == "done"],
@@ -42,7 +42,7 @@ def standup(store: Store, *, since: float, actor: str = "") -> Standup:
                    blocked=[t for t in touched if t["status"] == "blocked"])
 
 
-def _tasks_of(store: Store, ids: list[str]) -> list[Task]:
+def tasks_of(store: Store, ids: list[str]) -> list[Task]:
     """The tasks those events were about, deduplicated, missing ones dropped.
 
     Dropped rather than reported: an event can legitimately name a task this machine

@@ -23,6 +23,18 @@ no session id and entries on `main`, there is no evidence tying them to a card.
   was touched, how it ended — is the thread and the commits, which were already there. The `/api/log`
   route, the studio's `Conversation` view and its wire types are removed; `taskops log <task>` keeps
   working in the terminal, which is where reading a whole session belongs.
+- **A new activity view: the log as a history.** `events.jsonl` has held every fact about what
+  happened here since the first release, and nothing outside a terminal could read it. The studio
+  now has a second view — a timeline newest-first, filterable by actor, kind and text over a window
+  you pick, with the task titles sent alongside so a hundred rows are not a hundred requests — and
+  next to it a roll-up per actor: tasks touched, commits, closes, when they were last seen. Ranked
+  by tasks rather than events, because forty comments on one card is less work than four cards
+  closed. Nothing is stored for it; it is a projection like the board, over `/api/activity`.
+  - Two bugs it surfaced before anybody saw the screen: `events.since()` with a `LIMIT` returns the
+    OLDEST rows in the window, so a capped history would have shown entirely the wrong end of
+    itself (`newest_since` orders descending to take the tail); and a close is its own event kind
+    rather than a `status` with a payload, so counting `status` events reported zero closes on a
+    project where thirty had landed.
 - **The fleet rail is gone, and the board is full width.** "Who is free" is not a question when
   agents are created on demand — there is no pool to manage — and "who holds this card" was already
   on the card, next to the work it is about. What is worth keeping from it is history rather than
@@ -35,7 +47,9 @@ no session id and entries on `main`, there is no evidence tying them to a card.
   screen. Groups are by date (Today / This week / This month / Older), with a toggle to group by
   feature — the parent task or the first label, both of which the cards already declare, rather than
   a similarity guessed from titles. The newest group is open, the rest are folded, and each says how
-  many it holds.
+  many it holds. The date buckets cut on calendar midnight rather than a rolling 24 hours: "today"
+  meaning "within a day" files last night's work under today, which is the exact distinction the
+  grouping exists to make.
 
 ## 0.1.0 — the engine, the enforcement, and the plugin
 

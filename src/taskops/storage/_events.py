@@ -51,6 +51,19 @@ class EventTable:
                                "ORDER BY ts, seq LIMIT ?", (ts, limit)).fetchall()
         return [to_event(row) for row in rows]
 
+    def newest_since(self, ts: float, *, limit: int) -> list[Event]:
+        """The LAST `limit` events in a window, oldest first — what a history view reads.
+
+        Not `since(...)[-limit:]`: `LIMIT` applies to the ascending scan, so that expression takes
+        the OLDEST rows and then shows them as the newest. On a thirty-day window over a busy
+        project it produced a timeline that was entirely correct and entirely the wrong end.
+
+        Ordered DESC to pick the tail and reversed here, so callers still get the log's own order.
+        """
+        rows = self.db.execute("SELECT * FROM events WHERE ts > ? "
+                               "ORDER BY ts DESC, seq DESC LIMIT ?", (ts, limit)).fetchall()
+        return [to_event(row) for row in reversed(rows)]
+
     def after_seq(self, seq: int, *, limit: int = 200) -> list[Event]:
         """The studio's cursor read: strictly local order, no clock involved.
 

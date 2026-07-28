@@ -15,7 +15,8 @@ from .gitstate import BranchState
 from .lease import Lease
 from .task import Task
 
-__all__ = ["Card", "Column", "Board", "Standup", "Burndown", "FleetMember", "Fleet"]
+__all__ = ["Card", "Column", "Board", "Standup", "Burndown", "FleetMember", "Fleet",
+           "ActorRoll", "Activity"]
 
 
 class Card(TypedDict):
@@ -55,6 +56,50 @@ class Standup(TypedDict):
     done: list[Task]
     in_flight: list[Task]
     blocked: list[Task]
+
+
+class ActorRoll(TypedDict):
+    """One actor's whole record in the window — what they touched, not whether they are free.
+
+    Availability is not a question worth answering when agents are created on demand: there is no
+    pool to allocate from. What survives an agent's session is what it DID, and that is this.
+    """
+
+    actor: str
+    tasks: int
+    """Distinct tasks touched. Deliberately not "events": an actor that commented forty times on
+    one card has done less than one that closed four."""
+
+    commits: int
+    comments: int
+    done: int
+    first_seen: float
+    last_seen: float
+
+
+class Activity(TypedDict):
+    """The event log as something a person can read: a timeline, plus who did what.
+
+    A projection like every other one here — nothing is stored for it. The log already holds every
+    fact it shows, which is why this could be added without a migration and why it cannot drift.
+    """
+
+    repo: str
+    since: float
+    events: list[Event]
+    """Newest FIRST, unlike the log's own order. A timeline is read from the top, and a reader who
+    has to scroll to the bottom to find out what just happened will stop opening it."""
+
+    titles: dict[str, str]
+    """Task id -> title, for the tasks these events name. Sent with the timeline rather than fetched
+    per row: a hundred events would otherwise be a hundred requests to render one screen."""
+
+    actors: list[ActorRoll]
+    kinds: list[str]
+    """The kinds actually present, so the filter offers what exists instead of a hardcoded list that
+    goes stale the day a new kind is written."""
+
+    truncated: bool
 
 
 class Burndown(TypedDict):

@@ -71,6 +71,29 @@ export interface Board {
   total: number;
 }
 
+export interface ActorRoll {
+  actor: string;
+  /* Distinct tasks, not events: forty comments on one card is less work than four cards closed,
+   * and counting events would rank them the other way round. */
+  tasks: number;
+  commits: number;
+  comments: number;
+  done: number;
+  first_seen: number;
+  last_seen: number;
+}
+
+export interface Activity {
+  repo: string;
+  since: number;
+  /* Newest first — a timeline is read from the top. */
+  events: Event[];
+  titles: Record<string, string>;
+  actors: ActorRoll[];
+  kinds: string[];
+  truncated: boolean;
+}
+
 export interface CommitRef {
   sha: string;
   subject: string;
@@ -89,21 +112,6 @@ export interface TaskView {
   thread: Event[];
   commits: CommitRef[];
   history: Event[];
-}
-
-export interface FleetMember {
-  actor: string;
-  session: string;
-  task: string;
-  branch: string;
-  alive: boolean;
-  last_seen: number;
-  doing: string;
-}
-
-export interface Fleet {
-  repo: string;
-  members: FleetMember[];
 }
 
 export interface Config {

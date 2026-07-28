@@ -98,22 +98,29 @@ function Grouped({ cards, how, onOpen }: {
   );
 }
 
-const DAY = 86400;
-const BUCKETS: [string, number][] = [
-  ["Today", DAY], ["This week", 7 * DAY], ["This month", 30 * DAY],
-];
+const ORDER = ["Today", "Yesterday", "This week", "This month", "Older"];
 
-/* By when it was last touched, which for a finished card is when it finished. Buckets rather than
- * calendar days: thirty headings of one card each is the same wall with more chrome. */
+/* By when it was last touched, which for a finished card is when it finished.
+ *
+ * CALENDAR boundaries, not a rolling window. "Today" as "within 24 hours" puts last night's work
+ * under today's heading, which is exactly the thing a person reads a date grouping to tell apart —
+ * they know they finished those yesterday, and a board saying otherwise is a board lying to them.
+ *
+ * Buckets rather than one heading per day: thirty headings of one card each is the same wall with
+ * more chrome on it. */
 function byDate(cards: CardData[]): [string, CardData[]][] {
-  const now = Date.now() / 1000;
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const today = midnight.getTime() / 1000;
   const named = (card: CardData): string => {
-    const age = now - card.task.updated;
-    for (const [label, span] of BUCKETS) if (age < span) return label;
+    const when = card.task.updated;
+    if (when >= today) return "Today";
+    if (when >= today - 86400) return "Yesterday";
+    if (when >= today - 7 * 86400) return "This week";
+    if (when >= today - 30 * 86400) return "This month";
     return "Older";
   };
-  const order = [...BUCKETS.map(([label]) => label), "Older"];
-  return collect(cards, named, order);
+  return collect(cards, named, ORDER);
 }
 
 /* A "feature" is what the cards themselves already say they belong to: a parent task if somebody

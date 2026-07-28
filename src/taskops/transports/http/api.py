@@ -16,11 +16,12 @@ from typing import Any, Callable, cast
 
 from ..._errors import TaskopsError
 from ..._version import __version__
-from ...usecases import ask, board, fleet, search, standup, update
+from ...usecases import activity, ask, board, fleet, search, standup, update
+from ...usecases.report import HISTORY_WINDOW
 from ._wire import Reply, Request, error_reply, json_reply
 
 __all__ = ["config", "get_board", "get_fleet", "get_standup", "get_task", "get_search",
-           "post_comment", "post_status"]
+           "get_activity", "post_comment", "post_status"]
 
 
 def config(root: Path, request: Request) -> Reply:
@@ -48,6 +49,17 @@ def get_task(root: Path, request: Request) -> Reply:
     if not task_id:
         return error_reply(400, "?id=<task> is required", "bad_request")
     return guarded(lambda: json_reply(ask(root, task_id)))
+
+
+def get_activity(root: Path, request: Request) -> Reply:
+    """The history: the event log as a timeline, with a roll-up per actor.
+
+    One read for both, because they are one projection of one list — asking twice would mean two
+    scans of the same events, and a per-actor summary computed over a different window than the
+    timeline it sits next to would be a summary of something the reader cannot see.
+    """
+    since = request.param("since", HISTORY_WINDOW)
+    return guarded(lambda: json_reply(activity(root, since=since)))
 
 
 def get_search(root: Path, request: Request) -> Reply:

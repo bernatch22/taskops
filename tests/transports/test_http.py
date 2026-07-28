@@ -215,6 +215,33 @@ def test_a_malformed_body_is_a_400_not_a_traceback(route: Any) -> None:
     assert route(broken).status == 400
 
 
+def test_the_activity_endpoint_serialises_the_shape_the_view_expects(route: Any) -> None:
+    """`studio/src/contracts.ts` mirrors these names by hand, so a rename that is not mirrored shows
+    up in the history as `undefined` — this is where it should fail instead."""
+    payload = body_of(route(get("/api/activity", since="30d")))
+    assert set(payload) == {"repo", "since", "events", "titles", "actors", "kinds", "truncated"}
+    assert payload["events"], "a planned project has events"
+    # Newest first: a timeline is read from the top, and the log's own order is the opposite.
+    stamps = [event["ts"] for event in payload["events"]]
+    assert stamps == sorted(stamps, reverse=True)
+
+
+def test_activity_names_the_tasks_its_events_are_about(route: Any) -> None:
+    """The titles ride along with the timeline. Fetching them per row would be a hundred requests
+    to render one screen, which is how this view would have become the slow one."""
+    payload = body_of(route(get("/api/activity")))
+    named = {event["task"] for event in payload["events"]}
+    assert named <= set(payload["titles"]) | {""}
+
+
+def test_an_unreadable_window_is_refused_rather_than_guessed(route: Any) -> None:
+    """A window read as 24h when the caller wrote `7days` produces a history that is WRONG and looks
+    right."""
+    reply = route(get("/api/activity", since="7days"))
+    assert reply.status == 400
+    assert "not a window" in body_of(reply)["error"]
+
+
 def test_the_transcript_is_not_on_this_surface(route: Any) -> None:
     """The studio no longer reads conversations, so the route is gone rather than dormant. `taskops
     log` still exists in the terminal, which is where reading a transcript belongs — a browser panel

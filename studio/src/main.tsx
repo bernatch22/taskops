@@ -6,8 +6,9 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { Activity } from "./components/Activity";
 import { Board, type Grouping } from "./components/Board";
-import { Header } from "./components/Header";
+import { Header, type View } from "./components/Header";
 import { TaskPanel } from "./components/TaskPanel";
 import { remembered } from "./remembered";
 import { useStudio } from "./useStudio";
@@ -18,11 +19,13 @@ function App(): JSX.Element {
    * A second developer looking at the same repository has their own answer for both. */
   const [hideEmpty, setHideEmpty] = remembered("taskops-hide-empty", false);
   const [grouping, setGrouping] = remembered<Grouping>("taskops-grouping", "date");
+  const [view, setView] = remembered<View>("taskops-view", "board");
 
   return (
     <>
       <Header config={studio.config} board={studio.board} live={studio.live}
-              pulse={studio.pulse} hideEmpty={hideEmpty} onHideEmpty={setHideEmpty}
+              pulse={studio.pulse} view={view} onView={setView}
+              hideEmpty={hideEmpty} onHideEmpty={setHideEmpty}
               onOpen={studio.openTask} />
 
       {studio.error ? (
@@ -33,10 +36,12 @@ function App(): JSX.Element {
       ) : null}
 
       <main>
-        {studio.board
-          ? <Board board={studio.board} hideEmpty={hideEmpty} grouping={grouping}
-                   onGrouping={setGrouping} onOpen={studio.openTask} />
-          : <div className="loading dim">Reading the board…</div>}
+        {view === "activity"
+          ? <Activity onOpen={studio.openTask} />
+          : studio.board
+            ? <Board board={studio.board} hideEmpty={hideEmpty} grouping={grouping}
+                     onGrouping={setGrouping} onOpen={studio.openTask} />
+            : <div className="loading dim">Reading the board…</div>}
       </main>
 
       {studio.open ? (

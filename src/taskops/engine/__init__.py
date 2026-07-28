@@ -16,6 +16,7 @@ from . import replay
 from .activity import fleet, standup
 from .bus import BUS, EventBus
 from .gitstate import branch_state, branch_states
+from .history import activity
 from .identity import parse, resolve
 from .log import build, record, relay
 from .machine import Facts, allowed_from, check_move
@@ -25,5 +26,5 @@ from .worker import Launched, launch
 
 __all__ = ["Facts", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "ready_tasks", "claim",
-           "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet",
+           "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet", "activity",
            "counts", "replay", "branch_state", "branch_states", "launch", "Launched"]

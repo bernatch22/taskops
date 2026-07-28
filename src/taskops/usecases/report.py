@@ -11,15 +11,21 @@ from pathlib import Path
 
 from .._clock import now
 from .._errors import BadRequest
-from ..contracts import Board, Fleet, Standup
+from ..contracts import Activity, Board, Fleet, Standup
+from ..engine import activity as build_activity
 from ..engine import board as build_board
 from ..engine import fleet as build_fleet
 from ..engine import standup as build_standup
 from ._project import project
 
-__all__ = ["board", "standup", "fleet", "parse_window", "DEFAULT_WINDOW"]
+__all__ = ["board", "standup", "fleet", "activity", "parse_window",
+           "DEFAULT_WINDOW", "HISTORY_WINDOW"]
 
 DEFAULT_WINDOW = "24h"
+
+HISTORY_WINDOW = "30d"
+"""The activity view's default. Wider than a standup's on purpose: one asks what happened since
+yesterday, the other is where somebody goes to find out what was ever done here."""
 
 _UNITS = {"m": 60.0, "h": 3600.0, "d": 86400.0, "w": 604800.0}
 
@@ -32,6 +38,11 @@ def board(start: Path | str) -> Board:
 def standup(start: Path | str, *, since: str = DEFAULT_WINDOW, actor: str = "") -> Standup:
     with project(start) as store:
         return build_standup(store, since=now() - parse_window(since), actor=actor)
+
+
+def activity(start: Path | str, *, since: str = HISTORY_WINDOW) -> Activity:
+    with project(start) as store:
+        return build_activity(store, since=now() - parse_window(since))
 
 
 def fleet(start: Path | str) -> Fleet:

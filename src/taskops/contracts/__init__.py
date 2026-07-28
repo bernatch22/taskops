@@ -23,7 +23,17 @@ which is what lets every layer above depend on it freely.
 from __future__ import annotations
 
 from .actor import Actor
-from .board import Board, Burndown, Card, Column, Fleet, FleetMember, Standup
+from .board import (
+    Activity,
+    ActorRoll,
+    Board,
+    Burndown,
+    Card,
+    Column,
+    Fleet,
+    FleetMember,
+    Standup,
+)
 from .commit import CommitRef
 from .dep import Dep
 from .event import Event, Inbox
@@ -58,6 +68,8 @@ __all__ = [
     "Column",
     "Card",
     "Standup",
+    "Activity",
+    "ActorRoll",
     "Burndown",
     "Fleet",
     "FleetMember",
