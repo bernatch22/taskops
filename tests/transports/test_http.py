@@ -215,30 +215,11 @@ def test_a_malformed_body_is_a_400_not_a_traceback(route: Any) -> None:
     assert route(broken).status == 400
 
 
-def test_the_log_endpoint_needs_a_task(route: Any) -> None:
-    reply = route(get("/api/log"))
-    assert reply.status == 400
-    assert body_of(reply)["code"] == "bad_request"
-
-
-def test_the_log_endpoint_serialises_the_shape_the_sidebar_expects(route: Any) -> None:
-    """`studio/src/contracts.ts` mirrors these names by hand, so a rename that is not mirrored shows
-    up in the sidebar as `undefined` — this is where it should fail instead."""
-    board_payload = body_of(route(get("/api/board")))
-    task_id = board_payload["columns"][0]["cards"][0]["task"]["id"]
-    payload = body_of(route(get("/api/log", id=task_id)))
-    assert set(payload) == {"task", "sessions", "entries", "source", "truncated"}
-
-
-def test_no_transcript_is_a_200_with_a_reason(route: Any) -> None:
-    """Not an error: a card whose agent left no transcript is completely ordinary. The sidebar shows
-    `source` so an empty pane can say WHERE it looked rather than just being blank."""
-    board_payload = body_of(route(get("/api/board")))
-    task_id = board_payload["columns"][0]["cards"][0]["task"]["id"]
-    reply = route(get("/api/log", id=task_id))
-    assert reply.status == 200
-    assert body_of(reply)["entries"] == []
-    assert body_of(reply)["source"], "an empty log must still say where it looked"
+def test_the_transcript_is_not_on_this_surface(route: Any) -> None:
+    """The studio no longer reads conversations, so the route is gone rather than dormant. `taskops
+    log` still exists in the terminal, which is where reading a transcript belongs — a browser panel
+    that fetched hundreds of kilobytes per card click was paying for something nobody read."""
+    assert route(get("/api/log")).status == 404
 
 
 def test_commits_reach_the_ui_with_their_subject_and_files(route: Any, project: Path) -> None:

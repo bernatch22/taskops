@@ -411,49 +411,6 @@ main {
 .actions button { font-size: 12px; }
 .failed { color: var(--red); font-size: 12.5px; margin: 0; }
 
-/* ── the conversation sidebar ───────────────────────────────────────────────── */
-
-/* One sidebar, two views: the conversation replaces the task rather than stacking a second drawer
- * over it. So these styles share the panel's width and scroll, and only the CONTENT differs. */
-.convo-open {
-  margin-left: auto; font-size: 11px; font-family: var(--mono);
-  color: var(--lime); border-color: color-mix(in oklab, var(--lime) 35%, transparent);
-}
-.panel-head .close { margin-left: 8px; }
-.back { font-family: var(--mono); font-size: 11px; }
-.meta-count { font-size: 11px; font-family: var(--mono); }
-
-.convo { display: flex; flex-direction: column; gap: 10px; }
-.turn { padding-left: 10px; border-left: 2px solid var(--line); }
-.turn-head { display: flex; align-items: center; gap: 8px; font-size: 11px; margin-bottom: 3px; }
-.who { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
-.turn-text { margin: 0; font-size: 13px; white-space: pre-wrap; }
-
-/* The colour is the ROLE, and it reuses the palette's existing meanings rather than inventing:
- * violet is already "an agent", blue is already "a human". */
-.turn-prompt { border-left-color: var(--blue); }
-.turn-prompt .who { color: var(--blue); }
-.turn-text-role { border-left-color: var(--violet); }
-.turn-thinking { border-left-color: var(--line); opacity: 0.75; }
-.turn-thinking .turn-text { font-style: italic; }
-
-/* A tool call is ONE line and reads as a step, not a paragraph — which is what makes forty of them
- * scannable. The result hangs off it, indented, deliberately quiet. */
-.turn-tool {
-  display: flex; align-items: baseline; gap: 8px;
-  border-left-color: var(--amber); font-size: 12px;
-}
-.turn-tool .tool-name {
-  font-family: var(--mono); font-size: 11px; color: var(--amber); flex: 0 0 auto;
-}
-.turn-tool .tool-arg {
-  color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.turn-result {
-  border-left-color: transparent; padding-left: 26px; font-size: 11.5px;
-}
-.turn-result code { color: var(--ink-faint); }
-
 /* ── commits with substance ─────────────────────────────────────────────────── */
 
 .commits { display: flex; flex-direction: column; gap: 8px; }

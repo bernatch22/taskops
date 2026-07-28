@@ -1,12 +1,11 @@
 /* One task, in a drawer. The ORDER matches the terminal renderer for the same reason it exists
  * there: a reader may stop early, so what they must not miss comes first — what this is, then
- * what would make them collide with somebody, then the spec, then the conversation. */
+ * what would make them collide with somebody, then the spec, then the thread. */
 
 import { useState } from "react";
 import { api } from "../api";
 import type { CommitRef, Event, Task, TaskView } from "../contracts";
 import { Actor, MARK, Priority, ago } from "./bits";
-import { Conversation } from "./Conversation";
 
 const CLOSING = ["in_progress", "review", "done", "blocked", "released", "cancelled"];
 
@@ -18,16 +17,9 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
   onDone: () => void;
 }): JSX.Element {
   const { task } = view;
-  /* ONE sidebar, two views. A second drawer over the first makes a person track which layer they are
-   * closing, and there is never a reason to see the task and its transcript at once. */
-  const [showing, setShowing] = useState<"task" | "log">("task");
   return (
     <div className="drawer" onClick={onClose}>
       <div className="panel" onClick={(click) => click.stopPropagation()}>
-        {showing === "log" ? (
-          <Conversation task={task.id} onBack={() => setShowing("task")} />
-        ) : (
-        <>
         <header className="panel-head">
           <div>
             <code className="id big">{task.id}</code>
@@ -36,12 +28,6 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
               {MARK[task.status]} {task.status}
             </span>
           </div>
-          {/* Always offered, never conditional on a session id: whether a transcript exists is a
-            * question about a file on disk, and the panel says so when there is none rather than
-            * hiding the button and leaving somebody wondering. */}
-          <button className="convo-open" onClick={() => setShowing("log")}>
-            conversation
-          </button>
           <button className="close" onClick={onClose} aria-label="close">✕</button>
         </header>
 
@@ -99,8 +85,6 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
         {readonly
           ? <p className="dim">Read-only studio — start it without <code>--readonly</code> to reply.</p>
           : <Compose task={task} onDone={onDone} />}
-        </>
-        )}
       </div>
     </div>
   );

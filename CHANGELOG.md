@@ -17,6 +17,13 @@
 Cards worked before this shipped stay unrecoverable, and that is a real limit rather than a bug: with
 no session id and entries on `main`, there is no evidence tying them to a card.
 
+- **The conversation panel is gone from the studio.** Even correctly attributed, a raw transcript is
+  the wrong thing for a board to show: it is hundreds of kilobytes fetched per card click to render a
+  replay nobody reads, and what a person actually wants from a finished card — what was decided, what
+  was touched, how it ended — is the thread and the commits, which were already there. The `/api/log`
+  route, the studio's `Conversation` view and its wire types are removed; `taskops log <task>` keeps
+  working in the terminal, which is where reading a whole session belongs.
+
 ## 0.1.0 — the engine, the enforcement, and the plugin
 
 First release. The coordination substrate works end to end: an agent can claim work nobody else

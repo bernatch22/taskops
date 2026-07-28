@@ -3,7 +3,7 @@
  * One module so that a change to how errors are shaped, or how the token travels, is one edit
  * rather than a hunt through components. Components never call `fetch`. */
 
-import type { Board, Config, Event, Fleet, SessionLog, Task, TaskView } from "./contracts";
+import type { Board, Config, Event, Fleet, Task, TaskView } from "./contracts";
 
 /* The token arrives in the URL (the studio prints a link that carries it) and is kept in
  * localStorage so a reload does not lose it. Read once at module load: it cannot change without
@@ -46,9 +46,6 @@ export const api = {
   board: () => call<Board>("/api/board"),
   fleet: () => call<Fleet>("/api/fleet"),
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
-  /* Its own call, not part of `task`: a transcript is the expensive read here, and a board that
-   * fetched it on every card click would pay for it whether or not anybody opened the panel. */
-  log: (id: string) => call<SessionLog>(`/api/log?id=${encodeURIComponent(id)}`),
   search: (q: string) => call<Task[]>(`/api/search?q=${encodeURIComponent(q)}`),
   comment: (task: string, text: string, mentions: string[]) =>
     call<unknown>("/api/comment", {

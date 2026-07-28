@@ -8,3 +8,5 @@ dist/
 .mypy_cache/
 .ruff_cache/
 studio/node_modules/
+
+.megabrain/

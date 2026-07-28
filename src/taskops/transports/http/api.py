@@ -16,11 +16,11 @@ from typing import Any, Callable, cast
 
 from ..._errors import TaskopsError
 from ..._version import __version__
-from ...usecases import ask, board, fleet, search, session_log, standup, update
+from ...usecases import ask, board, fleet, search, standup, update
 from ._wire import Reply, Request, error_reply, json_reply
 
 __all__ = ["config", "get_board", "get_fleet", "get_standup", "get_task", "get_search",
-           "get_log", "post_comment", "post_status"]
+           "post_comment", "post_status"]
 
 
 def config(root: Path, request: Request) -> Reply:
@@ -48,19 +48,6 @@ def get_task(root: Path, request: Request) -> Reply:
     if not task_id:
         return error_reply(400, "?id=<task> is required", "bad_request")
     return guarded(lambda: json_reply(ask(root, task_id)))
-
-
-def get_log(root: Path, request: Request) -> Reply:
-    """One card's conversation. The transcript is read on demand, never stored here.
-
-    Its own endpoint rather than a field on `/api/task`, because it is the expensive read on this
-    surface — a session is hundreds of kilobytes on disk — and a board that fetched it with every card
-    click would pay for it whether or not anybody opened the panel.
-    """
-    task_id = request.param("id")
-    if not task_id:
-        return error_reply(400, "?id=<task> is required", "bad_request")
-    return guarded(lambda: json_reply(session_log(root, task_id)))
 
 
 def get_search(root: Path, request: Request) -> Reply:
