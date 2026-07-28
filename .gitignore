@@ -10,3 +10,11 @@ dist/
 studio/node_modules/
 
 .megabrain/
+
+# taskops — commit events.jsonl and NOTHING else under .taskops/
+.taskops/db.sqlite
+.taskops/db.sqlite-wal
+.taskops/db.sqlite-shm
+.taskops/GUIDE.md
+.taskops/workers/
+.taskops/trees/

@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>taskops v2 — la propuesta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  * { font-weight: 400 !important; border-radius: 0 !important; box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, ui-sans-serif, system-ui; background: #fafafa; color: #12151c;
+         font-size: 15px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 72px 24px 120px; }
+  h1 { font-size: 34px; letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 12px; }
+  h2 { font-size: 22px; letter-spacing: -0.01em; margin: 80px 0 16px; }
+  h3 { font-size: 15px; margin: 32px 0 8px; color: #12151c; }
+  p { margin: 0 0 14px; color: #4b5563; }
+  section > p:first-of-type { color: #4b5563; }
+  code, pre { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.5px; }
+  code { color: #12151c; background: #eef0f3; padding: 1px 5px; }
+  pre { background: #12151c; color: #fafafa; padding: 20px 24px; overflow-x: auto;
+        line-height: 1.6; margin: 16px 0; }
+  pre code { background: none; color: inherit; padding: 0; }
+  .lime { color: #4f9c00; } .amber { color: #b06f00; } .rojo { color: #c2410c; }
+  .azul { color: #1d4ed8; } .dim { color: #6b7280; } .faint { color: #9ca3af; }
+  pre .lime { color: #b8ff3a; } pre .amber { color: #ffb84d; } pre .rojo { color: #ff8a65; }
+  pre .azul { color: #7fb4ff; } pre .dim { color: #8b93a7; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
+  th { text-align: left; font-family: "JetBrains Mono", monospace; font-size: 11px;
+       text-transform: uppercase; letter-spacing: 0.07em; color: #9ca3af; padding: 8px 12px 8px 0; }
+  td { padding: 9px 12px 9px 0; vertical-align: top; color: #4b5563; }
+  tr + tr td { border-top: 1px solid #e8ebf0; }
+  td code { white-space: nowrap; }
+  .tag { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.05em;
+         text-transform: uppercase; }
+  .kicker { font-family: "JetBrains Mono", monospace; font-size: 13px; color: #4f9c00; margin: 0 0 16px; }
+  .lead { font-size: 17px; color: #4b5563; }
+  .rule { height: 1px; background: #e8ebf0; margin: 56px 0; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+  .note { background: #f3f4f6; padding: 16px 20px; margin: 16px 0; font-size: 13.5px; color: #4b5563; }
+  ul { margin: 0 0 14px; padding-left: 20px; color: #4b5563; }
+  li { margin-bottom: 6px; }
+  a { color: #1d4ed8; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">taskops v2 · propuesta de rediseño · 2026-07-28 · leído el código entero antes de escribir esto</p>
+  <h1>Un CLI para el dev.<br>Tools para los agentes.<br>Reportes que se escriben solos.</h1>
+  <p class="lead">
+    El problema de hoy no es lo que taskops hace — es que muestra las tres audiencias mezcladas.
+    <code>taskops --help</code> lista 19 comandos y 12 son cableado que ningún humano tipea jamás.
+    Esta es la separación completa, comando por comando, con la migración exacta.
+  </p>
+</header>
+
+<div class="rule"></div>
+
+<!-- ══════ DIAGNÓSTICO ══════ -->
+<section>
+  <h2>0 · El diagnóstico: 19 comandos, 3 audiencias, 1 help</h2>
+  <p>Cada comando actual, clasificado por quién lo invoca de verdad:</p>
+  <pre><code><span class="dim"># EL DEV tipea (7):</span>
+init · studio · report · log · sync · recover · plan
+
+<span class="dim"># EL AGENTE llama — pero por MCP, no por CLI (5):</span>
+next · update · ask · dispatch · (plan otra vez)
+
+<span class="dim"># LOS HOOKS invocan — nadie los tipea NUNCA (7):</span>
+guard · hook · ingest · brief · inbox · track · checkout</code></pre>
+  <p>
+    Los 5 del medio son duplicados del MCP: el agente ya los tiene como tools con mejor
+    contrato. Los 7 de abajo son protocolo — <code>hook</code> lee JSON de stdin,
+    <code>guard</code> contesta con exit code 2, <code>track</code> imprime nada a propósito.
+    Un dev que abre el help no puede saber cuáles son para él, y eso es exactamente
+    lo que hace que el sistema se sienta complejo aunque el motor sea simple.
+  </p>
+</section>
+
+<!-- ══════ RENAME ══════ -->
+<section>
+  <h2>1 · <span class="rojo">studio</span> → <span class="lime">taskops ui</span></h2>
+  <p>
+    "Studio" promete un lugar donde se <em>crea</em> algo (visual studio, recording studio).
+    Lo que este comando hace es <em>mostrar</em>: el board vivo, la actividad, los reportes.
+    El nombre correcto es el más aburrido:
+  </p>
+  <pre><code>taskops ui                    <span class="dim"># → http://127.0.0.1:2140/</span>
+taskops ui --readonly --host 0.0.0.0 --token …</code></pre>
+  <ul>
+    <li><span class="tag lime">por qué "ui" y no "board"</span> — board es UNA vista de las tres
+        (Board · Activity · Reports). El comando levanta la interfaz entera.</li>
+    <li><span class="tag dim">migración</span> — <code>studio</code> queda como alias oculto una
+        versión, con una línea deprecation en stderr. Cero scripts rotos.</li>
+    <li>El directorio <code>studio/</code> del repo pasa a <code>ui/</code> en el mismo commit,
+        para que el nombre no viva a medias.</li>
+  </ul>
+</section>
+
+<!-- ══════ EL CLI DEV ══════ -->
+<section>
+  <h2>2 · El CLI del developer — 7 comandos, y se entiende en una pantalla</h2>
+  <pre><code><span class="lime">taskops init</span>                  preparar el repo (hooks, log, guía)
+<span class="lime">taskops ui</span>                    la interfaz web en vivo
+<span class="lime">taskops tasks</span> …              ver y tocar las cards        <span class="dim">← nuevo dominio</span>
+<span class="lime">taskops report</span> …             board · standup · day        <span class="dim">← + el diario</span>
+<span class="lime">taskops run</span> [n|ids]           correr cards con Claude       <span class="dim">← experimento</span>
+<span class="lime">taskops recover</span>               soltar cards de workers muertos
+<span class="lime">taskops sync</span>                  reconciliar con el log commiteado</code></pre>
+
+  <h3>2a · <code>taskops tasks</code> — el dominio que faltaba</h3>
+  <p>
+    Hoy para ver la lista hay que pedir un "reporte" (<code>report board</code>), y para cerrar
+    una card hay que saber la sintaxis de <code>update --status done --comment …</code>.
+    Eso es pensar como el motor, no como el dev. El dominio explícito:
+  </p>
+  <pre><code>taskops tasks                  <span class="dim"># la lista, compacta: id · estado · título · quién</span>
+taskops tasks show tk-4f2a     <span class="dim"># una card entera (hoy: ask)</span>
+taskops tasks add "título" [--spec …] [--after tk-x]   <span class="dim"># UNA card sin escribir JSON</span>
+taskops tasks done tk-4f2a -m "qué pasó"               <span class="dim"># cerrar</span>
+taskops tasks release tk-4f2a -m "hasta dónde llegué"  <span class="dim"># devolver a la cola</span>
+taskops tasks edit tk-4f2a --spec … --title …          <span class="dim">← hueco real de hoy: no existe</span>
+taskops tasks log tk-4f2a      <span class="dim"># la conversación del agente (hoy: log)</span>
+taskops tasks search "texto"</code></pre>
+  <ul>
+    <li><span class="tag lime">reusa todo</span> — cada subcomando es el mismo usecase que ya existe
+        (<code>ask</code>, <code>update</code>, <code>search</code>, <code>session_log</code>).
+        Es un re-agrupado de la superficie, no lógica nueva. <code>add</code> llama a
+        <code>plan</code> con una lista de uno.</li>
+    <li><span class="tag amber">edit no existe hoy</span> — está anotado como "hueco real" en
+        docs/flujos.html. Entra acá: un evento <code>edited</code> nuevo + replay, mismo patrón
+        que todo lo demás.</li>
+    <li><span class="tag dim">plan JSON sigue</span> — <code>taskops tasks plan archivo.json</code>
+        para el batch con deps; el caso de a una deja de exigir JSON.</li>
+  </ul>
+
+  <h3>2b · Lo que se va del help (no del binario)</h3>
+  <table>
+    <tr><th>hoy</th><th>queda como</th><th>por qué</th></tr>
+    <tr><td><code>guard · ingest · brief · inbox · track · checkout · hook</code></td>
+        <td><code>taskops hook …</code> — un solo grupo, <span class="rojo">oculto del help</span></td>
+        <td>Son protocolo. <code>hook &lt;event&gt;</code> ya existe y cubre 4; los git hooks
+            (<code>ingest</code>) y el guard entran al mismo grupo. Los settings.json y
+            <code>.git/hooks</code> existentes siguen funcionando por alias.</td></tr>
+    <tr><td><code>next · update · ask · plan · dispatch</code></td>
+        <td><code>taskops agent …</code> — visible solo con <code>--help-all</code></td>
+        <td>El agente los usa por MCP. Se conservan para debug a mano y para el dev que
+            los quiera, pero dejan de ser la primera pantalla. <code>update</code>/<code>ask</code>
+            en su forma útil ya viven en <code>tasks done/show</code>.</td></tr>
+    <tr><td><code>log</code></td><td><code>taskops tasks log</code></td><td>Es sobre una card.</td></tr>
+    <tr><td><code>dispatch --spawn</code></td><td><code>taskops run</code></td><td>Ver §5.</td></tr>
+  </table>
+  <p class="note">
+    Resultado: <code>taskops --help</code> muestra <strong>7 líneas</strong>. Alguien que instala
+    taskops por primera vez lee init → ui → tasks y ya opera el sistema. Todo lo demás sigue ahí,
+    pero solo aparece cuando lo buscás.
+  </p>
+</section>
+
+<!-- ══════ TOOLS ══════ -->
+<section>
+  <h2>3 · Las tools del agente — 7, con dos limpiezas</h2>
+  <p>
+    La superficie MCP está bien dimensionada y no se toca en forma: cada tool nueva le cuesta
+    contexto a <em>toda</em> sesión conectada. Los cambios son de contenido:
+  </p>
+  <table>
+    <tr><th>tool</th><th>cambio</th></tr>
+    <tr><td><code>taskops_next</code></td><td>igual — claim atómico + spec + inbox + colisiones</td></tr>
+    <tr><td><code>taskops_update</code></td><td>igual — status, comment, mentions, blocked_on, no_code</td></tr>
+    <tr><td><code>taskops_ask</code></td><td>igual — una card o búsqueda</td></tr>
+    <tr><td><code>taskops_plan</code></td><td>igual — el batch con deps</td></tr>
+    <tr><td><code>taskops_dispatch</code></td><td>igual — briefs, nunca spawn (la regla anti-billing queda)</td></tr>
+    <tr><td><code>taskops_recover</code></td><td>igual</td></tr>
+    <tr><td><code>taskops_report</code></td><td><span class="rojo">sacar</span> <code>fleet</code> y
+        <code>burndown</code> del enum (uno lo matamos, el otro contesta "not implemented" desde 0.1.0)
+        · <span class="lime">sumar</span> <code>day</code> — el reporte diario de §4. Así el agente
+        contesta "¿qué se hizo ayer?" con UNA llamada.</td></tr>
+  </table>
+  <p>
+    Esta es la simetría completa del sistema: <strong>el dev tiene 7 comandos, el agente tiene
+    7 tools</strong>, y los dos hablan con los mismos usecases — que es la invariante de
+    arquitectura que ya está testeada.
+  </p>
+</section>
+
+<!-- ══════ REPORTES ══════ -->
+<section>
+  <h2>4 · Reportes diarios — más que un LLM: el dossier del día</h2>
+  <p>
+    Lo que pedís no es un standup: es el <em>dossier</em> — todo lo que pasó un día, agrupado,
+    con files, commits y diffs, linkeado. Eso se construye en dos capas, y la separación es el
+    diseño entero:
+  </p>
+
+  <h3>Capa 1 — el dossier determinista (sin LLM, siempre disponible)</h3>
+  <pre><code>taskops report day                    <span class="dim"># hoy</span>
+taskops report day --date yesterday   <span class="dim"># o 2026-07-27</span></code></pre>
+  <p>Una proyección más sobre <code>events.jsonl</code> + git — cero storage nuevo. Por día, cortado en medianoche de calendario:</p>
+  <pre><code><span class="lime"># 2026-07-27 — 6 cards cerradas · 3 en vuelo · 14 commits · 4 actores</span>
+
+<span class="azul">## Cerrado</span>
+✓ tk-8c82bf — El peaje de episodios (agent:me/toll1, 2.1h de claim a done)
+    ◆ a3f2c1d feat: leave-one-out episode toll
+      src/axion/research/episode_toll.py (+214 −12) · tests/… (+89)
+      <span class="dim">└─ diff: taskops tasks show tk-8c82bf · git show a3f2c1d</span>
+    💬 3 comments — el último: "el N del DSR quedó en 47"
+
+<span class="azul">## En vuelo / bloqueado</span>  <span class="dim">(qué quedó abierto y por qué)</span>
+<span class="azul">## Conversaciones</span>        <span class="dim">(mentions y handoffs del día, con quién)</span>
+<span class="azul">## Por actor</span>             <span class="dim">(el roll-up que ya existe en Activity)</span></code></pre>
+  <ul>
+    <li><span class="tag lime">los diffs</span> — el evento <code>commit</code> ya carga sha, subject
+        y files. Las stats (+214 −12) salen de UN <code>git diff-tree --numstat</code> batcheado,
+        el mismo patrón que <code>branch_states</code> usa hoy: un subprocess por reporte, no por
+        commit. El diff completo no se copia — el reporte lo <em>linkea</em>
+        (<code>git show sha</code> / la card en el ui), porque el log commiteado tiene que seguir
+        siendo legible por un humano.</li>
+    <li><span class="tag lime">reproducible</span> — mismo día, mismo log → mismo reporte. Es lo que
+        el agente lee con <code>taskops_report day</code>, y es el INPUT de la capa 2.</li>
+  </ul>
+
+  <h3>Capa 2 — la narración, escrita por Claude, guardada inmutable</h3>
+  <pre><code>/taskops:digest              <span class="dim"># skill del plugin: la sesión que YA tenés genera y commitea</span>
+taskops report day --write   <span class="dim"># guarda el dossier + narración en .taskops/reports/2026-07-27.md</span></code></pre>
+  <ul>
+    <li><span class="tag lime">quién llama al modelo</span> — la sesión de Claude Code que ya está
+        corriendo, vía un skill. Cero dependencia nueva en el engine, cero API key, usa la
+        suscripción pagada — el mismo argumento por el que <code>taskops_dispatch</code> se niega
+        a spawnear sesiones facturadas. (Opcional después: <code>taskops[llm]</code> con el SDK
+        para el caso cron sin sesión.)</li>
+    <li><span class="tag lime">se guarda, nunca se regenera al leer</span> — un reporte que dice
+        algo distinto cada vez que lo abrís no es un reporte. <code>.taskops/reports/YYYY-MM-DD.md</code>
+        va commiteado con el log: el que hace <code>git pull</code> se lleva la historia narrada.</li>
+    <li><span class="tag amber">fingerprint</span> — cada reporte guarda hasta qué evento cubrió
+        (<code>max_seq</code>). Si después llegan eventos de ese día, el ui muestra
+        "desactualizado, faltan 12 eventos" en vez de mentir. Stale visible &gt; stale silencioso.</li>
+  </ul>
+
+  <h3>La vista Reports en el ui</h3>
+  <p>
+    Tercera pestaña: Board · Activity · <strong>Reports</strong>. Una lista de días; cada día
+    muestra SIEMPRE el dossier de capa 1 (existe aunque nadie generó prosa), la narración si está
+    escrita, links a cards y commits, y el aviso de stale. Reusa <code>/api/activity</code> +
+    un <code>/api/report?date=</code> nuevo.
+  </p>
+</section>
+
+<!-- ══════ RUN ══════ -->
+<section>
+  <h2>5 · <code>taskops run</code> — Claude como proceso, el experimento honesto</h2>
+  <p>
+    Hoy esto existe escondido como <code>dispatch --spawn</code>, y funciona: worktree por card,
+    <code>claude -p</code> headless con allowlist de tools, identidad inyectada, lease que expira
+    si muere. Lo que le falta es un nombre honesto y la advertencia en la puerta:
+  </p>
+  <pre><code>taskops run                    <span class="dim"># las mejores 3 ready, un proceso Claude cada una</span>
+taskops run tk-4f2a tk-8b31    <span class="dim"># estas dos</span>
+taskops run 5 --model claude-haiku-4-5   <span class="dim"># cards mecánicas, modelo barato</span>
+<span class="amber">⚠ cada worker es una sesión facturada nueva — para paralelizar gratis,
+  dispatchá sub-agentes desde una sesión (taskops_dispatch)</span></code></pre>
+  <ul>
+    <li><span class="tag lime">desde el ui también</span> — un botón "run" en una card ready que
+        llama al mismo usecase. Deshabilitado en <code>--readonly</code>, y con la misma
+        advertencia de billing antes de confirmar. Es el "correr tareas desde el ui" que pediste,
+        sobre mecánica que ya está testeada.</li>
+    <li><span class="tag dim">sigue marcado experimento</span> — en el help y en el README. La vía
+        recomendada para fleets sigue siendo dispatch + sub-agentes.</li>
+  </ul>
+</section>
+
+<!-- ══════ ORDEN ══════ -->
+<section>
+  <h2>6 · El orden de ejecución, y qué NO se toca</h2>
+  <table>
+    <tr><th>paso</th><th>qué</th><th>tamaño</th></tr>
+    <tr><td class="tag lime">1</td><td><code>studio → ui</code> + reagrupar el CLI (hook oculto, tasks, agent) con aliases</td><td>mediano, cero lógica nueva</td></tr>
+    <tr><td class="tag lime">2</td><td><code>report day</code> capa 1 (dossier + numstat batcheado) + <code>day</code> en el enum MCP, <code>fleet/burndown</code> afuera</td><td>mediano</td></tr>
+    <tr><td class="tag lime">3</td><td><code>--write</code> + skill <code>/taskops:digest</code> + vista Reports en el ui</td><td>mediano</td></tr>
+    <tr><td class="tag lime">4</td><td><code>tasks edit</code> (evento <code>edited</code> + replay)</td><td>chico</td></tr>
+    <tr><td class="tag lime">5</td><td><code>taskops run</code> + botón en el ui</td><td>chico (renombra + expone)</td></tr>
+  </table>
+  <p>
+    <strong>No se toca:</strong> el motor (leases, state machine, replay, sync), las 7 tools en
+    forma, el event log y su formato, los hooks instalados. Todo esto es superficie — que es
+    exactamente lo que la arquitectura de capas compró: los transports son delgados, así que
+    reordenarlos no puede romper una regla.
+  </p>
+</section>
+
+<footer style="margin-top:80px">
+  <p class="faint tag">~/taskops · propuesta, nada implementado · fuentes: los 199 files del repo, leídos completos antes de escribir esto</p>
+</footer>
+
+</div>
+</body>
+</html>
