@@ -2,6 +2,20 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **`taskops tasks` groups the task list, and `--help` lists six commands instead of nineteen.**
+  The flat list mixed three audiences and gave no hint which was which: a person's task list, the
+  agent protocol (`next`, `update`, `ask`, `plan`, `dispatch`, `log`), and the plumbing typed only
+  by a git or Claude Code hook (`guard`, `ingest`, `brief`, `inbox`, `track`, `checkout`, `hook`).
+  Somebody looking for "show me my tasks" had to read past `guard` and decide. What is listed now
+  is `init`, `ui`, `tasks`, `report`, `recover`, `sync`; everything else is registered, parses and
+  runs exactly as before, just unlisted — it is written into hooks and scripts that already exist,
+  and the help page was what was failing, not the commands.
+- **`taskops tasks list | show | add | plan | done | release | log | search`**, each a wrapper over
+  the verb it replaces rather than a reimplementation — `tasks done` IS `update --status done`, so
+  the commit guard cannot be skipped through the new door. `tasks add` creates one card from flags
+  and goes through `plan`, keeping a single `created` event shape in the log. Bare `taskops tasks`
+  lists, because the list is what you want nine times out of ten.
+
 - **`taskops studio` is now `taskops ui`**, and the TS source directory moved from `studio/` to
   `ui/` to match the bundle path it has always written (`transports/http/ui/`). "Studio" named one
   screen; the surface is a board, an activity timeline and reports, and a command called `ui` is

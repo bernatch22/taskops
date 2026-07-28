@@ -1,7 +1,7 @@
 """Text primitives. Pure functions of strings — no I/O anywhere in `render/`.
 
 That purity is enforced (`tests/architecture`) and it is what lets the same renderer
-serve the CLI, the MCP reply and the studio's markdown export: a rendering bug is
+serve the CLI, the MCP reply and the web UI's markdown export: a rendering bug is
 reproducible from a literal dict with no database in sight.
 """
 

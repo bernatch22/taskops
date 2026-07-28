@@ -433,19 +433,41 @@ task, and a passer-by should not be able to post as an agent.
 
 ### Commands
 
+`taskops --help` lists six, which is what a person does:
+
 ```
 taskops init [--no-hooks]                  create .taskops/, install the git hooks
+taskops tasks …                            the task list (below)
+taskops report [board|standup|fleet] [--since 24h]
+taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
+taskops recover [--apply]                  release cards held by silent workers
+taskops sync                               reconcile with the committed log
+```
+
+```
+taskops tasks                              one line per open task (same as `tasks list`)
+taskops tasks show <task-id>               read one task in full
+taskops tasks add <title> [--spec …] [--after id,id] [--files …] [--priority N] [--label …]
+taskops tasks plan <file.json | ->         create tasks from JSON
+taskops tasks done <task-id> [-m …] [--no-code]
+taskops tasks release <task-id> [-m …]     hand it back, unfinished
+taskops tasks log <task-id>                the agent's conversation for a card
+taskops tasks search <text>                search titles and specs
+```
+
+Every one of these is a wrapper over a top-level verb that still works and still runs — they
+are simply no longer listed, because `--help` had grown to nineteen commands serving three
+different readers. The agent protocol (`next`, `update`, `ask`, `plan`, `dispatch`, `log`) is
+what an agent reaches through the MCP tools or its brief; `guard`, `ingest`, `brief`, `inbox`,
+`track`, `checkout` and `hook` are typed by a git or Claude Code hook and by nothing else.
+
+```
 taskops next [--labels x] [--task tk-…]    claim work
 taskops update <task> [--status …] [--comment …] [--mentions …] [--blocked-on …] [--no-code]
 taskops ask <task-id | text>               read one task, or search
 taskops plan <file.json | ->               create tasks from JSON
-taskops report [board|standup|fleet] [--since 24h]
-taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
-taskops sync                               reconcile with the committed log
 taskops inbox                              messages waiting for you
 ```
-
-Hook-invoked (you rarely type these): `guard`, `ingest`, `brief`, `checkout`, `track`, `hook`.
 
 ### Statuses
 
