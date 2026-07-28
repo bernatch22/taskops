@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<base href="{{base}}">
+<title>taskops</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+         background: #0f1115; color: #e6e8ee; padding: 1.5rem;
+         font: 14px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  main { width: 100%; max-width: 24rem; }
+  .mark { width: 32px; height: 32px; display: block; margin-bottom: 1.25rem; }
+  h1 { font-size: 1.05rem; font-weight: 600; margin: 0 0 .35rem; letter-spacing: .01em; }
+  p { margin: 0 0 1.25rem; color: #8b93a7; }
+  form { display: flex; gap: .5rem; }
+  input { flex: 1 1 auto; min-width: 0; padding: .6rem .7rem; border-radius: 6px;
+          border: 1px solid #262b36; background: #171a21; color: #e6e8ee;
+          font: inherit; font-family: ui-monospace, monospace; }
+  input:focus { outline: none; border-color: #b8ff3a; }
+  button { padding: .6rem 1rem; border-radius: 6px; border: 0; background: #b8ff3a;
+           color: #0f1115; font: inherit; font-weight: 600; cursor: pointer; }
+  .hint { margin: 1.25rem 0 0; font-size: 13px; color: #6b7385; }
+  code { font-family: ui-monospace, monospace; color: #8b93a7;
+         background: #171a21; padding: .1rem .35rem; border-radius: 4px; }
+  .bad { display: none; margin: 0 0 1.25rem; padding: .6rem .7rem; border-radius: 6px;
+         font-size: 13px; color: #ffb4a8; background: #2a1a1a; border: 1px solid #4a2626; }
+  .bad[data-show] { display: block; }
+</style>
+</head>
+<body>
+<main>
+  <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+    <rect width="32" height="32" rx="7" fill="#171a21"></rect>
+    <path d="M8 16.5l5 5 11-11" stroke="#b8ff3a" stroke-width="3.5" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"></path>
+  </svg>
+  <h1>This board is locked</h1>
+  <p>Paste the access credential to continue.</p>
+  <p class="bad" id="bad">That credential does not open this board.</p>
+  <form id="form">
+    <input id="token" type="password" autocomplete="current-password" spellcheck="false"
+           autofocus placeholder="credential" aria-label="credential">
+    <button type="submit">Enter</button>
+  </form>
+  <p class="hint">Signed in with GitHub? Run <code id="cmd">taskops login</code> and open the
+    link it prints.</p>
+</main>
+<script>
+(function () {
+  /* The SAME key `api.ts` uses, derived the SAME way: `taskops-token:` plus the pathname of the
+   * mount. Scoped per mount because one server can host several boards, and a single key would
+   * mean opening B logs you out of A. `document.baseURI` and not `location.pathname`: the SPA
+   * routes in the browser, so the path alone cannot say where the mount ends. */
+  var base = new URL(document.baseURI);
+  var key = "taskops-token:" + base.pathname;
+  var url = new URL(location.href);
+  var tried = url.searchParams.get("token");
+  var once = "taskops-unlock-tried:" + base.pathname;
+
+  document.getElementById("cmd").textContent = "taskops login " + location.host;
+
+  /* Reaching this page WITH a token in the URL means the server refused it: it would have
+   * served the board otherwise. No second request is needed to know the credential is bad. */
+  if (tried) {
+    try { localStorage.removeItem(key); } catch (e) {}
+    try { sessionStorage.removeItem(once); } catch (e) {}
+    document.getElementById("bad").setAttribute("data-show", "");
+    url.searchParams.delete("token");
+    history.replaceState(null, "", url.toString());
+  } else {
+    /* A navigation carries no Authorization header, so a stored credential has to re-enter
+     * through the query form. Guarded by a one-shot flag: whatever else goes wrong, this page
+     * redirects at most once per tab and can never become a reload loop. */
+    var saved = "";
+    try { saved = localStorage.getItem(key) || ""; } catch (e) {}
+    var spent = "";
+    try { spent = sessionStorage.getItem(once) || ""; } catch (e) {}
+    if (saved && !spent) {
+      try { sessionStorage.setItem(once, "1"); } catch (e) {}
+      url.searchParams.set("token", saved);
+      location.replace(url.toString());
+      return;
+    }
+  }
+
+  document.getElementById("form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var value = document.getElementById("token").value.trim();
+    if (!value) return;
+    try { localStorage.setItem(key, value); } catch (e) {}
+    try { sessionStorage.removeItem(once); } catch (e) {}
+    var go = new URL(location.href);
+    go.searchParams.set("token", value);
+    location.replace(go.toString());
+  });
+})();
+</script>
+</body>
+</html>

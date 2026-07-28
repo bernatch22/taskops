@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from . import agentapi, api, exchange, live, reports, static
+from . import agentapi, api, exchange, live, reports, static, unlock
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 
@@ -54,7 +54,10 @@ def build(root: Path, policy: Policy, base: str = "/") -> Route:
 
     def dispatch(request: Request) -> Reply:
         if refusal := policy.check(request):
-            return refusal
+            # The policy decides and never renders: `instead` passes every refusal through
+            # untouched except a 401 on a browser NAVIGATION, which becomes the access screen.
+            # See `unlock` for why the choice lives there rather than inside `Policy.check`.
+            return unlock.instead(refusal, request, base)
         route = routes.get((request.method, request.path))
         if route is not None:
             return route(request)

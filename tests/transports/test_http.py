@@ -349,3 +349,112 @@ def test_the_bundle_loads_without_the_token_and_the_data_does_not(project: Path)
     assert route(get("/api/board")).status == 401, "data still needs the token"
     assert route(get("/")).status == 401, "the app shell is not an asset"
     assert route(get("/api/app.js")).status == 401, "an api path is never an asset"
+
+
+# ---- the access screen
+
+
+def navigate(path: str, **query: str) -> Request:
+    """What a BROWSER sends. The `Accept` header is the whole difference between a person and a
+    script, and it is what decides whether a refusal renders or serialises."""
+    return Request(method="GET", path=path, query=dict(query),
+                   headers={"accept": "text/html,application/xhtml+xml,*/*;q=0.8"})
+
+
+def test_a_browser_without_a_credential_gets_a_page_not_a_401(project: Path) -> None:
+    """The point of the whole card: a link pasted into an address bar must offer a way IN, not a
+    JSON error rendered as raw text."""
+    route = build(project, Policy(token="secret"))
+    reply = route(navigate("/"))
+    assert reply.status == 200
+    assert b"This board is locked" in reply.body
+    assert reply.headers["Content-Type"].startswith("text/html")
+
+
+def test_the_access_screen_is_served_for_any_spa_route(project: Path) -> None:
+    """The UI routes in the browser, so a reload on a deep link is just as much a navigation as
+    the root — and must not 401 either."""
+    route = build(project, Policy(token="secret"))
+    assert route(navigate("/task/tk-4f2a9c")).status == 200
+    assert b"This board is locked" in route(navigate("/task/tk-4f2a9c")).body
+
+
+def test_the_access_screen_serves_no_board_data(project: Path) -> None:
+    """It replaces the refusal; it does not become a back door. Nothing that needed the token is
+    reachable through it."""
+    body = route_body(build(project, Policy(token="secret")), navigate("/"))
+    assert b"Write the router" not in body and b"tk-" not in body
+
+
+def test_the_access_screen_names_nothing_about_the_project(project: Path) -> None:
+    """A caller who cannot prove a credential has no right to learn WHAT is behind it. The page
+    carries the mount it was requested under — the caller's own URL echoed back, needed so the
+    stored credential is keyed the way `api.ts` keys it — and nothing else."""
+    route = build(project, Policy(token="secret"), base="/axion/")
+    body = route_body(route, navigate("/"))
+    assert body.count(b"axion") == 1, "only the <base> tag, which is the requested URL itself"
+    assert b'<base href="/axion/">' in body
+    assert str(project).encode() not in body, "no filesystem path"
+    assert b"secret" not in body, "the token is never echoed"
+
+
+def test_the_api_keeps_its_json_401_for_a_browser_too(project: Path) -> None:
+    """`fetch` does not send `Accept: text/html`, but even if something did, an `/api/` path is an
+    API call: its caller parses `code`, and HTML there would be a parse error instead of a
+    message. The split is the path, not just the header."""
+    route = build(project, Policy(token="secret"))
+    refused = route(navigate("/api/board"))
+    assert refused.status == 401
+    assert body_of(refused)["code"] == "unauthorized"
+
+
+def test_a_fetch_without_the_header_still_gets_the_error(project: Path) -> None:
+    """A `curl` of the shell wants the refusal it can read, not a document."""
+    assert build(project, Policy(token="secret"))(get("/")).status == 401
+
+
+def test_a_valid_credential_serves_the_board_not_the_screen(project: Path) -> None:
+    """The query form is the one a navigation can carry — a browser cannot attach an
+    `Authorization` header to a link, which is exactly why the access screen re-enters that way."""
+    route = build(project, Policy(token="secret"))
+    reply = route(navigate("/", token="secret"))
+    assert reply.status == 200
+    assert b"This board is locked" not in reply.body
+
+
+def test_a_local_ui_without_a_token_never_sees_the_screen(project: Path) -> None:
+    """`taskops ui` on a laptop is open by design. No token set means no refusal to replace, so
+    the access screen cannot appear where nothing is locked."""
+    route = build(project, Policy())
+    assert b"This board is locked" not in route(navigate("/")).body
+    assert route(navigate("/api/board")).status == 200
+
+
+def test_the_screen_replaces_only_a_missing_credential(project: Path) -> None:
+    """A read-only refusal and a rate limit are answers to a caller who DID get in. Turning those
+    into a login page would tell somebody to re-authenticate against a problem auth cannot fix."""
+    route = build(project, Policy(readonly=True))
+    refused = route(Request(method="POST", path="/api/comment", query={},
+                            headers={"accept": "text/html"}, body=b"{}"))
+    assert refused.status == 403 and body_of(refused)["code"] == "readonly"
+
+
+def test_the_bundle_is_still_exempt_for_a_browser(project: Path) -> None:
+    """The asset exemption runs inside the policy, so it is not reachable by the access screen at
+    all — but the page's own reload depends on `app.js` still answering."""
+    route = build(project, Policy(token="secret"))
+    assert route(navigate("/app.js")).status == 200
+
+
+def test_the_screen_stores_the_credential_where_the_bundle_reads_it(project: Path) -> None:
+    """The page and `ui/src/api.ts` derive the SAME localStorage key from the SAME base. If this
+    drifts, unlocking appears to work and the reload lands back on the lock screen."""
+    body = route_body(build(project, Policy(token="secret")), navigate("/"))
+    assert b'"taskops-token:" + base.pathname' in body
+    source = (Path(__file__).parents[2] / "ui" / "src" / "api.ts").read_text(encoding="utf-8")
+    assert "`taskops-token:${new URL(BASE).pathname}`" in source
+    assert "localStorage.getItem(key)" in source, "the bundle reads storage, not only the URL"
+
+
+def route_body(route: Any, request: Request) -> bytes:
+    return route(request).body
