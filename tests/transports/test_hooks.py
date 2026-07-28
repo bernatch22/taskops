@@ -162,6 +162,98 @@ def test_post_tool_use_is_silent_with_no_messages(project: Path,
     assert _events.post_tool_use(event(project, tool_name="Read")) == {}
 
 
+# ---- the sweep launch on session start
+
+
+@pytest.fixture
+def spawned(monkeypatch: Any) -> list[list[str]]:
+    """Every spawn, captured. A REAL sweep calls the model, so no test here may reach one —
+    what is under test is the command and the guards, never the report."""
+    calls: list[list[str]] = []
+    monkeypatch.setattr("taskops.transports.hooks._sweeplaunch._spawn", calls.append)
+    return calls
+
+
+def with_events(project: Path) -> Path:
+    plan(project, [{"title": "T", "spec": "x"}])
+    return project
+
+
+def test_session_start_launches_the_sweep_detached(project: Path,
+                                                   spawned: list[list[str]]) -> None:
+    """The zero-setup trigger: opening a session is what gets yesterday written up."""
+    from taskops.transports.hooks.claude import session_start
+
+    session_start(event(with_events(project)))
+    assert len(spawned) == 1
+    assert spawned[0][1:] == ["-m", "taskops.transports.cli.main",
+                              "report", "sweep", "--repo", str(project)]
+
+
+def test_the_second_session_of_the_day_does_not_sweep_again(project: Path,
+                                                            spawned: list[list[str]]) -> None:
+    """Resuming ten sessions in a morning must be ONE model call, not ten."""
+    from taskops.transports.hooks.claude import session_start
+
+    with_events(project)
+    for _ in range(5):
+        session_start(event(project))
+    assert len(spawned) == 1
+
+
+def test_no_sweep_env_var_turns_it_off(project: Path, spawned: list[list[str]],
+                                       monkeypatch: Any) -> None:
+    from taskops.transports.hooks.claude import session_start
+
+    monkeypatch.setenv("TASKOPS_NO_SWEEP", "1")
+    session_start(event(with_events(project)))
+    assert spawned == []
+
+
+def test_an_empty_project_with_no_remote_never_spawns(project: Path,
+                                                      spawned: list[list[str]]) -> None:
+    """Nothing to narrate and nowhere to send it. The cheap answer must be reached without
+    paying for a process."""
+    from taskops.transports.hooks.claude import session_start
+
+    session_start(event(project))
+    assert spawned == []
+
+
+def test_the_launch_is_silent_when_the_spawn_itself_fails(project: Path,
+                                                          monkeypatch: Any) -> None:
+    """A broken sweep may never stop a session from starting."""
+    from taskops.transports.hooks._sweeplaunch import launch_sweep
+
+    def boom(_command: list[str]) -> None:
+        raise OSError("no such interpreter")
+
+    monkeypatch.setattr("taskops.transports.hooks._sweeplaunch._spawn", boom)
+    launch_sweep(str(with_events(project)))
+
+
+def test_the_launch_is_silent_outside_a_project(tmp_path: Path,
+                                                spawned: list[list[str]]) -> None:
+    from taskops.transports.hooks._sweeplaunch import launch_sweep
+
+    launch_sweep(str(tmp_path))
+    assert spawned == []
+
+
+@pytest.mark.usefixtures("spawned")
+def test_the_hook_returns_immediately(project: Path) -> None:
+    """The hook is SYNCHRONOUS and the session waits on it. Measured, because "it detaches"
+    is exactly the kind of claim that stays true until somebody adds one blocking call."""
+    import time
+
+    from taskops.transports.hooks._sweeplaunch import launch_sweep
+
+    with_events(project)
+    started = time.perf_counter()
+    launch_sweep(str(project))
+    assert (time.perf_counter() - started) < 0.1
+
+
 # ---- the wire
 
 

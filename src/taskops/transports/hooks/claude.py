@@ -27,13 +27,27 @@ from typing import Any, Callable, cast
 
 from ..._errors import TaskopsError
 from . import events
+from ._sweeplaunch import launch_sweep
 
-__all__ = ["register", "HANDLERS"]
+__all__ = ["register", "HANDLERS", "session_start"]
+
+
+def session_start(payload: dict[str, Any]) -> dict[str, Any]:
+    """Inject the brief, and kick the daily sweep off in the background.
+
+    The launch lives HERE and not in `events` because it answers nothing: `events` is what an
+    event MEANS, and a detached process is not part of the reply. It runs first and returns in
+    microseconds — see `_sweeplaunch` — so the brief the session actually reads is never made
+    to wait on a report it is not going to see.
+    """
+    launch_sweep(events.cwd(payload))
+    return events.session_start(payload)
+
 
 HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "pre-tool-use": events.pre_tool_use,
     "post-tool-use": events.post_tool_use,
-    "session-start": events.session_start,
+    "session-start": session_start,
     "stop": events.stop,
 }
 

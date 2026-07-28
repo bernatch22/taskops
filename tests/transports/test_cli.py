@@ -54,7 +54,7 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
     assert listed == {"init", "ui", "serve", "tasks", "context", "status", "run", "report",
-                      "recover", "sync", "login", "open", "remote", "push", "pull"}
+                      "schedule", "recover", "sync", "login", "open", "remote", "push", "pull"}
 
 
 def test_login_is_the_one_command_that_is_not_about_a_repository() -> None:
