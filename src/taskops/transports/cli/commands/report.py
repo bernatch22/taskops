@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 
+from ...._errors import BadRequest
 from ....render import render_board, render_day, render_fleet, render_standup
-from ....usecases import board, day, fleet, standup
+from ....usecases import board, day, fleet, standup, write_report
 from ._shared import add_target, repo_of
 
 __all__ = ["register"]
@@ -20,15 +21,34 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     parser.add_argument("--date", default="today",
                         help="which day the dossier covers: today, yesterday, YYYY-MM-DD")
     parser.add_argument("--actor", default="", help="restrict a standup to one actor")
+    parser.add_argument("--write", action="store_true",
+                        help="day: persist the dossier to .taskops/reports/<date>.md")
+    parser.add_argument("--force", action="store_true",
+                        help="with --write: regenerate a report that already exists")
     parser.set_defaults(run=run)
 
 
 def run(args: argparse.Namespace) -> str:
     where = repo_of(args)
+    if args.kind != "day" and (args.write or args.force):
+        raise BadRequest("--write and --force only apply to `report day` — every other "
+                         "report is regenerated on demand")
     if args.kind == "standup":
         return render_standup(standup(where, since=str(args.since), actor=str(args.actor)))
     if args.kind == "day":
-        return render_day(day(where, str(args.date)))
+        return _day(args, where)
     if args.kind == "fleet":
         return render_fleet(fleet(where))
     return render_board(board(where))
+
+
+def _day(args: argparse.Namespace, where: str) -> str:
+    """Printed, or written and its PATH printed.
+
+    The path rather than the dossier: what the caller does next is read or commit that file,
+    and a command that dumps 300 lines it just saved makes the one useful line scroll away.
+    """
+    if not args.write:
+        return render_day(day(where, str(args.date)))
+    path = write_report(where, str(args.date), force=bool(args.force))
+    return f"wrote {path}"

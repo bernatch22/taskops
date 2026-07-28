@@ -22,6 +22,17 @@ __all__ = ["init", "InitReport"]
 _GUIDE_SOURCE = Path(__file__).resolve().parents[1] / "assets" / "GUIDE.md"
 
 _MARKER = "# taskops"
+
+_REPORTS_NOTE = f"# {PROJECT_DIR}/reports/ is COMMITTED — a written dossier is not derived state"
+"""A COMMENT, not a rule, and that is the point.
+
+`reports/` is tracked, so the correct entry here is no entry at all — but "no entry" is
+indistinguishable from an oversight, and the next person tidying this block would add
+`{PROJECT_DIR}/*` and untrack every report in the project. The line says why the hole exists.
+It also doubles as the marker `_ignore` looks for when upgrading a project written by an older
+taskops, which had this block without the note.
+"""
+
 _GITIGNORE = f"""
 {_MARKER} — commit events.jsonl and NOTHING else under {PROJECT_DIR}/
 {PROJECT_DIR}/db.sqlite
@@ -30,6 +41,7 @@ _GITIGNORE = f"""
 {PROJECT_DIR}/GUIDE.md
 {PROJECT_DIR}/workers/
 {PROJECT_DIR}/trees/
+{_REPORTS_NOTE}
 """
 """Why GUIDE.md is ignored rather than committed, which looks wrong at first.
 
@@ -125,6 +137,19 @@ def _ignore(root: Path) -> None:
     path = root / ".gitignore"
     current = path.read_text(encoding="utf-8") if path.is_file() else ""
     if _MARKER in current:
+        _note(path, current)
         return
     separator = "" if current.endswith("\n") or not current else "\n"
     path.write_text(current + separator + _GITIGNORE, encoding="utf-8")
+
+
+def _note(path: Path, current: str) -> None:
+    """Append the reports comment to a block written before reports existed. Idempotent.
+
+    Upgrading in place rather than rewriting the block: the developer may have edited those
+    lines, and a tool that replaces a file it does not own loses whatever they added.
+    """
+    if _REPORTS_NOTE in current:
+        return
+    separator = "" if current.endswith("\n") else "\n"
+    path.write_text(current + separator + _REPORTS_NOTE + "\n", encoding="utf-8")

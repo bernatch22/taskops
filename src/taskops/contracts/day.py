@@ -19,7 +19,7 @@ from .commit import CommitRef
 from .event import Event
 from .task import Task
 
-__all__ = ["CommitStat", "ClosedCard", "DayReport"]
+__all__ = ["CommitStat", "ClosedCard", "DayReport", "ReportFile"]
 
 
 class CommitStat(CommitRef):
@@ -69,3 +69,25 @@ class DayReport(TypedDict):
     conversations: list[Event]
     actors: list[ActorRoll]
     commits_total: int
+
+
+class ReportFile(TypedDict):
+    """A day's dossier as it exists ON DISK — or as it would be if it were written.
+
+    `exists` and `stale` are two different answers and both are needed: a day nobody wrote up
+    is not the same as one written before half of it happened, and a reader who cannot tell
+    them apart will either regenerate a report somebody narrated or cite one that is short.
+    """
+
+    date: str
+    path: str
+    dossier_md: str
+    """The written file when there is one, INCLUDING any narration; otherwise the dossier the
+    generator would produce right now. A caller always gets something to read."""
+
+    exists: bool
+    stale: bool
+    missing_events: int
+    """How many of the day's events landed after the file was generated. `stale` is this
+    being non-zero; the number is here so a UI can say how far behind rather than just that
+    it is."""

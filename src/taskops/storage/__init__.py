@@ -7,7 +7,15 @@ directions.
 
 from __future__ import annotations
 
-from .locate import DB_FILE, GUIDE_FILE, LOG_FILE, PROJECT_DIR, find_root, resolve_root
+from .locate import (
+    DB_FILE,
+    GUIDE_FILE,
+    LOG_FILE,
+    PROJECT_DIR,
+    REPORTS_DIR,
+    find_root,
+    resolve_root,
+)
 from .store import BUSY_TIMEOUT, Store
 from .sync import all_events, export_events, import_events
 
@@ -18,6 +26,7 @@ __all__ = [
     "DB_FILE",
     "LOG_FILE",
     "GUIDE_FILE",
+    "REPORTS_DIR",
     "find_root",
     "resolve_root",
     "export_events",

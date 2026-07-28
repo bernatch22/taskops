@@ -22,10 +22,11 @@ from .identity import parse, resolve
 from .log import build, record, relay
 from .machine import Facts, allowed_from, check_move
 from .project import board, counts
+from .reports import missing_events, stamp, stamped_seq
 from .scheduler import branch_for, claim, open_children, ready_tasks, sweep_dead, unblock
 from .worker import Launched, launch
 
 __all__ = ["Facts", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "ready_tasks", "claim",
            "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet", "activity", "day_report", "date_of",
-           "counts", "replay", "branch_state", "branch_states", "launch", "Launched"]
+           "counts", "replay", "stamp", "stamped_seq", "missing_events", "branch_state", "branch_states", "launch", "Launched"]

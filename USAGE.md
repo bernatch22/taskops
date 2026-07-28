@@ -251,6 +251,9 @@ taskops report board        # every column, who holds what
 taskops report standup      # what changed in 24h, and what needs a human
 taskops report day --date yesterday   # ONE calendar day in full: what closed, with the
                                       # commits and diff sizes, and what was said
+taskops report day --write            # …and file it under .taskops/reports/YYYY-MM-DD.md,
+                                      # committed, stamped with the log position it covers.
+                                      # Refuses to overwrite one; --force if you mean it.
 taskops report fleet        # which agents are alive right now, on what file
 taskops ask tk-4f2a9c       # one task in full
 taskops ask "refresh"       # search titles and specs
@@ -441,7 +444,7 @@ taskops next [--labels x] [--task tk-…]    claim work
 taskops update <task> [--status …] [--comment …] [--mentions …] [--blocked-on …] [--no-code]
 taskops ask <task-id | text>               read one task, or search
 taskops plan <file.json | ->               create tasks from JSON
-taskops report [board|standup|day|fleet] [--since 24h] [--date yesterday]
+taskops report [board|standup|day|fleet] [--since 24h] [--date yesterday] [--write] [--force]
 taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
 taskops sync                               reconcile with the committed log
 taskops inbox                              messages waiting for you
