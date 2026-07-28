@@ -15,19 +15,20 @@ import time
 
 from ..contracts import ClosedCard, Event, PeriodReport
 from ._dossier import card_block
+from ._verbatim import Detail
 
 __all__ = ["closed_section"]
 
 
-def closed_section(day: PeriodReport) -> list[str]:
+def closed_section(day: PeriodReport, detail: Detail = "brief") -> list[str]:
     """The heading, the cards, and — when the cap cut some — how many are missing."""
     one_day = day["from_date"] == day["to_date"]
     if not day["closed"]:
         nothing = "Nothing closed on this day." if one_day else "Nothing closed in this window."
         return ["## Cerrado", "", nothing, *_dropped(day), ""]
     count = len(day["closed"])
-    body = (_flat(day["closed"], day["conversations"]) if one_day
-            else _by_day(day["closed"], day["conversations"]))
+    body = (_flat(day["closed"], day["conversations"], detail) if one_day
+            else _by_day(day["closed"], day["conversations"], detail))
     return [f"## Cerrado ({count})", "", body, *_dropped(day), ""]
 
 
@@ -41,19 +42,19 @@ def _dropped(day: PeriodReport) -> list[str]:
                 f"narrow the range to read them._"]
 
 
-def _flat(cards: list[ClosedCard], said: list[Event]) -> str:
+def _flat(cards: list[ClosedCard], said: list[Event], detail: Detail) -> str:
     """One day: no day headings. A `## 2026-07-28` under a `# 2026-07-28` title is noise, and
     it is what keeps a single day's report byte-identical to what it always was."""
-    return "\n\n".join("\n".join(card_block(card, said)) for card in cards)
+    return "\n\n".join("\n".join(card_block(card, said, detail)) for card in cards)
 
 
-def _by_day(cards: list[ClosedCard], said: list[Event]) -> str:
+def _by_day(cards: list[ClosedCard], said: list[Event], detail: Detail) -> str:
     """Newest day first, with its own count. The cards inside a day keep the log's order —
     oldest close first — so a day still reads the way the day happened."""
     days: dict[str, list[ClosedCard]] = {}
     for card in cards:
         days.setdefault(_date_of(card["done_ts"]), []).append(card)
-    return "\n\n".join(f"### {date} ({len(group)})\n\n" + _flat(group, said)
+    return "\n\n".join(f"### {date} ({len(group)})\n\n" + _flat(group, said, detail)
                        for date, group in sorted(days.items(), reverse=True))
 
 

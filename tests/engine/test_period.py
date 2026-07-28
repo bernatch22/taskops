@@ -136,7 +136,7 @@ def _report(from_date: str, to_date: str, **over: object) -> PeriodReport:
     """A literal report. The renderer is pure, so a range can be drawn without a database."""
     base = PeriodReport(repo="/x", from_date=from_date, to_date=to_date,
                         label=label_of(from_date, to_date), closed=[], dropped=0,
-                        in_flight=[], blocked=[], conversations=[],
+                        opened=[], in_flight=[], blocked=[], waiting=[], conversations=[],
                         actors=[ActorRoll(actor="dev:berna", tasks=1, commits=0,
                                           comments=0, done=0)],
                         commits_total=0)
@@ -209,3 +209,47 @@ def test_an_empty_day_still_says_day_and_an_empty_range_says_window() -> None:
         "Nothing happened on this day.")
     assert render_day(_report(FIRST, LAST, actors=[])).endswith(
         "Nothing happened in this window.")
+
+
+# ---- a window that only planned
+
+
+def _created(store: Store, task_id: str, date: str, status: str = "ready") -> None:
+    """A card created at noon of `date`, in whatever state planning left it."""
+    start, _ = window(date)
+    _task(store, task_id, status=status)
+    _log(store, task_id, "dev:berna", "created", start + 43_200.0)
+
+
+def test_cards_only_CREATED_in_the_window_are_reported(store: Store) -> None:
+    """The bug: four cards planned with specs and a dependency chain, and the report said
+    `0 closed · 0 in flight · 0 blocked` over three empty headings, because `ready` and
+    `backlog` belonged to no section at all."""
+    _created(store, "tk-ready", LAST)
+    _created(store, "tk-later", LAST, status="backlog")
+    store.deps.add("tk-ready", "tk-later")
+
+    report = period_report(store, LAST, LAST)
+
+    assert [c["task"]["id"] for c in report["opened"]] == ["tk-ready", "tk-later"]
+    assert report["opened"][1]["waiting_on"] == ["tk-ready"]
+    assert report["opened"][0]["blocking"] == ["tk-later"]
+    assert "Nothing happened" not in render_day(report)
+
+
+def test_a_card_created_AND_closed_in_the_window_is_only_in_closed(store: Store) -> None:
+    """`closed` already tells that story with its commits and its conversation. Listing it
+    in both sections would invite a reader to count it twice."""
+    _closed_on(store, "tk-1", LAST)
+    _log(store, "tk-1", "dev:berna", "created", window(LAST)[0] + 50.0)
+    report = period_report(store, LAST, LAST)
+    assert report["opened"] == [] and len(report["closed"]) == 1
+
+
+def test_an_unstarted_card_touched_but_not_created_lands_in_waiting(store: Store) -> None:
+    """Neither working nor blocked, so nothing rendered it — and `opened` must not claim the
+    window created it either."""
+    _created(store, "tk-old", BEFORE, status="backlog")
+    _log(store, "tk-old", "dev:berna", "comment", window(LAST)[0] + 100.0, text="bump")
+    report = period_report(store, LAST, LAST)
+    assert [t["id"] for t in report["waiting"]] == ["tk-old"] and report["opened"] == []

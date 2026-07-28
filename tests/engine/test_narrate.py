@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from taskops._errors import NarrationFailed
+from taskops.engine._chunks import CHUNK_CHARS, slices
 from taskops.engine.narrate import narrate
 
 # The package re-exports the FUNCTION under this name, so `from taskops.engine import narrate`
@@ -102,6 +103,83 @@ def test_a_nonzero_exit_carries_the_reason(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(module.subprocess, "run", angry)
     with pytest.raises(NarrationFailed, match="Invalid API key"):
         narrate("x")
+
+
+# ---- chunking: a dossier too long for one reading
+
+
+class _Counted:
+    """Every prompt a run sent, in order — so a chunked narration can be checked for the one
+    thing that matters: that nothing was dropped on the way in."""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+
+@pytest.fixture
+def counted(monkeypatch: pytest.MonkeyPatch) -> _Counted:
+    seen = _Counted()
+
+    def fake(command: list[str], **_: Any) -> "subprocess.CompletedProcess[str]":
+        seen.prompts.append(command[2])
+        return subprocess.CompletedProcess(command, 0, stdout=f"part {len(seen.prompts)}\n",
+                                           stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake)
+    return seen
+
+
+def _long_dossier(cards: int) -> str:
+    """A dossier shaped like a real one: a header, then card blocks big enough that a handful
+    of them blow past the threshold."""
+    body = "".join(f"✓ **tk-{n}** — card {n}\n" + "  detail line\n" * 400
+                   for n in range(cards))
+    return "# all — some closed\n\n## Cerrado\n\n" + body
+
+
+def test_a_short_dossier_is_still_ONE_call(counted: _Counted) -> None:
+    narrate("# a small day")
+    assert len(counted.prompts) == 1
+
+
+def test_a_long_dossier_is_read_in_slices_and_stitched(counted: _Counted) -> None:
+    """N slices plus one stitch. The alternative — sending a prompt trimmed to fit — is what
+    this exists to prevent: a report that forgets whatever sorted last and never says so."""
+    dossier = _long_dossier(12)
+    assert len(dossier) > CHUNK_CHARS
+
+    out = narrate(dossier)
+
+    assert len(counted.prompts) > 2, "several slices and a stitch, not one call"
+    assert "PARTS" in counted.prompts[-1], "the last call assembles the earlier answers"
+    assert all(f"part {n}" in counted.prompts[-1] for n in range(1, len(counted.prompts)))
+    assert out == f"part {len(counted.prompts)}"
+
+
+def test_NO_card_is_lost_between_the_slices(counted: _Counted) -> None:
+    """The invariant of the whole chunking path. Every card id the dossier held has to appear
+    in some slice's prompt — a chunker that dropped one would be the silent truncation with
+    extra steps."""
+    narrate(_long_dossier(12))
+    sent = "".join(counted.prompts[:-1])
+    assert all(f"tk-{n}" in sent for n in range(12))
+
+
+def test_each_slice_carries_the_header(counted: _Counted) -> None:
+    """The header names the window and the language the narration must be written in. A slice
+    without it is a list of cards with no idea what report it belongs to."""
+    narrate(_long_dossier(12))
+    assert all("# all — some closed" in prompt for prompt in counted.prompts[:-1])
+
+
+def test_a_slice_is_never_cut_through_the_middle_of_a_card() -> None:
+    """Half a card under one reading and half under another produces two partial paragraphs
+    about the same work, and the stitch has no way to know they are the same card."""
+    parts = slices(_long_dossier(12))
+    assert len(parts) > 1
+    for part in parts:
+        assert part.count("✓ **") >= 1
+        assert part.split("✓ **", 1)[1].startswith("tk-")
 
 
 # ---- the splice, which is pure

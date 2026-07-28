@@ -19,7 +19,7 @@ from .commit import CommitRef
 from .event import Event
 from .task import Task
 
-__all__ = ["CommitStat", "ClosedCard", "PeriodReport", "DayReport", "ReportFile"]
+__all__ = ["CommitStat", "ClosedCard", "OpenedCard", "PeriodReport", "DayReport", "ReportFile"]
 
 
 class CommitStat(CommitRef):
@@ -56,6 +56,26 @@ class ClosedCard(TypedDict):
     after three days of work shipped all of it, and showing one commit would understate it."""
 
 
+class OpenedCard(TypedDict):
+    """A card CREATED in this window and not yet closed — planned work, with its edges.
+
+    The section that was missing entirely: a window whose whole content is planning reported
+    `0 closed · 0 in flight · 0 blocked` and printed nothing, because `backlog` and `ready`
+    belonged to no section. A day spent writing four specs is a day something happened on.
+
+    The edges travel with the card because they ARE the content of a planning day: which of
+    these can be started right now, and which is waiting on which. A list of titles without
+    the DAG is the same silence in a longer form.
+    """
+
+    task: Task
+    waiting_on: list[str]
+    """Ids of the OPEN cards this one waits for. Empty means it can be started now."""
+
+    blocking: list[str]
+    """Ids waiting on this one — the argument for doing it first."""
+
+
 class PeriodReport(TypedDict):
     """A WINDOW of calendar days, as one object. One day is the case where both ends match.
 
@@ -83,8 +103,21 @@ class PeriodReport(TypedDict):
     Reported rather than silent, exactly as the activity view reports truncation: a month
     that closed 400 cards and shows 200 of them is a fine report and a terrible lie."""
 
+    opened: list[OpenedCard]
+    """Cards created in the window and still open. A card created AND closed inside it is not
+    here — `closed` already tells that story in full, and listing it twice would invite a
+    reader to count it twice."""
+
     in_flight: list[Task]
     blocked: list[Task]
+    waiting: list[Task]
+    """Open cards touched in the window that nobody has started — `ready` and `backlog`.
+
+    They belonged to no section at all until this field existed, which is how a freshly
+    planned project reported that nothing had happened. Cards created in this window are
+    excluded: those are in `opened`, where they carry their dependencies too.
+    """
+
     conversations: list[Event]
     actors: list[ActorRoll]
     commits_total: int

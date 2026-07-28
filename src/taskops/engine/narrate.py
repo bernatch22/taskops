@@ -20,44 +20,48 @@ import os
 import subprocess
 
 from .._errors import NarrationFailed
+from ._chunks import CHUNK_CHARS, slices
+from ._prompts import CHUNK_PROMPT, PROMPT, STITCH_PROMPT
 from .worker import DROPPED_ENV
 
-__all__ = ["narrate", "PROMPT", "TIMEOUT"]
+__all__ = ["narrate", "PROMPT", "TIMEOUT", "CHUNK_CHARS"]
 
-TIMEOUT = 240.0
-"""Seconds before the narration is abandoned. Long enough for a real read of a busy day, short
-enough that `--digest` cannot hang a terminal somebody left running."""
+TIMEOUT = 900.0
+"""Seconds before ONE reading is abandoned. Long enough for a real read, short enough that
+`--digest` cannot hang a terminal somebody left running forever.
 
-PROMPT = """You are writing the narration section of a daily engineering report.
-
-Below is the day's dossier: what closed, the commits with their diff sizes, the conversation, and
-a roll-up per actor. It was generated from an append-only event log, so every fact in it is true.
-
-Write the narration in the SAME LANGUAGE the cards and comments are written in.
-
-Rules:
-- Lead with what needs a human: anything blocked, anything still claimed, anything that looks
-  wrong. If there is nothing, say so in one line and move on.
-- Then the day in one sentence, and then what changed grouped BY WHAT IT IS FOR, not by card id.
-- Name the decisions and the surprises — the thing a reader would not guess from the titles.
-- Invent NOTHING. Every claim must trace to a line in the dossier. If the dossier is thin, the
-  narration is short; a padded report is worse than a brief one.
-- Do not flatter anybody and do not editorialise about pace.
-- Markdown, no top-level heading (the section already has one).
-
-Output ONLY the narration text.
-
---- DOSSIER ---
+240s until a slice of `report all` on axion-v3 (45 closed cards, 340 KB of dossier) ran past
+it and the whole digest was thrown away after twenty minutes of work — five good slices lost
+with it, which is the worst outcome available. The number was sized for a single day's dossier
+answered in three paragraphs; the prompt now asks for a paragraph per card over a slice of up
+to `CHUNK_CHARS`, and that is minutes of generation, not seconds.
 """
 
 
 def narrate(dossier: str, *, model: str = "", timeout: float = TIMEOUT) -> str:
     """The prose for one dossier. Raises `NarrationFailed` with what to do about it.
 
-    `-p` is one-shot mode: no session is resumed and none is left behind, so running this twice
-    cannot produce a conversation that drifts.
+    ONE reading when the dossier fits (`_chunks.CHUNK_CHARS`), otherwise one reading per slice
+    and a final pass that stitches them. The long path costs N+1 calls and is taken on purpose:
+    trimming the prompt instead would produce a report that silently forgets the cards that
+    happened to sort last, and nothing on the page would say so.
     """
-    command = ["claude", "-p", PROMPT + dossier]
+    parts = slices(dossier)
+    if len(parts) == 1:
+        return _ask(PROMPT + dossier, model, timeout)
+    told = [_ask(f"{CHUNK_PROMPT}(slice {i} of {len(parts)})\n\n{part}", model, timeout)
+            for i, part in enumerate(parts, start=1)]
+    return _ask(STITCH_PROMPT + "\n\n---\n\n".join(told), model, timeout)
+
+
+def _ask(prompt: str, model: str, timeout: float) -> str:
+    """One `claude` process, one prompt.
+
+    `-p` is one-shot mode: no session is resumed and none is left behind, so running this twice
+    cannot produce a conversation that drifts — and so the slices of a chunked narration cannot
+    contaminate each other.
+    """
+    command = ["claude", "-p", prompt]
     if model:
         command += ["--model", model]
     try:
