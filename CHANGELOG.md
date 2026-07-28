@@ -123,7 +123,7 @@ server, y la carrera pasa a ser la que el engine ya gana.
     cincuenta veces por segundo y no se cuela; el huérfano sin root; y los bytes del frame, que no
     contienen ni la palabra `root` ni el path.
 
-## Unreleased — a card remembers which sessions worked it
+## 0.2.0 — one door per audience, reports that explain themselves, and a server
 
 - **`taskops serve` — muchos boards en un puerto, cada uno con su token.** `taskops ui` sirve el
   repo donde estás parado; `serve` sirve un DIRECTORIO de proyectos, que es lo que hace falta en
