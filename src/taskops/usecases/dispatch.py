@@ -76,9 +76,9 @@ class DispatchResult:
         tell it that the remaining half is its job."""
 
 
-def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0,
-             actor: str = "", prefix: str = "", model: str = "",
-             dry_run: bool = False, spawn: bool = False) -> DispatchResult:
+def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0, actor: str = "",
+             prefix: str = "", model: str = "", dry_run: bool = False, spawn: bool = False,
+             use_api_key: bool = False) -> DispatchResult:
     """Launch a worker per card. Named cards, or the best `count` ready ones.
 
     `count` rather than "everything ready" as the default shape, because "all" is the request nobody
@@ -88,6 +88,9 @@ def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0,
     because this is the one call in taskops that spends money: every worker is a model, and a planner
     that miscounted should be able to look before it commits to five of them. It is also the honest
     answer to "which cards would you pick", which no amount of reading the scheduler gives you.
+
+    `use_api_key` is the opt-in for billing per token: a spawned worker inherits the environment
+    MINUS `worker.DROPPED_ENV`, so it uses the logged-in subscription. Only the CLI passes it.
     """
     with project(start) as store:
         who = caller(store, actor)
@@ -98,8 +101,8 @@ def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0,
             return DispatchResult(launched=[_preview(store, t, who["dev"], prefix or "w", i)
                                             for i, t in enumerate(chosen, start=1)],
                                   skipped=skipped, planned=True)
-        prepared = [_assign(store, task, who["dev"], prefix or "w", i, spawn=spawn, model=model)
-                    for i, task in enumerate(chosen, start=1)]
+        prepared = [_assign(store, task, who["dev"], prefix or "w", i, spawn=spawn, model=model,
+                            use_api_key=use_api_key) for i, task in enumerate(chosen, start=1)]
         if not spawn:
             return DispatchResult(launched=prepared, skipped=skipped, spawned=False)
         return DispatchResult(launched=[w for w in prepared if w.pid],
@@ -141,7 +144,7 @@ def _capped(tasks: list[Task]) -> list[Task]:
 
 
 def _assign(store: Store, task: Task, dev: str, prefix: str, index: int, *,
-            spawn: bool, model: str) -> Launched:
+            spawn: bool, model: str, use_api_key: bool = False) -> Launched:
     """Assign the card and prepare its worktree; spawn a process only if asked.
 
     Assignment FIRST, always — see the module docstring. The actor name is derived
@@ -153,5 +156,5 @@ def _assign(store: Store, task: Task, dev: str, prefix: str, index: int, *,
     record(store, task=task["id"], actor=worker, kind="handoff",
            body={"assigned_to": worker, "dispatched": True, "mentions": [worker]})
     if spawn:
-        return launch(store.root, task, actor=worker, model=model)
+        return launch(store.root, task, actor=worker, model=model, use_api_key=use_api_key)
     return prepare(store.root, task, actor=worker)

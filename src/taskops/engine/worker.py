@@ -22,7 +22,19 @@ from .identity import ENV_ACTOR
 from .scheduler import branch_for
 
 __all__ = ["Launched", "launch", "prepare", "worktree_for", "brief_for", "prompt_for",
-           "WORKERS_DIR", "TREES_DIR", "TOOLS"]
+           "WORKERS_DIR", "TREES_DIR", "TOOLS", "DROPPED_ENV"]
+
+DROPPED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
+"""API credentials the worker does NOT inherit. The money rule, stated as a constant.
+
+The `claude` CLI prefers an exported key over the logged-in subscription, so a developer who has
+one in their shell was silently billing every dispatched worker per token — while the plan they
+already pay for sat unused. A background agent nobody is watching must not be able to spend money
+the caller did not choose to spend, and the subscription login is the default everybody expects.
+
+`ANTHROPIC_BASE_URL` goes with them: pointing a worker at a proxy or a gateway is the same class of
+surprise, decided by whoever exported a variable years ago rather than by whoever typed the command.
+`taskops run --use-api-key` is the way to ask for the other mode, out loud."""
 
 WORKERS_DIR = ".taskops/workers"
 """Where a worker's log goes. Under `.taskops/` so one gitignore rule covers it."""
@@ -76,12 +88,16 @@ def prepare(root: Path, task: Task, *, actor: str) -> Launched:
                     branch=branch_for(task), brief=brief_for(root, task, actor, tree))
 
 
-def launch(root: Path, task: Task, *, actor: str, model: str = "") -> Launched:
+def launch(root: Path, task: Task, *, actor: str, model: str = "",
+           use_api_key: bool = False) -> Launched:
     """Start a headless Claude Code on its own worktree. Returns immediately.
 
     A worktree that cannot be made is NOT fatal — a repository with no commits has no HEAD to branch
     from — and the worker runs in the main checkout instead. That is fine for one worker and wrong for
     several, which is why `dispatch` is the thing that decides whether to allow it.
+
+    `use_api_key` keeps `DROPPED_ENV` in the child's environment: the worker then bills per token
+    instead of using the subscription. Default OFF, and no MCP tool can turn it on.
     """
     tree = worktree_for(root, task)
     branch = branch_for(task)
@@ -93,6 +109,7 @@ def launch(root: Path, task: Task, *, actor: str, model: str = "") -> Launched:
     if model:
         command += ["--model", model]
     pid = spawn(command, cwd=tree if usable else root, log=log,
-                env={"TASKOPS_ROOT": str(root), ENV_ACTOR: actor})
+                env={"TASKOPS_ROOT": str(root), ENV_ACTOR: actor},
+                drop=() if use_api_key else DROPPED_ENV)
     return Launched(actor=actor, task=task["id"], pid=pid, tree=tree, log=log,
                     branch=branch, brief="")

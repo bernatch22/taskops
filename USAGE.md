@@ -447,7 +447,16 @@ taskops report [board|standup|fleet] [--since 24h]
 taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
 taskops recover [--apply]                  release cards held by silent workers
 taskops sync                               reconcile with the committed log
+taskops run [--yes] [--use-api-key]        run ready cards with headless Claude workers
 ```
+
+`taskops run` is the one command here that starts Claude sessions, so it says what it costs
+before it starts anything and an unattended caller must pass `--yes`. Its workers run on your
+**logged-in subscription**: the Anthropic credentials (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+`ANTHROPIC_BASE_URL`) are stripped from the spawn environment, because the `claude` CLI prefers an
+exported key over the subscription and a background agent nobody is watching would otherwise bill
+per token on a plan you already pay for. `--use-api-key` puts them back for whoever wants that —
+CLI only, never an MCP tool.
 
 ```
 taskops tasks                              one line per open task (same as `tasks list`)

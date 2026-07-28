@@ -7,7 +7,9 @@ that the price is stated before anything starts, and that saying no leaves the b
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -79,7 +81,7 @@ def test_confirming_spawns_and_warns_about_the_bill_first(project: Path, spawns:
     answer(monkeypatch, "y")
     assert main(["run", "--repo", str(project), "--count", "1", "--actor", "dev:berna"]) == 0
     out = capsys.readouterr()
-    assert "NEW billed Claude session" in out.err
+    assert "logged-in subscription" in out.err
     assert "taskops_dispatch" in out.err, "the warning must name the free way to parallelise"
     assert len(spawns) == 1
 
@@ -93,7 +95,7 @@ def test_yes_skips_the_prompt_for_an_unattended_caller(project: Path, spawns: li
     monkeypatch.setattr("builtins.input", _refuse_to_be_called)
     assert main(["run", "--repo", str(project), "--count", "1", "--yes",
                  "--actor", "dev:berna"]) == 0
-    assert "NEW billed Claude session" in capsys.readouterr().err, "--yes silenced the warning"
+    assert "logged-in subscription" in capsys.readouterr().err, "--yes silenced the warning"
     assert len(spawns) == 1
 
 
@@ -150,3 +152,63 @@ def test_run_takes_the_same_flags_dispatch_does() -> None:
     shared = {"repo", "tasks", "count", "prefix", "model", "dry_run", "actor"}
     for name in ("run", "dispatch"):
         assert shared <= set(vars(build_parser().parse_args([name])))
+
+
+@pytest.fixture
+def envs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
+    """Record the environment handed to `spawn`, and start no process.
+
+    The real `spawn` runs and only its `Popen` is faked, so what is recorded is the environment a
+    child would ACTUALLY get. A fake `spawn` that rebuilt the env would only test its own copy of
+    the rule — and the rule is the whole point.
+
+    Note the `command`: `subprocess` is shared with the `git worktree` calls that run through
+    `subprocess.run`, so only the `claude` invocation is recorded.
+    """
+    seen: list[dict[str, str]] = []
+    real = subprocess.Popen
+
+    def fake_popen(command: list[str], **kwargs: Any) -> Any:
+        if command[:1] == ["claude"]:
+            seen.append(kwargs["env"])
+            return SimpleNamespace(pid=4242)
+        return real(command, **kwargs)
+
+    monkeypatch.setattr("taskops.engine._process.subprocess.Popen", fake_popen)
+    return seen
+
+
+def test_a_worker_never_inherits_the_api_key(project: Path, envs: list[dict[str, str]],
+                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """The money bug, pinned. A developer with a key exported was billing every worker per
+    token while the subscription they pay for sat unused — and nothing said so, which is why
+    this can only be caught by asserting on the environment itself."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://proxy.example")
+    assert main(["run", "--repo", str(project), "--count", "1", "--yes",
+                 "--actor", "dev:berna"]) == 0
+    assert len(envs) == 1
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
+        assert name not in envs[0], f"{name} reached the worker"
+    assert envs[0]["TASKOPS_ROOT"] == str(project), "dropping went too far"
+
+
+def test_use_api_key_gives_the_capability_back(project: Path, envs: list[dict[str, str]],
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    """Removing a capability without an escape hatch is a different bug. Whoever types the
+    flag has chosen the invoice; no MCP tool can."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret")
+    assert main(["run", "--repo", str(project), "--count", "1", "--yes", "--use-api-key",
+                 "--actor", "dev:berna"]) == 0
+    assert envs[0]["ANTHROPIC_API_KEY"] == "sk-ant-secret"
+
+
+def test_the_escape_hatch_is_cli_only() -> None:
+    """`dispatch` and the MCP tool must not offer it: an agent that can point a fleet at an API
+    balance can spend money nobody approved."""
+    from taskops.contracts.tools import DispatchParams
+
+    assert "use_api_key" not in vars(build_parser().parse_args(["dispatch"]))
+    assert "use_api_key" in vars(build_parser().parse_args(["run"]))
+    assert "use_api_key" not in DispatchParams.__annotations__

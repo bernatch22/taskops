@@ -39,11 +39,15 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
 
 
 def dispatch_with(args: argparse.Namespace, *, spawn: bool) -> str:
-    """The one call both commands make. `spawn` is the only thing either of them decides."""
+    """The one call both commands make. `spawn` is the only thing either of them decides.
+
+    `--use-api-key` is read with `getattr` because only `run` declares it; `dispatch` keeps the
+    flag set it always had rather than growing one that its own help would have to explain."""
     return render_dispatch(launch_workers(
         repo_of(args), tasks=tuple(str(t) for t in args.tasks), count=int(args.count),
         actor=str(args.actor), prefix=str(args.prefix), model=str(args.model),
-        dry_run=bool(args.dry_run), spawn=spawn))
+        dry_run=bool(args.dry_run), spawn=spawn,
+        use_api_key=bool(getattr(args, "use_api_key", False))))
 
 
 def run(args: argparse.Namespace) -> str:
