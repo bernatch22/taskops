@@ -69,7 +69,10 @@ What just happened:
 | A block in `.gitignore` | Ignores everything above except the log. |
 
 `taskops init` is safe to re-run, and re-running is how you **repair a fresh clone** — `.git/hooks`
-is not tracked, so a clone starts with none.
+is not tracked, so a clone starts with none. It also **rewrites** a hook line it installed before
+rather than leaving it alone, which is how a repository set up by an older taskops picks up the
+current wiring. That matters more than it sounds: every hook line ends in `|| true`, so one naming
+a command that no longer exists does not fail — it silently stops binding your commits to cards.
 
 > If it says `.git/hooks does not exist — not a git repository yet`, run `git init` first, then
 > `taskops init` again. Everything else still works; you just get no automatic commit recording.
@@ -92,7 +95,8 @@ Restart Claude Code and confirm it is connected:
 /mcp
 ```
 
-You should see `taskops` listed with 5 tools.
+You should see `taskops` listed with its tools. They are unchanged by the CLI's slimming —
+the agent's door is the MCP server, and only the developer's door got smaller.
 
 ### 1.3 Plan some work
 
@@ -125,7 +129,7 @@ echo '[
    "spec": "Return one alongside the access token. Done when the login test asserts both.",
    "files": ["auth/login.py"],
    "after": [0]}
-]' | taskops plan -
+]' | taskops tasks plan -
 ```
 
 **Read the last line.** If it says `⚠ NOTHING is ready`, your `after` references have a cycle or an
@@ -159,7 +163,7 @@ Migration plus the model. Done when a token round-trips…
 You can do the same yourself:
 
 ```sh
-taskops next
+taskops tasks
 ```
 
 ### 1.5 Commit — and watch the enforcement work
@@ -174,7 +178,7 @@ git add -A && git commit -m "Add the refresh token table"
 Either way, the commit is now bound to the task:
 
 ```sh
-taskops ask tk-4f2a9c | grep -A2 Commits
+taskops tasks show tk-4f2a9c | grep -A2 Commits
 ```
 
 ```
@@ -198,8 +202,12 @@ it yourself — `git commit -m "…" -m "Task: tk-4f2a9c"` — or just let the a
 
 ```sh
 git switch -c random-branch
-taskops guard commit --message "sneaky"; echo "exit=$?"
+python3 -m taskops.transports.hooks commit --message "sneaky"; echo "exit=$?"
 ```
+
+(That is the **wiring** transport, not `taskops`. Nobody types it in normal use — `taskops init`
+writes it into `.git/hooks` and the plugin's `hooks.json` names it. It is spelled out here only
+because seeing the refusal is the point of this step.)
 
 ```
 taskops: commit blocked — `random-branch` is not a task branch. You hold 1 task(s) —
@@ -210,7 +218,7 @@ exit=2
 Inside Claude Code that refusal reaches the **agent** as text it can act on, and the commit never
 runs. Exit 2 is what Claude Code reads as "deny".
 
-Note that `taskops guard` on its own does **not** stop a determined `git commit` in your terminal —
+Note that the guard on its own does **not** stop a determined `git commit` in your terminal —
 nothing hooks your shell, and a `pre-commit` hook was deliberately not installed (a refusal there
 reaches a human as a failed command with no context). The enforcement is on the agents, which is
 where the volume is.
@@ -220,7 +228,7 @@ where the volume is.
 > Mark it done.
 
 ```sh
-taskops update tk-4f2a9c --status done --comment "Table and model landed; expiry is a column, not a job."
+taskops tasks done tk-4f2a9c -m "Table and model landed; expiry is a column, not a job."
 ```
 
 ```
@@ -240,8 +248,8 @@ or pass no_code with a comment if this task legitimately produced none
 For research or a decision that produced no code:
 
 ```sh
-taskops update tk-8b31d0 --status done --no-code \
-  --comment "Decided against rotation-on-use; reasoning in the thread."
+taskops tasks done tk-8b31d0 --no-code \
+  -m "Decided against rotation-on-use; reasoning in the thread."
 ```
 
 ### 1.7 See where things stand
@@ -275,9 +283,9 @@ taskops report all --digest                       # …and have Claude narrate t
 # decided, what it cost. A dossier past ~60k characters is narrated in slices and
 # stitched (several model calls, a couple of minutes) rather than trimmed to fit.
 
-taskops report fleet        # which agents are alive right now, on what file
-taskops ask tk-4f2a9c       # one task in full
-taskops ask "refresh"       # search titles and specs
+taskops report fleet         # which agents are alive right now, on what file
+taskops tasks show tk-4f2a9c # one task in full
+taskops tasks search refresh # search titles and specs
 ```
 
 ---
@@ -377,12 +385,16 @@ Now tell both: *claim the next task and start.* You will see:
 
 Once the plugin is installed, every session gets this without asking:
 
-| Hook | What happens |
-|---|---|
-| `SessionStart` | The agent starts knowing what it holds and who messaged it. |
-| `PreToolUse` on Bash | A commit with no claim is denied; a valid one gets the trailer injected. |
-| `PostToolUse` | New messages are delivered; activity appears in the fleet panel. |
-| `Stop` | The session posts a summary to each task it holds — a standup nobody wrote. |
+| Hook | Runs | What happens |
+|---|---|---|
+| `SessionStart` | `…hooks session-start` | The agent starts knowing what it holds and who messaged it. |
+| `PreToolUse` on Bash | `…hooks pre-tool-use` | A commit with no claim is denied; a valid one gets the trailer injected. |
+| `PostToolUse` | `…hooks post-tool-use` | New messages are delivered; activity appears in the fleet panel. |
+| `Stop` | `…hooks stop` | The session posts a summary to each task it holds — a standup nobody wrote. |
+
+`…hooks` is `python3 -m taskops.transports.hooks`. It is a transport of its own, beside the
+CLI and the MCP server, precisely so that a hook line is not an entry in the menu a developer
+reads.
 
 ---
 
@@ -475,7 +487,7 @@ task, and a passer-by should not be able to post as an agent.
 
 ### Commands
 
-`taskops --help` lists six, which is what a person does:
+`taskops --help` lists **seven**, and seven is all there is. What a person does:
 
 ```
 taskops init [--no-hooks]                  create .taskops/, install the git hooks
@@ -517,19 +529,25 @@ finished work rewrites that record. Editing stays out of the MCP tools deliberat
 correcting a brief is a human act, and an agent that can rewrite its own spec can talk
 itself into having finished.
 
-Every other one is a wrapper over a top-level verb that still works and still runs — they
-are simply no longer listed, because `--help` had grown to nineteen commands serving three
-different readers. The agent protocol (`next`, `update`, `ask`, `plan`, `dispatch`, `log`) is
-what an agent reaches through the MCP tools or its brief; `guard`, `ingest`, `brief`, `inbox`,
-`track`, `checkout` and `hook` are typed by a git or Claude Code hook and by nothing else.
+### The thirteen commands that are gone
 
-```
-taskops next [--labels x] [--task tk-…]    claim work
-taskops update <task> [--status …] [--comment …] [--mentions …] [--blocked-on …] [--no-code]
-taskops ask <task-id | text>               read one task, or search
-taskops plan <file.json | ->               create tasks from JSON
-taskops inbox                              messages waiting for you
-```
+`--help` once listed seven of twenty. The other thirteen were registered and hidden, which
+reads the same from the outside as absent and is not the same thing: they were still doors
+into the binary a person types, and both git and Claude Code came in through them.
+
+Each audience now has its own door.
+
+| Was | Is now |
+|---|---|
+| `taskops next · update · ask · plan · dispatch · log` | The MCP tools — `taskops_next`, `taskops_update`, `taskops_ask`, `taskops_plan`, `taskops_dispatch`. Reading a card by hand is `taskops tasks show`. |
+| `taskops guard commit` | `python -m taskops.transports.hooks commit` |
+| `taskops hook <event>` | `python -m taskops.transports.hooks <event>` — `pre-tool-use`, `post-tool-use`, `session-start`, `stop` |
+| `taskops ingest commit\|branch` | `python -m taskops.transports.hooks ingest commit\|branch` |
+| `taskops brief · inbox · track · checkout` | Nothing to call: the hook events do this directly, which is all they were ever for. |
+
+Nothing in the middle column is meant to be typed. `taskops init` writes it into `.git/hooks`
+and the plugin ships it in `hooks.json`. `taskops sync` stayed on the CLI as well, because
+reconciling by hand is a thing a person legitimately does.
 
 ### Statuses
 
@@ -562,9 +580,10 @@ the task the easier move, and an abandoned task loses everything you learned.
 | `no taskops project at or above …` | Run `taskops init` in the repository root. |
 | A commit was denied | Read the message — it names the branch to switch to or the task to claim. Do not use `--no-verify`: `post-commit` records the commit anyway and you get one nobody agreed on. |
 | `taskops_next` says nothing is ready | Read the reason. "Everything blocked" is worth telling a human; "everything claimed" means ask again shortly. |
-| Hooks are not firing | `.git/hooks` is not tracked, so a fresh clone has none. `taskops init` again. |
+| Hooks are not firing | `.git/hooks` is not tracked, so a fresh clone has none — and a repository initialised by an older taskops has a line naming a command that moved. `taskops init` again fixes both; it rewrites its own line. |
+| `taskops guard`: *invalid choice* | The wiring left the CLI. It is `python3 -m taskops.transports.hooks commit`, and normally nothing types it by hand. |
 | The board says `ui not built` | You are on a checkout with no bundle: `cd ui && npm install && npm run build`. |
-| A card is stuck in `claimed` | The agent died. Wait for the lease (≤15 min), or `taskops update <id> --status released --comment "…"`. |
+| A card is stuck in `claimed` | The agent died. Wait for the lease (≤15 min), or `taskops tasks release <id> -m "…"`. |
 
 ### Changing the UI
 

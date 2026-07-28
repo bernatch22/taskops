@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from taskops.engine import commitline
-from taskops.transports.cli.commands import _events
+from taskops.transports.hooks import events as _events
 from taskops.usecases import init, next_task, plan
 
 
@@ -168,12 +168,12 @@ def test_post_tool_use_is_silent_with_no_messages(project: Path,
 def test_the_command_exits_zero_even_when_it_denies(project: Path, monkeypatch: Any) -> None:
     """A non-zero exit is ALSO read as a denial, so returning both would refuse the call twice
     — once without the reason attached, and that is the version the agent would see."""
-    from taskops.transports.cli.main import main
+    from taskops.transports.hooks.__main__ import main
 
     plan(project, [{"title": "T", "spec": "x"}])
     payload = json.dumps(event(project, tool_input={"command": "git commit -m 'x'"}))
     monkeypatch.setattr("sys.stdin", io.StringIO(payload))
-    assert main(["hook", "pre-tool-use"]) == 0
+    assert main(["pre-tool-use"]) == 0
 
 
 def test_a_broken_project_fails_open(tmp_path: Path, monkeypatch: Any) -> None:
@@ -182,8 +182,8 @@ def test_a_broken_project_fails_open(tmp_path: Path, monkeypatch: Any) -> None:
     Fail-open is deliberate: a hook that raised would block the commit it was inspecting, and
     blocking a developer because taskops had a bad day is how this gets uninstalled.
     """
-    from taskops.transports.cli.main import main
+    from taskops.transports.hooks.__main__ import main
 
     payload = json.dumps(event(tmp_path, tool_input={"command": "git commit -m 'x'"}))
     monkeypatch.setattr("sys.stdin", io.StringIO(payload))
-    assert main(["hook", "pre-tool-use"]) == 0
+    assert main(["pre-tool-use"]) == 0

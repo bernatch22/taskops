@@ -13,6 +13,7 @@ import pytest
 
 from taskops.transports.cli.commands import ask, ui
 from taskops.transports.cli.main import build_parser, main
+from taskops.usecases import next_task
 
 
 def flags_of(name: str) -> set[str]:
@@ -55,6 +56,18 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     assert listed == {"init", "ui", "tasks", "run", "report", "recover", "sync"}
 
 
+@pytest.mark.parametrize("gone", ["guard", "hook", "ingest", "brief", "inbox", "track",
+                                  "checkout", "next", "update", "ask", "plan", "dispatch",
+                                  "log"])
+def test_the_thirteen_hidden_commands_are_gone_not_hidden(gone: str) -> None:
+    """Seven listed AND seven existing. Hidden reads the same from the outside as absent and
+    is not the same thing: every one of these was still a door into the developer's binary,
+    which is how git and Claude Code kept entering through it. `guard`/`hook`/`ingest` and the
+    session verbs live in `taskops.transports.hooks`; the rest are the agent's, over MCP."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args([gone])
+
+
 def _listed_commands() -> set[str]:
     """The command NAMES `--help` offers. Parsed out of the listing rather than searched
     for as substrings, because `init`'s own help text ends in "install the git hooks" — a
@@ -62,18 +75,6 @@ def _listed_commands() -> set[str]:
     listing = build_parser().format_help()
     body = listing.split("<command>\n", 1)[1].split("\noptions:", 1)[0]
     return {line.split()[0] for line in body.splitlines() if line.startswith("    ")}
-
-
-@pytest.mark.parametrize("argv", [["next"], ["update", "tk-0"], ["ask", "tk-0"],
-                                  ["plan", "-"], ["guard", "commit"], ["brief"], ["inbox"],
-                                  ["track"], ["checkout"], ["ingest", "commit"],
-                                  ["log", "tk-0"], ["hook", "stop"], ["dispatch"]])
-def test_a_hidden_command_still_parses_and_still_runs(argv: list[str]) -> None:
-    """Hidden, never removed: every one of these is already written into a hook line or a
-    script somewhere, and the help page was what was failing — not the commands."""
-    parsed = build_parser().parse_args(argv)
-    assert callable(parsed.run)
-    assert argv[0] not in _listed_commands()
 
 
 def test_tasks_show_and_search_reach_the_same_run_the_old_verb_did() -> None:
@@ -106,7 +107,7 @@ def test_tasks_done_refuses_a_card_with_no_commit(root: Path,
     second door onto `done` that skipped the check is the whole reason for wrapping."""
     main(["tasks", "add", "Write the thing", "--repo", str(root)])
     task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
-    main(["next", "--repo", str(root), "--task", task, "--actor", "dev:berna"])
+    next_task(root, task=task, actor="dev:berna")
     capsys.readouterr()
     assert main(["tasks", "done", task, "--repo", str(root), "-m", "finished",
                  "--actor", "dev:berna"]) == 1

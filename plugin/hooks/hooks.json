@@ -4,7 +4,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "python3 -m taskops.transports.cli.main hook pre-tool-use" }
+          { "type": "command", "command": "python3 -m taskops.transports.hooks pre-tool-use" }
         ]
       }
     ],
@@ -12,21 +12,21 @@
       {
         "matcher": "Edit|Write|Bash|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "python3 -m taskops.transports.cli.main hook post-tool-use" }
+          { "type": "command", "command": "python3 -m taskops.transports.hooks post-tool-use" }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 -m taskops.transports.cli.main hook session-start" }
+          { "type": "command", "command": "python3 -m taskops.transports.hooks session-start" }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 -m taskops.transports.cli.main hook stop" }
+          { "type": "command", "command": "python3 -m taskops.transports.hooks stop" }
         ]
       }
     ]

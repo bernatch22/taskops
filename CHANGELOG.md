@@ -2,6 +2,41 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **Tres puertas, una por audiencia — y ahora la separación es real.** El proyecto declaraba
+  "el CLI es del dev, el MCP es del agente" y era cosmético: `taskops --help` listaba 7
+  comandos y escondía 13, y por esa misma puerta entraban cuatro audiencias — el dev, el
+  agente, git y Claude Code. `plugin/hooks/hooks.json` invocaba
+  `python3 -m taskops.transports.cli.main hook <event>` y `usecases/hooks.py` escribía los git
+  hooks contra el mismo módulo. Esconder un comando se lee igual que borrarlo desde afuera y no
+  es lo mismo: seguía siendo una puerta al binario del dev, y la superficie del CLI la decidían
+  tres lectores a la vez.
+  - **Transporte nuevo `transports/hooks/`**, hermano de `cli/` y `mcp/`, con la misma regla y
+    el mismo test de arquitectura (delgado, sin `storage` ni `engine`). Siete subcomandos
+    planos, nombrados por el EVENTO y no por el verbo interno: `pre-tool-use`, `post-tool-use`,
+    `session-start`, `stop`, `commit`, `ingest commit|branch`, `sync`. Nadie lo tipea nunca:
+    `taskops init` lo escribe en `.git/hooks/*` y el plugin lo trae en su `hooks.json`. Existe
+    por un límite físico, no por gusto — un hook de Claude Code es un `{"type": "command"}` y
+    uno de git es un script de shell; los dos EJECUTAN algo, y git no tiene cliente MCP.
+  - **Trece comandos BORRADOS del CLI**, sin alias y sin ocultos: `guard`, `hook`, `ingest`,
+    `brief`, `inbox`, `track`, `checkout` (cableado) y `next`, `update`, `ask`, `plan`,
+    `dispatch`, `log` (del agente — ya los tiene por MCP con mejor contrato). Con ellos se fue
+    la maquinaria que los escondía (`_HIDDEN`, `_Unlisted`). `taskops --help` lista 7 y 7 es
+    todo lo que hay. `studio` sigue como alias oculto de `ui`: es un rename reciente, no una
+    audiencia. Los MÓDULOS de `ask`/`update`/`plan`/`log`/`dispatch` quedan — `taskops tasks
+    show|done|release|plan|log` y `taskops run` apuntan a esas mismas funciones, así que
+    `tasks done` sigue pasando por el guard idéntico y no hay una segunda puerta a `done`.
+  - **Los exit codes NO se movieron**, porque son el contrato: `commit` sale **2** y escribe a
+    stderr para DENEGAR (es lo que Claude Code lee como deny y lo que el modelo ve), los
+    eventos de hook salen **siempre 0** con la decisión adentro del JSON, y todo falla ABIERTO.
+  - **`taskops init` ahora REESCRIBE su propia línea** en vez de contestar "already installed".
+    Sin eso, un repo inicializado antes de esta mudanza queda con un hook apuntando a un módulo
+    que ya no existe — y como toda línea termina en `|| true`, eso no falla: deja de atar
+    commits a cards **en silencio**, y nadie se entera hasta que un board aparece sin commits.
+    Lo de arriba del marcador (el hook que puso otro) no se toca.
+  - **`tests/e2e/test_hook_wiring.py`**: un repo git de verdad, un `git commit` de verdad, y la
+    pregunta que importa — ¿quedó el commit en la card? Es el único test que caza un rename mal
+    hecho, porque nada más en el sistema hace ruido cuando el cableado apunta a la nada.
+
 - **La narración se VE escribiéndose.** Apretar Generate en la vista Reports "no hacía nada":
   el `POST /api/report/digest` era una llamada al modelo de varios minutos detrás de un spinner
   mudo, el archivo decía `_pendiente_` todo ese rato, y un navegador que cortaba la conexión se

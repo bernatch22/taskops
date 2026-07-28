@@ -1,7 +1,9 @@
-"""`taskops hook <event>` — the Claude Code hook protocol, on stdin and stdout.
+"""`pre-tool-use · post-tool-use · session-start · stop` — the Claude Code hook protocol.
 
-The whole integration in one command. A hook receives a JSON object on stdin and may answer
-with one on stdout; this is the wire, and `_events` is what each event means.
+The whole integration in four subcommands. A hook receives a JSON object on stdin and may
+answer with one on stdout; this is the wire, and `events` is what each event means. The names
+are the EVENTS themselves, because that is what the person wiring `hooks.json` is holding —
+not a verb taskops happens to call it internally.
 
 ```
 PreToolUse    permissionDecision: "deny"     refuse the tool call, with a reason
@@ -23,23 +25,25 @@ import json
 import sys
 from typing import Any, Callable, cast
 
-from ...._errors import TaskopsError
-from . import _events
+from ..._errors import TaskopsError
+from . import events
 
-__all__ = ["register"]
+__all__ = ["register", "HANDLERS"]
 
 HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
-    "pre-tool-use": _events.pre_tool_use,
-    "post-tool-use": _events.post_tool_use,
-    "session-start": _events.session_start,
-    "stop": _events.stop,
+    "pre-tool-use": events.pre_tool_use,
+    "post-tool-use": events.post_tool_use,
+    "session-start": events.session_start,
+    "stop": events.stop,
 }
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("hook", help="the Claude Code hook protocol (stdin JSON)")
-    parser.add_argument("event", choices=sorted(HANDLERS))
-    parser.set_defaults(run=run)
+    """One parser per event, flat. A `hook <event>` group would put a word in every line of
+    `hooks.json` that carries no information — the module name already said "hook"."""
+    for name in sorted(HANDLERS):
+        parser = sub.add_parser(name, help=f"the Claude Code {name} hook (stdin JSON)")
+        parser.set_defaults(run=run, event=name)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -62,8 +66,8 @@ def run(args: argparse.Namespace) -> int:
 def _stdin() -> dict[str, Any]:
     """The event payload, or {} for anything unreadable.
 
-    A hook run by hand has no stdin at all, so the tty check comes first — without it, `taskops
-    hook stop` in a terminal would block forever waiting for input nobody is going to send.
+    A hook run by hand has no stdin at all, so the tty check comes first — without it, running
+    `stop` in a terminal would block forever waiting for input nobody is going to send.
     """
     if sys.stdin.isatty():
         return {}

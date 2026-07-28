@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from taskops.transports.cli.main import main
+from taskops.usecases import update
 
 
 def a_closed_card(root: Path, title: str, capsys: pytest.CaptureFixture[str]) -> str:
@@ -27,8 +28,7 @@ def a_closed_card(root: Path, title: str, capsys: pytest.CaptureFixture[str]) ->
     """
     main(["tasks", "add", title, "--repo", str(root)])
     task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
-    main(["update", task, "--repo", str(root), "--actor", "dev:berna",
-          "--status", "cancelled"])
+    update(root, task, actor="dev:berna", status="cancelled")
     capsys.readouterr()
     return task
 

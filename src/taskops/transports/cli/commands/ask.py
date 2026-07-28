@@ -1,4 +1,10 @@
-"""`taskops ask` — read one task in full, or search when you have no id."""
+"""Read one task in full, or search when you have no id.
+
+No parser of its own any more: `taskops ask` was a command for agents, and agents have
+`taskops_ask` over MCP with a better contract. The function stayed exactly where it was,
+because `taskops tasks show` and `taskops tasks search` reach THIS — two implementations of
+"read a task" is how the CLI and the MCP start disagreeing about what a task looks like.
+"""
 
 from __future__ import annotations
 
@@ -7,17 +13,9 @@ import argparse
 from ....render import render_search, render_view
 from ....usecases import ask as read
 from ....usecases import search
-from ._shared import add_target, repo_of
+from ._shared import repo_of
 
-__all__ = ["register"]
-
-
-def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("ask", help="read a task, or search titles and specs")
-    add_target(parser)
-    parser.add_argument("what", help="a task id, or free text to search for")
-    parser.add_argument("--actor", default="", help="who is calling")
-    parser.set_defaults(run=run)
+__all__ = ["run"]
 
 
 def run(args: argparse.Namespace) -> str:

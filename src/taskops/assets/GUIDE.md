@@ -189,7 +189,20 @@ twice does nothing.
 `.taskops/db.sqlite` is a **cache** and is gitignored. It can be rebuilt from the log, so
 deleting it loses nothing but live leases.
 
-The `post-merge` hook runs `taskops sync` for you. Run it by hand any time; it is idempotent.
+The `post-merge` hook syncs for you. Run `taskops sync` by hand any time; it is idempotent.
+
+## Three doors, and which one is yours
+
+```
+taskops <cmd>                       a person, at a terminal. seven commands.
+taskops_* (MCP)                     you. seven tools — this is your door.
+python -m taskops.transports.hooks  git and Claude Code. never type it.
+```
+
+Yours is the MCP tools. If one of them is refused, the refusal names what to do — read it
+rather than reaching for the CLI, which no longer carries `next`, `update`, `ask`, `plan` or
+`log` at all. What a person types is `taskops tasks …`, and what a hook runs is the third
+line, which exists only because git cannot speak MCP.
 
 ## If something looks wrong
 
@@ -200,5 +213,8 @@ The `post-merge` hook runs `taskops sync` for you. Run it by hand any time; it i
 - **`taskops_next` says nothing is ready** — read the reason. "Everything blocked" is worth
   reporting to a human; "everything claimed" means ask again shortly.
 - **Hooks are not firing** — they live in `.git/hooks`, which is not tracked, so a fresh
-  clone has none. `taskops init` again is the repair; it chains onto existing hooks rather
-  than replacing them.
+  clone has none, and a repository set up by an older taskops has a line naming a command that
+  has since moved. `taskops init` again repairs both: it chains onto hooks somebody else put
+  there, and rewrites the line it wrote itself. Worth knowing why nothing warned you — every
+  hook line ends in `|| true`, so a hook pointing at a command that does not exist fails
+  completely silently, and commits just stop appearing on their cards.

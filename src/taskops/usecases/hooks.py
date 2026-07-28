@@ -1,6 +1,11 @@
 """Installing the git hooks, without destroying the ones already there.
 
-Two decisions carry this file.
+Three decisions carry this file.
+
+**The command is the WIRING transport, not the developer's CLI.** `taskops` is what a person
+types; `python -m taskops.transports.hooks` is what git runs. They were the same binary until
+the separation the project declares turned out to be cosmetic, and a shared door is a door
+whose surface is decided by the wrong audience.
 
 **The interpreter is absolute, not `taskops` on PATH.** Git hooks run with whatever
 environment git had, and that is routinely not the shell's: a virtualenv that is not active,
@@ -12,7 +17,10 @@ test, where `git commit` could not see the venv that pytest was running from.)
 
 **Existing hooks are CHAINED, never overwritten.** A repository's `post-commit` may already
 run something somebody depends on, so an existing script is kept and our line is appended
-under a marker — which is also how a re-install knows it has already been here.
+under a marker — which is also how a re-install finds the line it wrote last time and
+REWRITES it. That refresh is what repairs a repository initialised before the wiring moved
+out of the CLI: its hook names a command that no longer exists, and `|| true` means it says
+nothing about it. `taskops init` again is the whole repair.
 """
 
 from __future__ import annotations
@@ -47,8 +55,15 @@ work around.
 
 
 def runner() -> str:
-    """The command prefix a hook uses: this interpreter, running this package's CLI."""
-    return f"{sys.executable} -m taskops.transports.cli.main"
+    """The command prefix a hook uses: this interpreter, running the wiring transport.
+
+    Renaming this is the change that breaks in TOTAL silence — every hook line ends in
+    `|| true`, so a module that no longer exists just stops binding commits to cards and
+    nothing anywhere says so. `tests/e2e/test_hook_wiring.py` commits in a real repository and
+    asserts the binding happened; that test is the only thing standing between a rename and a
+    board that quietly loses its commits.
+    """
+    return f"{sys.executable} -m taskops.transports.hooks"
 
 
 def install_hooks(root: Path) -> tuple[list[str], list[str]]:
@@ -71,9 +86,9 @@ def install_hooks(root: Path) -> tuple[list[str], list[str]]:
 
 def _install_one(path: Path, command: str) -> str:
     """"" on success, else the reason. Appends under the marker if a hook already exists."""
-    if path.is_file() and MARKER in path.read_text(encoding="utf-8"):
-        return "already installed"
     try:
+        if path.is_file() and MARKER in path.read_text(encoding="utf-8"):
+            return "" if _refresh(path, command) else "already installed"
         if path.is_file():
             _append(path, command)
         else:
@@ -82,6 +97,23 @@ def _install_one(path: Path, command: str) -> str:
     except OSError as err:
         return str(err)
     return ""
+
+
+def _refresh(path: Path, command: str) -> bool:
+    """Rewrite OUR line when it no longer says what it should. True if anything changed.
+
+    Everything above the marker is the repository's own script and is kept byte for byte;
+    everything below it is ours, and ours is the only part that is allowed to move. Without
+    this, `init` on an already-initialised repository reports "already installed" over a hook
+    line pointing at a module that was renamed — the silent failure this file warns about,
+    reached through the command that is supposed to be the repair.
+    """
+    current = path.read_text(encoding="utf-8")
+    head, _, ours = current.partition(MARKER)
+    if ours.strip() == command:
+        return False
+    path.write_text(f"{head}{MARKER}\n{command}\n", encoding="utf-8")
+    return True
 
 
 def _append(path: Path, command: str) -> None:
