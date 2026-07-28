@@ -14,14 +14,19 @@ no git in sight.
 
 from __future__ import annotations
 
-from ..contracts import PeriodReport, Task
+from ..contracts import Event, PeriodReport, Task
 from ._closed_days import closed_section
 from ._text import STATUS_MARK, bullet, table, truncate
+from ._verbatim import Detail
 
 __all__ = ["render_day"]
 
+TALK_LINE = 160
+"""Characters of a comment the TERMINAL prints. `full` prints all of it — the conversation is
+where the reasoning is, and 160 characters of it is a hint that something was said."""
 
-def render_day(day: PeriodReport) -> str:
+
+def render_day(day: PeriodReport, detail: Detail = "brief") -> str:
     """The whole day. An empty day says so in one line rather than printing four empty
     headings — a report made of section titles reads as broken, not as quiet.
 
@@ -36,7 +41,8 @@ def render_day(day: PeriodReport) -> str:
     parts = [f"# {day['label']} — {len(day['closed'])} closed · "
              f"{len(day['in_flight'])} in flight · {len(day['blocked'])} blocked · "
              f"{day['commits_total']} commit(s) · {len(day['actors'])} actor(s)", ""]
-    return "\n".join(parts + closed_section(day) + _moving(day) + _talk(day) + _actors(day))
+    return "\n".join(parts + closed_section(day, detail) + _moving(day)
+                     + _talk(day, detail) + _actors(day))
 
 
 def _moving(day: PeriodReport) -> list[str]:
@@ -55,14 +61,20 @@ def _row(task: Task) -> str:
     return f"{STATUS_MARK[task['status']]} {task['id']} — {truncate(task['title'], 70)}"
 
 
-def _talk(day: PeriodReport) -> list[str]:
+def _talk(day: PeriodReport, detail: Detail = "brief") -> list[str]:
     """Every comment and message of the day, in the log's own order — a conversation read
-    top-down. Truncated per line so one essay cannot push the rest of the day off screen."""
+    top-down. Truncated per line in the terminal so one essay cannot push the rest of the day
+    off screen; whole in the file, where the essay is the point."""
     if not day["conversations"]:
         return []
-    lines = [f"**{e['actor']}** on {e['task']}: {truncate(str(e['body'].get('text', '')), 160)}"
+    lines = [f"**{e['actor']}** on {e['task']}: {_body(e, detail)}"
              for e in day["conversations"]]
     return [f"## Conversaciones ({len(lines)})", "", "\n\n".join(lines), ""]
+
+
+def _body(event: Event, detail: Detail) -> str:
+    text = str(event["body"].get("text", ""))
+    return text.strip() if detail == "full" else truncate(text, TALK_LINE)
 
 
 def _actors(day: PeriodReport) -> list[str]:

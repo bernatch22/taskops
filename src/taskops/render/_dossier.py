@@ -3,17 +3,29 @@
 Split from `day` for the same reason `_sections` is split from `task`: that module decides the
 ORDER of the report — which is its whole design, since a reader stops early — and this one
 decides the CONTENT of the block that keeps growing.
+
+TWO DENSITIES, ONE RENDERER. `detail="brief"` is what a terminal has always printed; `"full"`
+is what `--write` puts on disk, and it adds the card's spec, every comment whole, and every
+file of every commit. A second renderer for the file would drift from this one within a week,
+and then a committed report and a printed one would disagree about what happened.
 """
 
 from __future__ import annotations
 
 from ..contracts import ClosedCard, CommitStat, Event
 from ._text import STATUS_MARK, span, truncate
+from ._verbatim import Detail, said_block, spec_block
 
 __all__ = ["card_block"]
 
+BRIEF_FILES = 4
+"""Files named per commit in the terminal. `full` names them all: a written report is where
+somebody looks up which files a card touched, and `+9 more` is exactly the answer they came
+for being withheld."""
 
-def card_block(card: ClosedCard, conversations: list[Event]) -> list[str]:
+
+def card_block(card: ClosedCard, conversations: list[Event],
+               detail: Detail = "brief") -> list[str]:
     """The card, who closed it, how long it was held, what it shipped, and what was said.
 
     The duration is claim -> done and is printed even when it is minutes, because a card
@@ -26,8 +38,9 @@ def card_block(card: ClosedCard, conversations: list[Event]) -> list[str]:
     lines = [f"{STATUS_MARK['done']} **{task['id']}** — {truncate(task['title'], 70)}",
              f"  {card['actor']} · held {held} · "
              f"{len(card['commits'])} commit(s){_weight(card['commits'])}"]
-    lines += [f"  {line}" for commit in card["commits"] for line in _commit(commit)]
-    return lines + _said(mine)
+    lines += spec_block(task, detail)
+    lines += [f"  {line}" for commit in card["commits"] for line in _commit(commit, detail)]
+    return lines + said_block(mine, detail)
 
 
 def _weight(commits: list[CommitStat]) -> str:
@@ -41,25 +54,15 @@ def _weight(commits: list[CommitStat]) -> str:
     return f" · +{adds} -{dels}" if adds or dels else ""
 
 
-def _commit(commit: CommitStat) -> list[str]:
+def _commit(commit: CommitStat, detail: Detail) -> list[str]:
     """Sha, subject, size, then the files — the same shape `_sections.commits_section` uses,
     so a commit reads identically on a card and in a day's report."""
     head = (f"`{commit['sha'][:12]}` {commit['subject'] or '(no subject)'} "
             f"(+{commit['additions']} -{commit['deletions']})")
-    if not commit["files"]:
+    files = commit["files"]
+    if not files:
         return [head]
-    shown = ", ".join(commit["files"][:4])
-    extra = "" if len(commit["files"]) <= 4 else f" +{len(commit['files']) - 4} more"
-    return [head, f"  {shown}{extra}"]
-
-
-def _said(mine: list[Event]) -> list[str]:
-    """The count, plus the LAST thing said on the card.
-
-    The last one and not the first: on a closed card that is the hand-off note, which is what
-    somebody reading the day after actually needs.
-    """
-    if not mine:
-        return []
-    text = str(mine[-1]["body"].get("text", ""))
-    return [f"  {len(mine)} comment(s) · last: {truncate(text, 120)}"]
+    if detail == "full":
+        return [head, "  " + ", ".join(files)]
+    extra = "" if len(files) <= BRIEF_FILES else f" +{len(files) - BRIEF_FILES} more"
+    return [head, f"  {', '.join(files[:BRIEF_FILES])}{extra}"]

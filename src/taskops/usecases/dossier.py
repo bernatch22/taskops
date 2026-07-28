@@ -117,6 +117,10 @@ def _generate(store: Store, span: tuple[str, str, str]) -> str:
     Read after the dossier would be a race with itself — an event landing mid-render would be
     in the report and outside its own fingerprint, and the file would claim to be older than
     it is. Read first, and the worst case is a report that reports itself stale.
+
+    The rendering is `full`: the spec of every card, every comment whole, every file of every
+    commit. The terminal keeps the short form — this is the copy somebody reads INSTEAD of the
+    git log a month later, and a truncation it cannot expand is a fact permanently lost.
     """
     return render_report(stamp(_label(span), store.events.max_seq(), now()),
-                         render_day(period_report(store, *span)))
+                         render_day(period_report(store, *span), detail="full"))

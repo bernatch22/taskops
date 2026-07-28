@@ -264,6 +264,13 @@ taskops report all --digest                       # …and have Claude narrate t
 # --write and --digest work on all three. The file is named by the window:
 #   .taskops/reports/2026-07-28.md · 2026-07-22..2026-07-28.md · all.md
 # In a range, `## Cerrado` groups its cards by day, newest first.
+#
+# What is PRINTED is short; what is WRITTEN is the record. The file carries each card's
+# spec quoted whole, every comment attributed and complete, and every file of every
+# commit — it is meant to be read instead of the git log a month later. --digest then
+# asks Claude for a paragraph per card: what was asked, what was delivered, what was
+# decided, what it cost. A dossier past ~60k characters is narrated in slices and
+# stitched (several model calls, a couple of minutes) rather than trimmed to fit.
 
 taskops report fleet        # which agents are alive right now, on what file
 taskops ask tk-4f2a9c       # one task in full

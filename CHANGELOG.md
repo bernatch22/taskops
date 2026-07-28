@@ -2,6 +2,33 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **El reporte escrito es una BIBLIA de lo que se hizo, no un resumen.** El dossier que se
+  imprime en una terminal y el que se escribe a disco eran el mismo texto corto, y el corto
+  perdía justo lo que hace falta un mes después: el **spec de cada card** no estaba (así que la
+  narración podía describir lo entregado pero jamás compararlo contra lo pedido), de los
+  comentarios sobrevivía **sólo el último y truncado a una línea** (que es donde vive el
+  razonamiento), y las listas de archivos se cortaban en 4 con `+N more` (que es exactamente el
+  dato que uno fue a buscar). Ahora el renderer toma un parámetro `detail: "brief" | "full"` —
+  UN renderer, dos densidades, no dos módulos que driftean: `brief` es lo que la terminal
+  siempre imprimió (el golden byte-a-byte de `report day` sigue verde), y `full` es lo que
+  `--write`/`--digest` ponen en el archivo, con el **Pedido** citado entero, **todos** los
+  comentarios atribuidos y completos, y todos los archivos de cada commit.
+- **El prompt de la narración exige exhaustividad.** Pide un párrafo POR CARD que diga qué se
+  pidió, qué se entregó (commits, archivos, tamaño del diff), qué se decidió o se descubrió
+  (los comentarios) y qué costó (cuánto estuvo tomada, cuántos intentos) — y que **diga cuando
+  lo entregado no coincide con lo pedido**, que es la línea más valiosa que un reporte puede
+  tener. Estructura fija: lo que necesita un humano, después una sección por área del código,
+  después las decisiones y las sorpresas, y al final lo que queda abierto. Explícito en el
+  prompt: **el largo no es el problema, la omisión sí** — pero no se inventa nada.
+- **Un dossier largo se narra en TAJADAS y se cose, nunca truncado en silencio.** Pasando
+  `_chunks.CHUNK_CHARS` (60 000 caracteres, ~15k tokens) el dossier se corta en los bordes de
+  card o de día — nunca por el medio de una card — cada tajada se lee con su header, y una
+  llamada final ensambla las partes. No es un límite de contexto sino de ATENCIÓN: con más
+  entrada que eso, una sola respuesta empieza a colapsar cards en oraciones y la narración se
+  vuelve el resumen que venía a reemplazar. El camino largo cuesta N+1 llamadas a propósito:
+  recortar el prompt produciría un reporte que se olvida de las cards que quedaron últimas y
+  nada en la página lo diría.
+
 - **La vista `Reports` en el UI — leer un reporte no es trabajo de terminal.** El reporte diario
   es lo único que taskops produce para que lo lea una PERSONA: es largo, es prosa, y hasta hoy
   sólo se veía como ASCII en una terminal, que es la peor superficie posible — nadie scrollea una
