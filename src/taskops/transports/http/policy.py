@@ -17,6 +17,17 @@ __all__ = ["Policy"]
 
 _WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
+_ASSETS = (".js", ".css", ".map", ".svg", ".png", ".ico", ".woff2")
+"""Extensions the bundle is made of. A closed list, not "anything not under /api/": the SPA
+falls back to `index.html` for unknown paths, so a wildcard would hand the app shell — and any
+future page — to anyone who guessed a path."""
+
+
+def _is_asset(request: Request) -> bool:
+    """A GET for a file of the built UI. Never an API path, whatever it is named."""
+    return (request.method == "GET" and not request.path.startswith("/api/")
+            and request.path.endswith(_ASSETS))
+
 
 @dataclass
 class Policy:
@@ -59,8 +70,16 @@ class Policy:
         The cost is a token in the browser's address bar and history. That is acceptable for a
         loopback tool whose token is minted per run; it would not be for a public service, and a
         deployment that needs more should terminate auth at the proxy.
+
+        THE BUNDLE IS EXEMPT, and that is what makes a token usable at all in a browser. A page
+        opened as `/axion/?token=…` asks for `/axion/app.js` with NO query string — browsers do
+        not propagate a parameter to subresources — so guarding the bundle 401s the page's own
+        script and leaves a blank screen behind a URL that looked right. Measured in production
+        before it was believed. What the exemption gives away is a JavaScript file identical in
+        every install: no task, no title, no event. Everything that IS this project — the API and
+        the live feed — stays behind the token.
         """
-        if not self.token:
+        if not self.token or _is_asset(request):
             return None
         expected = f"Bearer {self.token}"
         if request.headers.get("authorization") == expected:

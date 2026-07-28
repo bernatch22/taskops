@@ -337,3 +337,15 @@ def test_there_is_no_such_route_as_a_get_on_the_digest(route: Any) -> None:
     assert route(get("/api/report/digest")).status == 405
     unknown = route(get("/api/reports/nope"))
     assert unknown.status == 404 and body_of(unknown)["code"] == "no_such_route"
+
+
+def test_the_bundle_loads_without_the_token_and_the_data_does_not(project: Path) -> None:
+    """The bug that made a token unusable in a browser: a page opened as `/?token=…` asks for
+    `/app.js` with no query string, so guarding the bundle 401s the page's own script and the
+    screen stays blank behind a URL that looked right. The exemption is the bundle only."""
+    route = build(project, Policy(token="secret"))
+    assert route(get("/app.js")).status == 200
+    assert route(get("/style.css")).status == 200
+    assert route(get("/api/board")).status == 401, "data still needs the token"
+    assert route(get("/")).status == 401, "the app shell is not an asset"
+    assert route(get("/api/app.js")).status == 401, "an api path is never an asset"
