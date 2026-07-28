@@ -214,3 +214,19 @@ def test_no_file_becomes_a_document(module: str) -> None:
 def test_no_function_exceeds_the_line_budget(module: str) -> None:
     over = long_functions(module, MAX_FUNC_LINES)
     assert not over, f"{module}: {over} (max {MAX_FUNC_LINES} lines)"
+
+
+def test_the_plugin_declares_the_package_version() -> None:
+    """The plugin's manifest is what Claude Code SHOWS a user, and it drifted: the package was
+    0.2.0 everywhere and the plugin still said 0.1.0, so anybody who installed it read the wrong
+    number from the one place they were looking. A number copied by hand is a number that goes
+    stale; this is the copy being checked."""
+    import json
+
+    from taskops._version import __version__
+    from tests.architecture.walk import SRC
+
+    manifest = json.loads((SRC.parents[1] / "plugin" / ".claude-plugin" / "plugin.json")
+                          .read_text(encoding="utf-8"))
+    assert manifest["version"] == __version__, (
+        f"plugin.json says {manifest['version']} and the package is {__version__}")

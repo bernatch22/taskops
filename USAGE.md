@@ -26,7 +26,7 @@ Check it:
 ```
 
 ```
-0.1.0
+0.2.0
 ```
 
 **Put it on your PATH** so you can type `taskops` from any repository:
