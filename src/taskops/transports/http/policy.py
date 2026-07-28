@@ -1,6 +1,6 @@
 """Who may do what over HTTP. Three settings, and each one has a deployment behind it.
 
-The studio binds to loopback by default, so on a laptop none of this is load-bearing. It all is
+The UI binds to loopback by default, so on a laptop none of this is load-bearing. It all is
 the moment somebody puts it behind nginx to show a team the board — which is the intended use,
 so the controls exist before the first person needs them rather than after.
 """
@@ -44,7 +44,7 @@ class Policy:
         if refusal := self._auth(request):
             return refusal
         if self.readonly and request.method in _WRITE_METHODS:
-            return error_reply(403, "this studio is read-only — start it without "
+            return error_reply(403, "this board is read-only — start it without "
                                     "--readonly to comment or change a status", "readonly")
         return self._rate()
 
@@ -67,7 +67,7 @@ class Policy:
             return None
         if request.param("token") == self.token:
             return None
-        return error_reply(401, "a bearer token is required — open the URL the studio "
+        return error_reply(401, "a bearer token is required — open the URL `taskops ui` "
                                 "printed, which carries it", "unauthorized")
 
     def _rate(self) -> Reply | None:
