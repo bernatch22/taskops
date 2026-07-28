@@ -11,14 +11,16 @@ from pathlib import Path
 
 from .._clock import now
 from .._errors import BadRequest
-from ..contracts import Activity, Board, Fleet, Standup
+from ..contracts import Activity, Board, DayReport, Fleet, Standup
 from ..engine import activity as build_activity
 from ..engine import board as build_board
+from ..engine import date_of
+from ..engine import day_report as build_day
 from ..engine import fleet as build_fleet
 from ..engine import standup as build_standup
 from ._project import project
 
-__all__ = ["board", "standup", "fleet", "activity", "parse_window",
+__all__ = ["board", "standup", "fleet", "activity", "day", "parse_window", "parse_date",
            "DEFAULT_WINDOW", "HISTORY_WINDOW"]
 
 DEFAULT_WINDOW = "24h"
@@ -48,6 +50,30 @@ def activity(start: Path | str, *, since: str = HISTORY_WINDOW) -> Activity:
 def fleet(start: Path | str) -> Fleet:
     with project(start) as store:
         return build_fleet(store)
+
+
+def day(start: Path | str, date_text: str = "") -> DayReport:
+    with project(start) as store:
+        return build_day(store, parse_date(date_text))
+
+
+def parse_date(text: str) -> str:
+    """`yesterday` -> `2026-07-27`. Strict, for the same reason `parse_window` is.
+
+    `yesterday` is 24 hours back read as a LOCAL date rather than "today minus one" in
+    arithmetic on a date, which would have to know how long a month is. The calendar is
+    libc's problem, and libc is the only one that knows about the two days a year that are
+    not 24 hours long.
+    """
+    raw = text.strip().lower()
+    if raw in ("", "today"):
+        return date_of(now())
+    if raw == "yesterday":
+        return date_of(now() - 86400.0)
+    if len(raw) == 10 and raw[4] == "-" and raw[7] == "-" and raw.replace("-", "").isdigit():
+        return raw
+    raise BadRequest(f"`{text}` is not a day — use `today`, `yesterday`, or a date "
+                     f"like 2026-07-28")
 
 
 def parse_window(text: str) -> float:

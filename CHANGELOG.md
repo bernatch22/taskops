@@ -2,6 +2,24 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **`taskops report day` — the deterministic daily dossier.** One CALENDAR day, cut at local
+  midnight rather than 24 hours back, so the same date asked for tomorrow is the same report.
+  Per card closed that day: who closed it, how long it was held (last claim -> done, because a
+  card released and picked up again was not being worked on in between), every commit with its
+  subject, files and **diff size**, and the last thing said on it — then what is still in
+  flight, the whole conversation, and a roll-up per actor. The sizes come from ONE batched
+  `git log --numstat --no-walk` for every commit in the report, and degrade to zeros rather
+  than raising, like the rest of `gitio`. Heartbeat events never reach it: a busy day has
+  thousands, and counting them would rank the agent with the plugin above the one that closed
+  four cards.
+- **`taskops_report` dropped `burndown` and `fleet` from what a model may ask for.** One was
+  never implemented and answered with a sentence saying so; the other answers "who is free",
+  which stopped being a question the day workers became disposable — the studio dropped that
+  panel for the same reason. An unknown kind is now REFUSED rather than falling through to the
+  board, which would hand an agent a report about something else with no way to tell. `fleet`
+  survives as a use case, on the CLI and in the HTTP api, where a human does want to see which
+  claim has gone quiet.
+
 - **The conversation viewer found nothing for interactively-worked cards.** A card's transcript was
   located by path plus a `gitBranch` filter, which identifies a dispatched agent (it makes a branch)
   and loses the most ordinary case there is: a person who claims a card in their own terminal and

@@ -11,7 +11,7 @@ argument-hint: "[task-id]"
 
 2. If it returns nothing, READ THE REASON and act on it rather than asking the user:
    - everything blocked → report which tasks need a human, and offer to unblock one
-   - everything claimed → say who holds what (`taskops_report fleet`)
+   - everything claimed → say who holds what (`taskops_report board` shows the holder per card)
    - nothing planned → offer to plan the work with `/taskops:plan`
 
 3. Create the branch it names, exactly:

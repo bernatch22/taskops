@@ -14,7 +14,7 @@ from ..contracts import Activity, ActorRoll, Event
 from ..storage import Store
 from .activity import tasks_of
 
-__all__ = ["activity", "MAX_EVENTS"]
+__all__ = ["activity", "rolls", "MAX_EVENTS"]
 
 MAX_EVENTS = 600
 """How much timeline one read returns. A window wide enough to be interesting on an old project is
@@ -40,12 +40,14 @@ def activity(store: Store, *, since: float, limit: int = MAX_EVENTS) -> Activity
     return Activity(repo=str(store.root), since=since, events=list(reversed(kept)),
                     titles={task["id"]: task["title"]
                             for task in tasks_of(store, [e["task"] for e in kept])},
-                    actors=_rolls(kept), kinds=sorted({e["kind"] for e in kept}),
+                    actors=rolls(kept), kinds=sorted({e["kind"] for e in kept}),
                     truncated=len(found) > limit)
 
 
-def _rolls(events: list[Event]) -> list[ActorRoll]:
-    """Per actor, busiest first.
+def rolls(events: list[Event]) -> list[ActorRoll]:
+    """Per actor, busiest first. Public because `day` needs the same roll-up over its own
+    window — two projections summarising actors two different ways is exactly how a board
+    starts disagreeing with itself about who did what.
 
     Counted from the events rather than from leases, which is what makes an agent that finished an
     hour ago still appear: the lease is gone, the work is not. That is the whole reason this replaced
@@ -54,8 +56,8 @@ def _rolls(events: list[Event]) -> list[ActorRoll]:
     seen: dict[str, list[Event]] = {}
     for event in events:
         seen.setdefault(event["actor"], []).append(event)
-    rolls = [_roll(actor, theirs) for actor, theirs in seen.items()]
-    return sorted(rolls, key=lambda roll: (-roll["tasks"], -roll["commits"], roll["actor"]))
+    out = [_roll(actor, theirs) for actor, theirs in seen.items()]
+    return sorted(out, key=lambda roll: (-roll["tasks"], -roll["commits"], roll["actor"]))
 
 
 def _roll(actor: str, events: list[Event]) -> ActorRoll:

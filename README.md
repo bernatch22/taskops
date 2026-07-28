@@ -51,7 +51,7 @@ clone has none.
 | `taskops_update` | Progress, a comment, a handoff, a close — and `mentions` to message another developer's agent. |
 | `taskops_ask` | One task in full: spec, conversation, commits, what blocks it, what it blocks, who else touches its files. |
 | `taskops_plan` | A whole decomposition in one call — tasks, tree and dependencies, with `after` referencing earlier entries by index. |
-| `taskops_report` | `board`, `standup`, `fleet`. Generated, so they cannot be out of date. |
+| `taskops_report` | `board`, `standup`, `day`. Generated, so they cannot be out of date. |
 
 There is no sixth tool for messaging. Sending is `update` with `mentions`, so a message about a
 task lives in that task's thread and is still findable in three weeks. Receiving is not a tool
@@ -91,8 +91,10 @@ strict, and 13 executable architecture invariants.
 
 **Not built yet:** the Studio — the live web board. Its design is in `PLAN.md` §8, and the
 pieces it needs (the event bus, the `after_seq` cursor, the projections) exist and are tested.
-`taskops_report burndown` answers "not implemented yet" on purpose rather than returning an
-empty chart.
+`taskops_report` no longer advertises `burndown` or `fleet` to a model: the first was never
+implemented and replied with a sentence saying so, and the second answers a question that
+stopped existing when workers became disposable. `fleet` is still a use case and the HTTP api
+still serves it. What replaced them is `day` — one calendar day in full.
 
 ## Reading this repository
 

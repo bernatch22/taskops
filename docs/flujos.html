@@ -109,7 +109,7 @@ tailwind.config = {
                                                                          │  commitea en SU rama
    vos seguís laburando; son detached y te sobreviven                     │  taskops_update done
                                                                          ▼
-   taskops_report fleet  ◀────── qué están haciendo ahora ──────────  y mueren</pre>
+   taskops report fleet   ◀────── qué están haciendo ahora ──────────  y mueren</pre>
 
   <div class="grid gap-px bg-ink text-paper font-mono text-xs">
     <div class="p-4"><span class="text-lime">un worktree por worker</span><br><span class="text-faint">Dos agentes editando un mismo working tree se pisan, y ningún lease arregla eso: un lease coordina quién es DUEÑO de una tarea, no de qué bytes hay en disco. Cada worker tiene su directorio y su rama, y se mergean por git como dos personas.</span></div>
@@ -215,7 +215,7 @@ usan los workers dispatchados desde su worktree).</pre>
   <h2 class="text-2xl">Estado honesto</h2>
   <div class="grid gap-px bg-ink text-paper font-mono text-xs">
     <div class="p-4"><span class="text-lime">✓ ANDA, verificado hoy</span><br><span class="text-faint">crear cards (3 formas) · dispatch de workers reales que codean, commitean y cierran solos · assignee que no se puede evadir · deps con desbloqueo automático · mensajería agente↔agente exactly-once · guard de commits (deny + inyección del trailer) · studio React en vivo por WS con fallback SSE · sync multi-dev por git · conciencia de branches (pushed / unpushed / no visible) · 493 tests, ruff+mypy+pyright strict, 15 invariantes ejecutables</span></div>
-    <div class="p-4"><span class="text-amber">✕ NO existe</span><br><span class="text-faint">el server multi-proyecto con usuarios e invitaciones (necesita registry, cuentas, permisos — es otro sistema) · relay para chat cross-máquina en vivo (hoy los mensajes entre máquinas viajan a velocidad de push/pull) · editar el spec/título de una card después de crearla ← <strong>hueco real</strong> · burndown · taskops watch</span></div>
+    <div class="p-4"><span class="text-amber">✕ NO existe</span><br><span class="text-faint">el server multi-proyecto con usuarios e invitaciones (necesita registry, cuentas, permisos — es otro sistema) · relay para chat cross-máquina en vivo (hoy los mensajes entre máquinas viajan a velocidad de push/pull) · editar el spec/título de una card después de crearla ← <strong>hueco real</strong> · burndown (sacado del MCP: nunca existió, y lo que se pide de verdad es <code>report day</code>) · taskops watch</span></div>
   </div>
 </section>
 
