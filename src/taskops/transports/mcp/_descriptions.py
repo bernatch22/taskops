@@ -115,3 +115,16 @@ CONTEXT = (
     "a day: re-litigating a settled question, and two agents working from different definitions "
     "of the same rule."
 )
+
+CAPTURE = """Create ONE card for work that has no card yet — and claim it, so you can commit.
+
+Reach for this the moment you find yourself doing something the board does not know about: a bug
+you tripped over, a fix a reviewer asked for, a refactor the task turned out to need. The commit
+guard refuses a commit from an agent holding no card, and this is the one-call way out — the card
+exists, you hold it, and the reply names the branch to commit on.
+
+Use `taskops_plan` instead when you are decomposing work into SEVERAL cards with dependencies
+between them; that call takes the whole tree at once. Use this one when there is exactly one thing
+and you are already doing it.
+
+`assign` hands it to somebody else instead of claiming it; `claim=false` records it for later."""

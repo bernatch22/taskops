@@ -6,11 +6,13 @@ what to do next, so every one of these ends with the consequence rather than a s
 
 from __future__ import annotations
 
-from ..contracts import EditResult, NextResult, PlanResult, Task, UpdateResult
+from typing import cast
+
+from ..contracts import Claim, EditResult, NextResult, PlanResult, Task, UpdateResult
 from ._text import bullet, table, truncate
 from .task import render_claim
 
-__all__ = ["render_plan", "render_next", "render_update", "render_search", "render_edit"]
+__all__ = ["render_plan", "render_next", "render_capture", "render_update", "render_search", "render_edit"]
 
 
 def render_plan(result: PlanResult) -> str:
@@ -48,6 +50,24 @@ def render_next(result: NextResult) -> str:
     return "\n".join(["# nothing to claim", "", result["reason"], "",
                       f"_{result['ready']} ready · {result['working']} in flight · "
                       f"{result['blocked']} waiting_"])
+
+
+def render_capture(result: dict[str, object]) -> str:
+    """The new card, and — when it was claimed — the branch to commit on.
+
+    The branch is the whole point of the reply. This tool is reached from a commit that was
+    just refused, so the sentence the caller needs is not "created tk-x" but where to put the
+    work it already did.
+    """
+    task = cast("Task", result["task"])
+    head = f"# created {task['id']} — {truncate(task['title'], 60)}"
+    if result.get("assigned"):
+        return "\n".join([head, "", f"Assigned to {result['assigned']} — it is in their inbox "
+                           f"and stays pickable until they claim it."])
+    if result.get("claim") is None:
+        return "\n".join([head, "", "Not claimed. taskops_next task=" + task["id"] +
+                           " when you start it."])
+    return "\n".join([head, "", render_claim(cast("Claim", result["claim"]))])
 
 
 def render_search(tasks: list[Task], query: str) -> str:

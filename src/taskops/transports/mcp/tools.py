@@ -22,6 +22,7 @@ from typing import Any
 
 from ...contracts.tools import (
     AskParams,
+    CaptureParams,
     ContextParams,
     DispatchParams,
     NextParams,
@@ -50,6 +51,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool("taskops_update", text.UPDATE, UpdateParams),
     Tool("taskops_ask", text.ASK, AskParams),
     Tool("taskops_context", text.CONTEXT, ContextParams),
+    Tool("taskops_capture", text.CAPTURE, CaptureParams),
     Tool("taskops_plan", text.PLAN, PlanParams),
     Tool("taskops_dispatch", text.DISPATCH, DispatchParams),
     Tool("taskops_recover", text.RECOVER, RecoverParams),

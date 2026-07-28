@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Annotated
 
 __all__ = ["Repo", "Actor", "Session", "TaskId", "TASKS", "DRY_RUN", "STATUS", "COMMENT",
+           "TITLE", "SPEC", "FILES", "ACCEPTANCE", "PRIORITY", "CLAIM_IT", "ASSIGN",
            "MENTIONS", "BLOCKED_ON", "NO_CODE", "LABELS", "CLAIM_ONE", "ASK_TASK",
            "ASK_QUERY", "DISPATCH_TASKS", "DISPATCH_COUNT", "PREFIX", "MODEL",
            "RECOVER_FORCE", "RECOVER_GRACE", "REPORT_KIND", "REPORT_ACTOR", "SINCE", "DATE",
@@ -126,3 +127,14 @@ RECOVER_FORCE = ("release cards even from workers that are STILL reporting. For 
 RECOVER_GRACE = ("seconds of silence before a worker counts as gone. Defaults to the same grace "
                  "the fleet view uses to print SILENT, so what you see on the board is exactly "
                  "what this acts on")
+
+TITLE = "one line saying what the work is — this becomes the card"
+SPEC = "what DONE looks like, in enough detail that another agent could finish it"
+FILES = "comma-separated paths this will touch, so collisions can be warned about"
+ACCEPTANCE = ("acceptance criteria, one per line, ideally EARS: "
+              "`WHEN <trigger> THE SYSTEM SHALL <response>`. These are what `done` is checked against")
+PRIORITY = "0 urgent … 3 whenever (default 2)"
+CLAIM_IT = ("claim it immediately (default true) — pass false only when recording work for "
+            "LATER that you are not about to start")
+ASSIGN = ("give it to another actor (`agent:dev/name` or `dev:name`) instead of claiming it: "
+          "it lands in their inbox and stays pickable")

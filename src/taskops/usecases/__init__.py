@@ -16,9 +16,11 @@ from ._ghlink import links, read_link, remove_link, write_link
 from ._project import locate
 from ._range import Selector, parse_date
 from ._sessions import mint, opens, resolve
+from .acceptance import acceptance_for, set_acceptance
 from .accounts import authenticate
 from .ask import ask, search
 from .browse import board_url, root_url
+from .capture import capture
 from .claim import next_task
 from .context import context_for
 from .context import history as context_log
@@ -50,7 +52,7 @@ from .update import update
 
 __all__ = [
     # the five MCP tools
-    "plan", "next_task", "update", "edit", "ask", "search", "board", "standup", "fleet", "activity",
+    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "standup", "fleet", "activity",
     "day", "period", "Selector",
     "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path",
     "report_index", "recover", "Recovered",

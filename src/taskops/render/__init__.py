@@ -25,6 +25,7 @@ from .recover import render_recover
 from .report import NARRATION, PENDING, is_pending, narrated, render_report
 from .reports import render_fleet, render_standup
 from .results import (
+    render_capture,
     render_edit,
     render_next,
     render_plan,
@@ -37,7 +38,7 @@ from .task import render_claim, render_view
 from .tasklist import render_tasklist
 
 __all__ = ["render_view", "render_claim", "render_context", "render_inbox", "render_board",
-           "render_standup", "render_fleet", "render_plan", "render_next",
+           "render_standup", "render_fleet", "render_plan", "render_next", "render_capture",
            "render_update", "render_search", "render_edit", "render_dispatch", "render_brief",
            "render_verdict", "render_recover", "render_log", "render_day",
            "render_tasklist", "render_report", "render_status", "render_prompt", "render_porcelain", "PORCELAIN_VERSION", "narrated", "is_pending", "NARRATION", "PENDING", "Ink"]

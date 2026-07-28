@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from . import _fields as f
 
 __all__ = ["PlanParams", "NextParams", "UpdateParams", "AskParams", "ReportParams",
-           "DispatchParams", "RecoverParams", "ContextParams"]
+           "DispatchParams", "RecoverParams", "ContextParams", "CaptureParams"]
 
 
 class _Target(TypedDict):
@@ -53,6 +53,25 @@ class UpdateParams(_UpdateRequired, total=False):
     no_code: Annotated[bool, f.NO_CODE]
     evidence: Annotated[str, f.EVIDENCE]
     no_evidence: Annotated[str, f.NO_EVIDENCE]
+
+
+class _CaptureRequired(_Target):
+    title: Annotated[str, f.TITLE]
+
+
+class CaptureParams(_CaptureRequired, total=False):
+    """One unplanned card, created and claimed. `title` is the only thing required, because the
+    caller is mid-task and every extra required field is a reason to skip recording the work."""
+
+    spec: Annotated[str, f.SPEC]
+    files: Annotated[str, f.FILES]
+    labels: Annotated[str, f.LABELS]
+    acceptance: Annotated[str, f.ACCEPTANCE]
+    priority: Annotated[int, f.PRIORITY]
+    claim: Annotated[bool, f.CLAIM_IT]
+    assign: Annotated[str, f.ASSIGN]
+    actor: f.Actor
+    session: f.Session
 
 
 class ContextParams(_Target, total=False):

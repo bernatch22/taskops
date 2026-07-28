@@ -112,9 +112,11 @@ def _no_branch(store: Store, who: str, branch: str, message: str,
     held = store.leases.of_actor(who, now())
     if not held:
         return Verdict(allowed=False,
-                       reason=f"`{branch or 'HEAD'}` is not a task branch and {who} "
-                              f"holds no task. Run taskops_next, then commit on the "
-                              f"branch it names")
+                       reason=f"`{branch or 'HEAD'}` is not a task branch and {who} holds "
+                              f"no task. If this work belongs to a card nobody made yet, "
+                              f"taskops_capture title=… creates it AND claims it in one "
+                              f"call; otherwise taskops_next picks one up. Then commit on "
+                              f"the branch it names")
     suggestions = ", ".join(f"tk/{lease['task']}/…" for lease in held[:3])
     return Verdict(allowed=False,
                    reason=f"`{branch}` is not a task branch. You hold "

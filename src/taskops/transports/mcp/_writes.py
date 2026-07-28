@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...render import (
+    render_capture,
     render_dispatch,
     render_next,
     render_plan,
@@ -17,6 +18,7 @@ from ...render import (
     render_update,
 )
 from ...usecases import (
+    capture,
     dispatch,
     next_task,
     plan,
@@ -25,12 +27,21 @@ from ...usecases import (
 )
 from . import arguments as arg
 
-__all__ = ["plan_", "next_", "update_", "dispatch_", "recover_"]
+__all__ = ["plan_", "capture_", "next_", "update_", "dispatch_", "recover_"]
 
 
 def plan_(args: dict[str, Any]) -> str:
     return render_plan(plan(arg.repo(args), arg.entries(args),
                             actor=arg.optional(args, "actor")))
+
+
+def capture_(args: dict[str, Any]) -> str:
+    return render_capture(capture(
+        arg.repo(args), arg.text(args, "title"), spec=arg.optional(args, "spec"),
+        files=arg.optional(args, "files"), labels=arg.optional(args, "labels"),
+        acceptance=args.get("acceptance"), priority=args.get("priority"),
+        claim=bool(args.get("claim", True)), assign=arg.optional(args, "assign"),
+        actor=arg.optional(args, "actor"), session=arg.optional(args, "session")))
 
 
 def next_(args: dict[str, Any]) -> str:
