@@ -21,15 +21,29 @@ from . import plan as plan_cmd
 from . import update as update_cmd
 from ._shared import add_actor, add_target
 
-__all__ = ["add_subcommands"]
+__all__ = ["add_subcommands", "add_list_flags"]
 
 Runner = Callable[[argparse.Namespace], str]
+
+
+def add_list_flags(parser: argparse.ArgumentParser) -> None:
+    """What the list shows. On BOTH `taskops tasks` and `taskops tasks list`, because the
+    bare group name IS the list — a flag that worked on only one of the two spellings would
+    be a flag whose absence looks like the feature is missing.
+
+    `--status` takes any string rather than argparse `choices` so the refusal can be the
+    package's own sentence; see `tasks.run_list`.
+    """
+    parser.add_argument("--all", action="store_true",
+                        help="show closed tasks too, after the open ones")
+    parser.add_argument("--status", default=None, metavar="<status>",
+                        help="show only tasks in this status")
 
 
 def add_subcommands(parent: argparse.ArgumentParser, *, listing: Runner,
                     adding: Runner, editing: Runner) -> None:
     sub = parent.add_subparsers(dest="subcommand", metavar="<subcommand>")
-    _flags(sub.add_parser("list", help="one line per open task"), listing)
+    add_list_flags(_flags(sub.add_parser("list", help="one line per open task"), listing))
 
     _edit_flags(_flags(sub.add_parser("edit", help="rewrite a task's title, spec or priority"),
                        editing))

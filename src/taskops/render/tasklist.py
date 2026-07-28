@@ -5,44 +5,61 @@ because a missing column reads as a bug. This answers a different question — "
 my list" — so the columns collapse into a single ordered list. A reader scanning for an id
 does not want a heading and a table rule between every second row.
 
-Closed cards are left out here, and only here. `done` and `cancelled` accumulate for the
-life of a project, so a list that included them would grow without bound and be read only
-as far as the first screen; the board still shows them, counted, which is where "what is
-finished" belongs.
+Open cards lead, always: that is the question nine times out of ten, and closed ones
+accumulate for the life of a project, so listing them by default would push the answer off
+the screen. But a project whose cards are ALL closed used to print `no open tasks (6 in
+total)` and nothing else — the same mistake the board fixed by never hiding a column. A
+reader who cannot see the finished work cannot tell whether the tool lost it or whether the
+project is done, so with nothing open the closed cards are what this prints, under a
+heading that says which they are. `--all` shows both groups, `--status` picks exactly one.
 """
 
 from __future__ import annotations
 
-from .._types import OPEN_STATUSES
-from ..contracts import Board, Card
-from ._text import STATUS_MARK, truncate
+from .._types import CLOSED_STATUSES, OPEN_STATUSES
+from ..contracts import Board
+from ._tasklist import capped, lines, summary
 
 __all__ = ["render_tasklist"]
 
+Section = tuple[str, list[str]]
 
-def render_tasklist(board: Board) -> str:
-    """A line per open task, then one summary line.
 
-    The summary is the same `ready` count the board leads with: it is the only number that
-    says whether adding another agent would help, and a person reading their list is
-    exactly the person deciding that.
+def render_tasklist(board: Board, *, show_all: bool = False,
+                    status: str | None = None) -> str:
+    """A line per task, then one summary line. See the module docstring for which tasks.
+
+    `status` is trusted here — the caller validates it, because naming the legal values in
+    a refusal is an edge's job and this renderer is reached by three of them.
     """
-    rows = [_line(card, column["status"])
-            for column in board["columns"] if column["status"] in OPEN_STATUSES
-            for card in column["cards"]]
-    if not rows:
+    if status is not None:
+        rows = lines(board, frozenset({status}), dated=status in CLOSED_STATUSES)
+        if not rows:
+            return f"no {status} tasks ({board['total']} in total)"
+        return _joined([(f"## {status} ({len(rows)})", rows)], board,
+                       closed=len(rows) if status in CLOSED_STATUSES else 0)
+    open_rows = lines(board, OPEN_STATUSES)
+    closed_rows = lines(board, CLOSED_STATUSES, dated=True)
+    if show_all:
+        return _joined([("## open", open_rows), ("## closed", closed_rows)], board,
+                       closed=len(closed_rows))
+    if open_rows:
+        return _joined([("", open_rows)], board, closed=0)
+    if not closed_rows:
         return f"no open tasks ({board['total']} in total)"
-    return "\n".join([*rows, "", f"{len(rows)} open, {board['ready']} ready"])
+    return _joined([("## nothing open — closed tasks, newest first", closed_rows)],
+                   board, closed=len(closed_rows))
 
 
-def _line(card: Card, status: str) -> str:
-    """`◐ tk-4f2a9c  claimed      Regroup the CLI              ← agent:berna/v21`
+def _joined(sections: list[Section], board: Board, *, closed: int) -> str:
+    """Headed groups, each capped, then the summary.
 
-    Padded rather than tabulated: a markdown table costs three characters of framing per
-    column and this view exists to be compact. The holder is suffixed with an arrow instead
-    of a column of its own, because most rows have none and a mostly-empty column is a
-    column of noise.
+    The heading is "" for the ordinary open list, which is how that case keeps the shape it
+    has always had: a heading over the only group on the page is a line that says nothing.
     """
-    who = card["lease"]["actor"] if card["lease"] else ""
-    return (f"{STATUS_MARK.get(status, '?')} {card['task']['id']}  {status:<12}"
-            f"{truncate(card['task']['title'], 52)}" + (f"  ← {who}" if who else ""))
+    parts: list[str] = []
+    for heading, rows in sections:
+        if heading:
+            parts += [heading, ""]
+        parts += (capped(rows) if rows else ["_none_"]) + [""]
+    return "\n".join([*parts, summary(board, closed)])
