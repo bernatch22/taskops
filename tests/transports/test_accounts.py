@@ -238,6 +238,15 @@ def test_the_root_page_lists_nothing_without_a_session(server: Any) -> None:
     assert b"axion" not in reply.body and b"beta" not in reply.body
 
 
+def test_the_page_adopts_a_session_from_the_query_and_then_drops_it(server: Any) -> None:
+    """What makes `taskops open --projects` land on a list rather than on a prompt asking for
+    something the caller demonstrably already had. `replaceState` is the other half: adopting
+    the credential without clearing the address bar leaves it in history and in bookmarks."""
+    page = server(get("/")).body
+    assert b'get("token")' in page
+    assert b"replaceState" in page
+
+
 def test_the_page_carries_no_credential_at_all(server: Any, root: Path) -> None:
     """No project token baked into the HTML — the page is public by construction."""
     page = server(get("/")).body

@@ -20,6 +20,7 @@ from ..._version import __version__
 from .commands import (
     init,
     login,
+    open_,
     pushpull,
     recover,
     remote,
@@ -33,13 +34,17 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, ui, serve, tasks, run_, report, recover, sync, login, remote, pushpull)
-"""Every command there is. Twelve, and `--help` lists all twelve.
+_COMMANDS = (init, ui, serve, tasks, run_, report, recover, sync, login, open_, remote, pushpull)
+"""Every command there is. Thirteen, and `--help` lists all thirteen.
 
 `login` sits with them because it is the first thing a new teammate types and the last thing
 they should have to look for. It is the only command here that touches nothing under
 `.taskops/`: a session belongs to the PERSON on this machine, so it goes to the home
 directory and serves every checkout at once — which is why it takes no `--repo`.
+
+`open` is `login`'s other half. Signing in produced a session that could reach several boards
+and no way to visit one: the host was in the project, the credential was in the home directory,
+and joining them was left to the reader. It is one word because it is the thing people do most.
 
 `serve` sits next to `ui` because it is the same transport with a different audience: `ui`
 serves the repository you are standing in, `serve` serves a directory of them over the network,

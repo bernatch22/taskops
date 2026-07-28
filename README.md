@@ -249,6 +249,29 @@ The server holds no GitHub credentials. The client sends the token `gh auth toke
 
 Opening a locked board in a **browser** does not need the token in the URL: the board answers a navigation without a credential with an access screen — paste the credential once, it is kept in `localStorage`, and every later visit goes straight in. The screen names nothing about what it is locking. A `curl` or a `fetch` still gets the plain `401` JSON it can read, and a local `taskops ui` with no token never shows a screen at all.
 
+Or skip the address bar entirely:
+
+```sh
+taskops open              # this project's board, credential included
+taskops open --projects   # the server's own page: every board your session reaches
+taskops open --print      # just the URL, for a terminal with no browser
+```
+
+### What synchronises when — and why you cannot collide
+
+Not everything travels at the same moment, and the split is deliberate: **the writes that could collide go over the wire immediately; the ones that cannot are batched.**
+
+| | when | why |
+|---|---|---|
+| **claim** (`next`) and **close** (`update`) | **instantly, in the server's database** | two machines claiming one card must resolve *now*; there is no local copy to disagree with |
+| new cards, edits, comments | on the next `push` | a new card has an id nobody else can mint, so two people planning at once produce a union, never a conflict |
+| everyone else's work | on `push` (which also pulls) or `pull` | events are facts about the past; importing one twice is a no-op |
+| reports and narrations | on `push`/`pull`, newest stamp wins | equal-but-different is a `409`, never a silent overwrite |
+
+A claim is a single `INSERT` on one primary key. That is the whole collision story: exactly one machine wins, the loser is told the card is taken and asks for the next one. **If the server is unreachable, a claim fails loudly** — it never quietly falls back to a local claim, because that fallback is precisely the collision the server exists to prevent.
+
+So the rhythm is: `taskops pull` when you sit down, `taskops push` when you stand up (or whenever you want your cards visible), and *nothing in between* — the part that had to be atomic already was.
+
 ---
 
 ## The web interface

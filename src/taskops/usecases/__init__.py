@@ -18,6 +18,7 @@ from ._range import Selector, parse_date
 from ._sessions import mint, opens, resolve
 from .accounts import authenticate
 from .ask import ask, search
+from .browse import board_url, root_url
 from .claim import next_task
 from .dispatch import DispatchResult, dispatch
 from .dossier import digest, read_report, report_path, write_report
@@ -56,7 +57,7 @@ __all__ = [
     # the remote: one server, and the two verbs that converge with it
     "add_remote", "read_remote", "require_remote", "remove_remote", "push", "pull", "Exchange",
     # signing in: one GitHub login per machine, a session per server
-    "login", "logout", "logins", "session_of", "is_session",
+    "login", "logout", "logins", "session_of", "is_session", "board_url", "root_url",
     # the live narration: started in the background, watched on the wire
     "narration", "is_wire", "parse_date",
     # who you are: a GitHub login, the sessions it mints, the repository a board is linked to

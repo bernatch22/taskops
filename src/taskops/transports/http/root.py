@@ -71,7 +71,12 @@ PAGE = """<!doctype html><meta charset="utf-8"><title>taskops</title>
    var v = document.getElementById("key").value.trim();
    if(v){ localStorage.setItem(K, v); show(v); }
  };
- var have = localStorage.getItem(K);
+ var given = new URLSearchParams(location.search).get("token");
+ if(given){
+   localStorage.setItem(K, given);
+   history.replaceState(null, "", location.pathname);
+ }
+ var have = given || localStorage.getItem(K);
  if(have){ show(have); } else { document.getElementById("who").textContent="not signed in"; }
 </script>
 """
@@ -81,7 +86,12 @@ at `/`, so it resolves to `/api/projects` whatever hostname or proxy prefix is i
 Each board link carries `?token=<session>`, which is what makes the link WORK without the
 studio bundle learning anything: the app already takes its credential from that parameter,
 and the mount exchanges a session for the project's own token before any route sees it. The
-project token itself never reaches the browser."""
+project token itself never reaches the browser.
+
+`?token=` is also ACCEPTED on this page, which is what makes `taskops open --projects` land on
+a list instead of on a prompt asking for something the caller demonstrably already had. It is
+adopted into `localStorage` and then removed from the address bar with `replaceState`, so the
+credential does not survive in history, in a bookmark, or in whatever gets screen-shared next."""
 
 
 def root_route(home: Path, request: Request) -> Reply | None:
