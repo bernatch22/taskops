@@ -26,9 +26,16 @@ from .worker import DROPPED_ENV
 
 __all__ = ["narrate", "PROMPT", "TIMEOUT", "CHUNK_CHARS"]
 
-TIMEOUT = 240.0
-"""Seconds before the narration is abandoned. Long enough for a real read of a busy day, short
-enough that `--digest` cannot hang a terminal somebody left running."""
+TIMEOUT = 900.0
+"""Seconds before ONE reading is abandoned. Long enough for a real read, short enough that
+`--digest` cannot hang a terminal somebody left running forever.
+
+240s until a slice of `report all` on axion-v3 (45 closed cards, 340 KB of dossier) ran past
+it and the whole digest was thrown away after twenty minutes of work — five good slices lost
+with it, which is the worst outcome available. The number was sized for a single day's dossier
+answered in three paragraphs; the prompt now asks for a paragraph per card over a slice of up
+to `CHUNK_CHARS`, and that is minutes of generation, not seconds.
+"""
 
 
 def narrate(dossier: str, *, model: str = "", timeout: float = TIMEOUT) -> str:

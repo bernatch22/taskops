@@ -13,6 +13,23 @@
   siempre imprimió (el golden byte-a-byte de `report day` sigue verde), y `full` es lo que
   `--write`/`--digest` ponen en el archivo, con el **Pedido** citado entero, **todos** los
   comentarios atribuidos y completos, y todos los archivos de cada commit.
+- **Un proyecto recién planificado ya no reporta silencio.** `report all` sobre cuatro cards
+  creadas hoy, con specs, archivos y una cadena de dependencias, contestaba
+  `0 closed · 0 in flight · 0 blocked` y tres títulos vacíos: `in_flight` filtraba
+  claimed/in_progress/review y `blocked` filtraba blocked, así que **`backlog` y `ready` — o
+  sea TODO el trabajo planificado y sin empezar — no pertenecían a ninguna sección**. Es la
+  misma clase de bug que un proyecto terminado contestando `tasks list` con silencio: un
+  filtro que describe algunos estados y todo lo demás cayéndose por el agujero. Ahora
+  `PeriodReport` tiene `opened` (las cards CREADAS en la ventana y todavía abiertas, cada una
+  con **a qué espera y a qué bloquea** — el DAG ES el contenido de un día de planificación: sin
+  él, "¿qué puedo empezar ahora?" no se contesta) y `waiting` (las abiertas y sin empezar que
+  la ventana tocó pero no creó). Cada card abierta cae en EXACTAMENTE una sección. El `full`
+  cita también el spec de las cards abiertas, y el encabezado suma `N opened` / `N waiting`
+  **sólo cuando no son cero**, para que la línea de resumen deje de decir que no pasó nada sin
+  reescribir el encabezado de cada dossier ya commiteado. Y el "no pasó nada" se juzga ahora
+  por las SECCIONES y no por `actors` — juzgarlo por actors es justo cómo se escondía el bug:
+  cuatro cards creadas son un actor con cuatro tareas, así que el reporte no estaba "vacío",
+  simplemente no tenía dónde poner una card `ready`.
 - **El prompt de la narración exige exhaustividad.** Pide un párrafo POR CARD que diga qué se
   pidió, qué se entregó (commits, archivos, tamaño del diff), qué se decidió o se descubrió
   (los comentarios) y qué costó (cuánto estuvo tomada, cuántos intentos) — y que **diga cuando
@@ -27,7 +44,10 @@
   entrada que eso, una sola respuesta empieza a colapsar cards en oraciones y la narración se
   vuelve el resumen que venía a reemplazar. El camino largo cuesta N+1 llamadas a propósito:
   recortar el prompt produciría un reporte que se olvida de las cards que quedaron últimas y
-  nada en la página lo diría.
+  nada en la página lo diría. El timeout de UNA lectura pasó de 240s a 900s: una tajada de
+  `report all` sobre axion-v3 (45 cards, 340 KB de dossier) se pasó de 240s y **se tiró el
+  digest entero después de veinte minutos** — cinco tajadas buenas perdidas con ella. El
+  número estaba dimensionado para el dossier de un día contestado en tres párrafos.
 
 - **La vista `Reports` en el UI — leer un reporte no es trabajo de terminal.** El reporte diario
   es lo único que taskops produce para que lo lea una PERSONA: es largo, es prosa, y hasta hoy

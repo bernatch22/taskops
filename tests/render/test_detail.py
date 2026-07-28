@@ -41,8 +41,9 @@ def _report() -> PeriodReport:
                                           actor="agent:berna/v22", ts=1.0, additions=3,
                                           deletions=1)])
     return PeriodReport(repo="/x", from_date="2026-07-28", to_date="2026-07-28",
-                        label="2026-07-28", closed=[card], dropped=0, in_flight=[],
-                        blocked=[], conversations=[_comment(SAID, 2.0), _comment(LATER, 3.0)],
+                        label="2026-07-28", closed=[card], dropped=0, opened=[],
+                        in_flight=[], blocked=[], waiting=[],
+                        conversations=[_comment(SAID, 2.0), _comment(LATER, 3.0)],
                         actors=[ActorRoll(actor="agent:berna/v22", tasks=1, commits=1,
                                           comments=2, done=1)],
                         commits_total=1)

@@ -24,6 +24,7 @@ from .._types import LOCAL_ONLY_KINDS, WORKING_STATUSES
 from ..contracts import PeriodReport
 from ..storage import Store
 from ._closed import closed_cards
+from ._opened import opened_cards, waiting_tasks
 from .activity import tasks_of
 from .history import rolls
 
@@ -63,13 +64,16 @@ def period_report(store: Store, start_date: str, end_date: str,
               if start <= e["ts"] < end and e["kind"] not in LOCAL_ONLY_KINDS]
     touched = tasks_of(store, [e["task"] for e in events])
     dones = [e for e in events if e["kind"] == "done"]
+    opened = opened_cards(store, events)
     return PeriodReport(
         repo=str(store.root), from_date=start_date, to_date=end_date,
         label=label or label_of(start_date, end_date),
         closed=closed_cards(store, dones[-MAX_CLOSED:]),
         dropped=max(0, len(dones) - MAX_CLOSED),
+        opened=opened,
         in_flight=[t for t in touched if t["status"] in WORKING_STATUSES],
         blocked=[t for t in touched if t["status"] == "blocked"],
+        waiting=waiting_tasks(touched, opened),
         conversations=[e for e in events if e["kind"] in ("comment", "message")],
         actors=rolls(events),
         commits_total=sum(1 for e in events if e["kind"] == "commit"))
