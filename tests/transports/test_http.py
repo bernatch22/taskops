@@ -282,9 +282,9 @@ def test_the_index_lists_every_report_with_today_at_the_top(route: Any, project:
                                "has_narration", "bytes"}
     assert payload[0]["exists"] is False and payload[0]["bytes"] == 0
 
-    from taskops.usecases import write_report
-    write_report(project, "2026-01-02")
-    write_report(project, "2026-01-03")
+    from taskops.usecases import Selector, write_report
+    write_report(project, Selector(date="2026-01-02"))
+    write_report(project, Selector(date="2026-01-03"))
     labels = [row["label"] for row in body_of(route(get("/api/reports")))]
     assert labels[1:] == ["2026-01-03", "2026-01-02"], "newest first"
 
@@ -305,9 +305,9 @@ def test_a_range_label_is_opaque_and_never_parsed_as_a_day(route: Any, project: 
 
 def test_the_index_says_which_reports_carry_a_narration(route: Any, project: Path) -> None:
     from taskops.render import narrated
-    from taskops.usecases import write_report
+    from taskops.usecases import Selector, write_report
 
-    path = write_report(project, "2026-01-02")
+    path = write_report(project, Selector(date="2026-01-02"))
     assert body_of(route(get("/api/reports")))[1]["has_narration"] is False
     path.write_text(narrated(path.read_text(encoding="utf-8"), "It was a good day."),
                     encoding="utf-8")

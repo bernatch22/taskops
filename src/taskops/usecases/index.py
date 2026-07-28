@@ -55,7 +55,9 @@ def _behind(store: Store, label: str, text: str) -> int:
     """
     if not _is_day(label):
         return 0
-    return missing_events(store, label, stamped_seq(text))
+    # Both ends are the same date: a day IS the one-day window, which is exactly why the
+    # range work could generalise `missing_events` without this call meaning something else.
+    return missing_events(store, label, label, stamped_seq(text))
 
 
 def _is_day(label: str) -> bool:

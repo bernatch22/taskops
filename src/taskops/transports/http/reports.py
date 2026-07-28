@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...usecases import digest, read_report, report_index
+from ...usecases import Selector, digest, read_report, report_index
 from ._wire import Reply, Request, json_reply
 from .api import guarded
 
@@ -55,7 +55,9 @@ def post_digest(root: Path, request: Request) -> Reply:
     force = bool(payload.get("force"))
 
     def run() -> Reply:
-        digest(root, label, force=force)
+        # A day, named explicitly: the button lives on a day's row, and a window selector is
+        # something the UI has no way to express yet.
+        digest(root, Selector(date=label), force=force)
         return json_reply(read_report(root, label))
 
     return guarded(run)
