@@ -43,6 +43,7 @@ from .report import activity, board, day, fleet, period, standup
 from .reportfile import read_report_file, write_report_file
 from .session import Brief, brief, checkout, inbox, track
 from .setup import InitReport, init
+from .status import EXPIRING, IDLE_DAYS, status
 from .sweep import LIMIT, sweep
 from .sync import rebuild, sync
 from .update import update
@@ -58,6 +59,8 @@ __all__ = [
     "read_report_file", "write_report_file",
     # the unattended barrier: every finished day that nobody wrote up
     "sweep", "LIMIT",
+    # the git-status of a project: what is open, who holds it, what is unwritten
+    "status", "IDLE_DAYS", "EXPIRING",
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",

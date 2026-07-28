@@ -43,6 +43,12 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "pyright>=1.1.380"]
 # without it (see transports/http/live.py).
 live = ["websockets>=12"]
 
+# `taskops status` in a panel instead of aligned text. An EXTRA and never a
+# dependency, for the reason above: this package lands in every agent's
+# environment on every machine. The import is guarded in `render/status.py` and
+# the stdlib fallback prints the same facts, so `pretty` buys looks, not facts.
+pretty = ["rich>=13"]
+
 [project.scripts]
 taskops = "taskops.transports.cli.main:main"
 
