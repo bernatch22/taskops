@@ -52,7 +52,7 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     hook and by nothing else, so a person scanning this page for their task list should
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
-    assert listed == {"init", "ui", "tasks", "report", "recover", "sync"}
+    assert listed == {"init", "ui", "tasks", "run", "report", "recover", "sync"}
 
 
 def _listed_commands() -> set[str]:

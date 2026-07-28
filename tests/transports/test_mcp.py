@@ -153,7 +153,7 @@ def test_the_mcp_surface_cannot_ask_taskops_to_spawn_a_process() -> None:
     """THE rule, pinned. A model calling a tool must not be able to make this package launch another
     Claude Code.
 
-    The use case CAN spawn and `taskops dispatch --spawn` does, because that is a human at a terminal
+    The use case CAN spawn and `taskops run` does, because that is a human at a terminal
     asking for it. Over MCP the field is absent from the schema and unread by the handler, so an agent
     that sends it gets a prepared brief anyway.
 
