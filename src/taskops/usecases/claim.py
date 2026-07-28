@@ -21,14 +21,25 @@ from ..engine import claim as take_lease
 from ..storage import Store
 from ._project import caller, heartbeat, project
 from ._reasons import why_nothing
+from ._routing import claim_remotely, routed, whoami
 from .view import inbox_for, view
 
 __all__ = ["next_task"]
 
 
 def next_task(start: Path | str, *, actor: str = "", session: str = "",
-              labels: tuple[str, ...] = (), task: str = "") -> NextResult:
-    """Claim the best available task, or explain why there is none."""
+              labels: tuple[str, ...] = (), task: str = "",
+              local: bool = False) -> NextResult:
+    """Claim the best available task, or explain why there is none.
+
+    `local` forces the claim into THIS sqlite. It exists for the server, which runs this
+    function to answer `POST /api/next` and would otherwise call itself if the store it
+    serves happened to carry a `remote.json` — see `_routing`.
+    """
+    if (remote := routed(start, local)) is not None:
+        return claim_remotely(start, remote, {"actor": whoami(start, actor),
+                                              "session": session,
+                                              "labels": list(labels), "task": task})
     with project(start) as store:
         who = caller(store, actor)["id"]
         # BEFORE any write. Two reasons, and the first one is a bug this ordering fixed:

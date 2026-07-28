@@ -22,6 +22,7 @@ from ..engine import check_move, record, unblock
 from ..storage import Store
 from ._facts import facts_for
 from ._project import caller, heartbeat, project
+from ._routing import routed, update_remotely, whoami
 
 __all__ = ["update", "RELEASE"]
 
@@ -34,10 +35,20 @@ skipping the queue."""
 
 def update(start: Path | str, task_id: str, *, actor: str = "", status: str = "",
            comment: str = "", mentions: tuple[str, ...] = (), blocked_on: str = "",
-           no_code: bool = False) -> UpdateResult:
-    """Apply whatever was asked, in the order that keeps the graph honest."""
+           no_code: bool = False, local: bool = False) -> UpdateResult:
+    """Apply whatever was asked, in the order that keeps the graph honest.
+
+    `local` is the server's flag, exactly as in `next_task`: a project with a remote runs
+    its transitions THERE, so the lease guard that refuses a `done` from a machine that
+    never held the lease is checked against the one database everybody writes to.
+    """
     if not (status or comment or blocked_on):
         raise BadRequest("nothing to do — pass a `status`, a `comment`, or `blocked_on`")
+    if (remote := routed(start, local)) is not None:
+        return update_remotely(start, remote, {
+            "task": task_id, "actor": whoami(start, actor), "status": status,
+            "comment": comment, "mentions": list(mentions),
+            "blocked_on": blocked_on, "no_code": no_code})
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)

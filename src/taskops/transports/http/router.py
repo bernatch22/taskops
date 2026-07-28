@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from . import api, exchange, live, reports, static
+from . import agentapi, api, exchange, live, reports, static
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 
@@ -38,6 +38,8 @@ def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
         ("GET", "/api/sync"): partial(exchange.get_sync, root),
         ("GET", "/api/report/file"): partial(exchange.get_report_file, root),
         ("PUT", "/api/report/file"): partial(exchange.put_report_file, root),
+        ("POST", "/api/next"): partial(agentapi.post_next, root),
+        ("POST", "/api/update"): partial(agentapi.post_update, root),
     }
 
 

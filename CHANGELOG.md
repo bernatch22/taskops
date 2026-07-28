@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased — claims atómicos en remoto: dos agentes en dos máquinas no agarran la misma card
+
+El miedo central, textual: *"mi miedo es que se pisen agentes en remoto"*. Con push/pull los
+boards CONVERGEN, pero el claim seguía siendo local: entre dos syncs, dos agentes en dos
+máquinas ven la misma card `ready` y los dos la agarran, cada uno en su propio sqlite. Se
+enteran editando los mismos archivos. El engine ya gana esa carrera DENTRO de una base — dos
+INSERT sobre una primary key, testeado con 50 threads — así que el arreglo no es un algoritmo
+nuevo sino un LUGAR: si el proyecto tiene remoto, `next` y `update` se ejecutan en el sqlite del
+server, y la carrera pasa a ser la que el engine ya gana.
+
+- **Dos endpoints nuevos, `transports/http/agentapi.py`** (filas en `router.py`, contrato en
+  `docs/exchange.md`): `POST /api/next` → `NextResult`, `POST /api/update` → `UpdateResult`, los
+  TypedDicts tal cual — no hay capa de schema, igual que el resto. Son writes, así que
+  `--readonly` los rechaza por MÉTODO antes de cualquier handler.
+- **La decisión de ruteo vive en los USECASES, no en un transporte.** `next_task` y `update`
+  ganan un paso al entrar: si hay `remote.json`, la llamada va por HTTP. Así CLI (`taskops
+  claim`, `tasks done`), MCP (`taskops_next`/`taskops_update`) y el board local se comportan
+  IGUAL sin tocar ninguno de los tres — un cliente que claimea seguro por una superficie e
+  inseguro por otra sería peor que no tener la feature.
+- **El `actor` viaja en el body y se ACEPTA — decisión de confianza, documentada, no escondida.**
+  Al revés que `POST /api/comment`, que lo resuelve server-side. El server no PUEDE resolverlo:
+  no tiene el `$TASKOPS_ACTOR` ni el git config de la otra máquina. El **token del proyecto es la
+  frontera de confianza** — quien lo tiene puede actuar como cualquier actor del proyecto, la
+  misma frontera que ya dibuja git, donde quien puede pushear puede firmar un commit con
+  cualquier nombre. Lo que SÍ se valida es la FORMA: un id malformado es un 400 de
+  `engine.identity.parse`, así que un typo no crea una identidad fantasma bajo la que se archiva
+  medio trabajo.
+- **El server nunca se rutea a sí mismo.** Los endpoints llaman los usecases con `local=True`,
+  siempre. Sin eso, un `remote.json` en el store que el server sirve lo haría POSTearse su propio
+  claim a esa dirección — a sí mismo, para siempre. Hay un test que planta exactamente ese
+  archivo.
+- **Todo write remoto pullea antes de contestar, y un pull que falla FALLA la llamada entera.**
+  El guard de commits, `brief` y todos los renders leen el board LOCAL: un claim que el server
+  otorgó y el board local nunca escuchó es un lease que el propio tooling del agente le niega un
+  minuto después. Medio éxito es peor que un error nombrando la red.
+  - Los eventos no alcanzan para el lease: `engine.replay` deliberadamente NO materializa
+    leases (importar uno sería claimear en nombre de un agente que corre en otra máquina). Por
+    eso `usecases/_mirroring.py` escribe exactamente uno y nada más: **el que el server le acaba
+    de otorgar a ESTE caller**, que viene en la respuesta. No se infiere del evento de nadie.
+- **Offline JAMÁS cae al claim local.** `Unreachable` (502, `unreachable`) nombra la URL y dice
+  que no se claimeó local. Ese fallback silencioso ES el pisoteo que la card mata. Leer —
+  `board`, `ask`, `report` — sigue andando sin red; solo los dos writes que reparten trabajo
+  paran.
+- **`tests/e2e/test_agentwire.py`** — contra el server REAL (`build_server`), no contra el fake
+  del contrato: la pregunta acá es "¿dos claims caen en UN sqlite y ese sqlite elige uno?", y un
+  fake la contestaría con su propia regla inventada. LA prueba: dos proyectos en dos paths, dos
+  threads, una barrera, la misma card — un ganador y un `reason` normal. Más: el board del
+  ganador sabe que ganó, el guard del server (`done` sin commit) llega verbatim, offline no
+  falla al local, el server no se auto-rutea, actor malformado 400, y un server que otorga el
+  claim y después no deja leer su log hace fallar la llamada entera.
+- **Fuera de scope a propósito**: `plan`, `dispatch` y `ask` siguen locales — `ask` lee un board
+  que ya converge por `pull`, y planear en remoto es raro y puede esperar.
+
 ## Unreleased — la mitad server del sync remoto: eventos por HTTP, y reportes que no se pisan
 
 - **Cuatro endpoints nuevos, `transports/http/exchange.py`** — la API de intercambio entre dos

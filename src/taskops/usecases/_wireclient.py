@@ -11,6 +11,12 @@ PUT compares fingerprints. An automatic retry would therefore be *safe*, which i
 why it is a bad idea: it would hide a network that is failing behind a command that always
 seems to work. One attempt, a 30-second timeout, and a sentence saying what did not answer.
 
+That argument only got STRONGER when the agent calls arrived. `claim` and `change` are not
+idempotent — a retried claim is a second claim, a retried `done` is a second transition — so a
+retry here could turn a slow network into a card claimed twice. The failure is typed
+(`Unreachable`) precisely so the caller can decide, and for a claim the only safe decision is
+to stop.
+
 **Server errors are relayed verbatim.** The server writes its `error` field for a person;
 translating it into "HTTP 409" here would throw away the only text that says what to do.
 """
@@ -23,7 +29,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, cast
 
-from .._errors import TaskopsError
+from .._errors import TaskopsError, Unreachable
 
 __all__ = ["Wire", "TIMEOUT", "PAGE"]
 
@@ -33,8 +39,9 @@ PAGE = 500
 
 
 class Wire:
-    """One remote, four calls. Holds no state beyond where to reach it and how to prove who
-    it is, so a caller may build one per command and throw it away."""
+    """One remote, six calls — four for replication, two for the writes an agent makes.
+    Holds no state beyond where to reach it and how to prove who it is, so a caller may
+    build one per command and throw it away."""
 
     def __init__(self, url: str, token: str, *, timeout: float = TIMEOUT) -> None:
         self.base = url.rstrip("/")
@@ -80,6 +87,14 @@ class Wire:
         body = {"label": label, "content": content, "force": force}
         return self.call("PUT", "/api/report/file", body=body, allow=(409,))
 
+    def claim(self, body: dict[str, Any]) -> dict[str, Any]:
+        """`POST /api/next` — a claim decided in the SERVER's sqlite, not in ours."""
+        return self.call("POST", "/api/next", body=body)
+
+    def change(self, body: dict[str, Any]) -> dict[str, Any]:
+        """`POST /api/update` — the transition, checked by the server's guards."""
+        return self.call("POST", "/api/update", body=body)
+
     def call(self, method: str, path: str, *, body: Any = None,
              allow: tuple[int, ...] = ()) -> dict[str, Any]:
         """One request. A status in `allow` comes back as data with `status` set."""
@@ -93,7 +108,7 @@ class Wire:
                 return {**payload, "status": err.code}
             raise TaskopsError(_message(payload, self.base + path, err.code)) from err
         except (urllib.error.URLError, OSError) as err:
-            raise TaskopsError(
+            raise Unreachable(
                 f"could not reach {self.base}: {_cause(err)} — the local board is still "
                 f"yours; run this again when the network is back") from err
 

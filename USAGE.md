@@ -499,6 +499,35 @@ request against a server you have just proved you can reach, and the alternative
 developers whose boards diverged this morning, each convinced they are current. `push` prints
 what moved in both directions.
 
+**Agents on two machines cannot claim the same card.** This is the reason to run a server at
+all. Once a project has a remote, `taskops_next` and `taskops_update` — and `taskops claim`,
+`taskops tasks done`, every surface — stop deciding locally and execute **in the server's
+store**. Two agents asking for one card are then two inserts on one primary key in one sqlite:
+one gets the claim, the other gets the ordinary "somebody is on it" and moves to the next task.
+Nothing about the commands changes; you configure the remote and the writes follow it.
+
+You do not have to `pull` first, and you do not have to remember to `pull` after: every remote
+write pulls before it answers, so the board you read next is the board the server just wrote.
+If that pull fails, the whole call fails — an agent told "claimed" whose own board has never
+heard of the claim would be denied by its own commit guard a minute later.
+
+**And if the server is down, a claim FAILS.** It does not quietly claim locally instead:
+
+```
+this project's writes go to https://taskops.example.com, which did not answer
+(Connection refused) — taskops will NOT claim locally instead, because a local claim
+could collide with another machine's; retry, or check the network
+```
+
+That refusal is the feature. A local claim made while the server was unreachable is exactly the
+collision the server was there to prevent, and it would be discovered when two agents had
+already edited the same files. Reading — `board`, `ask`, `report` — keeps working offline; only
+the two writes that hand out work stop.
+
+Anyone holding the project token can act as any actor in the project: the server has no way to
+learn who is on the other machine, so the token is the boundary — the same one git draws, where
+whoever can push can commit under any name. Issue one token per developer.
+
 **Where the token lives.** `.taskops/remote.json`, mode `0600`, and `taskops init` gitignores
 that path — a bearer in git history is still a bearer after somebody deletes the file, and
 nobody notices they need to rotate it. `taskops remote` shows the URL and the token's *length*,
@@ -521,8 +550,8 @@ Two independent narrations of the *same* dossier always land here, and that is t
 answer: nobody can decide that one for you. `--force` is the valve, and the message says what
 it costs before you reach for it.
 
-**Offline is not an error state.** No network means one line and exit 1, with nothing marked
-half-sent: events are marked as pushed only after the server answers 200, so a push cut in half
+**Offline is not an error state for `push`/`pull`** (it is for a claim — see above). No network
+means one line and exit 1, with nothing marked half-sent: events are marked as pushed only after the server answers 200, so a push cut in half
 re-sends on the next run and the server accepts each event exactly once. Your board keeps
 working the entire time — it is a local sqlite cache of a local log, and the server is a place
 they meet.
