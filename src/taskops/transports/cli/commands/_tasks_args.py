@@ -27,9 +27,12 @@ Runner = Callable[[argparse.Namespace], str]
 
 
 def add_subcommands(parent: argparse.ArgumentParser, *, listing: Runner,
-                    adding: Runner) -> None:
+                    adding: Runner, editing: Runner) -> None:
     sub = parent.add_subparsers(dest="subcommand", metavar="<subcommand>")
     _flags(sub.add_parser("list", help="one line per open task"), listing)
+
+    _edit_flags(_flags(sub.add_parser("edit", help="rewrite a task's title, spec or priority"),
+                       editing))
 
     show = _flags(sub.add_parser("show", help="read one task in full"), ask_cmd.run)
     show.add_argument("what", metavar="task", help="the task id")
@@ -69,6 +72,17 @@ def _add_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--files", default="", help="comma-separated edit surface")
     parser.add_argument("--priority", type=int, default=None, help="0 urgent … 3 whenever")
     parser.add_argument("--label", default="", dest="labels", help="comma-separated labels")
+
+
+def _edit_flags(parser: argparse.ArgumentParser) -> None:
+    """The three fields a card can be corrected in. All default to `None` — "not passed" —
+    so that `--spec ""` clears a brief instead of being indistinguishable from not saying it.
+    Requiring at least one is the use case's job, not argparse's: the CLI is one of three
+    surfaces, and a rule only argparse knows is a rule the other two do not have."""
+    parser.add_argument("task", help="the task id")
+    parser.add_argument("--title", default=None, help="what the task is")
+    parser.add_argument("--spec", default=None, help="the brief: what done looks like")
+    parser.add_argument("--priority", type=int, default=None, help="0 urgent … 3 whenever")
 
 
 def _close(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", name: str,

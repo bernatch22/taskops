@@ -15,13 +15,13 @@ contradicts newer local state loses.
 
 from __future__ import annotations
 
-from .._types import Status
+from .._types import EDITABLE_FIELDS, Status
 from ..contracts import Event, Task
 from ..storage import Store
 
 __all__ = ["apply", "REPLAYED"]
 
-REPLAYED = ("created", "blocked", "status", "done")
+REPLAYED = ("created", "blocked", "status", "done", "edited")
 """The kinds that describe STATE. Everything else — comments, commits, activity — is history: worth
 keeping and rendering, but it does not tell you what a task IS. Listing them positively rather than
 skipping a blocklist means a new kind is inert here until somebody decides it should not be."""
@@ -37,7 +37,32 @@ def apply(store: Store, events: list[Event]) -> int:
             changed += int(_block(store, event))
         elif event["kind"] in ("status", "done"):
             changed += int(_status(store, event))
+        elif event["kind"] == "edited":
+            changed += int(_edited(store, event))
     return changed
+
+
+def _edited(store: Store, event: Event) -> bool:
+    """A rewritten title, spec or priority — newer-wins, exactly like `_status`.
+
+    The SAME arbitrator (`event["ts"]` against `task["updated"]`) rather than a per-field
+    clock: one `updated` column is what the row has, and a second timestamp per field would
+    be a schema for a case — two people editing two different fields of one card within the
+    same sync window — that a shared task list barely produces. What it costs is that the
+    older edit loses even when it touched another field; both are in the log, so it is
+    recoverable, which is the trade `_status` already makes.
+    """
+    task = store.tasks.get(event["task"])
+    field = event["body"].get("field")
+    value = event["body"].get("to")
+    if task is None or not isinstance(field, str) or field not in EDITABLE_FIELDS:
+        return False
+    if not isinstance(value, int if field == "priority" else str) or isinstance(value, bool):
+        return False
+    if event["ts"] <= task["updated"] or task[field] == value:  # type: ignore[literal-required]
+        return False
+    store.tasks.set_field(event["task"], field, value, when=event["ts"])
+    return True
 
 
 def _create(store: Store, event: Event) -> bool:

@@ -111,3 +111,27 @@ def test_tasks_done_refuses_a_card_with_no_commit(root: Path,
     assert main(["tasks", "done", task, "--repo", str(root), "-m", "finished",
                  "--actor", "dev:berna"]) == 1
     assert "commit" in capsys.readouterr().err
+
+
+def test_tasks_edit_rewrites_the_card_from_the_terminal(
+        root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The whole door, end to end: flags in, a rewritten row out, and the list showing it."""
+    main(["tasks", "add", "Write the thing", "--repo", str(root), "--spec", "wrong brief"])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+
+    assert main(["tasks", "edit", task, "--repo", str(root), "--title", "Write the RIGHT thing",
+                 "--spec", "the real brief", "--priority", "0"]) == 0
+    assert "edited title, spec, priority" in capsys.readouterr().out
+    assert main(["tasks", "show", task, "--repo", str(root)]) == 0
+    assert "the real brief" in capsys.readouterr().out
+
+
+def test_tasks_edit_with_no_flags_says_so_instead_of_pretending(
+        root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """At least one field is required, and the refusal comes from the use case — so the MCP
+    and HTTP surfaces would refuse identically rather than only argparse knowing the rule."""
+    main(["tasks", "add", "Write the thing", "--repo", str(root)])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+
+    assert main(["tasks", "edit", task, "--repo", str(root)]) == 1
+    assert "nothing to edit" in capsys.readouterr().err

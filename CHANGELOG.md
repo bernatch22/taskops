@@ -2,6 +2,22 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **`taskops tasks edit <id> [--title] [--spec] [--priority]` — a card can finally be
+  corrected.** Until now a spec was whatever the planner typed and nothing could change it:
+  an agent reading a brief that had since turned out to be wrong had no door back, and the
+  workaround was cancelling the card and planning a new one, which threw away its thread and
+  its commits. Each changed field records its own `edited` event (`{field, from, to}`), never
+  one event carrying three — replay applies each on its own merits, so two people editing two
+  different fields of one card converge on both instead of clobbering each other. Replay
+  arbitrates with the same newer-wins rule `status` uses (`event ts` vs `task.updated`), so
+  the fix reaches a teammate's clone through the log; an e2e test drives two real clones
+  through a bare remote and asserts both agree. An edit that changes nothing records nothing,
+  because a no-op event bumps `updated` and would let a redundant edit here beat a real edit
+  elsewhere. A `done` or `cancelled` card REFUSES — "closed cards are history — open a new
+  card referencing it" — since the log is the record of what was delivered and rewriting a
+  finished spec rewrites that record. **No MCP change, on purpose**: the tool surface stays
+  as it was, because correcting a brief is a human act and an agent that can rewrite its own
+  spec can talk itself into having finished.
 - **`taskops tasks` groups the task list, and `--help` lists six commands instead of nineteen.**
   The flat list mixed three audiences and gave no hint which was which: a person's task list, the
   agent protocol (`next`, `update`, `ask`, `plan`, `dispatch`, `log`), and the plumbing typed only

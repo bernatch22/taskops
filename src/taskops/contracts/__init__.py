@@ -41,7 +41,7 @@ from .event import Event, Inbox
 from .gitstate import BranchState
 from .lease import Lease
 from .log import EntryKind, LogEntry, SessionLog
-from .results import Claim, NextResult, PlanResult, UpdateResult
+from .results import Claim, EditResult, NextResult, PlanResult, UpdateResult
 from .task import Task, TaskView
 from .tools import AskParams, NextParams, PlanParams, ReportParams, UpdateParams
 
@@ -64,6 +64,7 @@ __all__ = [
     "Claim",
     "NextResult",
     "UpdateResult",
+    "EditResult",
     # the projections
     "Board",
     "Column",
