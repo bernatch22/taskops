@@ -36,11 +36,37 @@ prevent, and `test_transports_never_reach_past_the_use_cases` is the fence.
 ## One transport per audience
 
 ```
-  cli/     a PERSON            `taskops <cmd>`                        7 commands, 7 listed
+  cli/     a PERSON            `taskops <cmd>`                        8 commands, 8 listed
   mcp/     an AGENT            `python -m taskops.transports.mcp`     7 tools
   hooks/   git + Claude Code   `python -m taskops.transports.hooks`   nobody types it
-  http/    a BROWSER           `taskops ui`                           the live board
+  http/    a BROWSER           `taskops ui` · `taskops serve`         the live board
 ```
+
+`serve` is not a fifth transport, and that is worth saying because it looks like one. It is the
+SAME http transport with a different mount: `transports/http/projects.py` splits the first path
+segment, finds the project it names under a server root, and hands the request to the router
+that already exists with the prefix trimmed. A project is therefore literally today's board,
+mounted — every endpoint, the SSE feed and the websocket work under `/<project>/` without one of
+them learning that prefixes exist. `taskops ui` serves the repository you are standing in;
+`serve` serves a directory of them, over a network, and each has its own token.
+
+Three consequences of that shape, all of them load-bearing:
+
+- **Isolation is structural.** A mounted router is bound to one root and only ever sees a path
+  with the prefix already removed, so a request that arrived under `/axion/` has no way to name
+  another store. The project name is validated against `[a-z0-9-]{1,40}` **before** a path is
+  built, so traversal is refused as syntax rather than caught later by a resolve.
+- **The event bus is process-global; the cursor is not.** A write in one project wakes every
+  other project's `follow`, and what each then reads is its OWN sqlite cursor — so the wake-up
+  yields nothing. That is the line that makes one process safe for many boards, and
+  `tests/transports/test_serve.py` pins it. The exception, written down rather than hidden: a
+  `WireMessage` (a narration delta) carries no project, so it DOES reach every open board.
+  Closing that needs a field on the wire contract.
+- **No ambient trust.** `taskops ui` may be open on loopback because a laptop is a laptop; this
+  faces a network, so every project's token is required for everything including reads, a
+  project without a `token` file is not served at all rather than served open, and a miss is a
+  bare 404 that names nothing — a listing would hand an unauthenticated caller every board on
+  the host, which is the enumeration the per-project token exists to prevent.
 
 The separation used to be declared and not real. `taskops --help` listed seven commands and
 hid thirteen, and both `.git/hooks/*` and the plugin's `hooks.json` invoked

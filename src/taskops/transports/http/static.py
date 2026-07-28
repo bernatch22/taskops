@@ -31,7 +31,16 @@ _MISSING = (b"<!doctype html><meta charset=utf-8><title>taskops ui</title>"
             b"<a style='color:#b8ff3a' href='/api/board'>/api/board</a>.</p>")
 
 
-def serve(path: str) -> Reply:
+_BASE = b'<base href="/"'
+"""The one line `index.html` carries so the bundle can be mounted under a prefix.
+
+Every other href and src in the page is RELATIVE, so rewriting this single tag re-points the
+whole document — assets, and (through `document.baseURI`) every fetch the app makes. The
+alternative, a build-time prefix, would mean one bundle per project.
+"""
+
+
+def serve(path: str, base: str = "/") -> Reply:
     """One file from `ui/`, or index.html for anything the SPA routes itself.
 
     A missing bundle answers with an INSTRUCTION rather than a 404: it happens exactly once per
@@ -46,6 +55,8 @@ def serve(path: str) -> Reply:
         body = target.read_bytes()
     except OSError as err:
         return error_reply(500, f"cannot read {target.name}: {err}", "io_error")
+    if target.suffix == ".html" and base != "/":
+        body = body.replace(_BASE, f'<base href="{base}"'.encode("utf-8"))
     return Reply(status=200, body=body, headers=_headers(target))
 
 

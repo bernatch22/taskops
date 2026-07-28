@@ -2,6 +2,44 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **`taskops serve` — muchos boards en un puerto, cada uno con su token.** `taskops ui` sirve el
+  repo donde estás parado; `serve` sirve un DIRECTORIO de proyectos, que es lo que hace falta en
+  un host: el board centralizado (el código sigue en git), y los claims atómicos porque compiten
+  en UN solo sqlite. Es el objetivo detrás de taskops.bernardocastro.dev; el deploy es otra card.
+  - **No es un cuarto transporte, es el mismo montado.** `transports/http/projects.py` parte el
+    primer segmento del path, resuelve el proyecto bajo el root del server, y delega en el
+    `router.build` que YA existe con el prefijo RECORTADO. Un proyecto es literalmente el board
+    de hoy: los endpoints, el SSE y el websocket andan bajo `/<proyecto>/` sin que ninguno se
+    entere de que existen los prefijos. `server.py` ganó `serve_route`, así que la mitad socket
+    del transporte tampoco tuvo que aprender qué es un proyecto.
+  - **`taskops serve init <proyecto>`** crea el directorio, corre el init de taskops adentro
+    (`install_git_hooks=False` — un server es un almacén de boards, no un working tree) y mintea
+    el token con `secrets.token_hex(16)` a un archivo **0600**, impreso **UNA sola vez**. El
+    modelo es el de gist: el token ES la frontera de confianza, no va a git ni a un log, y
+    nada lo puede volver a mostrar — uno perdido se re-mintea, no se consulta.
+  - **Aislamiento estructural, no chequeado por endpoint.** Un router montado está atado a UN
+    root y solo ve paths ya recortados, así que un request que entró por `/axion/` no tiene cómo
+    nombrar otro store. El nombre se valida contra `[a-z0-9-]{1,40}` **antes** de construir un
+    path: `..`, `/` y el vacío se rechazan como sintaxis, no se atrapan después en un resolve.
+  - **Sin confianza ambiente.** Todo pide el token del proyecto, incluidas las LECTURAS; el
+    token de A da 401 en B; un proyecto sin archivo `token` no se sirve (rechazado, no abierto);
+    y un proyecto inexistente es un 404 pelado que no nombra nada — listar los que sí existen
+    sería regalarle a un desconocido el inventario de boards del host.
+  - **La trampa del bus, pineada.** El BUS de eventos es global al proceso, así que un write en
+    A despierta el `follow` de B — pero lo que B lee después es SU cursor de sqlite, y el
+    despertar no rinde nada. Ese es el renglón que hace que un proceso sea seguro para N boards.
+    La excepción queda escrita y no escondida: un `WireMessage` (delta de narración) no lleva
+    proyecto, así que sí llega a todos los boards abiertos; taparlo pide un campo en el contrato.
+  - **La UI se monta bajo un prefijo con UN tag.** `index.html` lleva `<base href="/">` y todo lo
+    demás es relativo; el server reescribe ese tag a `/<proyecto>/` al servirlo, y `api.ts` lee
+    `document.baseURI`. `location.pathname` no servía: el SPA rutea en el browser, así que en
+    `/axion/task/tk-1` el path solo no puede decir dónde termina el mount. `url()` **saca el
+    slash inicial** — `new URL("/api/board", base)` tira la base a la basura, así que una ruta
+    escrita de la forma obvia andaba perfecto en `taskops ui` y se escapaba del mount en
+    `serve`; sacarlo en un lugar y no en once call sites es lo que impide reintroducirlo. El
+    websocket se arma con el mismo `url()` en vez de a mano con `location.host`, que era
+    justamente la única llamada que se habría comido el prefijo y se habría llevado el feed.
+
 - **Tres puertas, una por audiencia — y ahora la separación es real.** El proyecto declaraba
   "el CLI es del dev, el MCP es del agente" y era cosmético: `taskops --help` listaba 7
   comandos y escondía 13, y por esa misma puerta entraban cuatro audiencias — el dev, el

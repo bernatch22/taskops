@@ -17,12 +17,16 @@ from typing import Sequence
 
 from ..._errors import TaskopsError
 from ..._version import __version__
-from .commands import init, recover, report, run_, sync, tasks, ui
+from .commands import init, recover, report, run_, serve, sync, tasks, ui
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, ui, tasks, run_, report, recover, sync)
-"""Every command there is. Seven, and `--help` lists all seven.
+_COMMANDS = (init, ui, serve, tasks, run_, report, recover, sync)
+"""Every command there is. Eight, and `--help` lists all eight.
+
+`serve` sits next to `ui` because it is the same transport with a different audience: `ui`
+serves the repository you are standing in, `serve` serves a directory of them over the network,
+each behind its own token.
 
 There used to be thirteen more, registered and hidden — the agent protocol (`next`, `update`,
 `ask`, `plan`, `dispatch`, `log`) and the wiring (`guard`, `hook`, `ingest`, `brief`, `inbox`,

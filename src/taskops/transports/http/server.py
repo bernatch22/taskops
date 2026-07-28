@@ -12,21 +12,30 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from ._handler import Handler
+from ._wire import Route
 from .policy import Policy
 from .router import build
 
-__all__ = ["build_server", "bound_port"]
+__all__ = ["build_server", "serve_route", "bound_port"]
 
 
 def build_server(host: str, port: int, root: Path, policy: Policy) -> ThreadingHTTPServer:
+    """A server over ONE project — what `taskops ui` opens."""
+    return serve_route(host, port, build(root, policy))
+
+
+def serve_route(host: str, port: int, route: Route) -> ThreadingHTTPServer:
     """A server ready to `serve_forever`. Returned rather than run, so a test can bind port 0.
 
     The route table is bound into a per-server handler SUBCLASS, because stdlib's server takes a
     class and instantiates it per request — there is nowhere else to put the root and the policy
     without making them module state, which two servers in one process (every test file here) would
     then share.
+
+    Taking a `Route` rather than a root is what lets `taskops serve` reuse every line of this:
+    the multi-project dispatcher is just another `Request -> Reply`, so the socket half of the
+    transport did not have to learn that projects exist.
     """
-    route = build(root, policy)
 
     class Bound(Handler):
         dispatch = staticmethod(route)
