@@ -31,9 +31,9 @@ from before this existed. Staleness is then UNKNOWN, and reported as not stale r
 as stale: nagging about a file taskops did not write is noise nobody can act on."""
 
 
-def stamp(date: str, max_seq: int, at: float) -> str:
+def stamp(label: str, max_seq: int, at: float) -> str:
     """The header line. Machine-readable, and an HTML comment so it renders as nothing."""
-    return (f"{_PREFIX} date={date} {_FIELD}{max_seq} "
+    return (f"{_PREFIX} date={label} {_FIELD}{max_seq} "
             f"generated={time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(at))} -->")
 
 
@@ -52,16 +52,16 @@ def stamped_seq(text: str) -> int:
     return NO_STAMP
 
 
-def missing_events(store: Store, date: str, since_seq: int) -> int:
-    """How many of `date`'s events landed AFTER the report was generated.
+def missing_events(store: Store, from_date: str, to_date: str, since_seq: int) -> int:
+    """How many of the window's events landed AFTER the report was generated.
 
-    Scoped to the day's own window, because the fingerprint is a global `max_seq`: work on
+    Scoped to the report's OWN window, because the fingerprint is a global `max_seq`: work on
     another day would otherwise mark every past report stale forever. Heartbeats are
     excluded for the same reason the dossier excludes them — a live agent would make every
     report of today stale within a minute, and the word would stop meaning anything.
     """
     if since_seq <= NO_STAMP:
         return 0
-    start, end = window(date)
+    start, end = window(from_date)[0], window(to_date)[1]
     return sum(1 for event in store.events.after_seq(since_seq, limit=MAX_EVENTS)
                if start <= event["ts"] < end and event["kind"] not in LOCAL_ONLY_KINDS)

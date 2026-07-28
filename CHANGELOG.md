@@ -2,6 +2,34 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **`taskops report range` y `taskops report all` — el reporte deja de ser de UN día.** Lo
+  reportó Berna con una pregunta que el producto no sabía contestar: *"si quiero evaluar todo,
+  no solo un dia, como hago?"*. Se contestaba leyendo treinta archivos diarios, que es como
+  nadie lo contesta. Ahora `report all` narra el proyecto entero desde el primer evento del log
+  hasta hoy, `report range --last 7d|2w|1m` la semana o el mes, y `--from/--to` un tramo
+  explícito. `report day` sigue existiendo y su salida es **byte-idéntica** a la de antes (hay
+  un golden que lo fija): es el caso de UN día del mismo reporte, no un segundo camino.
+  - Un solo contrato: `DayReport` es hoy un alias de `PeriodReport`, que gana `from_date`,
+    `to_date` y `label`. Dos shapes hubieran driftado la primera vez que alguien agregara un
+    campo al que estaba leyendo.
+  - Un solo ensamblado: `engine.day.period_report` corre sobre cualquier span y `day_report` es
+    `period_report(store, date, date)`. La ventana sigue siendo de medianoche local a medianoche
+    local vía `mktime`, así que el día del cambio de hora dura 23 o 25 horas también en un rango.
+  - Los selectores se parsean **estricto**, como `parse_window`: `--last 3fortnights` se rechaza
+    nombrando las formas legales en vez de ensancharse en silencio a algo plausible. Y mezclar
+    `--last` con `--from`, o pasarle `--last` a `report day`, es un error — no una preferencia
+    que se resuelve por el orden de los `if`.
+  - `--write` nombra el archivo por el label: `.taskops/reports/2026-07-22..2026-07-28.md`,
+    `all.md`. `all` se llama `all` y no por sus fechas a propósito: es UN documento que se
+    mantiene al día, no un rastro de reportes casi iguales cuyo fin de rango cambió.
+  - En un rango, `## Cerrado` agrupa las cards **por día, el más nuevo primero**, con su propio
+    conteo — cien cards bajo un solo encabezado es un muro que nadie scrollea. Y el cap es
+    honesto: si el rango cierra más de `MAX_CLOSED` cards, el reporte dice cuántas no muestra en
+    vez de truncar callado, la misma regla que sigue la vista de actividad.
+  - MCP: `taskops_report` gana `kind=range` con `last`/`from_date`/`to`. Sin ninguno de los tres
+    cubre el proyecto entero, que es justo lo que un agente al que le piden "evaluá todo esto"
+    necesita conseguir sin adivinar cuál de tres campos quería la tool.
+
 - **`taskops report day --digest` — el reporte narrado, en un comando.** El dossier ya decía qué
   pasó; lo que faltaba era qué SIGNIFICA, y hasta ahora sólo existía como un skill que alguien
   tenía que acordarse de invocar dentro de una sesión. Ahora es un flag: escribe el reporte del

@@ -35,7 +35,7 @@ from .board import (
     Standup,
 )
 from .commit import CommitRef
-from .day import ClosedCard, CommitStat, DayReport, ReportFile
+from .day import ClosedCard, CommitStat, DayReport, PeriodReport, ReportFile
 from .dep import Dep
 from .event import Event, Inbox
 from .gitstate import BranchState
@@ -74,6 +74,7 @@ __all__ = [
     "ActorRoll",
     "Burndown",
     "DayReport",
+    "PeriodReport",
     "ClosedCard",
     "CommitStat",
     "ReportFile",

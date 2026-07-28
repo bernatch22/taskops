@@ -12,6 +12,7 @@ async and calls in from a threadpool, but there is no async twin of the engine.
 from __future__ import annotations
 
 from ._project import locate
+from ._range import Selector
 from .ask import ask, search
 from .claim import next_task
 from .dispatch import DispatchResult, dispatch
@@ -23,7 +24,7 @@ from .ingest import ingest_branch, ingest_commit
 from .log import session_log
 from .plan import plan
 from .recover import Recovered, recover
-from .report import activity, board, day, fleet, standup
+from .report import activity, board, day, fleet, period, standup
 from .session import Brief, brief, checkout, inbox, track
 from .setup import InitReport, init
 from .sync import rebuild, sync
@@ -31,7 +32,7 @@ from .update import update
 
 __all__ = [
     # the five MCP tools
-    "plan", "next_task", "update", "edit", "ask", "search", "board", "standup", "fleet", "activity", "day",
+    "plan", "next_task", "update", "edit", "ask", "search", "board", "standup", "fleet", "activity", "day", "period", "Selector",
     "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path", "recover", "Recovered",
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",

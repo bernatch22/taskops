@@ -51,7 +51,7 @@ clone has none.
 | `taskops_update` | Progress, a comment, a handoff, a close — and `mentions` to message another developer's agent. |
 | `taskops_ask` | One task in full: spec, conversation, commits, what blocks it, what it blocks, who else touches its files. |
 | `taskops_plan` | A whole decomposition in one call — tasks, tree and dependencies, with `after` referencing earlier entries by index. |
-| `taskops_report` | `board`, `standup`, `day`. Generated, so they cannot be out of date. |
+| `taskops_report` | `board`, `standup`, `day`, `range` (a span of days, or the whole project). Generated, so they cannot be out of date. |
 
 There is no sixth tool for messaging. Sending is `update` with `mentions`, so a message about a
 task lives in that task's thread and is still findable in three weeks. Receiving is not a tool

@@ -19,7 +19,7 @@ from .commit import CommitRef
 from .event import Event
 from .task import Task
 
-__all__ = ["CommitStat", "ClosedCard", "DayReport", "ReportFile"]
+__all__ = ["CommitStat", "ClosedCard", "PeriodReport", "DayReport", "ReportFile"]
 
 
 class CommitStat(CommitRef):
@@ -56,19 +56,43 @@ class ClosedCard(TypedDict):
     after three days of work shipped all of it, and showing one commit would understate it."""
 
 
-class DayReport(TypedDict):
-    """The day, as one object."""
+class PeriodReport(TypedDict):
+    """A WINDOW of calendar days, as one object. One day is the case where both ends match.
+
+    ONE contract rather than a day report and a range report side by side: they carry exactly
+    the same facts over a wider window, and two shapes would drift the moment a field was
+    added to the one somebody happened to be reading.
+    """
 
     repo: str
-    date: str
-    """`YYYY-MM-DD`, in the reader's LOCAL calendar — the window is [00:00, 24:00) of it."""
+    from_date: str
+    """`YYYY-MM-DD`, in the reader's LOCAL calendar. The window opens at its 00:00."""
+
+    to_date: str
+    """`YYYY-MM-DD`, INCLUSIVE — the window closes at the midnight AFTER it."""
+
+    label: str
+    """What a human calls this window, and what names its file: `2026-07-28` for one day,
+    `2026-07-22..2026-07-28` for a range, `all` for the whole project. Derived and never
+    typed, so the heading of a report and the name of the file on disk cannot disagree."""
 
     closed: list[ClosedCard]
+    dropped: int
+    """Closed cards the window held and this report does NOT carry, because the cap cut them.
+
+    Reported rather than silent, exactly as the activity view reports truncation: a month
+    that closed 400 cards and shows 200 of them is a fine report and a terrible lie."""
+
     in_flight: list[Task]
     blocked: list[Task]
     conversations: list[Event]
     actors: list[ActorRoll]
     commits_total: int
+
+
+DayReport = PeriodReport
+"""The one-day case, under the name every caller already used. An alias and not a second
+TypedDict — a subclass would be a second shape to keep in step for no gain."""
 
 
 class ReportFile(TypedDict):
