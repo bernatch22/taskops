@@ -21,6 +21,8 @@ from .._clock import now
 from .._errors import AlreadyWritten
 from ..contracts import ReportFile
 from ..engine import (
+    OnPass,
+    OnText,
     label_of,
     missing_events,
     narrate,
@@ -76,8 +78,12 @@ def read_report(start: Path | str, date_text: str = "") -> ReportFile:
 
 
 def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",
-           force: bool = False) -> Path:
+           force: bool = False, on_pass: OnPass = None, on_text: OnText = None) -> Path:
     """Write the window's report if it is missing, then have Claude narrate it.
+
+    The two callbacks are how a caller SEES it happen — which pass is running, and the prose as
+    it is written. Optional, and nothing here prints: a use case that wrote to stdout would be
+    unusable from the HTTP transport, which calls this same function.
 
     Two failures are kept apart on purpose. The dossier is written FIRST and committed to disk
     before the model is called, so a narration that fails — no `claude`, not logged in, a
@@ -97,7 +103,8 @@ def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",
         if not is_pending(report) and not force:
             raise AlreadyWritten(f"{path} already carries a narration — read it, or pass "
                                  f"--force to replace it (the old one is lost)")
-        path.write_text(narrated(report, narrate(report, model=model)), encoding="utf-8")
+        prose = narrate(report, model=model, on_pass=on_pass, on_text=on_text)
+        path.write_text(narrated(report, prose), encoding="utf-8")
         return path
 
 
