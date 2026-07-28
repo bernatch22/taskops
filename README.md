@@ -233,7 +233,7 @@ The token is the trust boundary. It is minted by the server, stored at `0600`, c
 - **Activity** — the event log as a history: a filterable timeline, and a roll-up per actor ranked by tasks touched rather than noise made.
 - **Reports** — the daily dossiers, rendered. Generate a narration from the browser and **watch it being written**, streamed over the same socket.
 
-The UI ships inside the wheel as a committed bundle — `pip install taskops` serves the board with no Node toolchain anywhere.
+The UI ships inside the wheel as a committed bundle — `pip install taskops-cli` serves the board with no Node toolchain anywhere.
 
 ## Architecture, briefly
 
