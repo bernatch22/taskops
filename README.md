@@ -41,7 +41,21 @@ claude mcp add taskops -- python3 -m taskops.transports.mcp
 
 For the hooks and skills too, install the plugin in `plugin/`. `taskops init` is safe to
 re-run, and re-running is how you repair a fresh clone — `.git/hooks` is not tracked, so a
-clone has none.
+clone has none. It also **rewrites** a hook line it wrote before, which is how a repository
+set up by an older taskops picks up the current wiring.
+
+### Three doors, one per audience
+
+```
+taskops <cmd>                       a person. seven commands, all seven listed.
+taskops.mcp                         an agent. seven tools.
+python -m taskops.transports.hooks  git and Claude Code. nobody types it.
+```
+
+The third one is written into `.git/hooks/*` by `taskops init` and into the plugin's
+`hooks.json`. It exists because both of those callers *execute a command* — git has no MCP
+client — and it is separate because a door shared with the developer's CLI is a door whose
+surface gets decided by the wrong audience.
 
 ## The five tools
 
@@ -85,8 +99,8 @@ union of two logs *is* the correct log.
 
 ## Status
 
-**Working and gated:** the engine, storage, the five MCP tools, an 11-command CLI, git-binding
-with real hooks, multi-developer sync, and the plugin. 383 tests, `ruff` + `mypy` + `pyright`
+**Working and gated:** the engine, storage, the five MCP tools, a seven-command CLI, git-binding
+with real hooks, multi-developer sync, and the plugin. 908 tests, `ruff` + `mypy` + `pyright`
 strict, and 13 executable architecture invariants.
 
 **Not built yet:** the burndown chart. The live web board (`taskops ui`) ships; the rest of

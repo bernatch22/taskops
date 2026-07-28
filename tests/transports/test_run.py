@@ -136,22 +136,20 @@ def _cards(project: Path) -> list[str]:
             for card in column["cards"]]
 
 
-def test_the_old_dispatch_still_takes_spawn_and_still_runs(project: Path,
-                                                           spawns: list[str]) -> None:
-    """Hidden, never removed: `dispatch --spawn` is written into scripts that already exist,
-    so it keeps working — with its help text pointing at the new name."""
-    assert main(["dispatch", "--repo", str(project), "--count", "1", "--spawn",
-                 "--actor", "dev:berna"]) == 0
-    assert len(spawns) == 1
-    assert "dispatch" not in build_parser().format_help().split("options:")[0]
+def test_dispatch_is_no_longer_a_command_of_its_own() -> None:
+    """`dispatch --spawn` was hidden, then removed: an orchestrator dispatches over MCP, and
+    the person who wants processes types `run`. The MODULE stays, because `run`'s flags are
+    declared in it — which is what the test below actually pins."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["dispatch"])
 
 
-def test_run_takes_the_same_flags_dispatch_does() -> None:
-    """One parser, two names. A `run` that had quietly lost `--prefix` would send a fleet out
-    under the wrong actor ids and nothing would say so."""
+def test_run_takes_every_flag_a_dispatch_takes() -> None:
+    """A `run` that had quietly lost `--prefix` would send a fleet out under the wrong actor
+    ids and nothing would say so. `add_dispatch_args` is the single declaration; this asserts
+    `run` still goes through it rather than growing its own copy."""
     shared = {"repo", "tasks", "count", "prefix", "model", "dry_run", "actor"}
-    for name in ("run", "dispatch"):
-        assert shared <= set(vars(build_parser().parse_args([name])))
+    assert shared <= set(vars(build_parser().parse_args(["run"])))
 
 
 @pytest.fixture
@@ -205,10 +203,9 @@ def test_use_api_key_gives_the_capability_back(project: Path, envs: list[dict[st
 
 
 def test_the_escape_hatch_is_cli_only() -> None:
-    """`dispatch` and the MCP tool must not offer it: an agent that can point a fleet at an API
-    balance can spend money nobody approved."""
+    """The MCP tool must not offer it: an agent that can point a fleet at an API balance can
+    spend money nobody approved. `run` is typed by a person, and that is the point."""
     from taskops.contracts.tools import DispatchParams
 
-    assert "use_api_key" not in vars(build_parser().parse_args(["dispatch"]))
     assert "use_api_key" in vars(build_parser().parse_args(["run"]))
     assert "use_api_key" not in DispatchParams.__annotations__

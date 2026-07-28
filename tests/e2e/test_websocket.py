@@ -98,9 +98,15 @@ class Client:
 
 
 def write_from_another_process(root: Path, task_id: str, text: str) -> None:
-    subprocess.run([sys.executable, "-m", "taskops.transports.cli.main", "update", task_id,
-                    "--repo", str(root), "--comment", text, "--actor", "agent:ana/two"],
+    subprocess.run([sys.executable, "-c", _WRITE, str(root), task_id, text],
                    capture_output=True, check=True, timeout=60)
+
+
+_WRITE = ("import sys; from taskops.usecases import update; "
+          "update(sys.argv[1], sys.argv[2], comment=sys.argv[3], actor='agent:ana/two')")
+"""The use case, in a separate interpreter. It used to be `-m taskops.transports.cli.main
+update`, which stopped existing when the agent protocol left the CLI for MCP — and what this
+test needs is another PROCESS writing, not a particular spelling of the write."""
 
 
 def test_the_handshake_completes_with_the_right_accept_key(server: int) -> None:

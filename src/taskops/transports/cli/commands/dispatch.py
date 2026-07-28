@@ -1,9 +1,10 @@
-"""`taskops dispatch` — prepare worker agents, one per card.
+"""Preparing worker agents, one per card — the flags and the call `taskops run` is built on.
 
-Hidden since `taskops run` took over the half of this that starts processes. The flags are
-declared here and `run` imports them, so the two commands cannot drift into taking
-different options — which is what a second copy of this parser would produce the first time
-one of them grew a flag.
+`taskops dispatch` was hidden once `taskops run` took over the half of this that starts
+processes, and it is gone now: an orchestrator dispatches over MCP (`taskops_dispatch`), and
+the person who wants processes types `run`. What stays is this module, because `run`'s flags
+are declared here — a second copy of that parser would drift the first time either grew an
+option.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from ....render import render_dispatch
 from ....usecases import dispatch as launch_workers
 from ._shared import add_target, repo_of
 
-__all__ = ["register", "add_dispatch_args", "dispatch_with"]
+__all__ = ["add_dispatch_args", "dispatch_with"]
 
 
 def add_dispatch_args(parser: argparse.ArgumentParser) -> None:
@@ -30,14 +31,6 @@ def add_dispatch_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--actor", default="", help="who is dispatching")
 
 
-def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("dispatch", help="launch worker agents for ready cards")
-    add_dispatch_args(parser)
-    parser.add_argument("--spawn", action="store_true",
-                        help="deprecated: use taskops run")
-    parser.set_defaults(run=run)
-
-
 def dispatch_with(args: argparse.Namespace, *, spawn: bool) -> str:
     """The one call both commands make. `spawn` is the only thing either of them decides.
 
@@ -48,7 +41,3 @@ def dispatch_with(args: argparse.Namespace, *, spawn: bool) -> str:
         actor=str(args.actor), prefix=str(args.prefix), model=str(args.model),
         dry_run=bool(args.dry_run), spawn=spawn,
         use_api_key=bool(getattr(args, "use_api_key", False))))
-
-
-def run(args: argparse.Namespace) -> str:
-    return dispatch_with(args, spawn=bool(args.spawn))

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from taskops.transports.cli.main import main
+from taskops.transports.hooks.__main__ import main
 from taskops.usecases import ask, check_commit, init, next_task, plan, update
 
 
@@ -54,7 +54,7 @@ def test_init_chains_onto_an_existing_hook(tmp_path: Path) -> None:
     init(tmp_path)
     after = hook.read_text(encoding="utf-8")
     assert "echo mine" in after
-    assert "ingest commit HEAD" in after
+    assert "-m taskops.transports.hooks ingest commit HEAD" in after
     # The absolute interpreter, not a bare `taskops`: git hooks run with git's environment,
     # which routinely cannot see the virtualenv taskops is installed in.
     assert sys.executable in after
@@ -125,13 +125,13 @@ def test_closing_without_a_commit_is_refused(repo: Path) -> None:
     assert closed["task"]["status"] == "done"
 
 
-def test_the_cli_guard_denies_with_exit_code_two(repo: Path) -> None:
+def test_the_commit_hook_denies_with_exit_code_two(repo: Path) -> None:
     """Claude Code reads code 2 as DENY and shows stderr to the MODEL. Any other code lets
     the commit through, so the exact number is load-bearing."""
     planned = plan(repo, [{"title": "Guarded", "spec": "x"}])
     task_id = planned["created"][0]["id"]
     git(repo, "switch", "-q", "-c", f"tk/{task_id}/guarded")
-    code = main(["guard", "commit", "--repo", str(repo), "--message", "nope",
+    code = main(["commit", "--repo", str(repo), "--message", "nope",
                  "--actor", "agent:berna/nobody"])
     assert code == 2
 
@@ -142,4 +142,4 @@ def test_the_guard_fails_open_when_taskops_cannot_run(tmp_path: Path) -> None:
     Fail-open is the deliberate choice: blocking a developer's commit because taskops is
     missing or broken would make the tool something people uninstall.
     """
-    assert main(["guard", "commit", "--repo", str(tmp_path), "--message", "x"]) == 0
+    assert main(["commit", "--repo", str(tmp_path), "--message", "x"]) == 0

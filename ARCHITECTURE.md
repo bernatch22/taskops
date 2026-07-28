@@ -25,13 +25,41 @@ it deviates the deviation is documented in the module that makes it.
                               │
   L5  usecases/               one module per verb. sync. returns contracts.
                               │
-  L6  transports/             cli · mcp · http. thin: they may NOT import L2 or L3.
+  L6  transports/             cli · mcp · hooks · http. thin: they may NOT import L2 or L3.
 ```
 
 The load-bearing rule is the last one. A transport that reached into `storage` would be a
 fourth place where a decision lives, and the CLI, MCP and HTTP answers would start
 disagreeing about what `done` requires. That is the failure this whole shape exists to
 prevent, and `test_transports_never_reach_past_the_use_cases` is the fence.
+
+## One transport per audience
+
+```
+  cli/     a PERSON            `taskops <cmd>`                        7 commands, 7 listed
+  mcp/     an AGENT            `python -m taskops.transports.mcp`     7 tools
+  hooks/   git + Claude Code   `python -m taskops.transports.hooks`   nobody types it
+  http/    a BROWSER           `taskops ui`                           the live board
+```
+
+The separation used to be declared and not real. `taskops --help` listed seven commands and
+hid thirteen, and both `.git/hooks/*` and the plugin's `hooks.json` invoked
+`taskops.transports.cli.main` — so git and Claude Code entered through the developer's door
+and the CLI's surface was being decided by three audiences at once.
+
+`hooks/` exists because of a physical limit, not a preference: a Claude Code hook is a
+`{"type": "command"}` entry and a git hook is a shell script, so both EXECUTE something, and
+git has no MCP client. Something runnable has to exist. What changed is that it stopped being
+the thing a person types. Its subcommands are named after the EVENT — `pre-tool-use`,
+`post-tool-use`, `session-start`, `stop`, `commit`, `ingest`, `sync` — because the reader of
+those names is somebody staring at a hook line, not at a menu of verbs.
+
+The exit codes there are the contract, and they are why the CLI's `main` no longer forwards an
+int: `commit` answers **2** to deny with its reason on stderr (that is what Claude Code shows
+the model), the Claude Code events answer **0** always with the decision inside the JSON, and
+everything fails OPEN. Every git hook line ends in `|| true`, so a command that does not exist
+fails in complete silence — `tests/e2e/test_hook_wiring.py` commits in a real repository and
+asserts the binding happened, which is the only thing that catches a bad rename.
 
 ## The invariants, and what each one is protecting
 
@@ -113,19 +141,22 @@ Both, not either. A branch name is gone the moment the branch is deleted, which 
 end of a branch's life; a trailer cannot be checked before the commit is written.
 
 ```
-  PreToolUse(Bash≈git commit) ─▶ taskops guard   can DENY (exit 2, stderr → the model)
-  post-commit                 ─▶ taskops ingest  records everything, including what the
-                                                 guard never saw (--no-verify, a human's
-                                                 terminal commit, a rebase)
+  PreToolUse(Bash≈git commit) ─▶ …hooks pre-tool-use   can DENY (the JSON says so)
+  a hook line asking directly ─▶ …hooks commit         can DENY (exit 2, stderr → the model)
+  post-commit                 ─▶ …hooks ingest commit  records everything, including what
+                                                       the guard never saw (--no-verify, a
+                                                       human's terminal commit, a rebase)
 ```
 
 The guard **fails open**. A coordination tool that blocks commits because its database was
 locked has broken the thing it exists to support, and `post-commit` will usually record the
 commit anyway.
 
-Git hooks embed `sys.executable`, not a bare `taskops`. Hooks run with git's environment,
-which routinely cannot see the virtualenv taskops is installed in — a bare command resolves
-to nothing and the hook silently does nothing, because every line ends in `|| true`.
+Git hooks embed `sys.executable -m taskops.transports.hooks`, not a bare `taskops`. Hooks run
+with git's environment, which routinely cannot see the virtualenv taskops is installed in — a
+bare command resolves to nothing and the hook silently does nothing, because every line ends
+in `|| true`. `taskops init` REWRITES the line it wrote last time rather than reporting
+"already installed", so re-running it is what repairs a repository set up by an older version.
 
 ## Agent-to-agent messaging, honestly
 
@@ -133,9 +164,9 @@ Claude Code cannot be pushed to mid-turn. A session only listens when a hook fir
 is stated plainly rather than dressed up:
 
 ```
-  SessionStart  ─▶ taskops brief      the agent starts knowing its tasks and messages
-  PostToolUse   ─▶ taskops inbox      anything new lands in its NEXT tool call
-  Stop          ─▶ taskops checkout   its work becomes a comment, unprompted
+  SessionStart  ─▶ …hooks session-start   the agent starts knowing its tasks and messages
+  PostToolUse   ─▶ …hooks post-tool-use   anything new lands in its NEXT tool call
+  Stop          ─▶ …hooks stop            its work becomes a comment, unprompted
 ```
 
 So "real time" between agents means *within one tool call of the sender writing it* — seconds

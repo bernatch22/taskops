@@ -1,8 +1,12 @@
-"""`taskops plan` — create tasks from a JSON file or stdin.
+"""Create tasks from a JSON file or stdin — reached as `taskops tasks plan`.
 
 JSON rather than flags: a plan is a nested structure with dependencies in it, and every
 attempt to express one in shell arguments turns into a worse JSON. `-` reads stdin, which is
-what makes `... | taskops plan -` work from a script.
+what makes `... | taskops tasks plan -` work from a script.
+
+The top-level `taskops plan` was the agent's, and agents have `taskops_plan`. The subparser
+went; the function is still the only creator of a card, which is what keeps a hand-typed card
+carrying the same event body a planned one does.
 """
 
 from __future__ import annotations
@@ -15,17 +19,9 @@ from typing import Any, cast
 from ...._errors import BadRequest
 from ....render import render_plan
 from ....usecases import plan as create
-from ._shared import add_target, repo_of
+from ._shared import repo_of
 
-__all__ = ["register"]
-
-
-def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("plan", help="create tasks from JSON (a file, or - for stdin)")
-    add_target(parser)
-    parser.add_argument("source", help="path to a JSON array of tasks, or - for stdin")
-    parser.add_argument("--actor", default="", help="who is calling")
-    parser.set_defaults(run=run)
+__all__ = ["run"]
 
 
 def run(args: argparse.Namespace) -> str:

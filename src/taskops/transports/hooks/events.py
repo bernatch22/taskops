@@ -1,18 +1,22 @@
 """One Claude Code hook event -> the JSON object the harness reads back.
 
-Split from `hook` the same way `mcp/dispatch` is split from `mcp/protocol`: that module is the
-wire (read stdin, route, write stdout), and this one is what each event MEANS. Every handler
-here returns `{}` when there is nothing to say, and that silence is load-bearing — these fire
-on every tool call, so a handler that always spoke would inject noise into a session hundreds
-of times.
+Split from `claude` the same way `mcp/dispatch` is split from `mcp/protocol`: that module is
+the wire (read stdin, route, write stdout), and this one is what each event MEANS. Every
+handler here returns `{}` when there is nothing to say, and that silence is load-bearing —
+these fire on every tool call, so a handler that always spoke would inject noise into a
+session hundreds of times.
+
+This is also where `brief`/`inbox`/`track`/`checkout` ended up. They used to be four CLI
+commands a hook line typed one at a time; the events call the same use cases directly, so the
+commands were a spelling of this file that a person could reach and nobody should.
 """
 
 from __future__ import annotations
 
 from typing import Any, cast
 
-from ....render import render_brief, render_inbox
-from ....usecases import brief, check_command, checkout, inbox, track
+from ...render import render_brief, render_inbox
+from ...usecases import brief, check_command, checkout, inbox, track
 
 __all__ = ["pre_tool_use", "post_tool_use", "session_start", "stop"]
 
