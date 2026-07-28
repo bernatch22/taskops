@@ -29,7 +29,8 @@ Two rules are enforced rather than suggested:
 ## Install
 
 ```sh
-pip install taskops                # or: uv tool install taskops
+pip install taskops-cli            # the command, the import and the MCP module
+                                   # are all `taskops` — only the PyPI name differs
 
 cd your-repo
 taskops init                       # creates .taskops/, installs the git hooks

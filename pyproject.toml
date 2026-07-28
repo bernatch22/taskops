@@ -3,8 +3,11 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "taskops"
+name = "taskops-cli"
 dynamic = ["version"]                       # single-sourced from _version.py
+# `taskops` on PyPI belongs to an unrelated scheduling framework, so the DISTRIBUTION is
+# `taskops-cli` while the import, the command and everything a user types stay `taskops` —
+# the same split pillow/PIL has lived with for years.
 description = "The coordination substrate for Claude Code agents: persistent tasks with a dependency DAG, atomic claims, git-bound commits, and a live board."
 readme = "README.md"
 requires-python = ">=3.10"
