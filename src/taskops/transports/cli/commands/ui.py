@@ -1,4 +1,4 @@
-"""`taskops studio` — the live board, and its API, on one port."""
+"""`taskops ui` — the live board, and its API, on one port."""
 
 from __future__ import annotations
 
@@ -14,9 +14,24 @@ __all__ = ["register"]
 
 DEFAULT_PORT = 2140
 
+_HELP = "serve the live web interface (board, activity, reports)"
+
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("studio", help="serve the live board and the JSON API")
+    """Two parsers, one `run`.
+
+    `studio` was the name until the web interface stopped being one screen, and a command in
+    somebody's shell history — or in a script, or a README they already wrote — must not start
+    failing because we renamed it. The alias registers with no `help`, so it never appears in
+    `taskops --help`: it is a bridge for existing muscle memory, not a second documented way in.
+    """
+    _flags(sub.add_parser("ui", help=_HELP))
+    _flags(sub.add_parser("studio")).set_defaults(deprecated_name=True)
+
+
+def _flags(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    """Every flag on both parsers, from one place — an alias that drifted on `--readonly`
+    would be worse than no alias at all."""
     add_target(parser)
     parser.add_argument("--host", default="127.0.0.1",
                         help="bind address (default: loopback only)")
@@ -27,7 +42,8 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
                         help="refuse every write — for a board on a shared screen")
     parser.add_argument("--rate-limit", type=int, default=0, dest="rate_limit",
                         help="requests per minute, 0 for none")
-    parser.set_defaults(run=run)
+    parser.set_defaults(run=run, deprecated_name=False)
+    return parser
 
 
 def run(args: argparse.Namespace) -> str:
@@ -35,13 +51,16 @@ def run(args: argparse.Namespace) -> str:
 
     The banner goes to STDERR so it stays visible when stdout is redirected, and it is the only
     thing this command prints — the request log is silenced in the handler, or the URL a person
-    needs would scroll away under the board's own polling.
+    needs would scroll away under the board's own polling. The deprecation line joins it there
+    for the same reason: it is a note to a human, never part of the output.
     """
+    if getattr(args, "deprecated_name", False):
+        print("taskops studio is now taskops ui", file=sys.stderr)
     root = locate(repo_of(args))
     policy = Policy(token=args.token, readonly=bool(args.readonly),
                     rate_limit=int(args.rate_limit))
     server = build_server(str(args.host), int(args.port), root, policy)
-    print(f"taskops studio → http://{args.host}:{bound_port(server)}/  ({root})"
+    print(f"taskops ui → http://{args.host}:{bound_port(server)}/  ({root})"
           + ("  [token required]" if args.token else "")
           + ("  [read-only]" if args.readonly else ""), file=sys.stderr)
     try:

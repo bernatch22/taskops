@@ -2,6 +2,12 @@
 
 ## Unreleased — a card remembers which sessions worked it
 
+- **`taskops studio` is now `taskops ui`**, and the TS source directory moved from `studio/` to
+  `ui/` to match the bundle path it has always written (`transports/http/ui/`). "Studio" named one
+  screen; the surface is a board, an activity timeline and reports, and a command called `ui` is
+  the one somebody guesses without reading anything. The old name is kept as a hidden alias with
+  every flag identical — it prints `taskops studio is now taskops ui` to stderr and then serves —
+  because a rename that breaks a line in somebody's shell history buys nothing.
 - **The conversation viewer found nothing for interactively-worked cards.** A card's transcript was
   located by path plus a `gitBranch` filter, which identifies a dispatched agent (it makes a branch)
   and loses the most ordinary case there is: a person who claims a card in their own terminal and

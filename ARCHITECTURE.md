@@ -78,7 +78,7 @@ about the past — the union of two logs *is* the correct log.
 
 **WAL, unlike megabrain.** That engine documents its rollback-journal choice as a property
 of its workload: writes are rare there, so readers already never wait. Here a hundred agents
-renew leases and append events continuously while the studio reads the board, so a reader
+renew leases and append events continuously while the UI reads the board, so a reader
 must never block behind a writer. Same reasoning, opposite conclusion.
 
 ## Concurrency: leases, not locks
@@ -139,7 +139,7 @@ is stated plainly rather than dressed up:
 ```
 
 So "real time" between agents means *within one tool call of the sender writing it* — seconds
-for a working agent. The human-facing real time is the studio, which sees an event as soon as
+for a working agent. The human-facing real time is `taskops ui`, which sees an event as soon as
 it is committed.
 
 Delivery is tracked per `(actor, event)`, never by a timestamp cursor: hooks fire in an order

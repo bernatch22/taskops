@@ -1,8 +1,8 @@
 {
-  "name": "taskops-studio",
+  "name": "taskops-ui",
   "private": true,
   "version": "0.1.0",
-  "description": "The taskops studio: a live board over the engine's own HTTP contracts.",
+  "description": "The taskops web interface: a live board over the engine's own HTTP contracts.",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -52,7 +52,7 @@ def route(project: Path) -> Any:
 def test_the_board_serialises_to_the_shape_the_ui_expects(route: Any) -> None:
     """The contracts ARE the wire format, so this is the check that they still are.
 
-    `studio/src/contracts.ts` mirrors these names by hand. A rename on the Python side that is
+    `ui/src/contracts.ts` mirrors these names by hand. A rename on the Python side that is
     not mirrored shows up in the UI as `undefined`, and this is where it should fail instead.
     """
     payload = body_of(route(get("/api/board")))
@@ -100,7 +100,7 @@ def test_an_unknown_non_api_path_serves_the_app(route: Any) -> None:
     404 — the classic broken-refresh bug in a single-page app."""
     reply = route(get("/task/tk-4f2a9c"))
     assert reply.status == 200
-    assert b"<!doctype html" in reply.body.lower() or b"studio not built" in reply.body
+    assert b"<!doctype html" in reply.body.lower() or b"ui not built" in reply.body
 
 
 # ---- the policy
@@ -161,9 +161,9 @@ def test_a_bad_token_does_not_consume_the_rate_budget(project: Path) -> None:
 def test_a_comment_reaches_the_thread(route: Any) -> None:
     board = body_of(route(get("/api/board")))
     task_id = board["columns"][0]["cards"][0]["task"]["id"]
-    assert route(post("/api/comment", {"task": task_id, "text": "From the studio."})).status == 200
+    assert route(post("/api/comment", {"task": task_id, "text": "From the UI."})).status == 200
     view = body_of(route(get("/api/task", id=task_id)))
-    assert view["thread"][-1]["body"]["text"] == "From the studio."
+    assert view["thread"][-1]["body"]["text"] == "From the UI."
 
 
 def test_a_comment_with_mentions_becomes_a_directed_message(route: Any, project: Path) -> None:
@@ -216,7 +216,7 @@ def test_a_malformed_body_is_a_400_not_a_traceback(route: Any) -> None:
 
 
 def test_the_activity_endpoint_serialises_the_shape_the_view_expects(route: Any) -> None:
-    """`studio/src/contracts.ts` mirrors these names by hand, so a rename that is not mirrored shows
+    """`ui/src/contracts.ts` mirrors these names by hand, so a rename that is not mirrored shows
     up in the history as `undefined` — this is where it should fail instead."""
     payload = body_of(route(get("/api/activity", since="30d")))
     assert set(payload) == {"repo", "since", "events", "titles", "actors", "kinds", "truncated"}
@@ -243,7 +243,7 @@ def test_an_unreadable_window_is_refused_rather_than_guessed(route: Any) -> None
 
 
 def test_the_transcript_is_not_on_this_surface(route: Any) -> None:
-    """The studio no longer reads conversations, so the route is gone rather than dormant. `taskops
+    """The UI no longer reads conversations, so the route is gone rather than dormant. `taskops
     log` still exists in the terminal, which is where reading a transcript belongs — a browser panel
     that fetched hundreds of kilobytes per card click was paying for something nobody read."""
     assert route(get("/api/log")).status == 404

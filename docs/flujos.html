@@ -134,23 +134,23 @@ tailwind.config = {
   <div class="space-y-2">
     <p class="font-mono text-sm text-lime">se levanta así, desde el repo</p>
     <pre class="font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">cd ~/mi-repo
-taskops studio                       # → http://127.0.0.1:2140/
-taskops studio --port 3000
-taskops studio --readonly            # para una pantalla en la pared
-taskops studio --host 0.0.0.0 --token "$(openssl rand -hex 16)"</pre>
+taskops ui                       # → http://127.0.0.1:2140/
+taskops ui --port 3000
+taskops ui --readonly            # para una pantalla en la pared
+taskops ui --host 0.0.0.0 --token "$(openssl rand -hex 16)"</pre>
   </div>
 
   <div class="space-y-2">
     <p class="font-mono text-sm text-amber">los proyectos NO se registran en ningún lado</p>
     <p class="text-dim text-sm leading-relaxed">
-      Y eso es una decisión, no un olvido. <strong>Un studio = un repositorio.</strong> No hay
+      Y eso es una decisión, no un olvido. <strong>Una UI = un repositorio.</strong> No hay
       registry global, no hay lista de proyectos, no hay base de datos central. El estado vive
       dentro del repo (<code class="font-mono">.taskops/</code>), así que el proyecto <em>es</em> el
-      directorio: <code class="font-mono">cd</code> y levantás. Dos proyectos = dos studios en dos
+      directorio: <code class="font-mono">cd</code> y levantás. Dos proyectos = dos UIs en dos
       puertos.
     </p>
-    <pre class="diagram font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">~/proyecto-a/.taskops/  ──▶  taskops studio --port 2140
-~/proyecto-b/.taskops/  ──▶  taskops studio --port 2141
+    <pre class="diagram font-mono text-xs bg-ink text-paper p-5 overflow-x-auto">~/proyecto-a/.taskops/  ──▶  taskops ui --port 2140
+~/proyecto-b/.taskops/  ──▶  taskops ui --port 2141
 
 la búsqueda: el comando camina hacia ARRIBA buscando .taskops/, igual que git con .git
 así que funciona desde cualquier subdirectorio. $TASKOPS_ROOT lo pisa (es lo que
@@ -214,7 +214,7 @@ usan los workers dispatchados desde su worktree).</pre>
 <section class="space-y-4">
   <h2 class="text-2xl">Estado honesto</h2>
   <div class="grid gap-px bg-ink text-paper font-mono text-xs">
-    <div class="p-4"><span class="text-lime">✓ ANDA, verificado hoy</span><br><span class="text-faint">crear cards (3 formas) · dispatch de workers reales que codean, commitean y cierran solos · assignee que no se puede evadir · deps con desbloqueo automático · mensajería agente↔agente exactly-once · guard de commits (deny + inyección del trailer) · studio React en vivo por WS con fallback SSE · sync multi-dev por git · conciencia de branches (pushed / unpushed / no visible) · 493 tests, ruff+mypy+pyright strict, 15 invariantes ejecutables</span></div>
+    <div class="p-4"><span class="text-lime">✓ ANDA, verificado hoy</span><br><span class="text-faint">crear cards (3 formas) · dispatch de workers reales que codean, commitean y cierran solos · assignee que no se puede evadir · deps con desbloqueo automático · mensajería agente↔agente exactly-once · guard de commits (deny + inyección del trailer) · UI React en vivo por WS con fallback SSE · sync multi-dev por git · conciencia de branches (pushed / unpushed / no visible) · 493 tests, ruff+mypy+pyright strict, 15 invariantes ejecutables</span></div>
     <div class="p-4"><span class="text-amber">✕ NO existe</span><br><span class="text-faint">el server multi-proyecto con usuarios e invitaciones (necesita registry, cuentas, permisos — es otro sistema) · relay para chat cross-máquina en vivo (hoy los mensajes entre máquinas viajan a velocidad de push/pull) · editar el spec/título de una card después de crearla ← <strong>hueco real</strong> · burndown · taskops watch</span></div>
   </div>
 </section>

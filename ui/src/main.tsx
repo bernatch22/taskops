@@ -1,6 +1,6 @@
 /* The app: a header, a board, and a drawer. That is the whole component tree.
  *
- * Deliberately flat. There is no router, no store and no provider: the studio has one screen and
+ * Deliberately flat. There is no router, no store and no provider: the UI has one screen and
  * one piece of shared state, and every layer of indirection between a click and a fetch is a layer
  * somebody has to read before they can change anything. */
 

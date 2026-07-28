@@ -1,6 +1,6 @@
 /* The top bar: what you are looking at, whether it is live, and search.
  *
- * The live dot is the most important pixel in the studio. Everything else on screen could be
+ * The live dot is the most important pixel in the UI. Everything else on screen could be
  * twenty minutes stale and look identical, so a board with no honest liveness signal is a board
  * people stop trusting the first time they are burned by one. */
 

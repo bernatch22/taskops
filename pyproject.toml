@@ -53,7 +53,7 @@ where = ["src"]
 include = ["taskops*"]
 
 [tool.setuptools.package-data]
-# The studio bundle and the agent-facing guide ship INSIDE the package: a wheel
+# The UI bundle and the agent-facing guide ship INSIDE the package: a wheel
 # has to be able to serve the UI without a node toolchain, and `taskops init`
 # has to be able to write GUIDE.md into a repo it was installed into.
 taskops = ["py.typed", "assets/*", "transports/http/ui/*"]
