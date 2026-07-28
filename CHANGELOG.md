@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased — `taskops login`: entrás con tu GitHub y el remote se configura solo
+
+El paso flojo de armar un equipo no era técnico: *"y le emitís un token a cada developer"*.
+Alguien mintea un secreto, lo manda por chat, y lo rota a mano cuando una persona se va — o
+sea, nunca. El equipo YA está de acuerdo sobre quién lo integra: eso vive en los repos de
+GitHub a los que apuntan los proyectos del server. Entonces que pregunte GitHub, no un admin.
+
+- **`taskops login <url>`** (comando VISIBLE, `cli/commands/login.py`): saca el token de
+  GitHub de `gh auth token` (timeout 5 s, degrada en silencio) o lo pide con `getpass` — nunca
+  con eco, porque un token tipeado en un prompt visible queda en el scrollback y en el
+  history. Un `POST /api/auth/github` y devuelve login, proyectos, y **una línea lista para
+  pegar por proyecto**: `taskops remote add <url>/<proyecto>`. `--logout` olvida ese server,
+  `--show` imprime la sesión (la pantalla de unlock de la UI la pide).
+- **El token de GitHub NO se guarda.** Vive en memoria el tiempo de UNA llamada. Lo que se
+  persiste es la sesión que emitió el server: alcanza a UN server, expira sola en 7 días, y se
+  puede tirar de los dos lados. Ahí está el argumento entero — una `sessions.json` robada
+  cuesta un server por una semana; un token de GitHub robado cuesta todos los repos que esa
+  persona alcanza, para siempre.
+- **`~/.taskops/sessions.json`, 0600, en el HOME y no en un repo** (`usecases/_sessionfile.py`,
+  las mismas mecánicas de `_remotefile`: `os.open` con el modo, nunca `write_text` + `chmod`).
+  En el home porque un login es de la PERSONA — un developer tiene diez checkouts de tres
+  repos — y porque un archivo que nunca entra a un work tree no puede entrar a un commit.
+- **`taskops remote add <url>/<proj>` sin `--token`** usa la sesión guardada, matcheando por
+  prefijo de URL (lo que se pasa es `<server>/<proyecto>`). Se guarda con prefijo `session:`
+  para que la FORMA de lo que hay en disco diga qué clase de secreto es; el prefijo es local y
+  muere en el `_request` — al cable va `Bearer <session>` pelado, que es lo que dice el
+  contrato. Sin token y sin sesión, el error nombra las DOS salidas.
+- **Una sesión vencida se explica.** Un 401 con credencial de sesión dice "la sesión para X
+  venció — corré `taskops login X` de nuevo"; con un token de proyecto sigue siendo el 401
+  verbatim del server. Un 401 pelado deja al lector adivinando entre red, token y permiso.
+- **La sesión no se imprime nunca sin que la pidas.** El login muestra el login de GitHub y
+  los proyectos; una terminal es algo que la gente screenshotea. Está testeado, junto con el
+  0600, con que el token de GitHub no toca el disco, y con multi-server que no se pisa.
+- `_wireclient` se partió: `_wirereply.py` se lleva las tres funciones que leen la respuesta
+  (no saben que hay una red, así que se testean desde un literal) y el cliente entró de nuevo
+  en el presupuesto de líneas con las rutas de auth adentro.
+
 ## Unreleased — claims atómicos en remoto: dos agentes en dos máquinas no agarran la misma card
 
 El miedo central, textual: *"mi miedo es que se pisen agentes en remoto"*. Con push/pull los

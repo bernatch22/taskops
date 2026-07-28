@@ -20,6 +20,7 @@ from .._errors import BadRequest, NotInitialized
 from ..contracts import Remote
 from ..storage import resolve_root
 from ._remotefile import REMOTE_FILE, load, remote_path, write
+from ._sessionfile import as_credential, session_for
 
 __all__ = ["REMOTE_FILE", "add_remote", "read_remote", "require_remote",
            "remove_remote", "save_cursor", "save_pushed", "remote_path"]
@@ -27,20 +28,36 @@ __all__ = ["REMOTE_FILE", "add_remote", "read_remote", "require_remote",
 read_remote = load
 
 
-def add_remote(start: Path | str, url: str, token: str) -> Remote:
-    """Register the one remote. Refuses a second by naming the one already there."""
+def add_remote(start: Path | str, url: str, token: str = "") -> Remote:
+    """Register the one remote. Refuses a second by naming the one already there.
+
+    With no token, the session `taskops login` stored for that server is used instead — which
+    is the whole point of logging in: a teammate runs three commands and never handles a
+    secret. The lookup is by URL prefix because what is passed here is `<server>/<project>`.
+    """
     root = resolve_root(start)
     address = url.strip().rstrip("/")
     if not address.startswith(("http://", "https://")):
         raise BadRequest(f"`{url}` is not a server address — pass the base URL, "
                          f"like https://taskops.example.com")
-    if not token.strip():
-        raise BadRequest("a remote needs a token — the server rejects every call without one")
+    credential = token.strip() or _from_session(address)
     already = read_remote(start)
     if already is not None:
         raise BadRequest(f"this project already syncs with {already['url']} — one remote per "
                          f"project; run `taskops remote remove` first")
-    return write(root, Remote(url=address, token=token.strip(), pushed=0, cursor=0))
+    return write(root, Remote(url=address, token=credential, pushed=0, cursor=0))
+
+
+def _from_session(address: str) -> str:
+    """The session credential for that server, or the error that names BOTH ways out — a
+    person who has neither needs to know that logging in is an option, and a person on a
+    server without GitHub auth needs to know that a token still works."""
+    found = session_for(address)
+    if found is None:
+        raise BadRequest(f"no token and no session for {address} — either pass "
+                         f"`--token <token>`, or run `taskops login <server-url>` to sign in "
+                         f"with your GitHub account")
+    return as_credential(found["session"])
 
 
 def require_remote(start: Path | str) -> Remote:

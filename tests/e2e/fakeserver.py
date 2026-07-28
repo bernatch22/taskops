@@ -21,6 +21,8 @@ from typing import Any, Iterator
 from urllib.parse import parse_qs, urlparse
 
 TOKEN = "s3cr3t-token"
+SESSION = "5e5510n-deadbeef"
+GITHUB_TOKEN = "gho_pretend-this-came-from-gh"
 
 
 class Fake:
@@ -34,6 +36,24 @@ class Fake:
         self.serve_labels = True
         """False makes `GET /api/report/file` with no label answer 400 — a server from before
         the listing route existed, which the client must degrade past rather than fail on."""
+
+        self.projects = ["axion", "taskops"]
+        self.github_ok = True
+        """False makes the GitHub exchange answer 403 — the member check saying no."""
+
+        self.session_valid = True
+        """False expires the session: every project route answers 401 to `Bearer <session>`
+        while the project token keeps working. That asymmetry is the point — the client has
+        to tell "log in again" apart from "your token is wrong"."""
+
+        self.seen_github_tokens: list[str] = []
+
+    def authenticate(self, github_token: str) -> tuple[int, dict[str, Any]]:
+        """`POST /api/auth/github`, written from the contract text and nothing else."""
+        self.seen_github_tokens.append(github_token)
+        if not self.github_ok:
+            return 403, {"error": "that GitHub account is not on any repo this server serves"}
+        return 200, {"login": "jp", "session": SESSION, "projects": list(self.projects)}
 
     def accept(self, events: list[dict[str, Any]]) -> int:
         new = 0
@@ -76,6 +96,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         route = urlparse(self.path)
         query = parse_qs(route.query)
+        if route.path == "/api/projects":
+            return self._json(200, {"login": "jp",
+                                    "projects": [{"name": name, "path": f"/srv/{name}"}
+                                                 for name in self.fake.projects]})
         if route.path == "/api/sync":
             after = int(query.get("after", ["0"])[0])
             return self._json(200, self.fake.page(after, int(query.get("limit", ["500"])[0])))
@@ -90,6 +114,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"label": label, "content": held[0], "max_seq": held[1]})
 
     def do_POST(self) -> None:                                   # noqa: N802
+        if urlparse(self.path).path == "/api/auth/github":
+            # The one route with no credential: the caller is proving who they are, so
+            # demanding a bearer first would be a chicken-and-egg.
+            status, answer = self.fake.authenticate(str(self._body().get("github_token", "")))
+            return self._json(status, answer)
         if not self._authorised():
             return
         body = self._body()
@@ -107,7 +136,11 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200 if answer.get("stored") else 409, answer)
 
     def _authorised(self) -> bool:
-        if self.headers.get("Authorization") == f"Bearer {TOKEN}":
+        """The project token, OR a session — the contract says the project routes take both."""
+        offered = self.headers.get("Authorization")
+        if offered == f"Bearer {TOKEN}":
+            return True
+        if offered == f"Bearer {SESSION}" and self.fake.session_valid:
             return True
         self._json(401, {"error": "bad or missing token — check `taskops remote`"})
         return False

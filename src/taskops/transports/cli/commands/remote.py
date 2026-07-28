@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 
-from ....usecases import add_remote, read_remote, remove_remote
+from ....usecases import add_remote, is_session, read_remote, remove_remote
 from ._shared import add_target, repo_of
 
 __all__ = ["register"]
@@ -23,7 +23,9 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     inner = parser.add_subparsers(dest="subcommand", metavar="<subcommand>")
     adding = inner.add_parser("add", help="register the one remote for this project")
     adding.add_argument("url", help="the server's base URL, e.g. https://taskops.example.com")
-    adding.add_argument("--token", required=True, help="the bearer the server issued you")
+    adding.add_argument("--token", default="",
+                        help="the bearer the server issued you; omit it to use the session "
+                             "from `taskops login <server-url>`")
     add_target(adding, inherit=True)
     adding.set_defaults(run=run_add)
     dropping = inner.add_parser("remove", help="forget the remote and its token")
@@ -36,13 +38,15 @@ def run_show(args: argparse.Namespace) -> str:
     if found is None:
         return ("no remote — this project syncs through git (`taskops sync`). Add one with "
                 "`taskops remote add <url> --token <token>`")
-    return (f"{found['url']}\n  token   {_masked(found['token'])}\n"
+    label = "session" if is_session(found["token"]) else "token  "
+    return (f"{found['url']}\n  {label} {_masked(found['token'])}\n"
             f"  cursor  seq {found['cursor']} of the server's log")
 
 
 def run_add(args: argparse.Namespace) -> str:
     added = add_remote(repo_of(args), str(args.url), str(args.token))
-    return (f"remote set to {added['url']} — the token is in .taskops/remote.json (mode 0600, "
+    kind = "session" if is_session(added["token"]) else "token"
+    return (f"remote set to {added['url']} — the {kind} is in .taskops/remote.json (mode 0600, "
             f"gitignored). `taskops push` to send this board up.")
 
 
