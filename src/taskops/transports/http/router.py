@@ -41,8 +41,13 @@ def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
     }
 
 
-def build(root: Path, policy: Policy) -> Route:
-    """The one function the server calls per request. Everything else is bound here."""
+def build(root: Path, policy: Policy, base: str = "/") -> Route:
+    """The one function the server calls per request. Everything else is bound here.
+
+    `base` is the URL prefix this table was mounted under — `/` for `taskops ui`, `/<project>/`
+    for one board inside `taskops serve`. It never reaches a route: paths arrive already
+    trimmed, and the only thing that needs it is the `<base>` tag in `index.html`.
+    """
     routes = _table(root, policy)
 
     def dispatch(request: Request) -> Reply:
@@ -55,7 +60,7 @@ def build(root: Path, policy: Policy) -> Route:
             # Everything that is not the API is the single-page app, INCLUDING unknown paths:
             # the UI routes in the browser, so a reload on /task/tk-1 must serve index.html
             # rather than 404 — which is the classic broken-refresh bug in an SPA.
-            return static.serve(request.path)
+            return static.serve(request.path, base)
         return _no_route(request, routes)
 
     return dispatch

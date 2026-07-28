@@ -47,7 +47,7 @@ set up by an older taskops picks up the current wiring.
 ### Three doors, one per audience
 
 ```
-taskops <cmd>                       a person. seven commands, all seven listed.
+taskops <cmd>                       a person. eight commands, all eight listed.
 taskops.mcp                         an agent. seven tools.
 python -m taskops.transports.hooks  git and Claude Code. nobody types it.
 ```

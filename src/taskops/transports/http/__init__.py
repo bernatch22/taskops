@@ -7,11 +7,15 @@ bundle, `router` maps a path to one of them, and `server` is the only file that 
 This is the one place the codebase is allowed to be async-adjacent, and it is not: it uses threads
 (`ThreadingHTTPServer`), which is what lets a live browser park in a generator while the sync
 engine underneath stays sync. See `live` for why the feed is SSE rather than a WebSocket.
+
+`projects` is the one piece that is not part of a single board: it mounts many of them under
+`/<project>/`, which is what `taskops serve` opens and `taskops ui` never uses.
 """
 
 from __future__ import annotations
 
 from .policy import Policy
-from .server import bound_port, build_server
+from .projects import mount
+from .server import bound_port, build_server, serve_route
 
-__all__ = ["Policy", "build_server", "bound_port"]
+__all__ = ["Policy", "build_server", "serve_route", "bound_port", "mount"]

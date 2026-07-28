@@ -11,10 +11,33 @@ import type {
 /* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
  * localStorage so a reload does not lose it. Read once at module load: it cannot change without
  * a navigation, and re-reading storage per request would be a syscall on every poll. */
+/* Where this board is MOUNTED. `/` under `taskops ui`, `/<project>/` under `taskops serve`,
+ * which rewrites the `<base>` tag in index.html on the way out.
+ *
+ * Read from `document.baseURI` rather than from `location.pathname`, and that is the whole
+ * point: the SPA routes in the browser, so on `/axion/task/tk-1` the path alone cannot say
+ * where the mount ends and the client-side route begins. The base tag was put there by the
+ * server, which is the only party that knows.
+ *
+ * Every request below is therefore a RELATIVE path resolved against it — including the
+ * websocket, which is the one that would otherwise be forgotten and 404 under a prefix. */
+const BASE = document.baseURI;
+
+/* The leading slash is STRIPPED, and that is the load-bearing line: `new URL("/api/board", base)`
+ * throws the base away — an absolute path is absolute — so a route written the obvious way would
+ * work perfectly on `taskops ui` and silently escape the mount on `taskops serve`. Stripping here
+ * rather than at eleven call sites means a new endpoint cannot reintroduce it. */
+function url(path: string): string {
+  return new URL(path.replace(/^\//, ""), BASE).toString();
+}
+
+/* The token is scoped to the mount for the same reason as everything else here: on a server
+ * with several projects, one localStorage key would mean opening board B logs you out of A. */
 const TOKEN = (() => {
+  const key = `taskops-token:${new URL(BASE).pathname}`;
   const fromUrl = new URL(location.href).searchParams.get("token");
-  if (fromUrl) localStorage.setItem("taskops-token", fromUrl);
-  return fromUrl ?? localStorage.getItem("taskops-token") ?? "";
+  if (fromUrl) localStorage.setItem(key, fromUrl);
+  return fromUrl ?? localStorage.getItem(key) ?? "";
 })();
 
 export class ApiFailure extends Error {
@@ -31,7 +54,7 @@ function headers(json: boolean): HeadersInit {
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, headers: headers(Boolean(init?.body)) });
+  const response = await fetch(url(path), { ...init, headers: headers(Boolean(init?.body)) });
   const text = await response.text();
   const parsed = text ? JSON.parse(text) : null;
   if (!response.ok) {
@@ -105,7 +128,7 @@ export function subscribe(onChange: (event: Event) => void, onOpen: () => void,
 
   const useSse = () => {
     if (closed) return;
-    const source = new EventSource(`/api/live${query}`);
+    const source = new EventSource(url(`/api/live${query}`));
     source.addEventListener("hello", () => onOpen());
     source.addEventListener("change", (message) => {
       onChange(JSON.parse((message as MessageEvent<string>).data) as Event);
@@ -120,8 +143,11 @@ export function subscribe(onChange: (event: Event) => void, onOpen: () => void,
 
   const useWs = () => {
     if (closed) return;
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${location.host}/api/live${query}`);
+    /* Built from the same `url()` and then switched to ws:, rather than assembled from
+     * `location.host` by hand — that hand-assembled form was absolute-pathed, so it was the one
+     * call in the app that would have missed the mount prefix and taken the live board with it. */
+    const socket = new WebSocket(
+      url(`/api/live${query}`).replace(/^http/, "ws"));
     let everOpened = false;
 
     socket.onmessage = (message: MessageEvent<string>) => {

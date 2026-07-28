@@ -346,6 +346,70 @@ With `--token`, open the URL it prints — the link carries the token, and the p
 > and `narration` frames, which are ephemeral prose that is never stored anywhere.
 > `src/taskops/transports/http/live.py` has the full argument.
 
+### 2.1 Many projects on one host — `taskops serve`
+
+`taskops ui` serves the repository you are standing in. `taskops serve` serves a **directory of
+projects**, each under its own URL prefix and behind its own token — which is what you want on a
+host, where several projects' boards live together and agents on different machines compete for
+the same cards inside one sqlite.
+
+The code stays in git. What centralises is the **board**.
+
+```sh
+taskops serve init axion --root ~/taskops-server
+taskops serve init otro  --root ~/taskops-server
+```
+
+```
+created axion at /home/you/taskops-server/axion
+token (shown ONCE, kept in /home/you/taskops-server/axion/token):
+
+    d5bad97814a5e3211832f59c09a6b98b
+
+open the board at  http://<host>/axion/?token=d5bad97814a5e3211832f59c09a6b98b
+```
+
+The token is minted by the box, written `0600`, and **printed exactly once** — re-running
+`serve init` says the project already exists and does not reprint it. Nothing can recover it; a
+lost token is re-minted by deleting the file and running `serve init` again. It never goes into
+git and never into a log.
+
+```sh
+taskops serve --root ~/taskops-server            # loopback
+taskops serve --root ~/taskops-server --host 0.0.0.0 --port 2160
+```
+
+```
+taskops serve → http://127.0.0.1:2160/<project>/  (/home/you/taskops-server)
+```
+
+Each project answers under its prefix — `/axion/` is the board and `/axion/api/...` is the same
+JSON API `taskops ui` serves, live feed included:
+
+```sh
+curl -H "Authorization: Bearer $AXION_TOKEN" http://host:2160/axion/api/board
+curl -N -H "Authorization: Bearer $AXION_TOKEN" http://host:2160/axion/api/live
+```
+
+What is different from `taskops ui`, and why:
+
+- **The token is required for everything, including reads.** `ui` may be open because loopback
+  is loopback; this is meant to face a network. No token, no board.
+- **A token is an answer about ONE project.** axion's token on `/otro/` is a 401.
+- **A project with no `token` file is not served at all** — refused rather than served open,
+  because the failure mode of the alternative is a public board because a file was missing.
+- **A name that is not `[a-z0-9-]{1,40}` never reaches the filesystem**, and an unknown project
+  is a bare 404 that lists nothing: naming what does exist would hand a stranger every board on
+  the host.
+- **No git hooks, no guard.** A server directory is a store of boards, not a working tree, so
+  `serve init` creates the project with hooks disabled and the directory need not be a git
+  repository at all.
+- `--readonly` and `--rate-limit` apply to every project on the server.
+
+`.taskops/` in each project directory is an ordinary taskops store, so everything else in this
+guide — `taskops report --repo ~/taskops-server/axion`, an agent over MCP, `sync` against a
+checkout — works against it unchanged.
+
 ---
 
 ## Part 3 — Two agents at once

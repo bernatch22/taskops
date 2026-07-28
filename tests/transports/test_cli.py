@@ -53,7 +53,7 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     hook and by nothing else, so a person scanning this page for their task list should
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
-    assert listed == {"init", "ui", "tasks", "run", "report", "recover", "sync"}
+    assert listed == {"init", "ui", "serve", "tasks", "run", "report", "recover", "sync"}
 
 
 @pytest.mark.parametrize("gone", ["guard", "hook", "ingest", "brief", "inbox", "track",
@@ -74,7 +74,11 @@ def _listed_commands() -> set[str]:
     naive `"hook" not in help` passes today and fails on a sentence nobody thought about."""
     listing = build_parser().format_help()
     body = listing.split("<command>\n", 1)[1].split("\noptions:", 1)[0]
-    return {line.split()[0] for line in body.splitlines() if line.startswith("    ")}
+    # Exactly four spaces then a word: a help string long enough to wrap continues on a line
+    # indented FOURTEEN, and counting those made the first word of a description a "command"
+    # — which is how adding `serve` reported a phantom command called `token`.
+    return {line.split()[0] for line in body.splitlines()
+            if line.startswith("    ") and not line.startswith("     ")}
 
 
 def test_tasks_show_and_search_reach_the_same_run_the_old_verb_did() -> None:
