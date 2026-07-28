@@ -9,7 +9,8 @@ applies, and `--readonly` refuses `POST /api/sync` and `PUT /api/report/file` by
 any handler runs.
 
 Implementation: `transports/http/exchange.py` → `usecases/exchange.py` (events) and
-`usecases/reportfile.py` (report files). No transport touches storage or the engine.
+`usecases/reportfile.py` (report files); `transports/http/agentapi.py` → `usecases/claim.py`
+and `usecases/update.py` (agent writes). No transport touches storage or the engine.
 
 ## Events
 
@@ -37,6 +38,55 @@ GET  /api/sync?after=<seq>&limit=<n≤500>
   is why no `seq` appears inside an event on the wire. A client keeps one cursor **per remote**
   and may never compare or mix two. `max_seq` is the last seq the page *scanned* (not the last
   returned), so filtered rows are not re-scanned forever. `more` means the page came back full.
+
+## Agent writes — the claim, decided here
+
+```
+POST /api/next     {"actor", "session"?, "labels"?, "task"?}
+  → 200 NextResult          {"claim": Claim | null, "reason", "ready", "working", "blocked"}
+  → 400 {"error": "`actor` is required — …", "code": "bad_request"}
+
+POST /api/update   {"task", "actor", "status"?, "comment"?, "mentions"?, "blocked_on"?,
+                    "no_code"?}
+  → 200 UpdateResult        {"task": Task, "unblocked": [Task], "notified": [actor]}
+  → 4xx/409 the typed error, verbatim: {"error", "code"}
+```
+
+Both bodies are the `TypedDict` the use case returns, serialized as-is — there is no schema
+layer, exactly as with the board's endpoints.
+
+**Why these exist.** Replication makes two boards converge; it does not make a claim safe.
+Between two syncs, two agents on two machines both see a card `ready` and both take it, because
+each grants a lease in its own sqlite. The engine already wins that race *inside one database* —
+two INSERTs on one primary key. So the fix is a PLACE, not an algorithm: when a project has a
+remote, `next` and `update` execute in the server's store, and the race becomes the race the
+engine already wins. `tests/e2e/test_agentwire.py` races two projects through one real server.
+
+**The routing lives in the use cases**, not in a transport: the CLI, the MCP tools and the local
+board all call `next_task`/`update`, and a client that claimed safely through one surface and
+unsafely through another would be worse than no feature at all.
+
+* **`actor` travels in the body and is ACCEPTED here** — unlike `POST /api/comment`, which
+  resolves it server-side. This is a deliberate trust decision and not an oversight: the server
+  has neither the calling machine's `$TASKOPS_ACTOR` nor its git config, so it *cannot* learn who
+  is calling. **The project token is the trust boundary**: whoever holds it may act as any actor
+  in the project — the same boundary git already draws, where whoever can push can author a
+  commit under any name. What is still enforced is the SHAPE: a malformed id is a 400 from
+  `engine.identity.parse`, so a typo cannot conjure a ghost identity to file work under.
+* **The server never routes to itself.** These endpoints call the use cases with `local=True`,
+  always. Without it, a `remote.json` sitting in the store a server happens to serve would make
+  it POST its own claims to that address — to itself, forever. A test plants exactly that file.
+* **The client pulls after every remote write, and a failed pull fails the call.** The commit
+  guard, `brief` and every render read the LOCAL board, so a claim the server granted and the
+  local board has never heard of is a lease the agent's own tooling then denies. A half-success
+  is worse than an error naming the network.
+* **Offline never falls back to a local claim.** A remote-configured project whose server is
+  unreachable raises `unreachable` (502), naming the URL and saying that no local claim was made.
+  That silent fallback *is* the collision these endpoints exist to prevent.
+* **Writes, so `--readonly` refuses both by METHOD** before any handler runs.
+
+Out of scope on purpose: `plan`, `dispatch` and `ask` stay local. `ask` reads a board that
+already converges through `pull`, and remote planning is rare enough to wait for a real need.
 
 ## Report files
 

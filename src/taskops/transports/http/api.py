@@ -21,7 +21,7 @@ from ...usecases.report import HISTORY_WINDOW
 from ._wire import Reply, Request, error_reply, json_reply
 
 __all__ = ["config", "get_board", "get_fleet", "get_standup", "get_task", "get_search",
-           "get_activity", "post_comment", "post_status", "guarded"]
+           "get_activity", "post_comment", "post_status", "guarded", "strings"]
 
 
 def config(root: Path, request: Request) -> Reply:
@@ -79,16 +79,17 @@ def post_comment(root: Path, request: Request) -> Reply:
     task_id, text = str(payload.get("task", "")), str(payload.get("text", "")).strip()
     if not task_id or not text:
         return error_reply(400, "`task` and `text` are required", "bad_request")
-    mentions = _mentions(payload)
+    mentions = strings(payload, "mentions")
     return guarded(lambda: json_reply(
         update(root, task_id, comment=text, mentions=mentions)))
 
 
-def _mentions(payload: dict[str, Any]) -> tuple[str, ...]:
-    """The actors to notify. Tolerates the two shapes a form can produce — a list, or one
-    comma-separated field — because a message that silently reached nobody is the worst way for
-    this to fail."""
-    raw: object = payload.get("mentions")
+def strings(payload: dict[str, Any], key: str) -> tuple[str, ...]:
+    """A tuple field off a JSON body. Tolerates the two shapes a client can produce — a list,
+    or one comma-separated field — because a message that silently reached nobody is the worst
+    way for this to fail, and the same is true of a label filter that silently matched
+    everything. Shared by `mentions` here and by `labels` on the agent endpoints."""
+    raw: object = payload.get(key)
     if isinstance(raw, str):
         return tuple(part.strip() for part in raw.split(",") if part.strip())
     if isinstance(raw, list):

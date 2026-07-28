@@ -14,7 +14,7 @@ from pathlib import Path
 __all__ = [
     "TaskopsError", "NotInitialized", "NoSuchTask", "IllegalTransition", "LeaseHeld", "NoLease",
     "GuardFailed", "BadRequest", "AlreadyWritten", "AlreadyNarrating", "NarrationFailed",
-    "ReportConflict",
+    "ReportConflict", "Unreachable",
 ]
 
 
@@ -149,3 +149,12 @@ class ReportConflict(TaskopsError, FileExistsError):
     http_status = 409
     ours = -1
     theirs = -1
+
+
+class Unreachable(TaskopsError, ConnectionError):
+    """The server did not answer at all — no status, no body. 502, and never a reason to
+    write locally instead: that is how two machines end up holding one card. Its own type
+    so `usecases._routing` can catch exactly it and say which URL went quiet."""
+
+    code = "unreachable"
+    http_status = 502
