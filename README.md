@@ -236,7 +236,16 @@ One port, many projects, one token each. No token, no access — not even reads.
 
 Reports sync under a rule that refuses to destroy work: the narration is the one part a machine cannot regenerate, so a conflicting report is a `409` naming both versions — never a silent overwrite. A hand-written narration can never be clobbered by a generated one.
 
-The token is the trust boundary. It is minted by the server, stored at `0600`, covered by the ignore rules so it cannot reach git, and never printed twice.
+The token is the trust boundary for a MACHINE. It is minted by the server, stored at `0600`, covered by the ignore rules so it cannot reach git, and never printed twice.
+
+For PEOPLE there is no token to hand out. Link the project to its GitHub repository and the repository's push access becomes the board's:
+
+```sh
+taskops serve link myproject --github owner/repo --root ~/taskops-server   # on the server
+taskops login https://boards.example.com                                   # each person
+```
+
+The server holds no GitHub credentials. The client sends the token `gh auth token` prints, the server asks GitHub with *that* token whether the account may push to the linked repo, and **discards it** — so GitHub is the collaborator list and is never copied here. What survives is a session, good for a week, that opens exactly the boards that answered yes. Contract in `docs/exchange.md`.
 
 Opening a locked board in a **browser** does not need the token in the URL: the board answers a navigation without a credential with an access screen — paste the credential once, it is kept in `localStorage`, and every later visit goes straight in. The screen names nothing about what it is locking. A `curl` or a `fetch` still gets the plain `401` JSON it can read, and a local `taskops ui` with no token never shows a screen at all.
 

@@ -12,8 +12,11 @@ async and calls in from a threadpool, but there is no async twin of the engine.
 from __future__ import annotations
 
 from . import narration
+from ._ghlink import links, read_link, remove_link, write_link
 from ._project import locate
 from ._range import Selector, parse_date
+from ._sessions import mint, opens, resolve
+from .accounts import authenticate
 from .ask import ask, search
 from .claim import next_task
 from .dispatch import DispatchResult, dispatch
@@ -56,4 +59,7 @@ __all__ = [
     "login", "logout", "logins", "session_of", "is_session",
     # the live narration: started in the background, watched on the wire
     "narration", "is_wire", "parse_date",
+    # who you are: a GitHub login, the sessions it mints, the repository a board is linked to
+    "authenticate", "mint", "resolve", "opens",
+    "links", "read_link", "write_link", "remove_link",
 ]

@@ -407,6 +407,34 @@ What is different from `taskops ui`, and why:
   `serve init` creates the project with hooks disabled and the directory need not be a git
   repository at all.
 - `--readonly` and `--rate-limit` apply to every project on the server.
+- **`/` is the login page.** Served to anyone, it says how to get in and lists nothing; with a
+  session it lists the boards that session opens, as links.
+
+### Letting the repo's collaborators in — `taskops serve link`
+
+Handing a token to every person who needs a board does not scale, and revoking one means
+re-minting it for everybody. Link the project to its GitHub repository instead, and the
+repository's **push** access becomes the board's access:
+
+```sh
+taskops serve link axion --github cloudacio/Axion --root ~/taskops-server
+taskops serve link axion --root ~/taskops-server     # show it
+taskops serve link axion --remove --root ~/taskops-server
+```
+
+Then anyone with push on `cloudacio/Axion` runs `taskops login https://<host>` and is in.
+
+- **The server has no GitHub credentials.** The client sends the token `gh auth token` prints;
+  the server asks GitHub with THAT token whether the account may push, and **discards it** — it
+  is never stored, never logged, never returned.
+- **GitHub is the collaborator list, never copied here.** No logins, no teams, no roles: giving
+  somebody the board IS giving them the repository, which the owner already does.
+- A login mints a **session** (`<root>/.sessions.json`, `0600`) that expires in **7 days** and
+  opens exactly the linked projects that answered yes.
+- **The project token is unchanged** — it is the machine credential, and push, pull and agents
+  keep using it. A project with no link is token-only, exactly as before.
+
+The full wire contract is in `docs/exchange.md`.
 
 `.taskops/` in each project directory is an ordinary taskops store, so everything else in this
 guide — `taskops report --repo ~/taskops-server/axion`, an agent over MCP, `sync` against a

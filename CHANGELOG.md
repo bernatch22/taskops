@@ -36,6 +36,46 @@ GitHub a los que apuntan los proyectos del server. Entonces que pregunte GitHub,
 - `_wireclient` se partió: `_wirereply.py` se lleva las tres funciones que leen la respuesta
   (no saben que hay una red, así que se testean desde un literal) y el cliente entró de nuevo
   en el presupuesto de líneas con las rutas de auth adentro.
+## Unreleased — el server sabe quién sos por GitHub: nadie más reparte tokens a mano
+
+Un token por proyecto escala para MÁQUINAS y no para personas: sumar a alguien era mandarle un
+secreto por un canal cualquiera, y sacarlo era re-mintear para todos. Ahora un proyecto se ata a
+su repo de GitHub y **el push access ES el acceso al board** — jp corre `taskops login` y entra a
+`/axion/` porque ya tiene push en `cloudacio/Axion`, que es una decisión que Berna ya tomó.
+
+- **El server NO tiene credenciales de GitHub, y ese es el diseño.** El cliente manda SU token
+  (el de `gh auth token`); el server pregunta `GET /repos/{owner}/{repo}` **con ese token** y le
+  cree: 200 con `permissions.push` es "puede escribir el repo", que es exactamente el grupo que
+  debe poder abrir su board. Sin GitHub App, sin secreto de OAuth, sin webhook — no hay nada en
+  este disco que alguien pueda robar y usar contra GitHub.
+- **El token de GitHub se USA y se DESCARTA.** Nunca se escribe, nunca se loguea, nunca se
+  devuelve. Hay un test que lo busca en TODOS los archivos del root después de un login, porque
+  "no lo guardamos" es una afirmación que se pudre en silencio.
+- **GitHub es la lista de colaboradores y no se copia.** `taskops serve link <proyecto> --github
+  owner/repo` escribe una línea; no hay lista de logins, ni equipos, ni roles. Cada una de esas
+  sería una segunda copia de algo que GitHub ya sabe, y la copia es la que nadie actualiza el día
+  que a alguien le sacan el acceso. Sin flag muestra, `--remove` desata, y **un proyecto sin link
+  se comporta igual que siempre: token only**.
+- **Rutas nuevas, en el dispatcher RAÍZ** (`transports/http/root.py`, montado por `projects.py`;
+  contrato en `docs/exchange.md`): `POST /api/auth/github` → `{login, session, projects}`,
+  `GET /api/projects` con `Bearer <session>`, y `GET /` que pasó de ser un 404 a ser la página de
+  login — HTML inline, sin bundle y sin dependencias, porque "los boards están en estas URLs" es
+  justo lo que necesitás cuando algo anda mal. **No lista NADA sin sesión**: nombrar los boards
+  le daría a cualquier visitante la enumeración que el 404 por proyecto existe para negar.
+- **La sesión es lo único que deja un login**: `secrets.token_hex(16)` en `<root>/.sessions.json`
+  (`0600`), con `{login, projects, created}` y **7 días** de vida — chequeados al leer, podados al
+  escribir, así "expiró" es cierto en un server que nadie tocó en un mes. El punto inicial del
+  nombre es load-bearing: un proyecto es `[a-z0-9-]`, así que ese archivo no puede colisionar.
+- **La sesión se cambia por el token del proyecto EN EL MOUNT**, no adentro de `Policy`: las
+  sesiones son una propiedad de un directorio de proyectos, y una policy construida para un board
+  no puede conocer un archivo un nivel más arriba. Debajo de esa línea nadie oyó hablar de GitHub.
+  El **token del proyecto sigue funcionando solo** — es la credencial de máquina de push/pull/
+  agents — y nunca se le echa al browser: el redirect de `/axion` se arma con la query ORIGINAL.
+- **Lo que NO alcanza**: `pull`. Leer un repo no es estar en el equipo que lo corre. Un repo que
+  la cuenta no puede ver contesta 404 (GitHub negándose a confirmar que existe) y cuenta como "no
+  es tuyo", así que el board nunca es un oráculo de existencia. Un **403** no se traga: es un rate
+  limit o un token suspendido mucho más seguido que un permiso, así que sale con las palabras
+  textuales de GitHub en vez de convertirse en un "no tenés acceso a nada" que confunde.
 
 ## Unreleased — claims atómicos en remoto: dos agentes en dos máquinas no agarran la misma card
 

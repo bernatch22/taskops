@@ -32,8 +32,10 @@ from urllib.parse import urlencode
 
 from ..._errors import TaskopsError
 from ...usecases import locate
+from ...usecases._sessions import opens
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
+from .root import bearer, root_route
 from .router import build
 
 __all__ = ["mount", "NAME", "TOKEN_FILE"]
@@ -59,6 +61,8 @@ def mount(root: Path, *, readonly: bool = False, rate_limit: int = 0) -> Route:
     cache: dict[str, tuple[Policy, Route]] = {}
 
     def dispatch(request: Request) -> Reply:
+        if reply := root_route(home, request):
+            return reply
         name, rest = _split(request.path)
         found = _project(home, name)
         if found is None:
@@ -67,14 +71,39 @@ def mount(root: Path, *, readonly: bool = False, rate_limit: int = 0) -> Route:
             policy = Policy(token=_token(found), readonly=readonly, rate_limit=rate_limit)
             cache[name] = (policy, build(found, policy, base=f"/{name}/"))
         policy, route = cache[name]
+        opened = _exchanged(home, name, _token(found), request)
         if not rest:
             # The redirect is gated too. It is a reply about a project, so handing it to an
             # unauthenticated caller would make `/name` a working existence oracle for every
             # board on the server — the one thing the bare 404 above exists to deny.
-            return policy.check(request) or _redirect(f"/{name}/", request)
-        return route(replace(request, path=rest))
+            #
+            # Gated on the EXCHANGED request and redirected with the ORIGINAL one: a session
+            # may pass the gate, but echoing the swapped query back would put the project's
+            # own token — the machine credential — in the browser's address bar.
+            return policy.check(opened) or _redirect(f"/{name}/", request)
+        return route(replace(opened, path=rest))
 
     return dispatch
+
+
+def _exchanged(home: Path, name: str, token: str, request: Request) -> Request:
+    """A session that lists this project becomes this project's token, right here.
+
+    The whole "a GitHub login opens a board" feature is this one substitution, and it lives at
+    the MOUNT rather than inside `Policy` for a reason: sessions are a property of a directory
+    of projects, and a policy built for one board has no way to know about a file one level
+    up. Below this line nothing has heard of GitHub — the router, every endpoint and the feed
+    see the ordinary bearer token they have always seen.
+
+    A request that already carries the project's own token is untouched, so the machine
+    credential (push, pull, agents) keeps working exactly as before. A string that is neither
+    is left alone too, and refused by the policy with the message it always gave.
+    """
+    presented = bearer(request)
+    if not presented or presented == token or not opens(home, presented, name):
+        return request
+    return replace(request, headers={**request.headers, "authorization": f"Bearer {token}"},
+                   query={**request.query, "token": token})
 
 
 def _split(path: str) -> tuple[str, str]:
