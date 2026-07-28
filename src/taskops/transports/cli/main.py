@@ -17,12 +17,17 @@ from typing import Sequence
 
 from ..._errors import TaskopsError
 from ..._version import __version__
-from .commands import init, recover, report, run_, sync, tasks, ui
+from .commands import init, pushpull, recover, remote, report, run_, sync, tasks, ui
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, ui, tasks, run_, report, recover, sync)
-"""Every command there is. Seven, and `--help` lists all seven.
+_COMMANDS = (init, ui, tasks, run_, report, recover, sync, remote, pushpull)
+"""Every command there is. Ten, and `--help` lists all ten.
+
+`remote`, `push` and `pull` are the developer's, which is why they are here and NOT on the
+MCP surface: an agent works a board, it does not decide when this machine talks to a server.
+They sit beside `sync` rather than replacing it — a team with no server converges through git
+exactly as before, and that path is not deprecated by this one.
 
 There used to be thirteen more, registered and hidden — the agent protocol (`next`, `update`,
 `ask`, `plan`, `dispatch`, `log`) and the wiring (`guard`, `hook`, `ingest`, `brief`, `inbox`,

@@ -66,6 +66,7 @@ What just happened:
 | `.taskops/db.sqlite` | The local cache. Gitignored — rebuildable from the log. |
 | `.taskops/GUIDE.md` | The manual agents read. Gitignored: it is generated, and `init` rewrites it every run so it always matches the installed version. |
 | `.git/hooks/post-commit` etc. | Bind commits to tasks. Chained onto any hooks you already had. |
+| `.taskops/remote.json` | Only once you run `taskops remote add`: the server's URL and your **token**. Mode `0600` and gitignored — a bearer in git history outlives the file. |
 | A block in `.gitignore` | Ignores everything above except the log. |
 
 `taskops init` is safe to re-run, and re-running is how you **repair a fresh clone** — `.git/hooks`
@@ -400,7 +401,75 @@ reads.
 
 ## Part 4 — A second developer
 
-No server. The event log travels in git.
+Two ways, and you pick one per project. **With a server** the boards converge in seconds;
+**through git** they converge when you push and pull, with no server to run. Neither is
+deprecated — the second is still the right answer for a team that does not want to operate
+anything.
+
+### 4a — With a server
+
+One person runs `taskops ui` somewhere both machines can reach, and issues each developer a
+token. Then, on every machine:
+
+```sh
+taskops init
+taskops remote add https://taskops.example.com --token <your-token>
+taskops push
+```
+
+That is the whole setup. From then on:
+
+```sh
+# you, after an afternoon of work
+taskops push
+```
+
+```sh
+# them, whenever they want to be current
+taskops pull
+taskops report board
+```
+
+**`push` pulls too**, which git does not do and here it should: the round trip is one more
+request against a server you have just proved you can reach, and the alternative is two
+developers whose boards diverged this morning, each convinced they are current. `push` prints
+what moved in both directions.
+
+**Where the token lives.** `.taskops/remote.json`, mode `0600`, and `taskops init` gitignores
+that path — a bearer in git history is still a bearer after somebody deletes the file, and
+nobody notices they need to rotate it. `taskops remote` shows the URL and the token's *length*,
+never the token. One remote per project: a second `add` is refused by naming the first, because
+two remotes means two cursors over two logs, and that is federation, which is not designed.
+
+**Reports never clobber.** A dossier regenerates from the log any time; the **narration** under
+it was written once, by a model somebody paid for or by a person, and nothing can reconstruct
+it. So the copy stamped with the larger `max_seq` — the one that saw more history — wins, and
+anything else is refused:
+
+```
+pushed: 12 event(s) out, 3 in, reports 1 up, 0 down
+  ! 2026-07-28: the server's copy is stamped at seq 812, yours at 774 — nothing was
+    overwritten. Run `taskops pull` to take the server's, or `taskops push --force` to
+    replace it (any narration there is lost).
+```
+
+Two independent narrations of the *same* dossier always land here, and that is the honest
+answer: nobody can decide that one for you. `--force` is the valve, and the message says what
+it costs before you reach for it.
+
+**Offline is not an error state.** No network means one line and exit 1, with nothing marked
+half-sent: events are marked as pushed only after the server answers 200, so a push cut in half
+re-sends on the next run and the server accepts each event exactly once. Your board keeps
+working the entire time — it is a local sqlite cache of a local log, and the server is a place
+they meet.
+
+**If the server is rebuilt** and forgets where you were, your next `pull` re-reads its whole
+log. That is a no-op, not a repair job: ids are content hashes, so every event is imported
+exactly once no matter how many times it is offered.
+
+### 4b — Through git, with no server
+
+The event log travels in git.
 
 **Adopt it in this order.** ONE person runs `taskops init` first and commits, because init touches
 `.gitignore` — if two people create that file independently in a repo that had none, git refuses to
@@ -449,8 +518,8 @@ If the log ever looks wrong, the cache is disposable:
 rm .taskops/db.sqlite && taskops sync      # rebuilt from the log
 ```
 
-> Live cross-machine messaging (rather than at `git pull` speed) needs the relay, which is designed
-> in `PLAN.md` §9 and **not built**. Today, two developers converge when they push and pull.
+> This path converges at `git pull` speed. For seconds instead of pull-cycles, run a server and
+> use `taskops push`/`pull` — Part 4a.
 
 ---
 
@@ -487,7 +556,7 @@ task, and a passer-by should not be able to post as an agent.
 
 ### Commands
 
-`taskops --help` lists **seven**, and seven is all there is. What a person does:
+`taskops --help` lists **ten**, and ten is all there is. What a person does:
 
 ```
 taskops init [--no-hooks]                  create .taskops/, install the git hooks
@@ -497,7 +566,15 @@ taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
 taskops recover [--apply]                  release cards held by silent workers
 taskops sync                               reconcile with the committed log
 taskops run [--yes] [--use-api-key]        run ready cards with headless Claude workers
+taskops remote [add <url> --token <t> | remove]    the server this project syncs with
+taskops push [--force]                     send this board up, then take theirs
+taskops pull                               take the server's events and reports
 ```
+
+`remote`, `push` and `pull` are the **developer's**, which is why they are here and not on the
+MCP surface: an agent works a board, it does not decide when this machine talks to a server.
+They sit *beside* `sync` rather than replacing it — a team with no server converges through git
+exactly as before, and that path is not deprecated.
 
 `taskops run` is the one command here that starts Claude sessions, so it says what it costs
 before it starts anything and an unattended caller must pass `--yes`. Its workers run on your
