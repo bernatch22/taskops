@@ -10,8 +10,9 @@ from taskops.contracts import WireMessage
 from taskops.engine import BUS, WIRE, Broadcast, is_wire
 
 
-def _message(kind: str = "narration.delta", text: str = "hola") -> WireMessage:
-    return WireMessage(kind=kind, label="2026-01-02", text=text)
+def _message(kind: str = "narration.delta", text: str = "hola",
+             root: str = "/tmp/project") -> WireMessage:
+    return WireMessage(kind=kind, label="2026-01-02", text=text, root=root)
 
 
 def test_a_published_message_reaches_every_subscriber() -> None:

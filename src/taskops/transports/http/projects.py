@@ -15,11 +15,12 @@ caught later by a resolve.
 the list of every board on the server, which is exactly the enumeration a per-project token is
 there to prevent. The reply says nothing, including whether the name was wrong or the secret was.
 
-**One known leak, written down rather than hidden**: `WireMessage` (a narration delta) is
-published on a process-global bus and carries no project, so a browser watching one board can
-see the prose of a report being written on another. Events cannot leak — they come from each
-project's own sqlite — and closing the narration hole needs a field on the contract, which is a
-change to the wire format rather than to this file.
+**Narration is isolated too, and not by this file.** `WireMessage` (a narration delta) rides a
+process-global broadcast, so for a while a browser watching one board could see the prose of a
+report being written on another — the one leak this design had. It was closed on the contract:
+a wire message carries the `root` that emitted it, and `usecases.feed.follow` yields only the
+ones matching its own root (a message without a root is dropped). This module still knows
+nothing about frames, which is exactly why the filter is not here — it never sees one.
 """
 
 from __future__ import annotations

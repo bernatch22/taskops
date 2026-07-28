@@ -23,7 +23,7 @@ import pytest
 
 from taskops.contracts import WireMessage
 from taskops.engine import WIRE
-from taskops.storage import Store
+from taskops.storage import Store, resolve_root
 from taskops.transports.http import live
 from taskops.transports.http._wire import Reply, Request
 from taskops.transports.http.policy import Policy
@@ -32,17 +32,21 @@ from taskops.usecases import Selector, digest, follow, init, narration, plan, re
 from taskops.usecases._narrating import FLUSH_CHARS
 
 LABEL = "2026-01-02"
+ELSEWHERE = "/somewhere/else"
 
 
-def _message(kind: str = "narration.delta", text: str = "el día empezó") -> WireMessage:
-    return WireMessage(kind=kind, label=LABEL, text=text)
+def _message(root: str, kind: str = "narration.delta",
+             text: str = "el día empezó") -> WireMessage:
+    return WireMessage(kind=kind, label=LABEL, text=text, root=root)
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     init(tmp_path, install_git_hooks=False)
     plan(tmp_path, [{"title": "Something happened", "spec": "It did."}], actor="dev:berna")
-    return tmp_path
+    # RESOLVED, because that is what `follow` compares a message's `root` against — and on
+    # macOS `tmp_path` is a symlink into `/private`, so the unresolved form never matches.
+    return resolve_root(tmp_path)
 
 
 # ---- the feed
@@ -51,26 +55,95 @@ def project(tmp_path: Path) -> Path:
 def test_a_wire_message_is_yielded_straight_through(project: Path) -> None:
     """It is NOT a cursor signal. An event enqueues "go read the database"; a wire message is
     the payload itself, because nothing wrote it anywhere and nothing ever will."""
+    mine = _message(str(project))
     feed = follow(project, tick=0.05)
     assert next(feed) is None, "the first tick should be quiet"
-    WIRE.publish(_message())
-    assert next(feed) == _message()
+    WIRE.publish(mine)
+    assert next(feed) == mine
     feed.close()
 
 
 def test_watching_a_narration_writes_nothing_to_the_event_log(project: Path) -> None:
     """THE constraint. `events.jsonl` is committed, and a thousand fragments of prose in it
     would destroy the one property it has: that a human can read its diff."""
+    mine = _message(str(project))
     with Store(project) as store:
         before = store.events.max_seq()
     feed = follow(project, tick=0.05)
     next(feed)
     for _ in range(20):
-        WIRE.publish(_message())
-    assert next(feed) == _message()
+        WIRE.publish(mine)
+    assert next(feed) == mine
     feed.close()
     with Store(project) as store:
         assert store.events.max_seq() == before
+
+
+# ---- the isolation between projects
+
+
+def _second_project(factory: pytest.TempPathFactory) -> Path:
+    """Another board on the same server — the neighbour whose screen must stay clean."""
+    home = factory.mktemp("other-project")
+    init(home, install_git_hooks=False)
+    return home
+
+
+def test_a_narration_reaches_its_own_board_and_no_other(
+        project: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """THE leak, executable. `WIRE` is process-global, so one `taskops serve` holding two
+    boards open used to broadcast every delta of every report to both — and that prose names
+    the strategies and the data of the project that wrote it.
+
+    Two stores, two follows, one publish stamped with A's root: A yields it, B never does.
+    """
+    # A SIBLING, never a subdirectory: `init` under an existing project reuses the enclosing
+    # one (projects do not nest), and two follows on the same root would prove nothing.
+    other = resolve_root(_second_project(tmp_path_factory))
+    mine = _message(str(project))
+
+    a = follow(project, tick=0.05)
+    b = follow(other, tick=0.05)
+    try:
+        assert next(a) is None and next(b) is None    # both parked and subscribed
+        WIRE.publish(mine)
+        assert next(a) == mine
+        # B is not merely late — it drains the very same publish and yields a quiet tick.
+        assert next(b) is None
+    finally:
+        a.close()
+        b.close()
+
+
+def test_a_message_from_another_project_never_reaches_this_feed(project: Path) -> None:
+    """The regression, from the other side: a foreign delta arriving fifty times a second
+    must not even show up as narration, let alone as prose."""
+    feed = follow(project, tick=0.05)
+    try:
+        assert next(feed) is None
+        for _ in range(10):
+            WIRE.publish(_message(ELSEWHERE, text="the other project's secret plan"))
+        assert next(feed) is None, "a foreign narration was delivered"
+    finally:
+        feed.close()
+
+
+def test_a_message_with_no_root_is_dropped(project: Path) -> None:
+    """A DECISION, not an oversight: the insecure default is the one that leaks.
+
+    An older publisher (or an older server sharing the process for a moment across a restart)
+    can emit a message with no `root`. Delivering it to every board "for compatibility" would
+    be exactly the bug this closes, so it is dropped. The cost is a few seconds of missing
+    animation during an upgrade; the file on disk is the durable copy either way.
+    """
+    orphan: Any = {"kind": "narration.delta", "label": LABEL, "text": "from nowhere"}
+    feed = follow(project, tick=0.05)
+    try:
+        assert next(feed) is None
+        WIRE.publish(orphan)
+        assert next(feed) is None, "a message with no root was broadcast"
+    finally:
+        feed.close()
 
 
 # ---- the frames
@@ -95,12 +168,13 @@ def test_the_websocket_carries_narration_under_its_own_type(
         project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A client that has never heard of narration switches on `type` and drops the frame —
     which is why this shares the board's socket instead of opening a second one."""
-    monkeypatch.setattr(live, "follow", _feed_of(_message()))
+    monkeypatch.setattr(live, "follow", _feed_of(_message(str(project))))
     frames = live._ws_frames(project)
     next(frames)                                  # hello
     payload = json.loads(_unframed(next(frames)))
     assert payload["type"] == "narration"
-    assert payload["message"] == _message()
+    assert payload["message"] == {"kind": "narration.delta", "label": LABEL,
+                                  "text": "el día empezó"}
     frames.close()
 
 
@@ -108,13 +182,37 @@ def test_the_sse_fallback_names_the_event_narration(
         project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`curl -N /api/live` is a working debugging tool by design, and that is how this feature
     was verified by hand — so the fallback has to carry it too."""
-    monkeypatch.setattr(live, "follow", _feed_of(_message()))
+    monkeypatch.setattr(live, "follow", _feed_of(_message(str(project))))
     frames = live._frames(project)
     next(frames)                                  # hello
     frame = next(frames).decode("utf-8")
     assert frame.startswith("event: narration\ndata: ")
     assert json.loads(frame.split("data: ", 1)[1])["text"] == "el día empezó"
     frames.close()
+
+
+@pytest.mark.parametrize("build", [live._ws_frames, live._frames])
+def test_the_frame_never_carries_the_path_of_the_project(
+        project: Path, monkeypatch: pytest.MonkeyPatch, build: Any) -> None:
+    """`root` is a routing field for `follow`, not something a browser may read: it is an
+    absolute path on the server's filesystem, and on a multi-project server it also names a
+    board the caller may hold no token for. Both envelopes strip it — the bytes are the test."""
+    monkeypatch.setattr(live, "follow", _feed_of(_message(str(project))))
+    frames = build(project)
+    next(frames)                                  # hello
+    frame = next(frames)
+    frames.close()
+    assert b"root" not in frame
+    assert str(project).encode("utf-8") not in frame
+
+
+def test_stripping_the_root_does_not_blank_it_for_the_other_feeds(project: Path) -> None:
+    """A copy, not a mutation. The broadcast hands the SAME dict to every subscriber, so a
+    frame builder that popped the key in place would erase the origin for the feed next to
+    it — and a message with no root is dropped, so the neighbouring board would go silent."""
+    mine = _message(str(project))
+    live._public(mine)
+    assert mine["root"] == str(project)
 
 
 # ---- the endpoint
@@ -186,6 +284,9 @@ def test_a_failure_arrives_on_the_wire_rather_than_in_the_response(
         cancel()
     assert heard[-1]["text"] == "claude is not logged in"
     assert heard[-1]["label"] == LABEL
+    # Stamped by the publisher, or `follow` would drop it and the failure would never
+    # reach the screen it was written for.
+    assert heard[-1]["root"] == str(project)
 
 
 def _settle(done: Callable[[], bool], tries: int = 100) -> None:
