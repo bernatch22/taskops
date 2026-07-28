@@ -92,11 +92,18 @@ def digest(start: Path | str, sel: Selector | None = None, *, model: str = "",
 
     An existing narration is refused without `force` for the same reason a written report is:
     somebody may have written it by hand, and this is the one section a machine cannot recover.
+
+    `force` regenerates the DOSSIER too, not only the prose. Narrating the file as it lies is
+    what the first version did, and it produced the worst possible failure: a fresh narration of
+    a stale document. A report written before a card was closed — or before the renderer learned
+    to show open cards at all — reads to the model as a day on which nothing happened, and the
+    prose says so, accurately and uselessly. Anybody passing `--force` is asking for this report
+    to be redone; redoing half of it is the answer nobody wants.
     """
     with project(start) as store:
         span = resolve(store, sel or Selector())
         path = report_path(store.root, _label(span))
-        if not path.is_file():
+        if force or not path.is_file():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(_generate(store, span), encoding="utf-8")
         report = path.read_text(encoding="utf-8")
