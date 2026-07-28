@@ -17,7 +17,7 @@ from .locate import (
     resolve_root,
 )
 from .store import BUSY_TIMEOUT, Store
-from .sync import all_events, export_events, import_events
+from .sync import all_events, event_from, export_events, import_events
 
 __all__ = [
     "Store",
@@ -32,4 +32,5 @@ __all__ = [
     "export_events",
     "import_events",
     "all_events",
+    "event_from",
 ]

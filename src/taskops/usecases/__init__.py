@@ -19,6 +19,7 @@ from .claim import next_task
 from .dispatch import DispatchResult, dispatch
 from .dossier import digest, read_report, report_path, write_report
 from .edit import edit
+from .exchange import MAX_BATCH, MAX_PAGE, accept_events, pull_events
 from .feed import follow, is_wire
 from .guard import Verdict, check_command, check_commit
 from .index import report_index
@@ -27,6 +28,7 @@ from .log import session_log
 from .plan import plan
 from .recover import Recovered, recover
 from .report import activity, board, day, fleet, period, standup
+from .reportfile import read_report_file, write_report_file
 from .session import Brief, brief, checkout, inbox, track
 from .setup import InitReport, init
 from .sync import rebuild, sync
@@ -38,6 +40,9 @@ __all__ = [
     "day", "period", "Selector",
     "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path",
     "report_index", "recover", "Recovered",
+    # the remote exchange: events and report files over HTTP
+    "accept_events", "pull_events", "MAX_BATCH", "MAX_PAGE",
+    "read_report_file", "write_report_file",
     # the CLI verbs the hooks call
     "init", "InitReport", "check_commit", "check_command", "Verdict",
     "ingest_commit", "ingest_branch",
