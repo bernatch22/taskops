@@ -26,6 +26,7 @@ from pathlib import Path
 from .._errors import AlreadyNarrating
 from ..contracts import WireMessage
 from ..engine import WIRE
+from ..storage import resolve_root
 from ._range import Selector
 from .dossier import digest
 
@@ -43,12 +44,18 @@ def start(root: Path | str, label: str, *, force: bool = False, model: str = "")
 
     The caller gets no prose from this — that is the point. It arrives on the wire.
     """
+    # Resolved HERE, on the caller's thread, and carried into every frame the run publishes.
+    # The channel is process-global: without the origin stamped on each message, a server
+    # holding several boards would show this project's prose on all of them. Resolving before
+    # the thread starts also means a bad root is an exception the caller sees, not a traceback
+    # in the server's stderr.
+    origin = str(resolve_root(root))
     with _lock:
         if label in _running:
             raise AlreadyNarrating(f"{label} is being narrated right now — watch it arrive, "
                                    f"or wait for that one to finish before regenerating")
         _running.add(label)
-    worker = threading.Thread(target=_run, args=(root, label, force, model),
+    worker = threading.Thread(target=_run, args=(root, origin, label, force, model),
                               name=f"narrate-{label}", daemon=True)
     # Daemon: a narration is a paid-for convenience, never a reason a server refuses to exit.
     # The dossier is already on disk, and the next run picks up from the file.
@@ -62,23 +69,23 @@ def running() -> frozenset[str]:
         return frozenset(_running)
 
 
-def _run(root: Path | str, label: str, force: bool, model: str) -> None:
+def _run(root: Path | str, origin: str, label: str, force: bool, model: str) -> None:
     """The digest, with every callback turned into a frame. Never raises: it IS the top of a
     thread, so an escaping exception would print a traceback into the server's stderr and tell
     the person watching nothing at all."""
     try:
         digest(root, Selector(date=label), model=model, force=force,
-               on_pass=lambda n, total: _say("narration.pass", label, f"{n}/{total}"),
-               on_text=lambda text: _say("narration.delta", label, text))
-        _say("narration.done", label, "")
+               on_pass=lambda n, total: _say(origin, "narration.pass", label, f"{n}/{total}"),
+               on_text=lambda text: _say(origin, "narration.delta", label, text))
+        _say(origin, "narration.done", label, "")
     except Exception as err:                     # noqa: BLE001 — the reader is the error's audience
         # Verbatim. `claude` missing or logged out is a thing the person can fix in a minute,
         # and only if the sentence reaches the screen instead of becoming "failed".
-        _say("narration.failed", label, str(err) or err.__class__.__name__)
+        _say(origin, "narration.failed", label, str(err) or err.__class__.__name__)
     finally:
         with _lock:
             _running.discard(label)
 
 
-def _say(kind: str, label: str, text: str) -> None:
-    WIRE.publish(WireMessage(kind=kind, label=label, text=text))
+def _say(origin: str, kind: str, label: str, text: str) -> None:
+    WIRE.publish(WireMessage(kind=kind, label=label, text=text, root=origin))

@@ -59,9 +59,11 @@ Three consequences of that shape, all of them load-bearing:
 - **The event bus is process-global; the cursor is not.** A write in one project wakes every
   other project's `follow`, and what each then reads is its OWN sqlite cursor — so the wake-up
   yields nothing. That is the line that makes one process safe for many boards, and
-  `tests/transports/test_serve.py` pins it. The exception, written down rather than hidden: a
-  `WireMessage` (a narration delta) carries no project, so it DOES reach every open board.
-  Closing that needs a field on the wire contract.
+  `tests/transports/test_serve.py` pins it. **Narration is gated by the same rule, one layer up**:
+  the ephemeral channel `WIRE` is process-global too, so a `WireMessage` carries the `root` that
+  emitted it and `usecases.feed.follow` yields only the ones matching its own — a message with no
+  root is dropped, because the permissive default is the one that leaks. The field never reaches a
+  browser: `transports/http/live.py` strips it before framing.
 - **No ambient trust.** `taskops ui` may be open on loopback because a laptop is a laptop; this
   faces a network, so every project's token is required for everything including reads, a
   project without a `token` file is not served at all rather than served open, and a miss is a

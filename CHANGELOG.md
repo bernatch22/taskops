@@ -48,6 +48,27 @@
   dos caminos empezarían a discrepar sobre qué es un evento válido, y con ids de contenido
   discrepar significa bifurcar.
 - 24 tests nuevos (`tests/transports/test_exchange.py`), incluidos los cinco casos del PUT.
+- **El wire lleva proyecto: la narración de un board ya no se filtra a los demás.** Era el hueco
+  que la card de `serve` había dejado escrito: `WIRE` es global al proceso, así que la prosa de un
+  digest en /alpha llegaba a TODOS los boards abiertos del server — y una narración nombra las
+  estrategias y los datos del proyecto que la escribió. Cerrado en el CONTRATO, no en un transporte.
+  - **`WireMessage` gana `root`**: el path absoluto del store que lo emitió. El root y no un
+    "nombre de proyecto" — el emisor (una narración adentro de un use case) no sabe ni debe saber
+    bajo qué prefijo lo montó un server, y el root es el identificador que las dos puntas ya
+    comparten porque las dos lo sacan del mismo `resolve_root`.
+  - **El filtro vive en `usecases.feed.follow`**, que ya resuelve su propio root: un mensaje de
+    otro root no se yieldea. Con eso NINGÚN transporte necesita saber de proyectos — `live.py`
+    enmarca y `projects.py` monta routers enteros, nunca ve un frame suelto.
+  - **Un mensaje SIN root se DESCARTA**, decidido y documentado: entregarlo a todos "por
+    compatibilidad" con un publicador viejo sería conservar exactamente el bug. El default
+    permisivo es el que fuga; el costo del otro es un rato de animación perdida en un upgrade.
+  - **El frame no expone el path**: `live._public` saca `root` antes de enmarcar (en las dos
+    envolturas, websocket y SSE) — es un path del filesystem del server, y en un server
+    multi-proyecto también nombra un board para el que quien mira puede no tener token. Copia,
+    nunca mutación: el broadcast le pasa el MISMO dict a todos los suscriptores.
+  - 6 tests nuevos: dos stores y dos follows con un publish de A; el mensaje ajeno que llega
+    cincuenta veces por segundo y no se cuela; el huérfano sin root; y los bytes del frame, que no
+    contienen ni la palabra `root` ni el path.
 
 ## Unreleased — a card remembers which sessions worked it
 

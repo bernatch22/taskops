@@ -52,8 +52,28 @@ def follow(start: Path | str, after: int = -1, *,
 
     `after < 0` means "from now": a board that opened is asking what happens NEXT, and replaying
     the entire history into it would be a spike of thousands of frames it has no use for.
+
+    **Wire messages are filtered by ROOT, and that filter lives HERE.** `WIRE` is process-global,
+    so a server holding many projects open (`transports.http.projects`) broadcasts every narration
+    delta to every board — which is prose from one project on another project's screen, and that
+    prose names its strategies and its data. Events cannot leak: they come from each project's own
+    sqlite, through the cursor read below. A wire message has no such gate, so this generator
+    supplies one: it already resolved its own root, and it compares against the root the publisher
+    stamped with the same `resolve_root`.
+
+    It belongs to this function and not to a transport for one reason each: `live.py` sees frames
+    but would have to be told which project it is framing for (and every future consumer would
+    have to be told again), while `projects.py` mounts whole routers and never sees an individual
+    frame at all. One filter, on the only object that knows both the root and the message.
+
+    A message with NO root is DROPPED, not broadcast. It is the only safe default: an unlabelled
+    frame is exactly the pre-fix message that leaked, and delivering it everywhere to be
+    compatible with an older publisher would preserve the bug this closes. The cost of dropping
+    is a few seconds of missing animation while a mixed-version server is restarted; the cost of
+    delivering is one project's prose on another's screen.
     """
     root = resolve_root(start)
+    origin = str(root)
     signal: "queue.Queue[WireMessage | None]" = queue.Queue(maxsize=_SIGNAL_DEPTH)
     # An event enqueues `None` — the SIGNAL to read the cursor, because the row is the payload.
     # A wire message enqueues ITSELF, because there is no row and never will be.
@@ -63,7 +83,7 @@ def follow(start: Path | str, after: int = -1, *,
     try:
         cursor = store.events.max_seq() if after < 0 else after
         while True:
-            messages = _drain(signal, tick)
+            messages = [m for m in _drain(signal, tick) if m.get("root") == origin]
             yield from messages
             fresh = store.events.after_seq(cursor)
             yield from fresh
