@@ -275,7 +275,7 @@ def test_the_channel_reaches_only_the_routes_asserted_above() -> None:
     adds a third endpoint to the channel, this fails until the contract test covers it."""
     source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
     used = set(re.findall(r"/api/([a-z]+)", source))
-    assert used == {"config", "comment", "chat", "board", "live", "task"}
+    assert used == {"config", "comment", "chat", "conversation", "board", "live", "task"}
 
 
 def test_the_chat_route_answers_the_shape_reply_posts(route: Any) -> None:
@@ -286,6 +286,16 @@ def test_the_chat_route_answers_the_shape_reply_posts(route: Any) -> None:
     answered = route(post("/api/chat", {"text": "porque nadie la reclamo"}))
     assert answered.status == 200
     assert json.loads(answered.body)["kind"] == "chat"
+
+
+def test_the_conversation_route_the_channel_opens_on_startup_exists(route: Any) -> None:
+    """The channel POSTs it when a session starts, which is what stops a new session opening
+    onto the last one's conversation. If the route moved, the channel would fail silently — it
+    swallows that error on purpose, because a board that will not cut is a board with a longer
+    history, not a broken one."""
+    answered = route(post("/api/conversation", {}))
+    assert answered.status == 200
+    assert json.loads(answered.body)["conversation"]
 
 
 def test_the_channel_declares_no_permission_relay() -> None:

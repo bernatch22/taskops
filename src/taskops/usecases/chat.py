@@ -34,7 +34,8 @@ from ..contracts.context import CONTEXT_TASK
 from ..engine import record
 from ._project import caller, heartbeat, project
 
-__all__ = ["CHAT_TASK", "CHAT_KIND", "say", "BOARD", "SESSION", "thread"]
+__all__ = ["CHAT_TASK", "CHAT_KIND", "say", "BOARD", "SESSION", "thread", "open_conversation",
+           "current_conversation"]
 
 CHAT_TASK = CONTEXT_TASK
 """The sentinel task chat is filed under — the project itself, not any one card."""
@@ -82,7 +83,45 @@ def say(start: Path | str, text: str, *, card: str = "", actor: str = "",
         return record(store, task=CHAT_TASK, actor=who, kind=CHAT_KIND, body=body)
 
 
-def thread(start: Path | str, *, limit: int = WINDOW) -> list[Event]:
-    """The conversation, oldest first — the tail of it, which is what a sidebar shows."""
+def open_conversation(start: Path | str, *, actor: str = "") -> str:
+    """Start a new conversation and return its id. The old one stays exactly where it was.
+
+    Called by the channel when a session starts — the channel IS that session's MCP server, so
+    it is born and dies with it and needs nothing else to know when a conversation begins — and
+    by the sidebar's own button, which is what "clear" means in a log with no eraser. Nothing is
+    deleted: yesterday's conversation is still there, still readable, and simply not what the
+    sidebar is showing.
+    """
     with project(start) as store:
-        return store.events.of_task(CHAT_TASK, kinds=(CHAT_KIND,))[-limit:]
+        who = caller(store, actor)["id"]
+        heartbeat(store, who)
+        started = record(store, task=CHAT_TASK, actor=who, kind=CHAT_KIND,
+                         body={"text": "", "card": "", "source": SESSION, "opens": True})
+        return started["id"]
+
+
+def current_conversation(start: Path | str) -> str:
+    """The id of the conversation in force, or "" when nobody has opened one.
+
+    Derived, not stored: the newest `opens` marker in the log IS the answer, so there is no
+    second place that could disagree with it and nothing to migrate on an old project — a board
+    that predates conversations has no marker and gets its whole history, which is what it had.
+    """
+    with project(start) as store:
+        markers = [e for e in store.events.of_task(CHAT_TASK, kinds=(CHAT_KIND,))
+                   if e["body"].get("opens")]
+        return markers[-1]["id"] if markers else ""
+
+
+def thread(start: Path | str, *, limit: int = WINDOW, everything: bool = False) -> list[Event]:
+    """The conversation in force, oldest first — the tail of it, which is what a sidebar shows.
+
+    `everything` is the escape hatch for reading back: a new session must not open onto
+    yesterday's argument, and yesterday's argument must not be gone.
+    """
+    with project(start) as store:
+        said = store.events.of_task(CHAT_TASK, kinds=(CHAT_KIND,))
+    if not everything:
+        opened = [i for i, e in enumerate(said) if e["body"].get("opens")]
+        said = said[opened[-1] + 1:] if opened else said
+    return said[-limit:]
