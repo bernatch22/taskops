@@ -301,3 +301,34 @@ def test_a_specialist_that_forgets_its_actor_is_not_refused_its_own_card(
     actors = {e["actor"] for e in events if e["kind"] in ("claimed", "status", "comment")}
     assert actors == {"agent:berna/api"}
     assert "inferred" in {e["kind"] for e in events}
+
+
+def test_evidence_survives_the_wire(root: Path) -> None:
+    """The bug that burned a live run: `update_` built its kwargs by hand and left `evidence`
+    and `no_evidence` out, so every close carrying evidence failed 'nothing says they were
+    met' — the field crossed the wire and died one line short of the engine. Driven over real
+    JSON-RPC because that is where it died; a unit test on the use case passes either way."""
+    from taskops.usecases import next_task, plan
+
+    made = plan(root, [{"title": "t", "spec": "s",
+                        "acceptance": ["WHEN x THE SYSTEM SHALL y"]}], actor="dev:ana")
+    card = made["created"][0]["id"]
+    next_task(root, task=card, actor="agent:ana/w1")
+    call("taskops_update", {"repo_path": str(root), "task": card, "actor": "agent:ana/w1",
+                            "status": "review", "comment": "round 1"})
+
+    closed = call("taskops_update", {"repo_path": str(root), "task": card,
+                                     "actor": "agent:ana/verifier", "status": "done",
+                                     "no_code": True, "comment": "verified",
+                                     "evidence": "WHEN x THE SYSTEM SHALL y: ran it"})
+    assert not closed.get("isError"), closed
+
+
+def test_the_update_schema_declares_the_actor() -> None:
+    """A schema is a fence: a strict host prunes params it does not declare, so without this
+    field a sub-agent literally could not say who it was on the one call where identity
+    decides everything."""
+    tools = {t["name"]: t for t in listing()}
+    fields = tools["taskops_update"]["inputSchema"]["properties"]
+    assert "actor" in fields
+    assert "evidence" in fields

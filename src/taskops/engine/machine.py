@@ -79,7 +79,12 @@ TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
                     "ready": None, "cancelled": None},
     "blocked": {"ready": None, "backlog": None, "in_progress": _needs_lease,
                 "cancelled": None},
-    "review": {"done": closing, "in_progress": _needs_lease, "blocked": None,
+    # `ready` is the reviewer's SEND-BACK, and it takes no lease on purpose: the reviewer
+    # holds nothing (review released the lease), and demanding one would leave findings with
+    # no way to act on them — watched live: a verifier that had proven the work could neither
+    # close the card nor return it, and a whole session went to negotiating with the board.
+    # The assignee survives the move, so only the worker it belongs to picks it back up.
+    "review": {"done": closing, "in_progress": _needs_lease, "ready": None, "blocked": None,
                "cancelled": None},
     "done": {},
     "cancelled": {"backlog": None},
