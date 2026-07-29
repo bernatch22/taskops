@@ -270,13 +270,13 @@ function Compose({ task, onDone }: { task: Task; onDone: () => void }): JSX.Elem
       <h3>Reply</h3>
       <textarea
         value={text}
-        placeholder="What the next agent — or you in three weeks — needs to know."
+        placeholder="What the next agent — or you in three weeks — needs to know. Notify somebody below and this reaches the Claude session that is open."
         onChange={(change) => setText(change.target.value)}
         rows={3}
       />
       <input
         value={mentions}
-        placeholder="notify (optional): agent:ana/api-1, dev:ana"
+        placeholder="notify — reaches an agent's inbox AND your open Claude session: dev:berna, agent:ana/api"
         onChange={(change) => setMentions(change.target.value)}
       />
       <div className="actions">
