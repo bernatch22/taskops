@@ -34,12 +34,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .._clock import now
 from .._errors import BadRequest
 from ..contracts import Task
-from ..engine import branch_for, record, unblock
-from ..engine.worker import Launched, launch, prepare
+from ..engine import branch_for, unblock
+from ..engine.worker import Launched
 from ..storage import Store
+from ._handoff import assign_worker, route_of
 from ._project import caller, heartbeat, project
 
 __all__ = ["dispatch", "DispatchResult", "MAX_WORKERS", "DEFAULT_WORKERS"]
@@ -101,8 +101,12 @@ def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0, 
             return DispatchResult(launched=[_preview(store, t, who["dev"], prefix or "w", i)
                                             for i, t in enumerate(chosen, start=1)],
                                   skipped=skipped, planned=True)
-        prepared = [_assign(store, task, who["dev"], prefix or "w", i, spawn=spawn, model=model,
-                            use_api_key=use_api_key) for i, task in enumerate(chosen, start=1)]
+        # The actor name is DERIVED (`agent:<dev>/<prefix><n>`) rather than random, so a fleet
+        # view reads as `berna/w1 … berna/w3` instead of three hashes and a developer can tell
+        # at a glance which workers are theirs. `_handoff.assign_worker` does the rest.
+        prepared = [assign_worker(store, task, f"agent:{who['dev']}/{prefix or 'w'}{i}",
+                                  spawn=spawn, model=model, use_api_key=use_api_key)
+                    for i, task in enumerate(chosen, start=1)]
         if not spawn:
             return DispatchResult(launched=prepared, skipped=skipped, spawned=False)
         return DispatchResult(launched=[w for w in prepared if w.pid],
@@ -116,7 +120,7 @@ def _preview(store: Store, task: Task, dev: str, prefix: str, index: int) -> Lau
 
     return Launched(actor=f"agent:{dev}/{prefix}{index}", task=task["id"], pid=0,
                     tree=worktree_for(store.root, task), log=Path(""),
-                    branch=branch_for(task), brief="")
+                    branch=branch_for(task), brief="", agent_type=route_of(store.root, task))
 
 
 def _choose(store: Store, wanted: tuple[str, ...], count: int,
@@ -141,20 +145,3 @@ def _capped(tasks: list[Task]) -> list[Task]:
         raise BadRequest(f"{len(tasks)} workers asked for; the ceiling is {MAX_WORKERS} — "
                          f"dispatch in batches, or raise it deliberately")
     return tasks
-
-
-def _assign(store: Store, task: Task, dev: str, prefix: str, index: int, *,
-            spawn: bool, model: str, use_api_key: bool = False) -> Launched:
-    """Assign the card and prepare its worktree; spawn a process only if asked.
-
-    Assignment FIRST, always — see the module docstring. The actor name is derived
-    (`agent:<dev>/<prefix><n>`) rather than random, so a fleet view reads as `berna/w1 … berna/w3`
-    instead of three hashes and a developer can tell at a glance which workers are theirs.
-    """
-    worker = f"agent:{dev}/{prefix}{index}"
-    store.tasks.set_assignee(task["id"], worker, when=now())
-    record(store, task=task["id"], actor=worker, kind="handoff",
-           body={"assigned_to": worker, "dispatched": True, "mentions": [worker]})
-    if spawn:
-        return launch(store.root, task, actor=worker, model=model, use_api_key=use_api_key)
-    return prepare(store.root, task, actor=worker)

@@ -18,6 +18,7 @@ from ._range import Selector, parse_date
 from ._sessions import mint, opens, resolve
 from .acceptance import acceptance_for, set_acceptance
 from .accounts import authenticate
+from .agents import agent_for, agent_named, fenced, registry, specialists
 from .ask import ask, search
 from .browse import board_url, root_url
 from .capture import capture
@@ -78,4 +79,6 @@ __all__ = [
     # who you are: a GitHub login, the sessions it mints, the repository a board is linked to
     "authenticate", "mint", "resolve", "opens",
     "links", "read_link", "write_link", "remove_link",
+    # the specialist registry: which agent a card belongs to, and who may not claim it
+    "registry", "specialists", "agent_for", "agent_named", "fenced",
 ]

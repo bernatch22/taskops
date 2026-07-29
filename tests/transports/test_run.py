@@ -33,8 +33,10 @@ def spawns(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     from taskops.engine.worker import Launched, prepare
 
     # The MODULE, by name: `taskops.usecases.dispatch` as an ATTRIBUTE is the function the
-    # package re-exports under the same name, and patching that patches nothing.
-    module = importlib.import_module("taskops.usecases.dispatch")
+    # package re-exports under the same name, and patching that patches nothing. The spawn
+    # itself lives in `_handoff`, which is where `dispatch` and `capture` share one meaning
+    # of "assign" — so that is the module holding the `launch` this has to intercept.
+    module = importlib.import_module("taskops.usecases._handoff")
 
     started: list[str] = []
 

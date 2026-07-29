@@ -197,3 +197,35 @@ def test_preparing_assigns_the_card(project: Path) -> None:
     from taskops.usecases import ask
 
     assert ask(project, result.launched[0].task)["task"]["assignee"] == result.launched[0].actor
+
+
+# ---- routing to a registered specialist
+
+
+def register(project: Path, name: str, labels: str) -> None:
+    folder = project / ".taskops" / "agents"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}.md").write_text(
+        f"---\nname: {name}\ndescription: a specialist\nlabels: [{labels}]\n---\n\nwork\n",
+        encoding="utf-8")
+
+
+def test_a_dispatched_card_names_the_specialist_it_belongs_to(tmp_path: Path) -> None:
+    """taskops routes; the CALLER spawns. The name has to reach the brief, because the host
+    session is the only thing that can act on it."""
+    init(tmp_path, install_git_hooks=False)
+    register(tmp_path, "taskops-collectors", "etl")
+    plan(tmp_path, [{"title": "fix the loader", "spec": "x", "labels": ["etl"]}],
+         actor="dev:berna")
+
+    worker = dispatch(tmp_path, count=1, actor="dev:berna").launched[0]
+    assert worker.agent_type == "taskops-collectors"
+    assert "agent_type: taskops-collectors" in worker.brief
+
+
+def test_without_a_registry_nothing_about_dispatch_changes(project: Path) -> None:
+    """The regression guard: no `.taskops/agents/`, no agent type, and a brief that reads
+    exactly as it did before this card existed."""
+    worker = dispatch(project, count=1, actor="dev:berna").launched[0]
+    assert worker.agent_type == ""
+    assert "agent_type" not in worker.brief

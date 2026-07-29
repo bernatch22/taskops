@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Any
 
 from ..contracts import NextResult
+from ._handoff import hand_over
+from ._project import project
 from .claim import next_task
 from .plan import plan
 from .update import update
@@ -51,13 +53,18 @@ def capture(start: Path | str, title: str, *, spec: str = "", files: str = "",
 
 
 def _hand(start: Path | str, task: str, to: str, actor: str) -> str:
-    """Give a card to somebody else — as a MENTION, never as a lease held on their behalf.
+    """Give a card to somebody else — the same assignment `dispatch` makes, plus the mention.
 
-    A lease belongs to a process that is alive and heartbeating; minting one for an agent that
-    is not running produces a claim that lapses fifteen minutes later with nobody watching, and
-    a board that spent that time saying the work was in hand. A mention lands in their inbox,
-    the card stays pickable, and whoever actually starts it claims it themselves — which is the
-    only moment a lease means anything.
+    It USED to be a mention alone, and that was a bug rather than a design: `dispatch` set the
+    assignee, which hides the card from every other agent, while this left it in the open pool.
+    One word, two outcomes, and the reply never said which. Now `hand_over` is the single
+    meaning of "assign" and both callers get it.
+
+    Still no lease. Assignment says whose card it is; only a running process may hold a claim.
+    The mention stays on top of it because a field the board reads is not a notification — the
+    person it was given to has to be TOLD, and their inbox is where they look.
     """
     update(start, task, comment=f"assigned to {to}", mentions=(to,), actor=actor)
+    with project(start) as store:
+        hand_over(store, task, to, actor=actor)
     return to

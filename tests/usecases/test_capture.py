@@ -46,17 +46,34 @@ def test_the_commit_the_guard_refused_is_allowed_once_captured(root: Path) -> No
 def test_assigning_it_to_somebody_else_never_mints_them_a_lease(root: Path) -> None:
     """A lease belongs to a process that is alive and heartbeating. One minted for an agent
     that is not running lapses fifteen minutes later with nobody watching, and the board spends
-    that time claiming the work is in hand — the exact lie leases exist to prevent."""
+    that time claiming the work is in hand — the exact lie leases exist to prevent.
+
+    Assignment is not a lease: the card is theirs and still unclaimed, waiting for them to run.
+    """
     made = capture(root, "read the prod logs", assign="agent:ana/w2", actor="agent:ana/w1")
     assert made["claim"] is None
     assert made["assigned"] == "agent:ana/w2"
     card = ask(root, made["task"]["id"])
-    assert card["task"]["status"] == "ready", "an assigned card stays pickable"
+    assert card["task"]["status"] == "ready", "an assigned card is not a claimed one"
+    assert card["lease"] is None
+
+
+def test_assigning_it_makes_it_invisible_to_a_third_agent(root: Path) -> None:
+    """THE repair. `capture(assign=...)` used to leave only a mention, so the card stayed in
+    the open pool and the next agent to call `next` could take it out from under the person it
+    had just been given to — while `dispatch`, using the same word, hid it from everybody.
+    One meaning of "assign", and this is it."""
+    from taskops.usecases import next_task
+
+    made = capture(root, "read the prod logs", assign="agent:ana/w2", actor="agent:ana/w1")
+    other = next_task(root, actor="agent:ana/intruder", task=made["task"]["id"])
+    assert other["claim"] is None
+    assert "agent:ana/w2" in other["reason"], "the reason must name who it belongs to"
 
 
 def test_the_assignment_reaches_the_other_agent(root: Path) -> None:
-    """Assignment is a MENTION, so it lands in an inbox rather than in a field only the board
-    reads. The card being pickable is only fair if the person it is meant for is told."""
+    """The field the board reads is not a notification: the person it was given to has to be
+    TOLD, and their inbox is where they look. So the mention survives the repair."""
     made = capture(root, "read the prod logs", assign="agent:ana/w2", actor="agent:ana/w1")
     card = ask(root, made["task"]["id"])
     assert any("agent:ana/w2" in event["body"].get("text", "")

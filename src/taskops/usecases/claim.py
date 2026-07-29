@@ -22,6 +22,7 @@ from ..storage import Store
 from ._project import caller, heartbeat, project
 from ._reasons import why_nothing
 from ._routing import claim_remotely, routed, whoami
+from .agents import agent_named, fenced
 from .view import inbox_for, view
 
 __all__ = ["next_task"]
@@ -50,6 +51,8 @@ def next_task(start: Path | str, *, actor: str = "", session: str = "",
         store.claiming()
         heartbeat(store, who)
         unblock(store)
+        if task and (refusal := _fence(store, who, task)):
+            return _result(store, None, refusal)
         claimed = _take(store, who, session, labels, task)
         if claimed is None:
             return _result(store, None, why_nothing(store, labels, task, who))
@@ -74,7 +77,9 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
         asked_for = store.tasks.need(wanted)
         pool = [asked_for] if _claimable(asked_for, who) else []
     else:
-        pool = ready_tasks(store, labels=labels, actor=who)
+        mine = agent_named(store.root, who)
+        pool = [t for t in ready_tasks(store, labels=labels, actor=who)
+                if not fenced(mine, t["labels"])]
     for candidate in pool:
         lease = take_lease(store, candidate, actor=who, session=session)
         if lease is None:
@@ -86,6 +91,25 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
                      branch=branch_for(candidate),
                      inbox=inbox_for(store, who))
     return None
+
+
+def _fence(store: Store, who: str, wanted: str) -> str:
+    """Why a registered specialist may not have the card it asked for by id, or "".
+
+    The gap this closes: a role→card binding that is only ever suggested in a prompt is a
+    suggestion, and an agent that ignores it is indistinguishable from one that never read it.
+    Enforced at the CLAIM, it is a fact. An actor whose name matches no registry entry is left
+    alone — a human's ad-hoc worker does not become fenced in because specialists exist.
+
+    An ASSIGNMENT to this very actor beats the fence. Somebody named this specialist for this
+    card on purpose, and labels are the routing HEURISTIC while an assignment is a decision —
+    a fence that overruled it would make `capture(assign=…)` hand a specialist a card it then
+    could not claim, which is how this rule was found.
+    """
+    card = store.tasks.need(wanted)
+    if card["assignee"] == who:
+        return ""
+    return fenced(agent_named(store.root, who), card["labels"])
 
 
 def _claimable(task: Task, who: str) -> bool:

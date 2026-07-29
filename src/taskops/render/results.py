@@ -62,8 +62,8 @@ def render_capture(result: dict[str, object]) -> str:
     task = cast("Task", result["task"])
     head = f"# created {task['id']} — {truncate(task['title'], 60)}"
     if result.get("assigned"):
-        return "\n".join([head, "", f"Assigned to {result['assigned']} — it is in their inbox "
-                           f"and stays pickable until they claim it."])
+        return "\n".join([head, "", f"Assigned to {result['assigned']} — only they can claim "
+                           f"it, and it is in their inbox."])
     if result.get("claim") is None:
         return "\n".join([head, "", "Not claimed. taskops_next task=" + task["id"] +
                            " when you start it."])

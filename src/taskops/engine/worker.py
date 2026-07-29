@@ -58,7 +58,7 @@ class Launched:
     """A worker that was started, and where to look at it."""
 
     def __init__(self, *, actor: str, task: str, pid: int, tree: Path, log: Path,
-                 branch: str, brief: str = "") -> None:
+                 branch: str, brief: str = "", agent_type: str = "") -> None:
         self.actor = actor
         self.task = task
         self.pid = pid
@@ -70,6 +70,10 @@ class Launched:
         self.brief = brief
         """The prompt to hand a sub-agent, verbatim. Empty for a spawned worker, which got it as an
         argument instead."""
+
+        self.agent_type = agent_type
+        """Which registered specialist should run this card, or "" for the stock worker. Decided by
+        `usecases.agents`, acted on by the CALLER — taskops never spawns a sub-agent itself."""
 
 
 def worktree_for(root: Path, task: Task) -> Path:

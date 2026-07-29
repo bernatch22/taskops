@@ -23,6 +23,7 @@ which is what lets every layer above depend on it freely.
 from __future__ import annotations
 
 from .actor import Actor
+from .agents import AgentSpec
 from .board import (
     Activity,
     ActorRoll,
@@ -55,7 +56,7 @@ __all__ = [
     "TaskView",
     "Dep",
     "Lease",
-    "Actor",
+    "Actor", "AgentSpec",
     "Event",
     "WireMessage",
     "Inbox",

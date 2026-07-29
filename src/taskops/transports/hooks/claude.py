@@ -27,20 +27,27 @@ from typing import Any, Callable, cast
 
 from ..._errors import TaskopsError
 from . import events
+from ._materialise import materialise_agents
 from ._sweeplaunch import launch_sweep
 
 __all__ = ["register", "HANDLERS", "session_start"]
 
 
 def session_start(payload: dict[str, Any]) -> dict[str, Any]:
-    """Inject the brief, and kick the daily sweep off in the background.
+    """Inject the brief, kick the daily sweep off, and publish the project's specialist agents.
 
     The launch lives HERE and not in `events` because it answers nothing: `events` is what an
     event MEANS, and a detached process is not part of the reply. It runs first and returns in
     microseconds — see `_sweeplaunch` — so the brief the session actually reads is never made
     to wait on a report it is not going to see.
+
+    Materialisation joins it on the same fast path for the same reason: it answers nothing
+    either, and it must have happened BEFORE the session could want to invoke an agent. It is
+    a few small file reads and it fails open — see `_materialise`.
     """
-    launch_sweep(events.cwd(payload))
+    where = events.cwd(payload)
+    launch_sweep(where)
+    materialise_agents(where)
     return events.session_start(payload)
 
 
