@@ -84,7 +84,11 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
         lease = take_lease(store, candidate, actor=who, session=session)
         if lease is None:
             continue
-        store.tasks.set_status(candidate["id"], "claimed", when=now())
+        if candidate["status"] == "ready":
+            # A review card KEEPS its status: claiming it means "I am coming back to it", and
+            # stamping `claimed` over `review` would erase the fact the board and the guard
+            # both read — that this card has been worked and is in its handoff.
+            store.tasks.set_status(candidate["id"], "claimed", when=now())
         record(store, task=candidate["id"], actor=who, kind="claimed",
                body={"session": session, "branch": branch_for(candidate)})
         return Claim(view=view(store, candidate["id"]), lease=lease,
@@ -113,8 +117,17 @@ def _fence(store: Store, who: str, wanted: str) -> str:
 
 
 def _claimable(task: Task, who: str) -> bool:
-    """Ready, and either unassigned or assigned to this caller."""
-    return task["status"] == "ready" and task["assignee"] in ("", who)
+    """Ready — or in review — and either unassigned or assigned to this caller.
+
+    `review` is claimable BY ID because of what claiming it means: coming back to fix. The
+    verifier posted findings, the worker returns, and the return needs a lease (`review ->
+    in_progress` demands one). Before this, a bounced-back card was unreachable: review had
+    released the lease, and the claim refused review outright — so the one agent that was
+    supposed to pick the findings up was told the card was "held by someone else" about a card
+    nobody held. Pool calls never see review cards (`ready_tasks` is ready only), so nothing
+    can wander into one by asking for "anything".
+    """
+    return task["status"] in ("ready", "review") and task["assignee"] in ("", who)
 
 
 def _result(store: Store, claim: Claim | None, reason: str) -> NextResult:
