@@ -64,7 +64,13 @@ def update_(args: dict[str, Any]) -> str:
                                 comment=arg.optional(args, "comment"),
                                 mentions=arg.csv(args, "mentions"),
                                 blocked_on=arg.optional(args, "blocked_on"),
-                                no_code=arg.flag(args, "no_code")))
+                                no_code=arg.flag(args, "no_code"),
+                                # These two were NOT forwarded, and the omission cost a whole
+                                # live run: every close carrying evidence failed "nothing says
+                                # they were met" — the field crossed the wire and died here,
+                                # one line short of the engine.
+                                evidence=arg.optional(args, "evidence"),
+                                no_evidence=arg.optional(args, "no_evidence")))
 
 
 def dispatch_(args: dict[str, Any]) -> str:

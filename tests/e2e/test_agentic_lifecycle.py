@@ -195,3 +195,33 @@ def test_a_refused_move_never_costs_the_commit_binding(repo: Path) -> None:
     assert view["commits"], "the binding survives a refused status move"
     with Store(repo) as store:
         assert store.tasks.need(card)["status"] == "claimed", "and the move really was refused"
+
+
+def test_the_verifier_needs_exactly_two_verbs(repo: Path) -> None:
+    """The whole review protocol, as the verifier prompt states it: done-with-evidence to
+    close, ready-with-findings to send back. Neither takes a lease. A live run burned a whole
+    session discovering that the second verb did not exist and the first dropped its evidence
+    on the MCP floor."""
+    card = plan(repo, [{"title": "t", "spec": "s",
+                        "acceptance": ["WHEN x THE SYSTEM SHALL y"]}],
+                actor=DEV)["created"][0]["id"]
+    dispatch(repo, tasks=(card,), actor=DEV, prefix="w")
+    worker = "agent:berna/w1"
+    next_task(repo, task=card, actor=worker)
+    update(repo, card, status="review", comment="round 1", actor=worker)
+
+    # SEND BACK: one call, no lease, findings in the comment. The assignee survives.
+    update(repo, card, status="ready", comment="FAILS: nothing asserts y", actor=VERIFIER)
+    with Store(repo) as store:
+        after = store.tasks.need(card)
+        assert after["status"] == "ready"
+        assert after["assignee"] == worker, "sent back to ITS worker, not to the pool"
+
+    stranger = next_task(repo, task=card, actor=INTRUDER)
+    assert stranger["claim"] is None, "assigned means assigned, even after a send-back"
+
+    # The worker picks it up again and hands it over; the verifier closes. Two calls each.
+    next_task(repo, task=card, actor=worker)
+    update(repo, card, status="review", comment="round 2: asserted", actor=worker)
+    update(repo, card, status="done", no_code=True, comment="verified",
+           evidence="WHEN x THE SYSTEM SHALL y: asserted, ran it", actor=VERIFIER)

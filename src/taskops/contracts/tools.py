@@ -45,8 +45,15 @@ class _UpdateRequired(_Target):
 
 
 class UpdateParams(_UpdateRequired, total=False):
+    """`actor` is here because a schema is a FENCE: a strict host prunes params it does not
+    declare, so its absence meant a sub-agent literally could not say who it was on the one
+    call where identity decides everything — and the board answered "another's to close" to
+    the verifier it had asked for."""
+
+    actor: f.Actor
+    session: f.Session
     status: Annotated[Literal["in_progress", "blocked", "review", "done", "released",
-                              "cancelled"], f.STATUS]
+                              "cancelled", "ready"], f.STATUS]
     comment: Annotated[str, f.COMMENT]
     mentions: Annotated[str, f.MENTIONS]
     blocked_on: Annotated[str, f.BLOCKED_ON]
