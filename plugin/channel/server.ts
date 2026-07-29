@@ -38,6 +38,7 @@ import {
   parseFrame,
   parseKinds,
   readCard,
+  sanitize,
   selects,
   summarize,
   wantsCard,
@@ -121,7 +122,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
     switch (req.params.name) {
       case 'reply': {
         const card = String(args.card ?? '').trim()
-        const text = String(args.text ?? '').trim()
+        // Sanitised HERE, at the only door into the board. A leaked tool tag (see `sanitize`)
+        // would otherwise be stored as a permanent fact on a card, and the board never forgets.
+        const text = sanitize(String(args.text ?? '').trim()).trim()
         if (!text) throw new Error('`text` is required')
         // No card, no comment: a chat message named none, and answering it on whatever card
         // was last mentioned would file a conversation under work it is not about. The board's

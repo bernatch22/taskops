@@ -8,6 +8,7 @@ import {
   parseKinds,
   readCard,
   reviewRoute,
+  sanitize,
   selects,
   strings,
   summarize,
@@ -353,4 +354,56 @@ test('a chat message from the sidebar reaches the session', () => {
                  body: {text: 'why is tk-2 still open?'}, ts: 1, id: 'x'} as BoardEvent
   expect(classify(event)).toBe('mention')
   expect(selects(parseKinds(undefined), event)).toBe('mention')
+})
+
+// ---------------------------------------------------------------- the leaked markup
+
+group('sanitize — the Claude Code tool-markup leak', () => {
+  // anthropics/claude-code#66011 and #68615. Every case below is either the string Berna
+  // actually received or the thing that string must NOT do to somebody else's prose.
+
+  test('the exact reply Berna received loses its tail and nothing else', () => {
+    const got = sanitize(
+      'Looked at tk-9498a7 — the reveal belongs in Chat.tsx.</parameter></invoke>')
+    expect(got).toBe('Looked at tk-9498a7 — the reveal belongs in Chat.tsx.')
+  })
+
+  test('a whole corrupted block at the end goes, however many tags it is', () => {
+    const got = sanitize('Done.\n<invoke name="Edit">\n<parameter name="x">y</parameter></invoke>\n</function_calls>')
+    // `y` is prose the model emitted, so the cut stops at the first tag that is not trailing.
+    expect(got).toBe('Done.\n<invoke name="Edit">\n<parameter name="x">y')
+  })
+
+  test('MIDDLE markup is prose and is never touched', () => {
+    // The whole reason the cut is anchored: this file's own documentation is written like this.
+    const said = 'The channel emits <invoke name="reply"> and then keeps talking about it.'
+    expect(sanitize(said)).toBe(said)
+  })
+
+  test('an ordinary answer is returned byte for byte', () => {
+    const said = 'tk-2 is still open because its acceptance criteria were never set.'
+    expect(sanitize(said)).toBe(said)
+  })
+
+  test('markup in the middle survives even when a real tail is cut', () => {
+    expect(sanitize('Use <invoke name="reply"> to answer.</parameter>'))
+      .toBe('Use <invoke name="reply"> to answer.')
+  })
+
+  test('a text that is ONLY markup comes back whole, never empty', () => {
+    // Losing the reply entirely leaves somebody waiting on the board forever; unreadable beats
+    // absent, and the board at least shows that the session answered.
+    expect(sanitize('</parameter></invoke>')).toBe('</parameter></invoke>')
+  })
+
+  test('an unclosed opening tail goes too, attributes and all', () => {
+    expect(sanitize('Fixed it.\n<invoke name="Bash">')).toBe('Fixed it.')
+  })
+
+  test('the namespaced spelling is the same leak', () => {
+    // The client writes these with an `antml:` prefix. Assembled rather than typed out: a literal
+    // one in a source file is a tag that the next tool to read this file will try to parse.
+    const shut = (name: string) => `</${name}>`
+    expect(sanitize(`Fixed it.${shut('antml:parameter')}${shut('antml:invoke')}`)).toBe('Fixed it.')
+  })
 })

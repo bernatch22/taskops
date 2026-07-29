@@ -191,3 +191,33 @@ because a rule with no honest exit gets bypassed by lying.
 
 One thing nothing can stop: `git commit --no-verify` skips every git hook — and `post-commit` too,
 so the commit is not merely unattributed, it is unseen. That is stated rather than papered over.
+
+## 7 · The chat sidebar, and the activity strip
+
+The board's chat (`⌘/Ctrl+K`) reaches whichever session is running the channel, and the session
+answers with the `reply` tool. Underneath the conversation the sidebar draws a **tool strip**: one
+dim line per tool call the agent makes, fed by the `activity` events the `PostToolUse` hook writes
+through `usecases.track`. Those events are local-only — they never reach the committed log and the
+channel refuses to forward them into a session — so the strip is the only place they are read.
+
+**The strip is empty unless the project you are watching installs the hook.** The plugin's own
+`hooks.json` covers any project that loads the taskops plugin; a project that does not (a bare
+checkout, a scratch repo) emits nothing, and the sidebar will show a conversation with no visible
+work behind it. The fix is project-level hooks — a Claude Code feature, `.claude/settings.json` in
+the repo being worked on, committed alongside it:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "Edit|Write|Bash|NotebookEdit",
+        "hooks": [{ "type": "command",
+                    "command": "python3 -m taskops.transports.hooks post-tool-use" }] }
+    ]
+  }
+}
+```
+
+The `taskops` package has to be importable by that `python3`, and the hook attributes the call to
+the card the caller currently holds — an activity event with no task is dropped rather than filed
+under an empty id.

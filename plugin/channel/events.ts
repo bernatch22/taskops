@@ -347,6 +347,39 @@ function line(event: BoardEvent, kind: Kind, card: ReviewCard | null): string {
   }
 }
 
+// ---------------------------------------------------------------- the leaked markup
+
+/**
+ * Tool-call markup that corrupted mid-response and arrived as PROSE.
+ *
+ * A known Claude Code defect, not a taskops one:
+ *   https://github.com/anthropics/claude-code/issues/66011
+ *   https://github.com/anthropics/claude-code/issues/68615
+ * Berna received a reply through this channel whose text ended in `</parameter></invoke>`, and it
+ * was stored on the board that way — the board keeps events forever, so a transient client bug
+ * became a permanent one.
+ *
+ * ONLY the tail is cut, and that bound is the entire design. Somebody explaining an MCP schema
+ * writes `<invoke name="...">` in the middle of a sentence on purpose; a sweep over the whole
+ * string would eat their example and there would be no way to write about this file. A corruption
+ * always trails the answer — the model stops producing prose and starts producing tags — so the
+ * end is the one place a cut is safe.
+ */
+const LEAKED_TAIL =
+  /(?:\s*<\/?(?:antml:)?(?:invoke|parameter|function_calls|function_results)(?:\s[^<>]*)?\/?>)+\s*$/
+
+/**
+ * The reply text with any trailing tool markup removed.
+ *
+ * A text that is NOTHING BUT markup comes back unchanged rather than empty: an answer nobody can
+ * read is bad, and an answer that never arrives while somebody waits on the board is worse.
+ */
+export function sanitize(text: string): string {
+  const cut = text.replace(LEAKED_TAIL, '')
+  if (cut === text) return text
+  return cut.trim() ? cut.trimEnd() : text
+}
+
 /** The board, compressed to what fits in a reply. The full `/api/board` payload carries
  *  every card's spec and file list; this is the shape somebody asked "where are we" about. */
 export function summarize(board: unknown): string {
