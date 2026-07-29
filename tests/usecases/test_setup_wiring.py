@@ -139,3 +139,35 @@ def test_the_block_names_its_own_uninstall() -> None:
     """Somebody reading their rc file in a year must be able to get rid of this without
     searching for the tool that put it there."""
     assert "taskops setup --remove" in block("claude-tk", "claude", shell="/bin/zsh")
+
+
+def test_every_path_written_is_absolute() -> None:
+    """A relative path in a config is resolved against the cwd of whoever READS it, and the
+    reader is an MCP server Claude Code spawned from somewhere neither of us chose. Written as
+    `.` — the default `--repo` — the channel started `taskops ui --repo .`, served a different
+    repository entirely, found the port taken and attached to that. Two symptoms, one dot."""
+    from taskops.usecases.mcpfile import servers_for
+
+    entry = servers_for(Path("."))["taskops-channel"]
+    assert Path(entry["env"]["TASKOPS_REPO"]).is_absolute()
+    assert entry["env"]["TASKOPS_REPO"] != "."
+    assert all(Path(arg).is_absolute() for arg in entry["args"])
+
+
+def test_two_projects_never_share_a_port(tmp_path: Path) -> None:
+    """The second channel to start would find the first one's UI listening, attach to it, and
+    serve somebody else's board — silently, because attaching is the correct behaviour when the
+    port really is yours."""
+    from taskops.usecases.mcpfile import port_for
+
+    one, two = tmp_path / "alpha", tmp_path / "beta"
+    assert port_for(one) != port_for(two)
+
+
+def test_a_project_keeps_its_port_across_runs(tmp_path: Path) -> None:
+    """Derived, not random: `hash()` is salted per process, so the same checkout would get a
+    different port every session and every channel would spawn a UI beside the last one's."""
+    from taskops.usecases.mcpfile import port_for
+
+    assert port_for(tmp_path) == port_for(tmp_path)
+    assert 1024 < port_for(tmp_path) < 65535

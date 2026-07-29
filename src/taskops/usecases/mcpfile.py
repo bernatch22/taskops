@@ -15,12 +15,13 @@ lives there — and a tool that rewrote the file would delete a teammate's work 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
-__all__ = ["MCP_FILE", "wire_mcp", "servers_for"]
+__all__ = ["MCP_FILE", "wire_mcp", "servers_for", "port_for"]
 
 MCP_FILE = ".mcp.json"
 
@@ -28,10 +29,17 @@ MCP_FILE = ".mcp.json"
 def servers_for(root: Path) -> dict[str, Any]:
     """The two servers taskops offers, as `.mcp.json` entries.
 
+    Every path here is ABSOLUTE, and that is not tidiness. A relative path in a config file is
+    resolved against the cwd of whoever READS it, and the reader is an MCP server Claude Code
+    spawned from somewhere neither of us chose. Written as `.` — the default `--repo` — the
+    channel started `taskops ui --repo .`, served a completely different repository, found the
+    port already taken and attached to that instead. Two symptoms, one relative path.
+
     The channel is included even though it needs `--dangerously-load-development-channels` to
     register: naming it here is what makes that flag work at all, and a project that never
     turns it on pays nothing for the entry.
     """
+    here = root.expanduser().resolve()
     channel = Path(__file__).resolve().parents[3] / "plugin" / "channel" / "server.ts"
     servers: dict[str, Any] = {
         "taskops": {"command": sys.executable, "args": ["-m", "taskops.transports.mcp"]},
@@ -39,8 +47,24 @@ def servers_for(root: Path) -> dict[str, Any]:
     if channel.is_file():
         servers["taskops-channel"] = {
             "command": "bun", "args": [str(channel)],
-            "env": {"TASKOPS_REPO": str(root), "TASKOPS_BIN": _binary()}}
+            "env": {"TASKOPS_REPO": str(here), "TASKOPS_BIN": _binary(),
+                    # A PORT PER PROJECT, derived from the path. Two boards cannot share 2140:
+                    # the second channel to start finds the first one's UI listening, attaches
+                    # to it, and quietly serves somebody else's board — which is exactly what
+                    # happened. Derived rather than random so it is stable across restarts, and
+                    # high so it cannot collide with something a developer already runs.
+                    "TASKOPS_UI_PORT": str(port_for(here))}}
     return servers
+
+
+def port_for(root: Path) -> int:
+    """A stable port for this project: 2140 for the first one, then derived from the path.
+
+    `sha256` and not `hash()`: Python's is salted per process, so the same checkout would get a
+    different port every session and every channel would spawn a UI beside the last one's.
+    """
+    digest = hashlib.sha256(str(root).encode("utf-8")).digest()
+    return 20000 + int.from_bytes(digest[:2], "big") % 20000
 
 
 def wire_mcp(root: Path) -> list[str]:
