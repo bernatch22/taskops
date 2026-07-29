@@ -27,9 +27,9 @@ from .project import board, counts
 from .reports import NO_STAMP, missing_events, stamp, stamped_seq
 from .scheduler import branch_for, claim, open_children, ready_tasks, sweep_dead, unblock
 from .wire import WIRE, Broadcast, is_wire
-from .worker import Launched, launch
+from .worker import Launched
 
 __all__ = ["Facts", "Evidence", "evidenced", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "ready_tasks", "claim",
            "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet", "activity", "day_report", "period_report", "first_date", "label_of", "shift", "date_of",
-           "counts", "replay", "narrate", "OnPass", "OnText", "stamp", "stamped_seq", "NO_STAMP", "missing_events", "branch_state", "branch_states", "launch", "Launched", "WIRE", "Broadcast", "is_wire"]
+           "counts", "replay", "narrate", "OnPass", "OnText", "stamp", "stamped_seq", "NO_STAMP", "missing_events", "branch_state", "branch_states", "Launched", "WIRE", "Broadcast", "is_wire"]

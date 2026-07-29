@@ -11,15 +11,17 @@ Before this, a planner could create work and then nothing happened: cards sat in
 human to open a terminal per agent. Assignment alone would not have fixed it either — an assigned card
 with nobody running is still a card nobody is doing.
 
-**It PREPARES; the orchestrator spawns.** By default this assigns the cards, makes their worktrees,
-and hands back a ready-to-use brief per card — and starts no process at all. The caller then passes
-each brief to its OWN sub-agent tool, so the workers run inside the session that is already open.
+**It PREPARES; the orchestrator spawns.** This assigns the cards, makes their worktrees, and hands
+back a ready-to-use brief per card — and starts no process, ever. The caller passes each brief to
+its OWN sub-agent tool, so the workers run inside the session that is already open.
 
-That default is a correction. The first version spawned `claude -p` per card, which opens a NEW
-billed session each time; a real fleet of six drained an API balance mid-run and left six cards
-claimed by processes that no longer existed. Sub-agents in the current session use the subscription
-that is already paid for, and they die with the session instead of outliving it invisibly.
-`spawn=True` still exists for the case somebody genuinely wants detached workers.
+There used to be a `spawn=True` that started one `claude -p` per card, and it is gone. It opened a
+NEW billed session each time — a real fleet of six drained a balance mid-run and left six cards
+claimed by processes that no longer existed — and it could not even deliver what it promised: the
+detached worker got a generic prompt and the shell's default model, so a project's registered
+specialist, its model and its tool list never reached the worker that was supposed to BE it. A
+sub-agent of the current session gets all three, costs what the subscription already paid for, and
+dies with the session instead of outliving it invisibly.
 
 **Assign, then hand over, in that order.** The card is assigned to the worker's actor id BEFORE
 anything can claim it, so the scheduler will only ever offer it to that worker — and no other agent
@@ -77,20 +79,17 @@ class DispatchResult:
 
 
 def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0, actor: str = "",
-             prefix: str = "", model: str = "", dry_run: bool = False, spawn: bool = False,
-             use_api_key: bool = False) -> DispatchResult:
-    """Launch a worker per card. Named cards, or the best `count` ready ones.
+             prefix: str = "", dry_run: bool = False) -> DispatchResult:
+    """Prepare a worker per card. Named cards, or the best `count` ready ones.
 
     `count` rather than "everything ready" as the default shape, because "all" is the request nobody
     means literally on a board with forty cards in it.
 
-    `dry_run` shows the plan and changes NOTHING — no assignment, no worktree, no process. It exists
-    because this is the one call in taskops that spends money: every worker is a model, and a planner
-    that miscounted should be able to look before it commits to five of them. It is also the honest
-    answer to "which cards would you pick", which no amount of reading the scheduler gives you.
-
-    `use_api_key` is the opt-in for billing per token: a spawned worker inherits the environment
-    MINUS `worker.DROPPED_ENV`, so it uses the logged-in subscription. Only the CLI passes it.
+    `dry_run` shows the plan and changes NOTHING — no assignment, no worktree. It stays after the
+    spawn path was removed because the cost did not go away, it moved: each brief becomes a
+    sub-agent the caller pays for, and a planner that miscounted should be able to look before it
+    commits to five of them. It is also the honest answer to "which cards would you pick", which no
+    amount of reading the scheduler gives you.
     """
     with project(start) as store:
         who = caller(store, actor)
@@ -104,14 +103,9 @@ def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0, 
         # The actor name is DERIVED (`agent:<dev>/<prefix><n>`) rather than random, so a fleet
         # view reads as `berna/w1 … berna/w3` instead of three hashes and a developer can tell
         # at a glance which workers are theirs. `_handoff.assign_worker` does the rest.
-        prepared = [assign_worker(store, task, f"agent:{who['dev']}/{prefix or 'w'}{i}",
-                                  spawn=spawn, model=model, use_api_key=use_api_key)
+        prepared = [assign_worker(store, task, f"agent:{who['dev']}/{prefix or 'w'}{i}")
                     for i, task in enumerate(chosen, start=1)]
-        if not spawn:
-            return DispatchResult(launched=prepared, skipped=skipped, spawned=False)
-        return DispatchResult(launched=[w for w in prepared if w.pid],
-                              skipped=skipped + [w.task for w in prepared if not w.pid],
-                              spawned=True)
+        return DispatchResult(launched=prepared, skipped=skipped)
 
 
 def _preview(store: Store, task: Task, dev: str, prefix: str, index: int) -> Launched:

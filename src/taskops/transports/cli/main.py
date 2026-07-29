@@ -26,7 +26,6 @@ from .commands import (
     recover,
     remote,
     report,
-    run_,
     schedule,
     serve,
     status,
@@ -37,9 +36,9 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, ui, serve, tasks, context, status, run_, report, schedule, recover,
+_COMMANDS = (init, ui, serve, tasks, context, status, report, schedule, recover,
              sync, login, open_, remote, pushpull)
-"""Every command there is. Sixteen, and `--help` lists all sixteen.
+"""Every command there is. Fifteen, and `--help` lists all fifteen.
 
 `login` sits with them because it is the first thing a new teammate types and the last thing
 they should have to look for. It is the only command here that touches nothing under
@@ -66,9 +65,12 @@ Claude Code still came in through the developer's binary. The agent's door is `t
 and the wiring's is `python -m taskops.transports.hooks`, so these are gone rather than
 hidden, and the machinery that hid them went with them.
 
-`run` is listed even though it is experimental and costs money, because the alternative was
-worse: it lived as `dispatch --spawn`, a flag on a hidden command, so the one thing here that
-spends money was the hardest thing to find and the easiest to hit by accident."""
+`run` is GONE, and with it the last way a person could start detached Claude processes from this
+binary. It spawned one `claude -p` per card with a generic prompt and whatever model the shell
+defaulted to — so a project's own specialist, its model and its tools never reached the worker
+that was supposed to be it. The orchestration belongs inside a session, where the registry is
+readable and sub-agents cost what the subscription already paid for: `taskops_dispatch` hands
+back the briefs and the session spawns them."""
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -65,9 +65,6 @@ def dispatch_(args: dict[str, Any]) -> str:
     return render_dispatch(dispatch(arg.repo(args), tasks=arg.csv(args, "tasks"),
                                     count=arg.count(args), actor=arg.optional(args, "actor"),
                                     prefix=arg.optional(args, "prefix"),
-                                    model=arg.optional(args, "model"),
-                                    # `spawn` is NOT read, on purpose: this surface never starts a
-                                    # process. See `DispatchParams` for why.
                                     dry_run=arg.flag(args, "dry_run")))
 
 

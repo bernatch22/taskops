@@ -53,7 +53,7 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     hook and by nothing else, so a person scanning this page for their task list should
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
-    assert listed == {"init", "ui", "serve", "tasks", "context", "status", "run", "report",
+    assert listed == {"init", "ui", "serve", "tasks", "context", "status", "report",
                       "schedule", "recover", "sync", "login", "open", "remote", "push", "pull"}
 
 
@@ -77,7 +77,7 @@ def test_the_remote_verbs_are_the_developers_and_are_listed() -> None:
 
 @pytest.mark.parametrize("gone", ["guard", "hook", "ingest", "brief", "inbox", "track",
                                   "checkout", "next", "update", "ask", "plan", "dispatch",
-                                  "log"])
+                                  "log", "run"])
 def test_the_thirteen_hidden_commands_are_gone_not_hidden(gone: str) -> None:
     """Seven listed AND seven existing. Hidden reads the same from the outside as absent and
     is not the same thing: every one of these was still a door into the developer's binary,

@@ -90,22 +90,17 @@ class AskParams(_Target, total=False):
 class DispatchParams(_Target, total=False):
     """Prepare worker agents for cards. The caller spawns them as its own sub-agents.
 
-    There is deliberately NO `spawn` field here, and its absence is the design rather than an
-    omission. The use case can start detached processes and `taskops dispatch --spawn` does, because
-    that is a human at a terminal asking for it — but a model calling a tool must not be able to make
-    this package launch another Claude Code. An agent inside a session already HAS a way to run work
-    in parallel: its own sub-agent tool, on the subscription that is already paid for. Spawning from
-    here opens a new billed session per worker, which is how a real fleet drained an API balance
-    mid-run and left six cards claimed by processes that no longer existed.
-
-    A capability the engine has and a transport withholds is a normal thing for this codebase — the
-    surfaces are thin, not identical.
+    There is no `spawn` field, and there is no longer anything for one to reach: the detached path
+    is gone from the engine too. An agent inside a session already HAS a way to run work in
+    parallel — its own sub-agent tool, on the subscription that is already paid for — and it is the
+    only way that can hand a worker the specialist a project registered, with that specialist's
+    model and tools. A detached `claude -p` got a generic prompt and the shell's default model,
+    which is a worker pretending to be the role rather than being it.
     """
 
     tasks: Annotated[str, f.DISPATCH_TASKS]
     count: Annotated[int, f.DISPATCH_COUNT]
     prefix: Annotated[str, f.PREFIX]
-    model: Annotated[str, f.MODEL]
     dry_run: Annotated[bool, f.DRY_RUN]
     actor: f.Actor
 

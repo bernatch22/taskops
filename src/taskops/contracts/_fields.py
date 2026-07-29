@@ -13,7 +13,7 @@ from typing import Annotated
 __all__ = ["Repo", "Actor", "Session", "TaskId", "TASKS", "DRY_RUN", "STATUS", "COMMENT",
            "TITLE", "SPEC", "FILES", "ACCEPTANCE", "PRIORITY", "CLAIM_IT", "ASSIGN",
            "MENTIONS", "BLOCKED_ON", "NO_CODE", "LABELS", "CLAIM_ONE", "ASK_TASK",
-           "ASK_QUERY", "DISPATCH_TASKS", "DISPATCH_COUNT", "PREFIX", "MODEL",
+           "ASK_QUERY", "DISPATCH_TASKS", "DISPATCH_COUNT", "PREFIX",
            "RECOVER_FORCE", "RECOVER_GRACE", "REPORT_KIND", "REPORT_ACTOR", "SINCE", "DATE",
            "EVIDENCE", "NO_EVIDENCE", "CONTEXT_TASK"]
 
@@ -89,9 +89,6 @@ DISPATCH_COUNT = ("how many workers to launch when you did not name tasks (defau
 
 PREFIX = ("names the workers `agent:<you>/<prefix>1..n` (default 'w'), so a fleet view reads as "
           "api1, api2 instead of three hashes")
-
-MODEL = ("model for the workers, e.g. claude-sonnet-5. Omit for their default — a cheap model is "
-         "often right for mechanical cards")
 
 REPORT_KIND = ("board (default) every column; standup what changed in a window, per actor; "
                "day the full dossier of ONE calendar day — every card closed with its "

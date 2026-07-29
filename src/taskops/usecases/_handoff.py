@@ -19,7 +19,7 @@ from pathlib import Path
 from .._clock import now
 from ..contracts import Task
 from ..engine import record
-from ..engine.worker import Launched, launch, prepare
+from ..engine.worker import Launched, prepare
 from ..storage import Store
 from .agents import agent_for
 
@@ -39,8 +39,7 @@ def hand_over(store: Store, task: str, to: str, *, actor: str = "",
            body={"assigned_to": to, "dispatched": dispatched, "mentions": [to]})
 
 
-def assign_worker(store: Store, task: Task, worker: str, *, spawn: bool, model: str,
-                  use_api_key: bool) -> Launched:
+def assign_worker(store: Store, task: Task, worker: str) -> Launched:
     """Hand one card to one worker and prepare it — the whole of what `dispatch` does per card.
 
     Assignment FIRST, always: the card is invisible to everybody else before anything could
@@ -51,8 +50,7 @@ def assign_worker(store: Store, task: Task, worker: str, *, spawn: bool, model: 
     """
     hand_over(store, task["id"], worker, actor=worker, dispatched=True)
     kind = agent_for(store.root, task["labels"])
-    started = (launch(store.root, task, actor=worker, model=model, use_api_key=use_api_key)
-               if spawn else prepare(store.root, task, actor=worker))
+    started = prepare(store.root, task, actor=worker)
     started.agent_type = kind
     if kind and started.brief:
         started.brief += (f"\n\nagent_type: {kind} — spawn this card's sub-agent with THAT agent "

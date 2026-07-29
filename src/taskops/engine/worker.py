@@ -17,12 +17,11 @@ from pathlib import Path
 
 from ..contracts import Task
 from ._briefs import brief_for, prompt_for
-from ._process import make_worktree, spawn
-from .identity import ENV_ACTOR
+from ._process import make_worktree
 from .scheduler import branch_for
 
-__all__ = ["Launched", "launch", "prepare", "worktree_for", "brief_for", "prompt_for",
-           "WORKERS_DIR", "TREES_DIR", "TOOLS", "DROPPED_ENV"]
+__all__ = ["Launched", "prepare", "worktree_for", "brief_for", "prompt_for",
+           "WORKERS_DIR", "TREES_DIR"]
 
 DROPPED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
 """API credentials the worker does NOT inherit. The money rule, stated as a constant.
@@ -90,30 +89,3 @@ def prepare(root: Path, task: Task, *, actor: str) -> Launched:
     make_worktree(root, tree, branch_for(task))
     return Launched(actor=actor, task=task["id"], pid=0, tree=tree, log=Path(""),
                     branch=branch_for(task), brief=brief_for(root, task, actor, tree))
-
-
-def launch(root: Path, task: Task, *, actor: str, model: str = "",
-           use_api_key: bool = False) -> Launched:
-    """Start a headless Claude Code on its own worktree. Returns immediately.
-
-    A worktree that cannot be made is NOT fatal — a repository with no commits has no HEAD to branch
-    from — and the worker runs in the main checkout instead. That is fine for one worker and wrong for
-    several, which is why `dispatch` is the thing that decides whether to allow it.
-
-    `use_api_key` keeps `DROPPED_ENV` in the child's environment: the worker then bills per token
-    instead of using the subscription. Default OFF, and no MCP tool can turn it on.
-    """
-    tree = worktree_for(root, task)
-    branch = branch_for(task)
-    usable = make_worktree(root, tree, branch)
-    log = root / WORKERS_DIR / f"{task['id']}.log"
-    command = ["claude", "-p", prompt_for(task, actor),
-               "--permission-mode", "acceptEdits",
-               "--allowedTools", ",".join(TOOLS)]
-    if model:
-        command += ["--model", model]
-    pid = spawn(command, cwd=tree if usable else root, log=log,
-                env={"TASKOPS_ROOT": str(root), ENV_ACTOR: actor},
-                drop=() if use_api_key else DROPPED_ENV)
-    return Launched(actor=actor, task=task["id"], pid=pid, tree=tree, log=log,
-                    branch=branch, brief="")
