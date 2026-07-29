@@ -121,3 +121,35 @@ def test_an_unknown_source_is_read_as_the_board(route: Any) -> None:
     whole blast radius, and it is why this may ride in the request while the actor may not."""
     said = json.loads(route(post("/api/chat", {"text": "hi", "source": "wharever"})).body)
     assert said["body"]["source"] == "board"
+
+
+def test_a_new_conversation_hides_the_old_one_and_keeps_it(route: Any) -> None:
+    """A new session opening onto the last one's conversation is a session reading somebody
+    else's argument. But a chat you cleared and cannot get back is worse than a long one, so
+    the marker HIDES rather than deletes — `?all=1` is the proof it is still there."""
+    route(post("/api/chat", {"text": "yesterday's argument"}))
+    route(post("/api/conversation", {}))
+    route(post("/api/chat", {"text": "today"}))
+
+    current = [e["body"]["text"] for e in json.loads(route(get("/api/chat")).body)]
+    assert current == ["today"], "the sidebar shows only the conversation in force"
+
+    every = [e["body"]["text"] for e in json.loads(route(get("/api/chat", all="1")).body)]
+    assert "yesterday's argument" in every, "nothing was deleted"
+
+
+def test_a_board_that_never_opened_one_gets_its_whole_history(route: Any) -> None:
+    """Derived, not stored: no marker means no cut, so a project that predates conversations
+    keeps behaving exactly as it did. This is the regression guard."""
+    route(post("/api/chat", {"text": "one"}))
+    route(post("/api/chat", {"text": "two"}))
+    assert len(json.loads(route(get("/api/chat")).body)) == 2
+
+
+def test_the_marker_is_not_a_line_of_conversation(route: Any) -> None:
+    """It carries no text: it is the CUT. The renderer filters it out, and a marker that
+    rendered as an empty message would be a blank bubble nobody could explain."""
+    route(post("/api/conversation", {}))
+    opened = json.loads(route(get("/api/chat", all="1")).body)
+    assert any(e["body"].get("opens") for e in opened)
+    assert all(not e["body"]["text"] for e in opened if e["body"].get("opens"))

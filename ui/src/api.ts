@@ -102,6 +102,9 @@ export const api = {
    * omitted on Activity and Reports, which is exactly why the endpoint does not require it. */
   say: (text: string, card: string) =>
     call<Event>("/api/chat", { method: "POST", body: JSON.stringify({ text, card }) }),
+  /* "Clear" in a log with no eraser: the previous conversation stops being shown and stays
+   * readable. The channel calls the same route when a session starts. */
+  newConversation: () => call<{ conversation: string }>("/api/conversation", { method: "POST" }),
   agents: () => call<AgentEntry[]>("/api/agents"),
   /* A registry NAME (the server mints `agent:<you>/<name>` from it) or a full actor id. The
    * server refuses a bare name it does not know, and its sentence names the ones it does. */

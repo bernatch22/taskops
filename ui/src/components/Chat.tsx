@@ -139,11 +139,15 @@ export function Chat({ open, card, readonly, last, onClose }: {
            aria-label="chat with the session">
       <header className="panel-head">
         <strong>Session</strong>
+        {/* Not a delete: the log has no eraser and the previous conversation stays readable.
+          * What this does is what a new session does on its own — start a fresh one. */}
+        <button className="squeeze" onClick={() => void api.newConversation()}
+                title="start a new conversation — the old one stays in the log">new</button>
         <button className="close" onClick={onClose} aria-label="close">✕</button>
       </header>
 
       <ol className="thread">
-        {thread.map((event) => {
+        {thread.filter((event) => !event.body["opens"]).map((event) => {
           /* Both sides of this conversation resolve to the same developer id — the person types
            * here, the session answers through the channel, and both come through one door on one
            * machine. Without the source the answer arrived looking exactly like the question,

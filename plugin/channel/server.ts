@@ -182,6 +182,7 @@ let child: ReturnType<typeof Bun.spawn> | null = null
 async function ensureUi(): Promise<void> {
   if (await listening()) {
     log(`attached to the UI already on ${BASE}`)
+    await newConversation()
     announce()
     return
   }
@@ -198,6 +199,7 @@ async function ensureUi(): Promise<void> {
   })
   for (let attempt = 0; attempt < 40; attempt++) {
     if (await listening()) {
+      await newConversation()
       announce()
       openBoard()
       return
@@ -205,6 +207,18 @@ async function ensureUi(): Promise<void> {
     await Bun.sleep(250)
   }
   log(`the UI did not come up on ${BASE} within 10s — events will not flow`)
+}
+
+async function newConversation(): Promise<void> {
+  // A session opening onto the last one's conversation is a session reading somebody else's
+  // argument. This channel IS the session's MCP server — born with it, dead with it — so its
+  // startup is exactly when a new conversation begins, and nothing else has to know.
+  // Nothing is deleted: the previous conversation stays in the log, it stops being shown.
+  try {
+    await fetch(`${BASE}/api/conversation`, {method: 'POST', headers: auth})
+  } catch {
+    // A board that would not open one is a board that shows a longer history. Never fatal.
+  }
 }
 
 function announce(): void {

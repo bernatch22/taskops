@@ -14,16 +14,32 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...usecases.chat import say, thread
+from ...usecases.chat import open_conversation, say, thread
 from ._wire import Reply, Request, error_reply, json_reply
 from .api import guarded
 
-__all__ = ["get_chat", "post_chat"]
+__all__ = ["get_chat", "post_chat", "post_conversation"]
 
 
 def get_chat(root: Path, request: Request) -> Reply:
-    """The thread, oldest first — a chat is read from the bottom."""
-    return guarded(lambda: json_reply(thread(root)))
+    """The conversation in force, oldest first — a chat is read from the bottom.
+
+    `?all=1` returns every conversation instead. A new session must not open onto yesterday's
+    argument, and yesterday's argument must not be gone; those are two requirements, not one,
+    and this parameter is where they stop fighting.
+    """
+    everything = request.param("all") in ("1", "true")
+    return guarded(lambda: json_reply(thread(root, everything=everything)))
+
+
+def post_conversation(root: Path, request: Request) -> Reply:
+    """Start a new conversation. Nothing is deleted — the old one stops being shown.
+
+    This is what "clear the chat" means in an append-only log, and the difference matters the
+    first time somebody wants back the thing they cleared. The channel calls it when a session
+    starts; the sidebar's button calls the same route, because they are the same act.
+    """
+    return guarded(lambda: json_reply({"conversation": open_conversation(root)}))
 
 
 def post_chat(root: Path, request: Request) -> Reply:

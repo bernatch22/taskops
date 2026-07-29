@@ -35,6 +35,7 @@ def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
         ("POST", "/api/status"): partial(api.post_status, root),
         ("GET", "/api/chat"): partial(chat.get_chat, root),
         ("POST", "/api/chat"): partial(chat.post_chat, root),
+        ("POST", "/api/conversation"): partial(chat.post_conversation, root),
         ("GET", "/api/agents"): partial(assigning.get_agents, root),
         ("POST", "/api/assign"): partial(assigning.post_assign, root),
         ("GET", "/api/live"): partial(live.stream, root),
