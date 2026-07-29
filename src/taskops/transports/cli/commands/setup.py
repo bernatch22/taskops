@@ -64,7 +64,7 @@ def _wire(repo: object) -> list[str]:
     """The half that touches only the project. Always runs — it is the part that is safe."""
     from pathlib import Path
 
-    added = wire_mcp(Path(str(repo)))
+    added = wire_mcp(Path(str(repo)).expanduser().resolve())
     if added:
         return [f"wired {', '.join(added)} into {MCP_FILE}"]
     return [f"{MCP_FILE} already names our servers"]
