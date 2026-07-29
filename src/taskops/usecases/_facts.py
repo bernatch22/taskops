@@ -16,7 +16,7 @@ from ..engine import Evidence, Facts, branch_state, open_children
 from ..storage import Store
 from .acceptance import criteria_of
 
-__all__ = ["facts_for", "unpushed_on"]
+__all__ = ["facts_for", "unpushed_on", "entered_review_by"]
 
 
 def facts_for(store: Store, task: Task, actor: str, *, no_code: bool,
@@ -31,7 +31,25 @@ def facts_for(store: Store, task: Task, actor: str, *, no_code: bool,
         commits=len(store.events.of_task(task["id"], kinds=("commit",))),
         open_children=open_children(store, task["id"]),
         no_code=no_code, justification=justification,
+        entered_review_by=entered_review_by(store, task["id"]),
         unpushed=unpushed_on(store, lease["branch"] if lease else ""))
+
+
+def entered_review_by(store: Store, task_id: str) -> str:
+    """Who asked for the review, or "" if the card is not sitting in one.
+
+    Derived from the LOG rather than from a column, deliberately. The events already answer
+    "who moved this card where", so a `reviewer` column would be a second copy of that answer,
+    written by one code path and able to disagree with the log the board is rebuilt from.
+
+    It reads the LAST status event and only counts it when its target was `review`. That is
+    what makes the rule self-clearing: a card bounced back to `in_progress` and finished has a
+    newer status event, so the agent that once asked for a review may close it again — the
+    refusal is about closing a review you opened, not about ever having opened one.
+    """
+    moves = store.events.of_task(task_id, kinds=("status",))
+    last = moves[-1] if moves else None
+    return str(last["actor"]) if last and last["body"].get("to") == "review" else ""
 
 
 def unpushed_on(store: Store, branch: str) -> int:

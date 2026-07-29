@@ -19,7 +19,8 @@ from typing import Callable
 from .._errors import GuardFailed, IllegalTransition
 from .._types import Status
 from ..contracts import Task
-from ._acceptance import Evidence, evidenced
+from ._acceptance import Evidence
+from ._review import closing
 
 __all__ = ["Facts", "TRANSITIONS", "check_move", "allowed_from"]
 
@@ -42,10 +43,16 @@ class Facts:
     """The comment accompanying `no_code`. A claim with no reasoning is a bypass."""
 
     unpushed: int
-    """Commits on this branch no remote has. Recorded on close, never blocking — see `_closing`."""
+    """Commits on this branch no remote has. Recorded on close, never blocking — see `_review`."""
+
     evidence: Evidence | None = None
     """The card's criteria and what the closer offered against them. Defaulted, so every card
     that has none — which is every card written before criteria existed — is unaffected."""
+
+    entered_review_by: str = ""
+    """Who moved this card INTO review, if that was the last status move — read off the event
+    log by `usecases._facts`, never stored. Empty for every card that never went through
+    review, which is what makes the handoff rule in `_review` cost the old flows nothing."""
 
 
 Guard = Callable[[Facts], str | None]
@@ -59,60 +66,16 @@ def _needs_lease(facts: Facts) -> str | None:
             f"with taskops_next before working on it")
 
 
-def _needs_evidence(facts: Facts) -> str | None:
-    """`done` requires a commit, or an argued exemption.
-
-    THE guard that makes the board trustworthy. Without it "done" means "an agent said so",
-    which is exactly the failure a human is trying to avoid by reading a board instead of the
-    diff. The exemption exists because research and decisions are real work — but it has to be
-    declared and reasoned, so a review can see which closures had no code and why.
-    """
-    if facts.commits > 0:
-        return None
-    if facts.no_code and facts.justification.strip():
-        return None
-    if facts.no_code:
-        return ("no_code needs a `comment` saying what was produced instead — "
-                "an unexplained exemption is indistinguishable from a shortcut")
-    # "on the task's branch" and not "the guard adds the trailer": the trailer is only injected
-    # inside Claude Code, where a hook can rewrite the command. From a terminal the BRANCH is what
-    # binds the commit, so naming the branch is the advice that is true in both places.
-    return (f"{facts.task['id']} has no commit bound to it. Commit your work on the "
-            f"task's branch, or pass no_code with a comment if this task legitimately "
-            f"produced none")
-
-
-def _needs_children_closed(facts: Facts) -> str | None:
-    if facts.open_children == 0:
-        return None
-    return (f"{facts.task['id']} still has {facts.open_children} open subtask(s) — "
-            f"an epic is done when its children are")
-
-
-def _closing(facts: Facts) -> str | None:
-    """The three closing rules, in the order a caller can act on them: children, then code, then
-    the evidence for the card's acceptance criteria (`_acceptance`, a no-op for a card with none).
-    Children first — being told to write a commit for an epic whose subtasks are unfinished sends
-    the agent to do the wrong work.
-
-    `unpushed` is deliberately NOT a rule here. It is recorded on the `done` event and shown on the
-    board instead, because pushing is not always the closer's job — a task can finish on a branch
-    somebody else lands — and a repository with no remote would otherwise be unable to close
-    anything, which is the most common way taskops is first tried."""
-    return (_needs_children_closed(facts) or _needs_evidence(facts)
-            or evidenced(facts.evidence))
-
-
 TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
     "backlog": {"ready": None, "cancelled": None},
     "ready": {"claimed": _needs_lease, "backlog": None, "cancelled": None},
-    "claimed": {"in_progress": _needs_lease, "review": _needs_lease, "done": _closing,
+    "claimed": {"in_progress": _needs_lease, "review": _needs_lease, "done": closing,
                 "ready": None, "blocked": _needs_lease, "cancelled": None},
-    "in_progress": {"review": _needs_lease, "done": _closing, "blocked": _needs_lease,
+    "in_progress": {"review": _needs_lease, "done": closing, "blocked": _needs_lease,
                     "ready": None, "cancelled": None},
     "blocked": {"ready": None, "backlog": None, "in_progress": _needs_lease,
                 "cancelled": None},
-    "review": {"done": _closing, "in_progress": _needs_lease, "blocked": None,
+    "review": {"done": closing, "in_progress": _needs_lease, "blocked": None,
                "cancelled": None},
     "done": {},
     "cancelled": {"backlog": None},

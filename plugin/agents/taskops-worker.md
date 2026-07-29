@@ -28,16 +28,24 @@ with what you learned — that is a success, not a failure.
 6. **Report as you go.** `taskops_update` with a `comment` when you learn something the next
    agent would want. If you discover a prerequisite, `blocked_on` puts it in the graph instead
    of in a sentence nobody schedules against.
-7. **Close with evidence.**
+7. **Hand it on for review — you do not close your own card.**
 
 ```
-taskops_update status=done evidence="<criterion 1>: test_requeues_on_expiry passes
+taskops_update status=review comment="<criterion 1>: test_requeues_on_expiry passes
 (pytest tests/engine -q). <criterion 2>: verified by hand, `taskops report board` now
 shows the holder."
 ```
 
-`evidence` names each criterion and what proves it — a test, a command, a run. Not "done", not
-"implemented as specified". The verifier reads this and tries to break it.
+You END at `review`, not at `done`. A `done` on a card YOU moved to review is refused by the
+engine, and the refusal is the point: a worker that closes its own card has performed a review
+on itself, which is the one thing the board cannot check. A verifier — or a human — closes it.
+
+The comment names each criterion and what proves it — a test, a command, a run. Not "done",
+not "implemented as specified". The verifier reads this and tries to break it.
+
+If the card has NO acceptance criteria and the change is trivial, closing straight to
+`status=done evidence="..."` is still fine. The review step is for work somebody should check,
+not a toll booth on every card.
 
 If a criterion genuinely no longer applies, close with `no_evidence` and the reason. That
 reason is written into the card's event log where a human will read it, so make it true.
@@ -52,6 +60,8 @@ better than a card that sits claimed by a process that has stopped thinking.
 ## Never
 
 - Never close a card whose acceptance criteria you did not read.
+- Never try to talk your way past the review handoff by re-reading the card as "trivial" after
+  you already moved it to `review`. Once it is in review it belongs to somebody else.
 - Never invent evidence. A test name that does not exist is caught in one command and burns
   the trust the board is for.
 - Never edit a file another live agent was named as editing without messaging them first

@@ -116,3 +116,36 @@ def test_cancelling_is_always_allowed_from_an_open_status() -> None:
     evidence — there is deliberately no work to show."""
     for status in ("backlog", "ready", "claimed", "in_progress", "blocked", "review"):
         check_move(facts(status, has_live_lease=False, commits=0), "cancelled")
+
+
+def test_a_worker_may_not_close_the_review_it_asked_for() -> None:
+    """The handoff rule, from literals: `review` means nothing if the agent that asked for it
+    is also the one that grants it."""
+    with pytest.raises(GuardFailed) as caught:
+        check_move(facts("review", entered_review_by="agent:berna/one"), "done")
+    said = str(caught.value)
+    assert "another's to close" in said
+    assert "verifier" in said, "a refusal that names no way out is a dead end"
+
+
+def test_a_different_agent_closes_the_same_review() -> None:
+    check_move(facts("review", entered_review_by="agent:berna/two"), "done")
+
+
+def test_a_dev_closes_a_review_whoever_opened_it() -> None:
+    """A human reading the diff IS the review. The rule is about agents grading themselves."""
+    check_move(facts("review", actor="dev:berna", entered_review_by="dev:berna"), "done")
+
+
+def test_a_card_that_never_entered_review_is_untouched() -> None:
+    """Compatibility, stated as a test: the fact defaults to empty, so every card written
+    before this rule existed closes on exactly the guards it always had."""
+    check_move(facts("in_progress"), "done")
+
+
+def test_the_handoff_is_refused_before_the_commit_check() -> None:
+    """Order, for the agent again: telling a worker to go write a commit for a card it is not
+    allowed to close at all would send it to do work that gets refused anyway."""
+    with pytest.raises(GuardFailed) as caught:
+        check_move(facts("review", commits=0, entered_review_by="agent:berna/one"), "done")
+    assert "another's to close" in str(caught.value)
