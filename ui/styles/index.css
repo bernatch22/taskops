@@ -621,3 +621,7 @@ ol.md-list li { list-style: decimal; }
 .md-table { border-collapse: collapse; font-size: 12.5px; }
 .md-table th, .md-table td { padding: 5px 10px; border: 1px solid var(--line-soft); text-align: left; }
 .md-table th { color: var(--ink-dim); font-weight: 600; background: var(--bg); }
+
+/* A reply from the session, told apart from your own line by the one thing that differs: which
+   door it came through. Indent and a rule, no new colour — the palette already says enough. */
+.thread li.said { padding-left: .75rem; border-left: 2px solid var(--lime); }

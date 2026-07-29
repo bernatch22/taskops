@@ -101,3 +101,23 @@ def test_chat_never_leaves_the_machine() -> None:
     from taskops._types import LOCAL_ONLY_KINDS
 
     assert "chat" in LOCAL_ONLY_KINDS
+
+
+def test_a_reply_from_the_session_is_told_apart_from_your_own_line(route: Any) -> None:
+    """Both sides come through one door on one machine and resolve to the SAME developer id, so
+    the answer arrived looking exactly like the question — not invisible, indistinguishable,
+    which reads as nothing having happened. `source` is what the actor cannot say."""
+    mine = json.loads(route(post("/api/chat", {"text": "why is tk-2 open?"})).body)
+    theirs = json.loads(route(post("/api/chat", {"text": "nobody claimed it",
+                                                 "source": "session"})).body)
+    assert mine["body"]["source"] == "board"
+    assert theirs["body"]["source"] == "session"
+    assert mine["actor"] == theirs["actor"], "the actor is the same — that is the whole problem"
+
+
+def test_an_unknown_source_is_read_as_the_board(route: Any) -> None:
+    """It labels a door, not a person, so anything that is not the session is somebody typing.
+    A browser could post `session` and mislabel one line of its own conversation; that is the
+    whole blast radius, and it is why this may ride in the request while the actor may not."""
+    said = json.loads(route(post("/api/chat", {"text": "hi", "source": "wharever"})).body)
+    assert said["body"]["source"] == "board"

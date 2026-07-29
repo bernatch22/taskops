@@ -129,7 +129,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const mentions = Array.isArray(args.mentions) ? args.mentions.map(String) : []
         const [route, body] = card
           ? ['/api/comment', { task: card, text, mentions }]
-          : ['/api/chat', { text }]
+          : ['/api/chat', { text, source: 'session' }]
         const response = await fetch(`${BASE}${route}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', ...auth },

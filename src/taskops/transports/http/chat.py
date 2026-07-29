@@ -37,4 +37,8 @@ def post_chat(root: Path, request: Request) -> Reply:
     if not text:
         return error_reply(400, "`text` is required", "bad_request")
     card = str(payload.get("card", ""))
-    return guarded(lambda: json_reply(say(root, text, card=card)))
+    # `source` is read from the request and the actor is not, and the asymmetry is the point:
+    # naming an actor would let a browser speak as somebody's agent, while naming a door can at
+    # worst mislabel a line of your own conversation.
+    source = str(payload.get("source", ""))
+    return guarded(lambda: json_reply(say(root, text, card=card, source=source)))

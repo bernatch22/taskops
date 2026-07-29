@@ -34,7 +34,7 @@ from ..contracts.context import CONTEXT_TASK
 from ..engine import record
 from ._project import caller, heartbeat, project
 
-__all__ = ["CHAT_TASK", "CHAT_KIND", "say", "thread"]
+__all__ = ["CHAT_TASK", "CHAT_KIND", "say", "BOARD", "SESSION", "thread"]
 
 CHAT_TASK = CONTEXT_TASK
 """The sentinel task chat is filed under — the project itself, not any one card."""
@@ -43,21 +43,39 @@ CHAT_KIND = cast("EventKind", "chat")
 """The cast names the one place the kind enters the log, like `context` does: `EventKind` is a
 Literal in layer 0 and a use case may not widen it."""
 
+BOARD = "board"
+SESSION = "session"
+"""The two doors into this conversation: somebody typing in the sidebar, and the Claude Code
+session answering through the channel. Named here because three layers spell them — the use
+case, the HTTP route and the renderer that has to tell them apart."""
+
 WINDOW = 200
 """How much of the conversation a newly opened sidebar is handed. A chat is read from the
 bottom, and a year of it would be a megabyte to draw the last six lines."""
 
 
-def say(start: Path | str, text: str, *, card: str = "", actor: str = "") -> Event:
+def say(start: Path | str, text: str, *, card: str = "", actor: str = "",
+        source: str = BOARD) -> Event:
     """Post one line. `card` is what the board was showing — context, never a parent.
 
     The actor is RESOLVED and never taken from the request, for the reason `post_comment` gives:
     a browser that could name its own actor could speak as somebody else's agent.
+
+    `source` is what the actor cannot say, and the reason this parameter exists. Both sides of
+    this conversation come through the same door on the same machine — the person types in the
+    sidebar, the session answers through the channel's `reply` — so both resolve to the SAME
+    developer id, and the answer arrived looking exactly like the question. Not invisible:
+    indistinguishable, which reads as nothing having happened.
+
+    It labels a DOOR, not a person, and grants nothing: a browser could post `session` and the
+    only consequence is one mislabelled line. That is why it may ride in the request while the
+    actor may not.
     """
     said = text.strip()
     if not said:
         raise BadRequest("a chat message needs text")
-    body: dict[str, Any] = {"text": said, "card": card.strip()}
+    body: dict[str, Any] = {"text": said, "card": card.strip(),
+                            "source": SESSION if source == SESSION else BOARD}
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)

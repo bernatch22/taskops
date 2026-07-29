@@ -66,9 +66,16 @@ export function Chat({ open, card, readonly, last, onClose }: {
 
       <ol className="thread">
         {thread.map((event) => (
-          <li key={event.id}>
+          /* Both sides of this conversation resolve to the same developer id — the person types
+           * here, the session answers through the channel, and both come through one door on one
+           * machine. Without the source the answer arrived looking exactly like the question,
+           * which reads as nothing having happened. */
+          <li key={event.id}
+              className={String(event.body["source"] ?? "") === "session" ? "said" : ""}>
             <div className="msg-head">
-              <Actor id={event.actor} />
+              {String(event.body["source"] ?? "") === "session"
+                ? <span className="tag">session</span>
+                : <Actor id={event.actor} />}
               {String(event.body["card"] ?? "")
                 ? <span className="tag">{String(event.body["card"])}</span> : null}
               <span className="dim">{ago(event.ts)}</span>
