@@ -81,10 +81,6 @@ Sixteen commands, all of them yours. Agents never use the CLI (they have MCP), a
 | `taskops remote` | Point this project at a server. |
 | `taskops push` / `pull` | Exchange events and reports with the server. |
 
-```sh
-taskops status                      # before you start
-taskops status --prompt             # one line for your shell prompt: tk:payments 6▸1 ⇡5
-```
 
 ### Working with tasks
 
@@ -399,7 +395,6 @@ The UI ships inside the wheel as a committed bundle — `pip install taskops-cli
 | [docs/agents.md](docs/agents.md) | Specialists a project defines, orchestration, sub-tasks and worktrees, who invokes whom. |
 | [docs/reports.md](docs/reports.md) | Why the record matters, the narration, and the sweep that writes itself. |
 | [docs/context.md](docs/context.md) | Objectives, invariants and decisions — and the slice each card receives. |
-| [docs/prompt.md](docs/prompt.md) | The shell-prompt segment and the Claude Code statusline. |
 | [docs/exchange.md](docs/exchange.md) | The wire contract between a client and a server. |
 
 ## Architecture, briefly

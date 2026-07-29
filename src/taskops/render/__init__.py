@@ -20,7 +20,6 @@ from .day import render_day
 from .dispatch import render_dispatch
 from .inbox import render_inbox
 from .log import render_log
-from .prompt import PORCELAIN_VERSION, render_porcelain, render_prompt
 from .recover import render_recover
 from .report import NARRATION, PENDING, is_pending, narrated, render_report
 from .reports import render_fleet, render_standup
@@ -41,4 +40,4 @@ __all__ = ["render_view", "render_claim", "render_context", "render_inbox", "ren
            "render_standup", "render_fleet", "render_plan", "render_next", "render_capture",
            "render_update", "render_search", "render_edit", "render_dispatch", "render_brief",
            "render_verdict", "render_recover", "render_log", "render_day",
-           "render_tasklist", "render_report", "render_status", "render_prompt", "render_porcelain", "PORCELAIN_VERSION", "narrated", "is_pending", "NARRATION", "PENDING", "Ink"]
+           "render_tasklist", "render_report", "render_status", "narrated", "is_pending", "NARRATION", "PENDING", "Ink"]

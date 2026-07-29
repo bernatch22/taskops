@@ -73,10 +73,6 @@ collide never waited for a push in the first place. See §4.
 ╰────────────────────────────────────────────────────────────────────╯
 ```
 
-For your shell prompt, `taskops status --prompt` prints one short segment (`tk:payments 6▸1 ⇡5`)
-and — deliberately — **nothing at all** outside a project or over a broken cache. See
-[prompt.md](prompt.md) for the zsh snippet and the Claude Code statusline wrapper.
-
 ---
 
 ## 3 · What your agents do
