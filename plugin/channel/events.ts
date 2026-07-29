@@ -190,11 +190,12 @@ function line(event: BoardEvent, kind: Kind): string {
       // exactly once, which was enough.
       return `${event.task} was assigned to ${to} by ${who}.`
         + (specialist
-          ? ` Spawn a \`${specialist}\` sub-agent and TELL IT ITS IDENTITY: it must call`
-            + ` taskops_next task=${event.task} actor=${to} — passing the actor is not optional,`
-            + ` a sub-agent that omits it resolves to the developer's own id, is refused the`
-            + ` card that was assigned to it, and wanders off into the pool. Do not do the work`
-            + ` in this session.`
+          ? ` Spawn a \`${specialist}\` sub-agent and TELL IT ITS IDENTITY: it is \`${to}\``
+            + ` and must pass actor=${to} on EVERY taskops_* call, not only the first —`
+            + ` taskops_next task=${event.task} actor=${to}, then the same actor on update,`
+            + ` capture and the rest. A call that omits it resolves to the developer's own id:`
+            + ` the claim is refused, or worse it succeeds and the NEXT call cannot touch the`
+            + ` card the agent itself is holding. Do not do the work in this session.`
           : ' No registered specialist in that id — handle it or dispatch as you see fit.')
     }
     case 'status': {

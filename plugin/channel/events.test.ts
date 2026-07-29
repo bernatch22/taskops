@@ -198,3 +198,14 @@ test('the delegation line names the actor the sub-agent must use', () => {
   const line = describe(event, 'assignment').content
   expect(line).toContain('actor=agent:me/api')
 })
+
+test('the delegation line asks for the actor on EVERY call, not only the claim', () => {
+  // The second half of the same lesson. Told to pass the actor on taskops_next, a specialist
+  // claimed its card correctly and then could not write to it: the update resolved to the
+  // developer's id and the board answered "held by someone else" — about a lease the agent
+  // itself was holding.
+  const event = {actor: 'dev:me', kind: 'handoff', task: 'tk-b61984',
+                 body: {assigned_to: 'agent:me/api'}, ts: 1, id: 'x'} as BoardEvent
+  const line = describe(event, 'assignment').content
+  expect(line).toContain('EVERY taskops_* call')
+})
