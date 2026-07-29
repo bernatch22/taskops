@@ -18,6 +18,7 @@ from .._errors import BadRequest
 from ..storage import GUIDE_FILE, LOG_FILE, PROJECT_DIR, Store, find_root
 from ._gitignore import ignore
 from .hooks import install_hooks
+from .mcpfile import wire_mcp
 
 __all__ = ["init", "InitReport"]
 
@@ -56,6 +57,7 @@ def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
     ignore(root)
     _guide(root)
     (root / LOG_FILE).touch(exist_ok=True)
+    wire_mcp(root)      # the project's own file, merged — see `mcpfile`
     adopted = _adopt(root)
     hooks, skipped = install_hooks(root) if install_git_hooks else ([], [])
     return InitReport(root=root, created=created, hooks=hooks, skipped=skipped,
