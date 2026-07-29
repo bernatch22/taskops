@@ -21,7 +21,7 @@ def a_task(status: str, title: str = "T") -> Task:
     return Task(id="tk-aaaaaa", title=title, spec="s",
                 status=status,               # type: ignore[typeddict-item]
                 priority=2, parent=None, labels=[], files=[], created_by="dev:berna",
-                assignee="", created=CLOCK, updated=CLOCK)
+                assignee="", reviewer="", created=CLOCK, updated=CLOCK)
 
 
 def a_board(**counts: int) -> Board:

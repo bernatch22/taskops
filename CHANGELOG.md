@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — cada card nombra a su REVIEWER cuando se crea
+
+Quién puede CERRAR una card dejó de ser una regla global y pasó a ser un dato de la card,
+elegido al crearla. Un label es pista de ruteo y cualquiera lo edita para buscar; esto es
+política, así que es un campo (`reviewer`) y no un label.
+
+- **`reviewer` en `Task`**, settable por `taskops_plan` (`{…, reviewer: "human"}`),
+  `taskops tasks add --reviewer` y `taskops tasks edit --reviewer` (`""` lo limpia). Columna
+  nueva por el mismo camino que `assignee` — `_LATE_COLUMNS`, así una base vieja la gana sola
+  — y viaja en el body del evento `created`, o sea que replica por `git pull` como todo.
+- **Validación igual que la del endpoint de assign**: un nombre pelado tiene que ser un agente
+  registrado en `.claude/agents/*.md` y si no, 4xx nombrando los que sí existen (un typo sería
+  una card que nadie puede cerrar nunca y el board no diría por qué). `human` se acepta tal
+  cual — es lo que la gente tipea — y `dev:…` / `agent:…/…` quedan libres.
+- **El default del proyecto es una DECISIÓN, no una constante**:
+  `taskops context decision "reviewer: taskops-verifier"`. Se lee al CREAR la card y se
+  escribe en ella, así cambiar la decisión hoy no reescribe quién podía cerrar lo planificado
+  la semana pasada.
+- **Enforcement**: reviewer humano (`human` o `dev:…`) → NINGÚN agente cierra la card, con una
+  frase que nombra a quien se espera; el `_handed_on` de antes era más débil (un segundo agente
+  pasaba). Reviewer agente → la regla de hoy. Sin reviewer → exactamente como antes, con test
+  de regresión.
+
 ## Unreleased — agentes especialistas por proyecto: el board rutea, la sesión invoca
 
 Un proyecto tiene agentes que solo tienen sentido ahí (el que toca los collectors, el que toca

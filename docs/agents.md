@@ -97,7 +97,8 @@ you ──▶ taskops-manager
                      ├─ holds  → taskops_update status=done evidence="…"
                      └─ fails  → findings on the card; a worker goes back on it
                      (the engine refuses `done` from whoever entered review —
-                      nobody declares done on their own work)
+                      nobody declares done on their own work; and a card whose
+                      `reviewer` is `human`/`dev:…` refuses it from EVERY agent)
 ```
 
 Nesting is real: Claude Code allows sub-agents to spawn sub-agents to **depth 5** (since v2.1.172,

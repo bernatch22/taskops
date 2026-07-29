@@ -59,6 +59,16 @@ class Task(TypedDict):
     something instead of being a label anybody can ignore.
     """
 
+    reviewer: str
+    """Who may CLOSE this card, or "" for the stock verifier — decided when it is created.
+
+    A field and not a label, because the two are different kinds of fact: a label is a routing
+    hint anybody may edit for search, and this is the policy about who signs off. `human` (or a
+    `dev:` id) means a person reads the diff and NO agent may close it; a registered specialist's
+    name means spawn that one; "" leaves today's rule — anyone but the agent that asked for the
+    review. The project's default lives in the context layer, not in a constant here.
+    """
+
     created: float
     updated: float
 

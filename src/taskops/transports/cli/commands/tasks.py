@@ -63,7 +63,8 @@ def run_add(args: argparse.Namespace) -> str:
     entry: dict[str, Any] = {
         "title": str(args.title), "spec": str(args.spec),
         "labels": str(args.labels), "files": str(args.files),
-        "after": [part.strip() for part in str(args.after).split(",") if part.strip()]}
+        "after": [part.strip() for part in str(args.after).split(",") if part.strip()],
+        "reviewer": str(getattr(args, "reviewer", "") or "")}
     if args.priority is not None:
         entry["priority"] = int(args.priority)
     return render_plan(create(repo_of(args), [entry], actor=str(args.actor)))
@@ -76,4 +77,4 @@ def run_edit(args: argparse.Namespace) -> str:
     return render_edit(rewrite(
         repo_of(args), str(args.task), title=args.title, spec=args.spec,
         priority=None if args.priority is None else int(args.priority),
-        actor=str(args.actor)))
+        reviewer=args.reviewer, actor=str(args.actor)))

@@ -80,6 +80,9 @@ def _create(store: Store, event: Event) -> bool:
         priority=_int(body.get("priority"), 2), parent=_optional(body.get("parent")),
         labels=_strings(body.get("labels")), files=_strings(body.get("files")),
         created_by=event["actor"], assignee=str(body.get("assignee", "")),
+        # No validation on the way in: a teammate's registry is not ours, and a card that
+        # arrives naming a specialist this clone has never heard of must still land.
+        reviewer=str(body.get("reviewer", "")),
         created=event["ts"], updated=event["ts"]))
     return True
 

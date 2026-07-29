@@ -25,6 +25,7 @@ __all__ = [
     "EVENT_KINDS",
     "LOCAL_ONLY_KINDS",
     "EDITABLE_FIELDS",
+    "HUMAN",
 ]
 
 Status = Literal[
@@ -61,6 +62,7 @@ EventKind = Literal[
     "edited",  # a field of the card itself changed: title, spec or priority
     "acceptance",  # what a card promises: its EARS criteria, restated whole
     "context",  # a standing fact about the PROJECT: an objective, invariant or decision
+    "inferred",  # taskops attributed a call to the card's assignee, the caller named nobody
 ]
 """What happened. The event log is append-only and every projection — the board,
 a standup, an inbox — is derived from it, so a new fact about a task is a new
@@ -85,10 +87,20 @@ MCP schema that iterates the tuple — a mismatch nothing catches, because the t
 passes and the runtime list is merely short. `STATUSES` keeps its literal spelling: it is
 also the display order, which is a separate decision that happens to agree today."""
 
-EDITABLE_FIELDS: tuple[str, ...] = ("title", "spec", "priority")
+EDITABLE_FIELDS: tuple[str, ...] = ("title", "spec", "priority", "reviewer")
 """The columns a person may rewrite after a card exists. Named here rather than in
 `storage` because three layers ask the same question — the CLI validates a flag, the
 use case records one event per field, and replay refuses a body naming anything else."""
+
+HUMAN = "human"
+"""What a card's `reviewer` says when a PERSON closes it — "whoever is reading the board".
+
+Layer 0 because two layers spell it: the use case that validates a reviewer as it is written,
+and the closing guard that refuses an agent when it reads one. A second literal in the engine
+would be a rule that agrees with the writer only until somebody edits one of them.
+
+Not normalised into a `dev:` id: the session naming it does not know who will pick the card
+up, and it is what a person actually types."""
 
 OPEN_STATUSES: frozenset[str] = frozenset(
     {"backlog", "ready", "claimed", "in_progress", "blocked", "review"}

@@ -37,7 +37,7 @@ def _task(store: Store, task_id: str, state: str = "ready", *, age_days: float =
     stamp = now() - age_days * 86400.0
     store.tasks.insert(Task(id=task_id, title=title or f"Work {task_id}", spec="",
                             status=state, priority=2, parent=None, labels=[], files=[],
-                            assignee="", created_by=ME, created=stamp, updated=stamp))
+                            assignee="", reviewer="", created_by=ME, created=stamp, updated=stamp))
 
 
 def _lease(store: Store, task_id: str, actor: str, *, left: float = 900.0) -> None:

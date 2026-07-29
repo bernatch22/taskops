@@ -180,7 +180,7 @@ def test_ONE_days_dossier_is_BYTE_identical_to_what_it_always_was() -> None:
     Byte for byte, from a literal report — which is only possible because `render` is pure.
     """
     task = Task(id="tk-1", title="The work", spec="", status="done", priority=2, parent=None,
-                labels=[], files=[], assignee="", created_by="dev:berna", created=1.0,
+                labels=[], files=[], assignee="", reviewer="", created_by="dev:berna", created=1.0,
                 updated=1.0)
     card = ClosedCard(task=task, actor="agent:berna/v22", claimed_ts=0.0, done_ts=600.0,
                       commits=[CommitStat(sha="a" * 40, subject="did it", files=["src/x.py"],

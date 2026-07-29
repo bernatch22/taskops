@@ -31,7 +31,10 @@ TaskId = Annotated[str, "a task id, e.g. tk-4f2a9c"]
 
 
 TASKS = ("the tasks to create: a list of {title, spec, priority?, labels?, files?, parent?, "
-         "after?, blocks?, acceptance?, assignee?}. `spec` is the brief a FRESH agent reads to do the work "
+         "after?, blocks?, acceptance?, assignee?, reviewer?}. `reviewer` is who may CLOSE the "
+         "card — `human` (or `dev:<name>`) when a person must read the diff and no agent may "
+         "close it, or the name of a registered specialist to spawn; omit it and the project's "
+         "own default applies. `spec` is the brief a FRESH agent reads to do the work "
          "with no other context — what done looks like, what must not change, where to start. "
          "`after` lists what must finish BEFORE this card, each an existing id or the 0-based "
          "INDEX of an earlier entry in this same list. `blocks` is the inverse: existing cards "

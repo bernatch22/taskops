@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     files TEXT NOT NULL DEFAULT '[]',       -- JSON array
     created_by TEXT NOT NULL,
     assignee TEXT NOT NULL DEFAULT '',
+    reviewer TEXT NOT NULL DEFAULT '',      -- who may close it; "" is the stock verifier
     created REAL NOT NULL,
     updated REAL NOT NULL
 );

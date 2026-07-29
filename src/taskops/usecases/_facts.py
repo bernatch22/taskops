@@ -30,7 +30,7 @@ def facts_for(store: Store, task: Task, actor: str, *, no_code: bool,
         has_live_lease=store.leases.held_by(task["id"], actor, now()),
         commits=len(store.events.of_task(task["id"], kinds=("commit",))),
         open_children=open_children(store, task["id"]),
-        no_code=no_code, justification=justification,
+        no_code=no_code, justification=justification, reviewer=str(task.get("reviewer", "")),
         entered_review_by=entered_review_by(store, task["id"]),
         unpushed=unpushed_on(store, lease["branch"] if lease else ""))
 

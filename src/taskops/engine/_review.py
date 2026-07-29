@@ -23,12 +23,34 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .._types import HUMAN
 from ._acceptance import evidenced
 
 if TYPE_CHECKING:                          # pragma: no cover - typing only
     from .machine import Facts
 
 __all__ = ["closing"]
+
+
+def _reviewer_is_a_person(facts: Facts) -> str | None:
+    """A card whose reviewer is a HUMAN refuses `done` from every agent, not just from the one
+    that asked for the review.
+
+    This is the half that makes the field policy rather than a note. `_handed_on` below asks a
+    weaker question — did you review your own work — and a second agent closing a card a person
+    was meant to read passes it while defeating the point of naming that person.
+
+    The refusal NAMES who is expected, because the useful sentence is not "no" but "this one is
+    Ana's"; an agent told only that it may not close will try the next thing instead of leaving
+    the card in review and saying so.
+    """
+    who = facts.reviewer
+    if who != HUMAN and not who.startswith("dev:"):
+        return None
+    if not facts.actor.startswith("agent:"):
+        return None
+    return (f"{facts.task['id']} names {who} as its reviewer — a person closes this one. "
+            f"Leave it in `review` and say what you did in a comment; no agent may close it.")
 
 
 def _handed_on(facts: Facts) -> str | None:
@@ -88,5 +110,5 @@ def closing(facts: Facts) -> str | None:
     branch somebody else lands — and a repository with no remote would otherwise be unable to
     close anything, which is the most common way taskops is first tried.
     """
-    return (_handed_on(facts) or _needs_children_closed(facts) or _needs_code(facts)
-            or evidenced(facts.evidence))
+    return (_reviewer_is_a_person(facts) or _handed_on(facts) or _needs_children_closed(facts)
+            or _needs_code(facts) or evidenced(facts.evidence))

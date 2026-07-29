@@ -86,6 +86,8 @@ def _add_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--files", default="", help="comma-separated edit surface")
     parser.add_argument("--priority", type=int, default=None, help="0 urgent … 3 whenever")
     parser.add_argument("--label", default="", dest="labels", help="comma-separated labels")
+    parser.add_argument("--reviewer", default="",
+                        help="who may close it: `human`, `dev:<name>`, or a registered agent")
 
 
 def _edit_flags(parser: argparse.ArgumentParser) -> None:
@@ -97,6 +99,8 @@ def _edit_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--title", default=None, help="what the task is")
     parser.add_argument("--spec", default=None, help="the brief: what done looks like")
     parser.add_argument("--priority", type=int, default=None, help="0 urgent … 3 whenever")
+    parser.add_argument("--reviewer", default=None,
+                        help="who may close it; pass '' to clear and fall back to the verifier")
 
 
 def _close(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", name: str,

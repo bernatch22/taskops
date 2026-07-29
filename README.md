@@ -88,7 +88,8 @@ Sixteen commands, all of them yours. Agents never use the CLI (they have MCP), a
 taskops tasks                                  # open tasks; a finished project lists its closed ones
 taskops tasks show tk-4f2a9c                   # one card in full: spec, thread, commits, dependencies
 taskops tasks add "Fix the timeout" --spec "DONE = the retry test passes" --files api/client.py
-taskops tasks edit tk-4f2a9c --priority 0      # title, spec and priority stay correctable
+taskops tasks add "Rename the column" --reviewer human   # a person closes this one; no agent may
+taskops tasks edit tk-4f2a9c --priority 0      # title, spec, priority and reviewer stay correctable
 taskops tasks done tk-4f2a9c -m "landed; expiry is a column, not a job"
 taskops tasks release tk-4f2a9c -m "out of depth — the parser needs someone who knows the grammar"
 taskops tasks search "refresh"

@@ -29,6 +29,7 @@ from ..storage import Store
 from . import _entry as field
 from ._project import caller, heartbeat, project
 from .acceptance import attach, criteria_in
+from .reviewer import for_new
 
 __all__ = ["plan"]
 
@@ -64,6 +65,9 @@ def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
                 labels=field.strings(entry, "labels"),
                 files=field.strings(entry, "files"),
                 created_by=who, assignee=field.optional(entry, "assignee") or "",
+                # Resolved HERE and stored, so the card carries the answer: who may close it is
+                # part of what was decided when the work was planned, not a lookup at close time.
+                reviewer=for_new(store, field.optional(entry, "reviewer") or ""),
                 created=when, updated=when)
     store.tasks.insert(task)
     # The WHOLE task in the body, not just its title. The log is the source of truth another
@@ -83,7 +87,7 @@ def _snapshot(task: Task) -> dict[str, Any]:
     event, so repeating them would be two places to keep in step."""
     return {"title": task["title"], "spec": task["spec"], "priority": task["priority"],
             "parent": task["parent"], "labels": task["labels"], "files": task["files"],
-            "assignee": task["assignee"]}
+            "assignee": task["assignee"], "reviewer": task["reviewer"]}
 
 
 def _wire(store: Store, entries: list[dict[str, Any]],

@@ -49,6 +49,10 @@ class Facts:
     """The card's criteria and what the closer offered against them. Defaulted, so every card
     that has none — which is every card written before criteria existed — is unaffected."""
 
+    reviewer: str = ""
+    """Who this card names as its reviewer, straight off the row. Defaulted to "", so every
+    card created before the field existed is judged by exactly the rules it always was."""
+
     entered_review_by: str = ""
     """Who moved this card INTO review, if that was the last status move — read off the event
     log by `usecases._facts`, never stored. Empty for every card that never went through

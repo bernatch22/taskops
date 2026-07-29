@@ -20,7 +20,7 @@ SPEC = "What done looks like, in the ask's own words."
 def _task(task_id: str, status: str = "ready", **over: object) -> Task:
     base = Task(id=task_id, title=f"Card {task_id}", spec=SPEC, status=status,  # type: ignore[typeddict-item]
                 priority=1, parent=None, labels=["backend"], files=["db/schema.sql"],
-                assignee="", created_by="dev:berna", created=1.0, updated=1.0)
+                assignee="", reviewer="", created_by="dev:berna", created=1.0, updated=1.0)
     base.update(over)  # type: ignore[typeddict-item]
     return base
 

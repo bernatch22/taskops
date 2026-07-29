@@ -22,7 +22,7 @@ def make(store: Store, task_id: str, **over: object) -> Task:
     base: dict[str, object] = {"id": task_id, "title": f"task {task_id}", "spec": "s",
                                "status": "ready", "priority": 2, "parent": None,
                                "labels": [], "files": [], "created_by": "dev:berna", "assignee": "",
-                               "created": CLOCK, "updated": CLOCK}
+                               "reviewer": "", "created": CLOCK, "updated": CLOCK}
     task = Task(**{**base, **over})           # type: ignore[typeddict-item]
     store.tasks.insert(task)
     return task

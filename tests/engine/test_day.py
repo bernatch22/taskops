@@ -29,7 +29,7 @@ def _log(store: Store, task: str, actor: str, kind: str, ts: float,
 
 def _task(store: Store, task_id: str, status: str = "done") -> None:
     store.tasks.insert(Task(id=task_id, title=f"Work {task_id}", spec="", status=status,
-                            priority=2, parent=None, labels=[], files=[], assignee="",
+                            priority=2, parent=None, labels=[], files=[], assignee="", reviewer="",
                             created_by="dev:berna", created=1.0, updated=1.0))
 
 

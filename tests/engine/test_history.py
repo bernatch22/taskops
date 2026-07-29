@@ -71,7 +71,7 @@ def test_truncation_is_admitted_and_keeps_the_END(store: Store) -> None:
 def test_titles_ride_along_with_the_timeline(store: Store) -> None:
     """Fetching a title per row would be a hundred requests to render one screen."""
     store.tasks.insert(Task(id="tk-1", title="The one thing", spec="", status="ready",
-                            priority=2, parent=None, labels=[], files=[], assignee="",
+                            priority=2, parent=None, labels=[], files=[], assignee="", reviewer="",
                             created_by="dev:berna", created=1.0, updated=1.0))
     _log(store, "tk-1", "dev:berna", "comment", 1_000.0, text="hi")
     assert activity(store, since=0.0)["titles"] == {"tk-1": "The one thing"}

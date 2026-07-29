@@ -8,7 +8,7 @@ skims past — and the cost of missing it is two agents rewriting each other's w
 
 from __future__ import annotations
 
-from ..contracts import Claim, TaskView
+from ..contracts import Claim, Task, TaskView
 from ._sections import commits_section, thread_section
 from ._text import STATUS_MARK, bullet, truncate
 from .inbox import render_inbox
@@ -31,13 +31,19 @@ def render_view(view: TaskView) -> str:
     """The task in full. Used by `ask`, and by `next` under the claim header."""
     task = view["task"]
     parts = [f"## {STATUS_MARK.get(task['status'], '?')} {task['status']} · "
-             f"priority {task['priority']}" + _lease_line(view), ""]
+             f"priority {task['priority']}" + _reviewer_line(task) + _lease_line(view), ""]
     parts += _collisions(view)
     parts += ["### Spec", "", task["spec"] or "_(no spec — ask before guessing)_", ""]
     parts += _graph(view)
     parts += thread_section(view["thread"])
     parts += commits_section(view)
     return "\n".join(parts)
+
+
+def _reviewer_line(task: Task) -> str:
+    """On the FIRST line, beside the status. Who may close this card changes what an agent does
+    when it finishes — a reviewer buried under the spec is one it reads after being refused."""
+    return f" · reviewer {task['reviewer']}" if task.get("reviewer") else ""
 
 
 def _lease_line(view: TaskView) -> str:

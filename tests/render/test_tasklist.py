@@ -28,7 +28,7 @@ def _task(status: str, index: int) -> Task:
     return Task(id=f"tk-{index:06d}", title=f"card {index}", spec="s",
                 status=status,               # type: ignore[typeddict-item]
                 priority=2, parent=None, labels=[], files=[], created_by="dev:berna",
-                assignee="", created=CLOCK, updated=CLOCK - index)
+                assignee="", reviewer="", created=CLOCK, updated=CLOCK - index)
 
 
 def test_the_closed_list_is_capped_and_says_how_many_are_left() -> None:

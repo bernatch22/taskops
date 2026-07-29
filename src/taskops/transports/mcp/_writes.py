@@ -25,6 +25,7 @@ from ...usecases import (
     recover,
     update,
 )
+from ...usecases._project import attributed
 from . import arguments as arg
 
 __all__ = ["plan_", "capture_", "next_", "update_", "dispatch_", "recover_"]
@@ -45,15 +46,20 @@ def capture_(args: dict[str, Any]) -> str:
 
 
 def next_(args: dict[str, Any]) -> str:
-    return render_next(next_task(arg.repo(args), actor=arg.optional(args, "actor"),
+    """A card asked for BY ID speaks for itself — see `usecases._project.attributed`. A pool
+    call passes `task=""` and is left to resolve exactly as it does today."""
+    repo, task = arg.repo(args), arg.optional(args, "task")
+    return render_next(next_task(repo, actor=attributed(repo, task, arg.optional(args, "actor")),
                                  session=arg.optional(args, "session"),
-                                 labels=arg.csv(args, "labels"),
-                                 task=arg.optional(args, "task")))
+                                 labels=arg.csv(args, "labels"), task=task))
 
 
 def update_(args: dict[str, Any]) -> str:
-    return render_update(update(arg.repo(args), arg.text(args, "task"),
-                                actor=arg.optional(args, "actor"),
+    """The call the specialists kept losing their identity on: `next` carried an actor and the
+    update after it did not. `update` always names a task, so the card can always answer."""
+    repo, task = arg.repo(args), arg.text(args, "task")
+    return render_update(update(repo, task,
+                                actor=attributed(repo, task, arg.optional(args, "actor")),
                                 status=arg.optional(args, "status"),
                                 comment=arg.optional(args, "comment"),
                                 mentions=arg.csv(args, "mentions"),

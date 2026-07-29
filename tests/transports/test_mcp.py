@@ -271,3 +271,33 @@ def test_planning_a_card_with_acceptance_criteria_over_the_wire(tmp_path: Path) 
     listed = call("taskops_report", {"repo_path": str(tmp_path)})
     task_id = [w for w in text_of(listed).split() if w.startswith("tk-")][0]
     assert acceptance_for(tmp_path, task_id)["criteria"] == [criterion]
+
+
+def test_a_specialist_that_forgets_its_actor_is_not_refused_its_own_card(
+        tmp_path: Path) -> None:
+    """THE bug this exists for, end to end over the wire.
+
+    Four times a sub-agent claimed a card with `actor=agent:...` and then sent the update
+    without one — resolving to the developer's `dev:<name>` and being refused a lease it
+    was holding. Here the second call carries no actor at all and still works, because the
+    card names its own worker.
+    """
+    from taskops.usecases import capture, init
+    from taskops.usecases._project import project
+
+    init(tmp_path, install_git_hooks=False)
+    task = str(capture(tmp_path, "Wire it", spec="x", assign="agent:berna/api",
+                       actor="dev:berna")["task"]["id"])
+
+    claimed = call("taskops_next", {"repo_path": str(tmp_path), "task": task})
+    assert "isError" not in claimed
+
+    moved = call("taskops_update", {"repo_path": str(tmp_path), "task": task,
+                                    "status": "in_progress", "comment": "on it"})
+    assert "isError" not in moved
+
+    with project(tmp_path) as store:
+        events = store.events.of_task(task)
+    actors = {e["actor"] for e in events if e["kind"] in ("claimed", "status", "comment")}
+    assert actors == {"agent:berna/api"}
+    assert "inferred" in {e["kind"] for e in events}

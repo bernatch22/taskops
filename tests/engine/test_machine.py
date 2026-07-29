@@ -18,7 +18,7 @@ from tests.conftest import CLOCK
 
 def a_task(status: Status) -> Task:
     return Task(id="tk-aaaaaa", title="t", spec="s", status=status, priority=2,
-                parent=None, labels=[], files=[], created_by="dev:berna", assignee="",
+                parent=None, labels=[], files=[], created_by="dev:berna", assignee="", reviewer="",
                 created=CLOCK, updated=CLOCK)
 
 

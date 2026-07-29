@@ -63,6 +63,9 @@ def to_task(row: sqlite3.Row) -> Task:
         # `or ""` and not `str(...)`: a row that predates the column reads as NULL after the ALTER,
         # and `str(None)` would put the string "None" in it — an assignee nobody can be.
         assignee=str(row["assignee"] or ""),
+        # Same `or ""` for the same reason: every card written before reviewers existed reads
+        # NULL here, and "" is exactly what those cards meant — nobody named, today's rule.
+        reviewer=str(row["reviewer"] or ""),
         created=float(row["created"]),
         updated=float(row["updated"]),
     )

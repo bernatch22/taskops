@@ -766,8 +766,8 @@ CLI only, never an MCP tool.
 ```
 taskops tasks                              one line per open task (same as `tasks list`)
 taskops tasks show <task-id>               read one task in full
-taskops tasks add <title> [--spec …] [--after id,id] [--files …] [--priority N] [--label …]
-taskops tasks edit <task-id> [--title …] [--spec …] [--priority N]   correct a card
+taskops tasks add <title> [--spec …] [--after id,id] [--files …] [--priority N] [--label …] [--reviewer …]
+taskops tasks edit <task-id> [--title …] [--spec …] [--priority N] [--reviewer …]   correct a card
 taskops tasks plan <file.json | ->         create tasks from JSON
 taskops tasks done <task-id> [-m …] [--no-code]
 taskops tasks release <task-id> [-m …]     hand it back, unfinished
@@ -784,6 +784,35 @@ card refuses: the log is the record of what was delivered, and rewriting the spe
 finished work rewrites that record. Editing stays out of the MCP tools deliberately —
 correcting a brief is a human act, and an agent that can rewrite its own spec can talk
 itself into having finished.
+
+### Who closes a card: `--reviewer`
+
+A card carries the name of whoever may close it, chosen when it is created — a FIELD and not a
+label, because a label is a routing hint anybody edits for search and this is the policy about
+who signs off:
+
+```
+--reviewer human           a person reads the diff; NO agent may close it, whatever it committed
+--reviewer dev:ana         the same, and the refusal names Ana
+--reviewer taskops-verifier   a registered specialist closes it — spawn that one
+(omitted)                  the project's default, then today's rule: anyone but the agent
+                           that asked for the review
+```
+
+A bare name must be an agent this project registered in `.claude/agents/*.md` and is refused
+naming the ones it knows — a typo would otherwise be a card nothing can ever close, with
+nothing on the board saying why. `dev:<name>` and `agent:<dev>/<name>` are left free-form:
+they address people and ad-hoc workers who were never going to be in a registry.
+
+**The default is a project decision, so it is stated as one** rather than hardcoded:
+
+```sh
+taskops context decision "reviewer: taskops-verifier"
+```
+
+It is read when a card is CREATED and written onto the card, so changing the decision today
+never rewrites who was allowed to close work planned last week. A card that names nobody, on a
+project that stated nothing, behaves exactly as every card did before this existed.
 
 ### The thirteen commands that are gone
 
