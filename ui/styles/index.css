@@ -207,7 +207,10 @@ textarea { resize: vertical; font-family: var(--mono); font-size: 12px; }
 
 /* One column, the board, full width. There was a 280px rail here for the fleet — who holds what,
  * live — and it earned nothing: the same fact is on the card itself, on the card that matters. */
-main { padding: 16px; }
+html, body, #root { height: 100%; }
+#root { display: flex; flex-direction: column; }
+
+main { padding: 16px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 .banner {
   display: flex; align-items: center; gap: 10px;
@@ -227,7 +230,14 @@ main { padding: 16px; }
   display: flex; gap: 12px;
   overflow-x: auto; padding-bottom: 8px;
   scroll-snap-type: x proximity;
+  /* The board owns every pixel down to the fold. It used to end where its tallest column did,
+   * leaving a dead band of page background under a short board — columns now stretch to the
+   * viewport and scroll INSIDE themselves, which is also what keeps the column headers on
+   * screen while a long Done column scrolls. */
+  flex: 1; min-height: 0; align-items: stretch;
 }
+.column { display: flex; flex-direction: column; }
+.column .cards { overflow-y: auto; flex: 1; }
 .column {
   flex: 0 0 272px; scroll-snap-align: start;
   background: var(--bg-raised);
