@@ -44,5 +44,5 @@ def _describe(report: InitReport) -> str:
         lines.append(f"hook skipped — {skipped}")
     lines.append("")
     lines.append("Register the MCP server with:")
-    lines.append("  claude mcp add taskops -- python3 -m taskops.transports.mcp")
+    lines.append("  taskops setup      # the shell alias that opens a session with the board channel")
     return "\n".join(lines)

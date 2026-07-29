@@ -28,6 +28,7 @@ from .commands import (
     report,
     schedule,
     serve,
+    setup,
     status,
     sync,
     tasks,
@@ -36,9 +37,9 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, ui, serve, tasks, context, status, report, schedule, recover,
+_COMMANDS = (init, setup, ui, serve, tasks, context, status, report, schedule, recover,
              sync, login, open_, remote, pushpull)
-"""Every command there is. Fifteen, and `--help` lists all fifteen.
+"""Every command there is. Sixteen, and `--help` lists all sixteen.
 
 `login` sits with them because it is the first thing a new teammate types and the last thing
 they should have to look for. It is the only command here that touches nothing under
