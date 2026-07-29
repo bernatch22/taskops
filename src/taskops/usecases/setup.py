@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .._errors import BadRequest
 from ..storage import GUIDE_FILE, LOG_FILE, PROJECT_DIR, Store, find_root
 from ._gitignore import ignore
 from .hooks import install_hooks
@@ -50,6 +51,7 @@ def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
     existing = find_root(root)
     created = existing is None
     root = existing or root
+    _refuse_home(root, created)
     (root / PROJECT_DIR).mkdir(parents=True, exist_ok=True)
     ignore(root)
     _guide(root)
@@ -58,6 +60,20 @@ def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
     hooks, skipped = install_hooks(root) if install_git_hooks else ([], [])
     return InitReport(root=root, created=created, hooks=hooks, skipped=skipped,
                       adopted=adopted)
+
+
+def _refuse_home(root: Path, created: bool) -> None:
+    """Never turn somebody's HOME into a project by accident.
+
+    `~` holds `.taskops/sessions.json`, so it is one `mkdir` away from looking like a board —
+    and a board rooted at the home directory would quietly answer for every repository under
+    it that has not been initialised. Nobody means this, and the one person who does can pass
+    `$TASKOPS_ROOT`.
+    """
+    if created and root == Path.home().resolve():
+        raise BadRequest(
+            f"{root} is your home directory, not a project — `cd` into the repository first. "
+            f"(`~/.taskops/` already exists because your login session lives there.)")
 
 
 def _adopt(root: Path) -> int:

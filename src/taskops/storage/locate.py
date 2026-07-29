@@ -14,7 +14,7 @@ from pathlib import Path
 from .._errors import NotInitialized
 
 __all__ = ["PROJECT_DIR", "DB_FILE", "LOG_FILE", "GUIDE_FILE", "REPORTS_DIR", "ENV_ROOT",
-           "resolve_root", "find_root"]
+           "resolve_root", "find_root", "is_project"]
 
 PROJECT_DIR = ".taskops"
 
@@ -51,16 +51,37 @@ silent walk up to a different project.
 
 
 def find_root(start: Path | str) -> Path | None:
-    """The nearest ancestor holding `.taskops/`, or None. `$TASKOPS_ROOT` wins outright."""
+    """The nearest ancestor holding a `.taskops/` with a LOG in it, or None.
+
+    The log and not the directory, and that distinction is not pedantry: `~/.taskops/` exists
+    on every machine that has ever run `taskops login`, because that is where the session file
+    lives. Matching on the directory alone made the HOME DIRECTORY a project — so a fresh repo
+    anywhere under it resolved its root to `~`, and `taskops init` there "adopted" the home
+    directory instead of creating a project. Found the first time somebody made a scratch repo
+    in `~/experiments`.
+
+    `$TASKOPS_ROOT` wins outright, and it is checked the same way for the same reason.
+    """
     forced = os.environ.get(ENV_ROOT, "").strip()
     if forced:
         candidate = Path(forced).expanduser().resolve()
-        return candidate if (candidate / PROJECT_DIR).is_dir() else None
+        return candidate if is_project(candidate) else None
     here = Path(start).expanduser().resolve()
     for candidate in (here, *here.parents):
-        if (candidate / PROJECT_DIR).is_dir():
+        if is_project(candidate):
             return candidate
     return None
+
+
+def is_project(candidate: Path) -> bool:
+    """A directory is a project when its `.taskops/` holds the event log.
+
+    The log is the one file every project has and nothing else creates: the cache is
+    gitignored and may be absent on a fresh clone, the guide can be deleted, and the reports
+    directory only appears once somebody writes one. The log is written by `init` and is the
+    thing a project IS.
+    """
+    return (candidate / LOG_FILE).is_file()
 
 
 def resolve_root(start: Path | str) -> Path:

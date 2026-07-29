@@ -12,7 +12,7 @@ from typing import Iterator
 
 import pytest
 
-from taskops.storage import PROJECT_DIR, Store
+from taskops.storage import LOG_FILE, PROJECT_DIR, Store
 
 CLOCK = 1_800_000_000.0
 """A fixed 'now' every test measures from. A literal rather than `now()`, so a
@@ -41,6 +41,10 @@ def root(tmp_path: Path) -> Path:
     slow for no reason and hides which of the two is broken.
     """
     (tmp_path / PROJECT_DIR).mkdir()
+    # The LOG, not just the directory: `.taskops/` alone is what `~/.taskops/sessions.json`
+    # also looks like, and a fixture that skipped the log was a fixture agreeing with the bug
+    # that made the home directory a project.
+    (tmp_path / LOG_FILE).touch()
     return tmp_path
 
 

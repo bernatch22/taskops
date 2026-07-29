@@ -14,6 +14,7 @@ from .locate import (
     PROJECT_DIR,
     REPORTS_DIR,
     find_root,
+    is_project,
     resolve_root,
 )
 from .store import BUSY_TIMEOUT, Store
@@ -28,6 +29,7 @@ __all__ = [
     "GUIDE_FILE",
     "REPORTS_DIR",
     "find_root",
+    "is_project",
     "resolve_root",
     "export_events",
     "import_events",
