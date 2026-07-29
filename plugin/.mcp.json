@@ -2,7 +2,16 @@
   "mcpServers": {
     "taskops": {
       "command": "python3",
-      "args": ["-m", "taskops.transports.mcp"]
+      "args": [
+        "-m",
+        "taskops.transports.mcp"
+      ]
+    },
+    "taskops-channel": {
+      "command": "bun",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/channel/server.ts"
+      ]
     }
   }
 }
