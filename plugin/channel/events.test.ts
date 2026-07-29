@@ -54,8 +54,12 @@ group('what is worth interrupting for', () => {
     expect(classify(event('comment', { text: 'ping @dev:berna' }))).toBe('mention')
   })
 
-  test('an assignment crosses', () => {
-    expect(classify(event('handoff', { assigned_to: 'agent:ana/one' }))).toBe('assignment')
+  test('a dispatched assignment crosses; a manual one does not', () => {
+    // Dispatch-authored handoffs are the orchestrator talking to itself across sessions.
+    // Manual ones are somebody's bookkeeping, and bookkeeping must not drive a fleet.
+    expect(classify(event('handoff', { assigned_to: 'agent:ana/one', dispatched: true })))
+      .toBe('assignment')
+    expect(classify(event('handoff', { assigned_to: 'agent:ana/one' }))).toBeNull()
   })
 
   test('only review, blocked and done are loud statuses', () => {
@@ -431,4 +435,16 @@ test('a real mention on a real card is unchanged', () => {
                  body: {text: 'hold off', mentions: ['dev:berna']}, ts: 1, id: 'x'} as BoardEvent
   expect(describe(event, 'mention').content)
     .toBe('agent:ana/api mentioned dev:berna on tk-9: hold off')
+})
+
+
+test('a manual handoff is not an order to spawn', () => {
+  // The distortion, pinned: the UI (or a teammate's CLI) writing an assignee must not drive
+  // this session's fleet. Only dispatch-authored handoffs instruct.
+  const manual = {actor: 'dev:me', kind: 'handoff', task: 'tk-1',
+                  body: {assigned_to: 'agent:me/api', dispatched: false}, ts: 1, id: 'x'} as BoardEvent
+  expect(classify(manual)).toBe(null)
+
+  const dispatched = {...manual, body: {...manual.body, dispatched: true}} as BoardEvent
+  expect(classify(dispatched)).toBe('assignment')
 })

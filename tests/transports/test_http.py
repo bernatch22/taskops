@@ -257,30 +257,39 @@ def test_the_registry_reaches_the_picker_without_the_file_behind_it(with_registr
     assert set(entry) == {"name", "description", "labels"}
 
 
-def test_a_specialist_name_becomes_an_actor_id_under_the_assigner(with_registry: Path) -> None:
-    """The picker sends a registry NAME; the board stores an actor id. The dev half comes from
-    whoever is assigning, which is the shape the claim fence reads the specialist out of."""
+def test_assigning_to_a_specialist_is_a_request_not_a_write(with_registry: Path) -> None:
+    """There is ONE dispatcher and it is not this endpoint. The board used to write the
+    assignee, the channel pushed the handoff into the session as an order to spawn, and that
+    order arrived sideways into an orchestrator with its own queue — two deciders for one
+    question. Now the click posts a request the orchestrator fulfils in its own order."""
     route = build(with_registry, Policy())
     task_id = first_card(route)
     reply = route(post("/api/assign", {"task": task_id, "assignee": "taskops-collectors"}))
     assert reply.status == 200
-    assigned = body_of(reply)["assignee"]
-    assert assigned.startswith("agent:") and assigned.endswith("/taskops-collectors")
-    assert body_of(route(get("/api/task", id=task_id)))["task"]["assignee"] == assigned
+    assert body_of(reply).get("requested", "").endswith("/taskops-collectors")
+    assert body_of(route(get("/api/task", id=task_id)))["task"]["assignee"] == "", (
+        "the assignee is the orchestrator's to write, through dispatch")
+    asked = body_of(route(get("/api/chat")))
+    assert any(task_id in event["body"]["text"] and "dispatch" in event["body"]["text"]
+               for event in asked), "the request travels the chat, which the channel forwards"
 
 
-def test_assigning_records_a_handoff_that_pings_the_inbox(route: Any, project: Path) -> None:
-    """One write, through `hand_over` — the same one `dispatch` makes. The mention rides in the
-    event body, so the assignee is TOLD rather than expected to notice a field."""
-    from taskops.usecases import inbox
-
+def test_assigning_to_a_full_agent_id_is_also_a_request(route: Any) -> None:
+    """The rule keys on WHO, not on how the name was spelled: `agent:ana/one` typed in full is
+    still a dispatch decision, and dispatch decisions belong to the orchestrator."""
     task_id = first_card(route)
-    route(post("/api/assign", {"task": task_id, "assignee": "agent:ana/one"}))
-    thread = body_of(route(get("/api/task", id=task_id)))["thread"]
-    handoffs = [event for event in thread if event["kind"] == "handoff"]
-    assert handoffs[-1]["body"]["assigned_to"] == "agent:ana/one"
-    assert handoffs[-1]["body"]["dispatched"] is False
-    assert inbox(project, actor="agent:ana/one")["messages"]
+    reply = route(post("/api/assign", {"task": task_id, "assignee": "agent:ana/one"}))
+    assert body_of(reply).get("requested") == "agent:ana/one"
+    assert body_of(route(get("/api/task", id=task_id)))["task"]["assignee"] == ""
+
+
+def test_assigning_to_a_dev_still_writes_directly(route: Any) -> None:
+    """A person is bookkeeping, not orchestration: nothing spawns off a dev assignment, so
+    there is no second decider to protect and no reason to make a human wait for one."""
+    task_id = first_card(route)
+    reply = route(post("/api/assign", {"task": task_id, "assignee": "dev:ana"}))
+    assert body_of(reply)["assignee"] == "dev:ana"
+    assert body_of(route(get("/api/task", id=task_id)))["task"]["assignee"] == "dev:ana"
 
 
 def test_an_unknown_specialist_is_refused_naming_the_known_ones(with_registry: Path) -> None:
