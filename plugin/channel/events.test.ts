@@ -170,3 +170,20 @@ group('the board snapshot', () => {
     expect(summarize(null)).toContain('board ?')
   })
 })
+
+test('an assignment to a registered specialist asks for delegation, by name', () => {
+  // The orchestrator that received "tk-b61984 was assigned to agent:me/api" and then did the
+  // work itself was not disobeying — nothing in the message told it to delegate, and the
+  // connect-time instructions are one compaction away from being forgotten.
+  const event = {actor: 'dev:me', kind: 'handoff', task: 'tk-b61984',
+                 body: {assigned_to: 'agent:me/api'}, ts: 1, id: 'x'} as BoardEvent
+  const line = describe(event, 'assignment').content
+  expect(line).toContain('Spawn a `api` sub-agent')
+  expect(line).toContain('taskops_next task=tk-b61984')
+})
+
+test('an assignment to a plain dev asks for nothing of the sort', () => {
+  const event = {actor: 'dev:me', kind: 'handoff', task: 'tk-1',
+                 body: {assigned_to: 'dev:ana'}, ts: 1, id: 'x'} as BoardEvent
+  expect(describe(event, 'assignment').content).not.toContain('Spawn')
+})

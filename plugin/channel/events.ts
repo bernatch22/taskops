@@ -181,8 +181,19 @@ function line(event: BoardEvent, kind: Kind): string {
       const to = strings(event.body, 'mentions')
       return `${who} mentioned ${to.join(', ') || 'you'} on ${event.task}: ${text}`
     }
-    case 'assignment':
-      return `${event.task} was assigned to ${String(event.body.assigned_to)} by ${who}.`
+    case 'assignment': {
+      const to = String(event.body.assigned_to)
+      const specialist = to.includes('/') ? to.slice(to.indexOf('/') + 1) : ''
+      // The delegation instruction rides on the MESSAGE, not only on the server's connect-time
+      // instructions: this arrives mid-session, possibly after a compaction, and an
+      // orchestrator that has forgotten the rule will cheerfully do the work itself. Observed
+      // exactly once, which was enough.
+      return `${event.task} was assigned to ${to} by ${who}.`
+        + (specialist
+          ? ` Spawn a \`${specialist}\` sub-agent for it — it claims the card itself with`
+            + ` taskops_next task=${event.task}. Do not do the work in this session.`
+          : ' No registered specialist in that id — handle it or dispatch as you see fit.')
+    }
     case 'status': {
       const to = event.kind === 'done' ? 'done' : String(event.body.to ?? 'done')
       const from = String(event.body.from ?? '')
