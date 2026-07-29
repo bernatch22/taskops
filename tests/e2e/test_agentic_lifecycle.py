@@ -150,3 +150,48 @@ def test_a_released_review_lease_cannot_be_swept_back_to_ready(repo: Path) -> No
     with Store(repo) as store:
         sweep_dead(store, at=now() + 10_000_000)
         assert store.tasks.need(card)["status"] == "review", "review outlives every clock"
+
+
+def test_a_commit_moves_a_claimed_card_into_progress(repo: Path) -> None:
+    """`in_progress` used to be a call an agent had to remember, and the numbers were blunt:
+    ONE transition to it in the whole history of this project, written by hand in a test. The
+    commit IS the work landing, so the card says so without anybody announcing it."""
+    from taskops.usecases import ingest_commit
+
+    card = plan(repo, [{"title": "t", "spec": "s"}], actor=DEV)["created"][0]["id"]
+    claim = next_task(repo, task=card, actor=WORKER)["claim"]
+    assert claim is not None
+
+    subprocess.run(["git", "switch", "-qc", claim["branch"]], cwd=repo, check=True)
+    (repo / "a.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", f"work\n\nTask: {card}"], cwd=repo, check=True)
+
+    ingest_commit(repo, actor=WORKER)
+    with Store(repo) as store:
+        assert store.tasks.need(card)["status"] == "in_progress"
+
+
+def test_a_refused_move_never_costs_the_commit_binding(repo: Path) -> None:
+    """The ordering, learned in one run. This hook fires as whoever git says made the commit —
+    often the DEVELOPER, while the lease belongs to an agent — so the move hits the lease guard.
+    Attempted first, that refusal took the binding down with it: the card lost the commit it
+    exists to be bound to, over a status nobody asked for."""
+    from taskops.usecases import ask, ingest_commit
+
+    card = plan(repo, [{"title": "t", "spec": "s"}], actor=DEV)["created"][0]["id"]
+    claim = next_task(repo, task=card, actor=WORKER)["claim"]
+    assert claim is not None
+
+    subprocess.run(["git", "switch", "-qc", claim["branch"]], cwd=repo, check=True)
+    (repo / "a.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", f"work\n\nTask: {card}"], cwd=repo, check=True)
+
+    # A DEV ingests it — no lease, so the status move will be refused.
+    ingest_commit(repo, actor=DEV)
+
+    view = ask(repo, card)
+    assert view["commits"], "the binding survives a refused status move"
+    with Store(repo) as store:
+        assert store.tasks.need(card)["status"] == "claimed", "and the move really was refused"
