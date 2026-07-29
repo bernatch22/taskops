@@ -459,6 +459,11 @@ main { padding: 16px; display: flex; flex-direction: column; flex: 1; min-height
 .side {
   position: fixed; top: 0; right: 0; z-index: 45;
   width: min(400px, 100%);
+  /* The viewport, exactly — dvh so a phone's collapsing chrome cannot leave the compose box
+   * under the toolbar — and the SIDEBAR never scrolls: the thread does, inside. Scrolling the
+   * whole panel meant a long conversation carried the input away with it, and a chat whose
+   * input has to be scrolled back to is a chat you stop using. */
+  height: 100dvh; overflow: hidden;
   transform: translateX(100%); opacity: 0; visibility: hidden;
   transition: transform 170ms ease-out, opacity 170ms ease-out, visibility 0s linear 170ms;
 }
@@ -466,8 +471,10 @@ main { padding: 16px; display: flex; flex-direction: column; flex: 1; min-height
   transform: none; opacity: 1; visibility: visible;
   transition: transform 170ms ease-out, opacity 170ms ease-out;
 }
-/* The thread takes the slack, so the compose box sits at the foot on a short conversation. */
-.side .thread { flex: 1 1 auto; }
+/* The thread takes the slack AND owns the scrolling: header above and compose below stay
+ * pinned whatever the conversation's length. `min-height: 0` is the line that makes it true —
+ * without it a flex child refuses to shrink below its content and the overflow never engages. */
+.side .thread { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
 .side .compose { margin-top: auto; }
 .unread {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
