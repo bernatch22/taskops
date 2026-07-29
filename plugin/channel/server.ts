@@ -6,6 +6,7 @@
  *         -> taskops ui  ws://127.0.0.1:<port>/api/live
  *             -> this server  -> notifications/claude/channel  -> the session
  *     the session -> `reply` tool -> POST /api/comment -> the card's thread
+ *                              (or /api/chat, when there is no card to answer on)
  *
  * Three decisions are worth stating, because they are the ones a reader will question:
  *
@@ -31,7 +32,17 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 
-import { changeOf, describe, parseFrame, parseKinds, selects, summarize } from './events.ts'
+import {
+  changeOf,
+  describe,
+  parseFrame,
+  parseKinds,
+  readCard,
+  selects,
+  summarize,
+  wantsCard,
+  type ReviewCard,
+} from './events.ts'
 
 const PORT = Number(process.env.TASKOPS_UI_PORT ?? 2140)
 const HOST = '127.0.0.1'
@@ -85,7 +96,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: 'object',
         properties: {
-          card: { type: 'string', description: 'The task id, e.g. tk-90bd23 (the `card` tag attribute)' },
+          card: { type: 'string', description: 'The task id, e.g. tk-90bd23 (the `card` tag attribute). OMIT it to answer in the board\'s chat sidebar, which is where a message that named no card came from' },
           text: { type: 'string', description: 'What to say on the card' },
           mentions: {
             type: 'array',
@@ -93,7 +104,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: 'Actors to notify: agent:<dev>/<name> or dev:<name>',
           },
         },
-        required: ['card', 'text'],
+        required: ['text'],
       },
     },
     {
@@ -111,16 +122,22 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
       case 'reply': {
         const card = String(args.card ?? '').trim()
         const text = String(args.text ?? '').trim()
-        if (!card || !text) throw new Error('`card` and `text` are required')
+        if (!text) throw new Error('`text` is required')
+        // No card, no comment: a chat message named none, and answering it on whatever card
+        // was last mentioned would file a conversation under work it is not about. The board's
+        // sidebar is where that reply belongs, and it is the only place the asker is looking.
         const mentions = Array.isArray(args.mentions) ? args.mentions.map(String) : []
-        const response = await fetch(`${BASE}/api/comment`, {
+        const [route, body] = card
+          ? ['/api/comment', { task: card, text, mentions }]
+          : ['/api/chat', { text }]
+        const response = await fetch(`${BASE}${route}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', ...auth },
-          body: JSON.stringify({ task: card, text, mentions }),
+          body: JSON.stringify(body),
         })
         const payload = await response.text()
         if (!response.ok) throw new Error(`${response.status}: ${payload}`)
-        return { content: [{ type: 'text', text: `posted on ${card}` }] }
+        return { content: [{ type: 'text', text: card ? `posted on ${card}` : 'sent to the chat' }] }
       }
       case 'board': {
         const response = await fetch(`${BASE}/api/board`, { headers: auth })
@@ -237,6 +254,31 @@ process.on('exit', stopUi)
  * bounds the resource instead). A client that treated a close as fatal would go quiet after
  * five minutes and look like a filter that was working.
  */
+/**
+ * The one read a routed review costs: who may close this card, on what branch, at what commit.
+ *
+ * The reviewer is a field on the CARD and the event only says where it moved, so the line that
+ * tells a session what to do about a review cannot be written from the event alone. `/api/task`
+ * is the endpoint the board already serves for exactly this — the same base, the same token as
+ * every other call in this file.
+ *
+ * A failure returns `null` and the line falls back to the plain move it always was. A channel
+ * that dropped notifications because a read timed out would be silent in precisely the moment
+ * somebody is waiting on it.
+ */
+async function cardOf(task: string): Promise<ReviewCard | null> {
+  try {
+    const response = await fetch(`${BASE}/api/task?id=${encodeURIComponent(task)}`, {
+      headers: auth,
+      signal: AbortSignal.timeout(2000),
+    })
+    if (!response.ok) return null
+    return readCard(await response.json(), BASE)
+  } catch {
+    return null
+  }
+}
+
 function tail(): void {
   const url = `ws://${HOST}:${PORT}/api/live` + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : '')
   let socket: WebSocket
@@ -252,10 +294,13 @@ function tail(): void {
     if (!change) return
     const kind = selects(KINDS, change)
     if (!kind) return
-    void mcp.notification({
-      method: 'notifications/claude/channel',
-      params: describe(change, kind),
-    })
+    void (async () => {
+      const card = wantsCard(change, kind) ? await cardOf(change.task) : null
+      void mcp.notification({
+        method: 'notifications/claude/channel',
+        params: describe(change, kind, card),
+      })
+    })()
   })
   socket.addEventListener('close', () => setTimeout(tail, 1000))
   socket.addEventListener('error', () => {

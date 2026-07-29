@@ -120,6 +120,11 @@ export function classify(event: BoardEvent): Kind | null {
       // A plain comment reaches nobody's inbox; only an explicit @handle in the prose
       // makes it addressed at someone.
       return /(^|\s)@[\w:/-]+/.test(String(event.body.text ?? '')) ? 'mention' : null
+    case 'chat':
+      // Somebody typing in the board's sidebar IS an interruption addressed at this session —
+      // that is the entire reason the sidebar exists. It arrives with `task: "project"`, the
+      // sentinel, so nothing downstream may assume the tag names a card.
+      return 'mention'
     case 'handoff':
       return String(event.body.assigned_to ?? '') ? 'assignment' : null
     case 'status':
@@ -151,18 +156,147 @@ export function selects(kinds: readonly Kind[], event: BoardEvent): Kind | null 
   return kind && kinds.includes(kind) ? kind : null
 }
 
+// ---------------------------------------------------------------- the review branch
+
+/**
+ * What a `→ review` line needs that the EVENT does not carry.
+ *
+ * The event body says `from`/`to` and who moved it; who may CLOSE the card is a field ON the
+ * card, so a routed review line costs exactly one read. The read happens in `server.ts`; this
+ * shape is what it hands back, and every field degrades to a harmless empty rather than
+ * throwing — a channel that goes silent because a payload changed shape is worse than a
+ * channel that says a little less.
+ */
+export type ReviewCard = {
+  reviewer: string
+  branch: string
+  commit: string
+  criteria: number
+  board: string
+}
+
+/**
+ * Does this notification want the card read first?
+ *
+ * ONLY a move into `review`. Every other event is answerable from its own body, and a channel
+ * that made an HTTP call per forwarded line would turn the board's own writes into load on the
+ * board.
+ */
+export function wantsCard(event: BoardEvent, kind: Kind): boolean {
+  return kind === 'status' && event.kind === 'status' && String(event.body.to ?? '') === 'review'
+}
+
+/**
+ * The three answers a `reviewer` can give.
+ *
+ * `human` and any `dev:` id are a PERSON — the same test `engine/_review.py` makes when it
+ * refuses `done` from every agent, stated here so the message and the enforcement cannot
+ * disagree. Anything else non-empty names a specialist (bare, as `usecases/reviewer.py`
+ * validates it against the registry, or a full `agent:<dev>/<name>` id). "" is the project
+ * default, which is a real answer and not a missing one.
+ */
+export function reviewRoute(reviewer: string): 'human' | 'agent' | 'default' {
+  const who = reviewer.trim()
+  if (!who) return 'default'
+  if (who === 'human' || who.startsWith('dev:')) return 'human'
+  return 'agent'
+}
+
+/** The specialist to spawn out of a reviewer: the bare name, or the tail of an `agent:` id. */
+function specialistOf(reviewer: string): string {
+  const who = reviewer.trim()
+  return who.includes('/') ? who.slice(who.lastIndexOf('/') + 1) : who
+}
+
+/**
+ * Read `/api/task`'s payload down to the five facts a review line says.
+ *
+ * Pure, so the parsing of a wire shape is tested with literals instead of with a server. The
+ * criteria live in the LATEST `acceptance` event (`contracts/acceptance.py` — the newest event
+ * wins, it is a statement about the card now), the branch on the lease, the commit as the last
+ * one bound to the card.
+ */
+export function readCard(view: unknown, board: string): ReviewCard {
+  const value = (view ?? {}) as {
+    task?: { reviewer?: unknown }
+    lease?: { branch?: unknown } | null
+    commits?: { sha?: unknown }[]
+    history?: { kind?: unknown; body?: Record<string, unknown> }[]
+  }
+  const commits = Array.isArray(value.commits) ? value.commits : []
+  const history = Array.isArray(value.history) ? value.history : []
+  let criteria = 0
+  for (const event of history) {
+    if (event?.kind !== 'acceptance') continue
+    criteria = countCriteria((event.body ?? {}).criteria)
+  }
+  return {
+    reviewer: String(value.task?.reviewer ?? ''),
+    branch: String(value.lease?.branch ?? ''),
+    commit: String(commits.length ? commits[commits.length - 1]?.sha ?? '' : ''),
+    criteria,
+    board,
+  }
+}
+
+/** Criteria arrive as a list, or as one blob of lines. Never split on commas: an EARS
+ *  criterion ("When X, the system shall Y") is full of them. */
+function countCriteria(raw: unknown): number {
+  if (Array.isArray(raw)) return raw.filter(v => String(v).trim()).length
+  if (typeof raw === 'string') return raw.split('\n').filter(s => s.trim()).length
+  return 0
+}
+
+/**
+ * What to DO about a card that just landed in review — the sentence that was missing.
+ *
+ * Watched live: a specialist implemented a card, ran its tests 4/4, committed, moved it to
+ * `review`, and the channel said "tk-x moved claimed → review" and stopped. Nothing was wrong
+ * with the line; it simply was not an instruction, so the session read it and did nothing, and
+ * the card sat in the column. A status line about a review has to route the same way the
+ * assignment line already routes.
+ */
+function reviewInstruction(event: BoardEvent, card: ReviewCard): string {
+  const branch = card.branch || `the card's branch`
+  switch (reviewRoute(card.reviewer)) {
+    case 'agent': {
+      const name = specialistOf(card.reviewer)
+      return ` Reviewed by \`${name}\`. Spawn a \`${name}\` sub-agent on this card`
+        + ` (actor=agent:<dev>/${name}): read its acceptance criteria and the diff on ${branch},`
+        + ` run the tests, then close it with evidence or send it back with findings.`
+        + ` Do not review it in this session.`
+    }
+    case 'human': {
+      // Stated as a STOP, because the failure mode is an agent that reads "a person should look
+      // at this" as advice and closes the card anyway. The engine refuses that `done`, but a
+      // refusal at the end of a wasted review is not the same as not starting one.
+      const facts = [card.commit ? `commit ${card.commit.slice(0, 12)}` : '',
+                     card.branch ? `branch ${card.branch}` : '',
+                     `${card.criteria} criteria`].filter(Boolean).join(' · ')
+      return ` NEEDS A HUMAN REVIEW (${card.reviewer}). Do not close it and do not review it`
+        + ` yourself. ${facts}. Open ${card.board}/#${event.task}. Stop here and say so.`
+    }
+    case 'default':
+      return ` No reviewer named — the stock rule applies: anyone but the agent that asked for`
+        + ` the review may close it, with evidence. Do not close it as that agent.`
+  }
+}
+
+
+// ---------------------------------------------------------------- the payload
+
 /**
  * The notification payload: what Claude reads, and the tag attributes it routes on.
  *
  * Meta keys are identifiers only (letters, digits, underscore) — the client silently
  * drops anything with a hyphen, so a key that looked fine would simply vanish.
  */
-export function describe(event: BoardEvent, kind: Kind): {
+export function describe(event: BoardEvent, kind: Kind, card: ReviewCard | null = null): {
   content: string
   meta: Record<string, string>
 } {
   return {
-    content: line(event, kind),
+    content: line(event, kind, card),
     meta: {
       card: event.task,
       event_kind: kind,
@@ -173,7 +307,7 @@ export function describe(event: BoardEvent, kind: Kind): {
   }
 }
 
-function line(event: BoardEvent, kind: Kind): string {
+function line(event: BoardEvent, kind: Kind, card: ReviewCard | null): string {
   const who = event.actor || 'someone'
   const text = String(event.body.text ?? '').trim()
   switch (kind) {
@@ -203,6 +337,9 @@ function line(event: BoardEvent, kind: Kind): string {
       const from = String(event.body.from ?? '')
       return `${event.task} moved ${from ? `${from} → ` : 'to '}${to} (${who}).`
         + (text ? ` ${text}` : '')
+        // Only a review routes, and only when the card could actually be read. A failed read
+        // leaves EXACTLY the line this channel sent before — degraded, never absent.
+        + (card && wantsCard(event, kind) ? reviewInstruction(event, card) : '')
     }
     case 'recovery':
       return `${event.task} was recovered from ${String(event.body.recovered_from)}`

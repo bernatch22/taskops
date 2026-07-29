@@ -111,6 +111,34 @@ Narrow it with `TASKOPS_CHANNEL_EVENTS=mention,recovery`. An unknown name in tha
 dropped rather than fatal, and an empty result falls back to the curated set: a typo must not
 take the channel down or silence it.
 
+## A line that ROUTES
+
+Forwarding a fact is not the same as asking for something. Watched live: a specialist
+implemented a card, ran its tests 4/4, committed, and moved it to `review` — the channel said
+`tk-x moved claimed → review` and the card sat in the column, because nothing in that sentence
+was an instruction. Two lines therefore carry one:
+
+* **an assignment** names the specialist to spawn and the `actor=` it must pass on *every*
+  `taskops_*` call;
+* **a move into `review`** reads the card's `reviewer` field and says what to do about it.
+
+The reviewer is a field on the CARD, not on the event, so a review — and only a review — costs
+one `GET /api/task`. Three answers:
+
+| `reviewer`                      | the line says                                                     |
+| ------------------------------- | ----------------------------------------------------------------- |
+| a specialist (`tester`, `agent:me/tester`) | spawn a `tester` sub-agent on this card with `actor=agent:<dev>/tester`: read the criteria and the diff on the branch, run the tests, close with evidence or send it back |
+| a person (`human`, `dev:ana`)   | **NEEDS A HUMAN REVIEW** — do not close it, do not review it yourself; commit, branch, criteria count, and the board link. The session is expected to stop there. |
+| empty                           | today's default, stated: anyone but the agent that asked for the review may close it |
+
+`human` and any `dev:` id are read as a person by the same test `engine/_review.py` makes when
+it refuses `done` from every agent — the message and the enforcement cannot disagree.
+
+If that read fails (a 404, a timeout, a token problem) the line degrades to exactly the move it
+always was. A channel that dropped notifications because a read timed out would be silent in
+precisely the moment somebody is waiting on it. Every other status move — `blocked`, `done` —
+is unchanged and costs no read.
+
 ## The tools
 
 | tool     | what it does                                                                    |

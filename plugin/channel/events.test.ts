@@ -6,10 +6,14 @@ import {
   describe,
   parseFrame,
   parseKinds,
+  readCard,
+  reviewRoute,
   selects,
   strings,
   summarize,
+  wantsCard,
   type BoardEvent,
+  type ReviewCard,
 } from './events.ts'
 
 function event(kind: string, body: Record<string, unknown> = {}): BoardEvent {
@@ -199,6 +203,137 @@ test('the delegation line names the actor the sub-agent must use', () => {
   expect(line).toContain('actor=agent:me/api')
 })
 
+group('a card in review routes', () => {
+  // Watched live: a specialist implemented a card, ran its tests 4/4, committed, moved it to
+  // `review` — and the channel said "tk-x moved claimed → review" and nothing else, so the
+  // session read it and the card sat in the column. The line has to say what to DO.
+  const moved = event('status', { from: 'claimed', to: 'review' })
+
+  function card(over: Partial<ReviewCard> = {}): ReviewCard {
+    return {
+      reviewer: '', branch: 'tk/tk-90bd23/router', commit: 'a'.repeat(40),
+      criteria: 3, board: 'http://127.0.0.1:2140', ...over,
+    }
+  }
+
+  test('only a move INTO review costs a card read', () => {
+    expect(wantsCard(moved, 'status')).toBe(true)
+    expect(wantsCard(event('status', { to: 'blocked' }), 'status')).toBe(false)
+    expect(wantsCard(event('done', { to: 'done' }), 'status')).toBe(false)
+    expect(wantsCard(event('message', { mentions: ['dev:ana'] }), 'mention')).toBe(false)
+  })
+
+  test('a reviewer reads as a person, a specialist, or the default', () => {
+    expect(reviewRoute('human')).toBe('human')
+    expect(reviewRoute('dev:berna')).toBe('human')
+    expect(reviewRoute('tester')).toBe('agent')
+    expect(reviewRoute('agent:me/tester')).toBe('agent')
+    expect(reviewRoute('')).toBe('default')
+    expect(reviewRoute('   ')).toBe('default')
+  })
+
+  test('an AGENT reviewer asks for that sub-agent, by name and with its actor', () => {
+    const { content } = describe(moved, 'status', card({ reviewer: 'tester' }))
+    expect(content).toContain('Spawn a `tester` sub-agent')
+    expect(content).toContain('actor=agent:<dev>/tester')
+    expect(content).toContain('tk/tk-90bd23/router')
+    expect(content).toContain('acceptance criteria')
+    expect(content).not.toContain('HUMAN')
+  })
+
+  test('a full agent id is spawned by its tail, not by the whole id', () => {
+    const { content } = describe(moved, 'status', card({ reviewer: 'agent:me/tester' }))
+    expect(content).toContain('Spawn a `tester` sub-agent')
+  })
+
+  test('a HUMAN reviewer stops the session and hands over the facts', () => {
+    const { content } = describe(moved, 'status', card({ reviewer: 'dev:berna' }))
+    expect(content).toContain('NEEDS A HUMAN REVIEW (dev:berna)')
+    expect(content).toContain('Do not close it and do not review it yourself')
+    expect(content).toContain(`commit ${'a'.repeat(12)}`)
+    expect(content).toContain('branch tk/tk-90bd23/router')
+    expect(content).toContain('3 criteria')
+    expect(content).toContain('http://127.0.0.1:2140/#tk-90bd23')
+    expect(content).not.toContain('Spawn')
+  })
+
+  test('NO reviewer states the default instead of leaving it unsaid', () => {
+    const { content } = describe(moved, 'status', card({ reviewer: '' }))
+    expect(content).toContain('No reviewer named')
+    expect(content).toContain('anyone but the agent that asked for the review')
+    expect(content).not.toContain('Spawn')
+  })
+
+  test('a status event that is NOT review is unchanged', () => {
+    // The regression. Every other move keeps the line it has always had, card or no card.
+    const blocked = event('status', { from: 'claimed', to: 'blocked', text: 'waiting on tk-2' })
+    const bare = describe(blocked, 'status').content
+    expect(describe(blocked, 'status', card({ reviewer: 'tester' })).content).toBe(bare)
+    expect(bare).toBe('tk-90bd23 moved claimed → blocked (dev:berna). waiting on tk-2')
+    const closed = describe(event('done', { from: 'review', to: 'done' }), 'status', card())
+    expect(closed.content).toBe('tk-90bd23 moved review → done (dev:berna).')
+  })
+
+  test('an unreadable card degrades to the plain move, never to silence', () => {
+    // `cardOf` returns null on a 404, a timeout or a token problem.
+    expect(describe(moved, 'status', null).content)
+      .toBe('tk-90bd23 moved claimed → review (dev:berna).')
+  })
+})
+
+group('reading the card off /api/task', () => {
+  test('it picks the reviewer, the branch, the last commit and the criteria', () => {
+    const facts = readCard({
+      task: { id: 'tk-90bd23', reviewer: 'tester' },
+      lease: { actor: 'agent:me/api', branch: 'tk/tk-90bd23/router' },
+      commits: [{ sha: 'b'.repeat(40) }, { sha: 'c'.repeat(40) }],
+      history: [
+        { kind: 'acceptance', body: { criteria: ['one', 'two'] } },
+        { kind: 'status', body: { to: 'review' } },
+      ],
+    }, 'http://x')
+    expect(facts).toEqual({
+      reviewer: 'tester', branch: 'tk/tk-90bd23/router', commit: 'c'.repeat(40),
+      criteria: 2, board: 'http://x',
+    })
+  })
+
+  test('the LATEST acceptance event wins', () => {
+    // `contracts/acceptance.py`: rewriting the criteria is a statement about the card now.
+    const facts = readCard({
+      history: [
+        { kind: 'acceptance', body: { criteria: ['a', 'b', 'c'] } },
+        { kind: 'acceptance', body: { criteria: ['a'] } },
+      ],
+    }, 'http://x')
+    expect(facts.criteria).toBe(1)
+  })
+
+  test('criteria as one blob split on LINES, never on commas', () => {
+    // An EARS criterion — "When X, the system shall Y" — is full of commas.
+    expect(readCard({ history: [{ kind: 'acceptance', body: { criteria: 'When a, b shall c\nAnd d' } }] },
+                    'http://x').criteria).toBe(2)
+  })
+
+  test('a card with no lease, no commits and no criteria reads as empties', () => {
+    const facts = readCard({ task: { reviewer: 'human' }, lease: null }, 'http://x')
+    expect(facts).toEqual({ reviewer: 'human', branch: '', commit: '', criteria: 0, board: 'http://x' })
+  })
+
+  test('a payload of the wrong shape never throws', () => {
+    expect(readCard(null, 'http://x').reviewer).toBe('')
+    expect(readCard({ commits: 'nope', history: 7 }, 'http://x').criteria).toBe(0)
+  })
+
+  test('the human line survives a card with nothing but a reviewer', () => {
+    const { content } = describe(event('status', { to: 'review' }), 'status',
+                                 readCard({ task: { reviewer: 'human' } }, 'http://x'))
+    expect(content).toContain('NEEDS A HUMAN REVIEW (human)')
+    expect(content).toContain('0 criteria')
+    expect(content).not.toContain('commit ')
+  })
+})
+
 test('the delegation line asks for the actor on EVERY call, not only the claim', () => {
   // The second half of the same lesson. Told to pass the actor on taskops_next, a specialist
   // claimed its card correctly and then could not write to it: the update resolved to the
@@ -208,4 +343,14 @@ test('the delegation line asks for the actor on EVERY call, not only the claim',
                  body: {assigned_to: 'agent:me/api'}, ts: 1, id: 'x'} as BoardEvent
   const line = describe(event, 'assignment').content
   expect(line).toContain('EVERY taskops_* call')
+})
+
+test('a chat message from the sidebar reaches the session', () => {
+  // The sidebar exists to interrupt this session; a chat line that did not cross would be a
+  // notes field. It arrives on the SENTINEL task, so nothing downstream may read the tag's
+  // card attribute as a real card.
+  const event = {actor: 'dev:berna', kind: 'chat', task: 'project',
+                 body: {text: 'why is tk-2 still open?'}, ts: 1, id: 'x'} as BoardEvent
+  expect(classify(event)).toBe('mention')
+  expect(selects(parseKinds(undefined), event)).toBe('mention')
 })

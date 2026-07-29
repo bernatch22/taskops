@@ -25,7 +25,8 @@ from typing import Any, Iterator
 import pytest
 
 from taskops._types import EVENT_KINDS, LOCAL_ONLY_KINDS
-from taskops.contracts import Event
+from taskops.contracts import CommitRef, Event, Lease
+from taskops.contracts.acceptance import ACCEPTANCE_KIND
 from taskops.storage import Store, resolve_root
 from taskops.transports.cli.commands.ui import DEFAULT_PORT
 from taskops.transports.http import live
@@ -234,6 +235,23 @@ def test_the_board_endpoint_carries_what_the_snapshot_renders(route: Any) -> Non
     assert {"id", "title"} <= set(card["task"]) and "lease" in card
 
 
+def test_the_task_endpoint_carries_what_a_review_line_says(route: Any, card: str) -> None:
+    """`readCard` in `events.ts` reads exactly these names off `/api/task` to route a card that
+    landed in `review`: WHO may close it, on what branch, at what commit, over how many
+    criteria. A rename here does not break the channel loudly — it makes every review line say
+    "No reviewer named" about a card that names one, which is the worst possible failure for a
+    routing rule.
+    """
+    view = body_of(route(get("/api/task", id=card)))
+    assert {"task", "lease", "commits", "history"} <= set(view)
+    assert "reviewer" in view["task"]
+    # The three nested names it reaches for, pinned where they are DECLARED — an unclaimed,
+    # uncommitted card has a null lease and no commits, and asserting on the empties would
+    # assert nothing.
+    assert "branch" in Lease.__annotations__ and "sha" in CommitRef.__annotations__
+    assert ACCEPTANCE_KIND == "acceptance" and ACCEPTANCE_KIND in EVENT_KINDS
+
+
 def test_config_is_the_liveness_probe_and_needs_no_database(project: Path) -> None:
     """`server.ts` decides whether to spawn a UI by asking for this. It must answer on a
     board that is empty, locked, or read-only — anything else and the channel would start a
@@ -257,7 +275,17 @@ def test_the_channel_reaches_only_the_routes_asserted_above() -> None:
     adds a third endpoint to the channel, this fails until the contract test covers it."""
     source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
     used = set(re.findall(r"/api/([a-z]+)", source))
-    assert used == {"config", "comment", "board", "live"}
+    assert used == {"config", "comment", "chat", "board", "live", "task"}
+
+
+def test_the_chat_route_answers_the_shape_reply_posts(route: Any) -> None:
+    """`reply` with no card posts `{"text": …}` to `/api/chat` — the sidebar is where a message
+    naming no card came from, and answering it on whatever card was mentioned last would file a
+    conversation under work it is not about. If this route or its one field is renamed, the
+    channel would answer into a 404 and the asker would watch nothing arrive."""
+    answered = route(post("/api/chat", {"text": "porque nadie la reclamo"}))
+    assert answered.status == 200
+    assert json.loads(answered.body)["kind"] == "chat"
 
 
 def test_the_channel_declares_no_permission_relay() -> None:
