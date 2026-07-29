@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "taskops-channel": {
+      "command": "bun",
+      "args": ["./plugin/channel/server.ts"]
+    }
+  }
+}

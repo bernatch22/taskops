@@ -156,6 +156,7 @@ let child: ReturnType<typeof Bun.spawn> | null = null
 async function ensureUi(): Promise<void> {
   if (await listening()) {
     log(`attached to the UI already on ${BASE}`)
+    announce()
     return
   }
   log(`starting ${BIN} ui --port ${PORT} (${REPO})`)
@@ -171,12 +172,34 @@ async function ensureUi(): Promise<void> {
   })
   for (let attempt = 0; attempt < 40; attempt++) {
     if (await listening()) {
-      log(`UI up on ${BASE}`)
+      announce()
+      openBoard()
       return
     }
     await Bun.sleep(250)
   }
   log(`the UI did not come up on ${BASE} within 10s — events will not flow`)
+}
+
+function announce(): void {
+  // Loud on purpose, and on its own lines. This is the one thing somebody starting a session
+  // actually wants from us — an address they can click — and a URL buried in a log line among
+  // startup chatter is a URL nobody sees.
+  process.stderr.write(`\n  taskops board → ${BASE}\n\n`)
+}
+
+function openBoard(): void {
+  // Only when WE started the UI. Adopting a server somebody already had running and then
+  // stealing their focus with a new tab is the kind of helpfulness people disable.
+  // TASKOPS_CHANNEL_OPEN=0 turns it off for anyone who disagrees.
+  if ((process.env.TASKOPS_CHANNEL_OPEN ?? '1') === '0') return
+  const opener = process.platform === 'darwin' ? 'open'
+    : process.platform === 'win32' ? 'explorer' : 'xdg-open'
+  try {
+    Bun.spawn([opener, BASE], {stdin: 'ignore', stdout: 'ignore', stderr: 'ignore'})
+  } catch {
+    // A machine with no browser is a machine that reads the line above. Never fatal.
+  }
 }
 
 function stopUi(): void {

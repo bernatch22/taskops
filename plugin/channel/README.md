@@ -20,6 +20,18 @@ and Claude can answer on the card without leaving it.
   the card's thread  ◀── POST /api/comment ◀────  `reply` tool  ◀───────────────┘
 ```
 
+## On startup
+
+It prints the board's address on its own lines, and — only when it started the UI itself —
+opens it in your browser. Adopting a server you already had running and then stealing your
+focus with a new tab is the kind of helpfulness people disable, so it does not.
+
+```
+  taskops board → http://127.0.0.1:2140
+```
+
+`TASKOPS_CHANNEL_OPEN=0` turns the browser off and keeps the line.
+
 ## Run it
 
 The channel is a plugin artifact, not part of the Python wheel — it needs [Bun](https://bun.sh)
@@ -50,7 +62,7 @@ Or, if you loaded it through the taskops plugin (it must be an entry in the plug
 `.mcp.json`), name the plugin instead:
 
 ```sh
-claude --dangerously-load-development-channels plugin:taskops@<your-marketplace>
+claude --dangerously-load-development-channels plugin:taskops@<marketplace>   # only once published
 ```
 
 Claude Code shows a full-screen warning listing the development channels; choose **I am using
