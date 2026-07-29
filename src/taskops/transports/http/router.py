@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from . import agentapi, api, exchange, live, reports, static, unlock
+from . import agentapi, api, assigning, exchange, live, reports, static, unlock
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 
@@ -33,6 +33,8 @@ def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
         ("POST", "/api/report/digest"): partial(reports.post_digest, root),
         ("POST", "/api/comment"): partial(api.post_comment, root),
         ("POST", "/api/status"): partial(api.post_status, root),
+        ("GET", "/api/agents"): partial(assigning.get_agents, root),
+        ("POST", "/api/assign"): partial(assigning.post_assign, root),
         ("GET", "/api/live"): partial(live.stream, root),
         ("POST", "/api/sync"): partial(exchange.post_sync, root),
         ("GET", "/api/sync"): partial(exchange.get_sync, root),

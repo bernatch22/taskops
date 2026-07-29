@@ -173,6 +173,13 @@ function Card({ card, onOpen }: { card: CardData; onOpen: (id: string) => void }
           <Actor id={lease.actor} />
           {lease.branch ? <code className="branch">{lease.branch}</code> : <span className="dim">no branch yet</span>}
         </div>
+      ) : task.assignee ? (
+        /* Only when nothing HOLDS it: a lease is the stronger fact (somebody is working on it
+         * right now) and drawing both would say the same thing twice on a card with five lines. */
+        <div className="card-lease">
+          <Actor id={task.assignee} />
+          <span className="dim">assigned</span>
+        </div>
       ) : null}
       {task.labels.length > 0 ? (
         <div className="labels">

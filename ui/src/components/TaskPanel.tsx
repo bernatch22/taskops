@@ -2,16 +2,19 @@
  * there: a reader may stop early, so what they must not miss comes first — what this is, then
  * what would make them collide with somebody, then the spec, then the thread. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { CommitRef, Event, Task, TaskView } from "../contracts";
+import type { AgentEntry, CommitRef, Event, Task, TaskView } from "../contracts";
 import { Actor, MARK, Priority, ago } from "./bits";
 
 const CLOSING = ["in_progress", "review", "done", "blocked", "released", "cancelled"];
 
-export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
+export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
   view: TaskView;
   readonly: boolean;
+  /* The actor ids already on this board. The registry says which SPECIALISTS exist; nothing on
+   * the server knows which PEOPLE do, so the board itself is the only honest source. */
+  people: string[];
   onClose: () => void;
   onOpen: (id: string) => void;
   onDone: () => void;
@@ -34,6 +37,7 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
         <h1>{task.title}</h1>
         <p className="meta dim">
           created by <Actor id={task.created_by} /> · {ago(task.created)}
+          {task.assignee ? <> · assigned to <Actor id={task.assignee} /></> : null}
           {view.lease ? <> · held by <Actor id={view.lease.actor} /></> : null}
         </p>
 
@@ -84,7 +88,10 @@ export function TaskPanel({ view, readonly, onClose, onOpen, onDone }: {
         <Thread thread={view.thread} />
         {readonly
           ? <p className="dim">Read-only — start it without <code>--readonly</code> to reply.</p>
-          : <Compose task={task} onDone={onDone} />}
+          : <>
+              <Assign task={task} people={people} onDone={onDone} />
+              <Compose task={task} onDone={onDone} />
+            </>}
       </div>
     </div>
   );
@@ -157,6 +164,77 @@ function Thread({ thread }: { thread: Event[] }): JSX.Element {
           ))}
         </ol>
       )}
+    </section>
+  );
+}
+
+/* Giving the card to somebody. Its own section rather than another button in the row below,
+ * because it is the one control here that changes who the SCHEDULER offers the card to — an
+ * assigned card is invisible to every other agent, which is a heavier thing than a comment.
+ *
+ * The picker has two halves and they are not interchangeable: the registry SPECIALISTS, which the
+ * server knows and mints an actor id for (`agent:<you>/<name>`), and the PEOPLE already on this
+ * board, which nothing on the server knows — so their ids are sent verbatim. Anything else is
+ * typed in the same field: free-form is the normal case for an ad-hoc worker, and only a bare
+ * name that looks like a specialist is measured against the registry. */
+function Assign({ task, people, onDone }: {
+  task: Task;
+  people: string[];
+  onDone: () => void;
+}): JSX.Element {
+  const [agents, setAgents] = useState<AgentEntry[]>([]);
+  const [pick, setPick] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState("");
+
+  /* Fetched when the panel opens, not held in the shared state: the registry is read once per
+   * card somebody actually assigns, and it does not change while a board is open. A failure is
+   * SILENT on purpose — the field still works by hand, and a red line about a picker nobody was
+   * using would be noise on top of a card. */
+  useEffect(() => {
+    let alive = true;
+    api.agents().then((listed) => { if (alive) setAgents(listed); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  async function assign() {
+    setBusy(true);
+    setFailed("");
+    try {
+      await api.assign(task.id, pick.trim());
+      setPick("");
+      onDone();
+    } catch (failure) {
+      /* The server's message, verbatim — a refused assignee names every specialist this project
+       * has, which is the only thing that makes a typo fixable without leaving the board. */
+      setFailed(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="compose">
+      <h3>Assign {task.assignee ? <span className="chip">{task.assignee}</span> : null}</h3>
+      <input
+        value={pick}
+        list="assignees"
+        placeholder={task.assignee ? "reassign to: a specialist, dev:ana, agent:ana/one"
+                                   : "a specialist, dev:ana, agent:ana/one"}
+        onChange={(change) => setPick(change.target.value)}
+      />
+      <datalist id="assignees">
+        {agents.map((agent) => (
+          <option value={agent.name} key={agent.name}>{agent.description}</option>
+        ))}
+        {people.map((who) => <option value={who} key={who} />)}
+      </datalist>
+      <div className="actions">
+        <button className="primary" disabled={busy || !pick.trim()} onClick={() => void assign()}>
+          {task.assignee ? "Reassign" : "Assign"}
+        </button>
+      </div>
+      {failed ? <p className="failed">{failed}</p> : null}
     </section>
   );
 }

@@ -215,6 +215,157 @@ def test_a_malformed_body_is_a_400_not_a_traceback(route: Any) -> None:
     assert route(broken).status == 400
 
 
+# ---- assignment
+
+
+COLLECTORS = """---
+name: taskops-collectors
+description: The collectors specialist.
+labels: [collectors, etl]
+files: ["src/data/**"]
+---
+
+You own the ingestion path.
+"""
+
+
+@pytest.fixture
+def with_registry(project: Path) -> Path:
+    folder = project / ".taskops" / "agents"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "taskops-collectors.md").write_text(COLLECTORS, encoding="utf-8")
+    return project
+
+
+def first_card(route: Any) -> str:
+    board = body_of(route(get("/api/board")))
+    return board["columns"][0]["cards"][0]["task"]["id"]
+
+
+def test_the_registry_reaches_the_picker_without_the_file_behind_it(with_registry: Path) -> None:
+    """Name, description and labels — never `text` or `path`. The prompt is what materialisation
+    needs, not what a dropdown needs, and the path is the server's filesystem."""
+    listed = body_of(build(with_registry, Policy())(get("/api/agents")))
+    entry = next(a for a in listed if a["name"] == "taskops-collectors")
+    assert entry["labels"] == ["collectors", "etl"]
+    assert set(entry) == {"name", "description", "labels"}
+
+
+def test_a_specialist_name_becomes_an_actor_id_under_the_assigner(with_registry: Path) -> None:
+    """The picker sends a registry NAME; the board stores an actor id. The dev half comes from
+    whoever is assigning, which is the shape the claim fence reads the specialist out of."""
+    route = build(with_registry, Policy())
+    task_id = first_card(route)
+    reply = route(post("/api/assign", {"task": task_id, "assignee": "taskops-collectors"}))
+    assert reply.status == 200
+    assigned = body_of(reply)["assignee"]
+    assert assigned.startswith("agent:") and assigned.endswith("/taskops-collectors")
+    assert body_of(route(get("/api/task", id=task_id)))["task"]["assignee"] == assigned
+
+
+def test_assigning_records_a_handoff_that_pings_the_inbox(route: Any, project: Path) -> None:
+    """One write, through `hand_over` — the same one `dispatch` makes. The mention rides in the
+    event body, so the assignee is TOLD rather than expected to notice a field."""
+    from taskops.usecases import inbox
+
+    task_id = first_card(route)
+    route(post("/api/assign", {"task": task_id, "assignee": "agent:ana/one"}))
+    thread = body_of(route(get("/api/task", id=task_id)))["thread"]
+    handoffs = [event for event in thread if event["kind"] == "handoff"]
+    assert handoffs[-1]["body"]["assigned_to"] == "agent:ana/one"
+    assert handoffs[-1]["body"]["dispatched"] is False
+    assert inbox(project, actor="agent:ana/one")["messages"]
+
+
+def test_an_unknown_specialist_is_refused_naming_the_known_ones(with_registry: Path) -> None:
+    """A typo'd specialist is a card NOBODY can pick up — assignment hides it from everyone
+    else — and nothing on the board would say why. So the refusal carries the list."""
+    route = build(with_registry, Policy())
+    reply = route(post("/api/assign", {"task": first_card(route),
+                                       "assignee": "taskops-collectrs"}))
+    assert reply.status == 400
+    assert "taskops-collectors" in body_of(reply)["error"]
+
+
+def test_a_free_form_actor_id_is_not_measured_against_the_registry(route: Any) -> None:
+    """Assigning to a person, or to an ad-hoc worker nobody registered, is the normal case —
+    the same way the claim fence leaves an actor it does not know unrestricted."""
+    task_id = first_card(route)
+    assert route(post("/api/assign", {"task": task_id, "assignee": "dev:ana"})).status == 200
+    assert body_of(route(get("/api/task", id=task_id)))["task"]["assignee"] == "dev:ana"
+
+
+def test_a_malformed_actor_id_is_refused_by_the_identity_parser(route: Any) -> None:
+    """Free-form is not shapeless: an actor id is a join key, and `agent:ana` addresses no
+    inbox."""
+    reply = route(post("/api/assign", {"task": first_card(route), "assignee": "agent:ana"}))
+    assert reply.status == 400
+    assert "not an actor id" in body_of(reply)["error"]
+
+
+def test_assigning_a_card_that_does_not_exist_is_a_404(route: Any) -> None:
+    """`set_assignee` is an UPDATE, and one that matches no row succeeds silently."""
+    assert route(post("/api/assign", {"task": "tk-nope", "assignee": "dev:ana"})).status == 404
+
+
+def test_an_assigned_card_is_no_longer_offered_to_anybody_else(route: Any) -> None:
+    """This is what makes a wrong assignee expensive, and why the check above exists."""
+    task_id = first_card(route)
+    route(post("/api/assign", {"task": task_id, "assignee": "dev:ana"}))
+    offered = body_of(route(post("/api/next", {"actor": "agent:zoe/one"})))
+    assert (offered.get("claim") or {}).get("view", {}).get("task", {}).get("id") != task_id
+
+
+def test_re_assigning_appends_a_second_handoff_and_edits_no_event(route: Any) -> None:
+    """A person changing their mind is normal; erasing the fact that the card was somebody
+    else's is not."""
+    task_id = first_card(route)
+    route(post("/api/assign", {"task": task_id, "assignee": "dev:ana"}))
+    route(post("/api/assign", {"task": task_id, "assignee": "dev:zoe"}))
+    view = body_of(route(get("/api/task", id=task_id)))
+    handed = [event["body"]["assigned_to"] for event in view["thread"]
+              if event["kind"] == "handoff"]
+    assert handed == ["dev:ana", "dev:zoe"]
+    assert view["task"]["assignee"] == "dev:zoe"
+
+
+def test_the_handoff_reaches_the_live_feed(route: Any, project: Path) -> None:
+    """No parallel notification: assignment lands on the event log, and the log IS the feed the
+    websocket and the SSE stream both frame."""
+    from contextlib import closing
+
+    from taskops.usecases import follow
+
+    task_id = first_card(route)
+    route(post("/api/assign", {"task": task_id, "assignee": "dev:ana"}))
+    seen: list[Any] = []
+    with closing(follow(project, after=0, tick=0.01)) as feed:
+        for event in feed:
+            if event is None:
+                break
+            seen.append(event)
+    assert any(e.get("kind") == "handoff" and e["body"]["assigned_to"] == "dev:ana"
+               for e in seen)
+
+
+def test_assignment_is_behind_the_same_credential_as_every_other_write(project: Path) -> None:
+    """It is a write on a board somebody put behind nginx — the token is the only boundary."""
+    route = build(project, Policy(token="secret"))
+    assert route(post("/api/assign", {"task": "tk-1", "assignee": "dev:ana"})).status == 401
+    assert route(get("/api/agents")).status == 401
+    allowed = Request(method="POST", path="/api/assign", query={},
+                      headers={"authorization": "Bearer secret"},
+                      body=json.dumps({"task": "tk-1", "assignee": "dev:ana"}).encode())
+    assert route(allowed).status != 401
+
+
+def test_a_readonly_board_cannot_hand_a_card_to_anybody(project: Path) -> None:
+    route = build(project, Policy(readonly=True))
+    refused = route(post("/api/assign", {"task": "tk-1", "assignee": "dev:ana"}))
+    assert refused.status == 403
+    assert body_of(refused)["code"] == "readonly"
+
+
 def test_the_activity_endpoint_serialises_the_shape_the_view_expects(route: Any) -> None:
     """`ui/src/contracts.ts` mirrors these names by hand, so a rename that is not mirrored shows
     up in the history as `undefined` — this is where it should fail instead."""

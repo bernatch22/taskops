@@ -5,6 +5,7 @@
  * somebody has to read before they can change anything. */
 
 import { StrictMode } from "react";
+import type { Board as BoardData } from "./contracts";
 import { createRoot } from "react-dom/client";
 import { Activity } from "./components/Activity";
 import { Board, type Grouping } from "./components/Board";
@@ -51,6 +52,7 @@ function App(): JSX.Element {
         <TaskPanel
           view={studio.open}
           readonly={studio.config?.readonly ?? false}
+          people={peopleOn(studio.board)}
           onClose={() => studio.openTask(null)}
           onOpen={studio.openTask}
           /* The refetch after a write is NOT an optimisation of the live feed — it is what makes
@@ -60,6 +62,21 @@ function App(): JSX.Element {
       ) : null}
     </>
   );
+}
+
+/* Everybody this board has actually seen — who created a card, who holds one, who was given one.
+ * Derived here rather than fetched: there is no registry of PEOPLE on the server, and the board
+ * already carries every id it would contain. Sorted so the list does not reshuffle on a refetch. */
+function peopleOn(board: BoardData | null): string[] {
+  const seen = new Set<string>();
+  for (const column of board?.columns ?? []) {
+    for (const card of column.cards) {
+      seen.add(card.task.created_by);
+      if (card.task.assignee) seen.add(card.task.assignee);
+      if (card.lease) seen.add(card.lease.actor);
+    }
+  }
+  return [...seen].filter(Boolean).sort();
 }
 
 const root = document.getElementById("root");

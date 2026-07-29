@@ -4,8 +4,8 @@
  * rather than a hunt through components. Components never call `fetch`. */
 
 import type {
-  Activity, Board, Config, DigestStarted, Event, ReportEntry, ReportFile, Task, TaskView,
-  WireMessage,
+  Activity, AgentEntry, Board, Config, DigestStarted, Event, ReportEntry, ReportFile, Task,
+  TaskView, WireMessage,
 } from "./contracts";
 
 /* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
@@ -94,6 +94,14 @@ export const api = {
     call<unknown>("/api/comment", {
       method: "POST",
       body: JSON.stringify({ task, text, mentions }),
+    }),
+  agents: () => call<AgentEntry[]>("/api/agents"),
+  /* A registry NAME (the server mints `agent:<you>/<name>` from it) or a full actor id. The
+   * server refuses a bare name it does not know, and its sentence names the ones it does. */
+  assign: (task: string, assignee: string) =>
+    call<{ task: string; assignee: string }>("/api/assign", {
+      method: "POST",
+      body: JSON.stringify({ task, assignee }),
     }),
   status: (task: string, status: string, comment: string) =>
     call<unknown>("/api/status", {

@@ -26,8 +26,20 @@ export interface Task {
   labels: string[];
   files: string[];
   created_by: string;
+  /* Whose card it is — an actor id, or "". Not a lease: a lease belongs to a process that is
+   * alive, this is a decision that outlives one. The scheduler offers an assigned card to
+   * nobody else, which is why the board draws it. */
+  assignee: string;
   created: number;
   updated: number;
+}
+
+/* One entry of the specialist registry, as `GET /api/agents` serves it — the picker's whole
+ * vocabulary. Never the agent file's text: that is what materialisation needs, not a dropdown. */
+export interface AgentEntry {
+  name: string;
+  description: string;
+  labels: string[];
 }
 
 export interface Lease {
