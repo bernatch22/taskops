@@ -31,6 +31,7 @@ from ..._errors import BadRequest
 from ...usecases import registry
 from ...usecases._handoff import hand_over
 from ...usecases._project import caller, project
+from ...usecases.chat import say
 from ._wire import Reply, Request, error_reply, json_reply
 from .api import guarded
 
@@ -67,6 +68,15 @@ def post_assign(root: Path, request: Request) -> Reply:
 
 
 def _assign(root: Path, task_id: str, assignee: str) -> dict[str, Any]:
+    """Direct for a person; a REQUEST for a specialist.
+
+    There is exactly one dispatcher, and it is not this endpoint. The board used to write the
+    assignee and the channel pushed that handoff into the open session as an order to spawn —
+    an order arriving sideways into an orchestrator that already had its own queue, its own
+    order, its own cards in flight. Two deciders for one question, and a live run spent an
+    afternoon on the disagreement. Now the click SAYS what it is: a request the orchestrator
+    fulfils with `taskops_dispatch`, in its own order, or answers with a reason not to.
+    """
     with project(root) as store:
         who = caller(store)
         to = _target(store, assignee, who["dev"])
@@ -74,15 +84,22 @@ def _assign(root: Path, task_id: str, assignee: str) -> dict[str, Any]:
         # silently — so a mistyped id would answer 200 and assign nothing.
         card = store.tasks.need(task_id)
         if to.startswith("agent:") and not card["spec"].strip():
-            # An agent handed a title with no spec can only guess or give up — one card
-            # collected two dispatched workers and two releases in a day proving it. A PERSON
-            # may still take a spec-less card: they can ask, and they are not billed by the turn.
+            # Refused HERE, not queued for the orchestrator to discover later as "dispatch
+            # skipped it": the human who can write the spec is the one clicking. One card
+            # collected two dispatched workers and two releases in a day proving what a
+            # spec-less card is worth to an agent.
             raise BadRequest(
                 f"{task_id} has no spec — an agent sent to guess releases it and the loop "
-                f"repeats. Write one first: `taskops tasks edit {task_id} --spec \"…\"`, "
+                f'repeats. Write one first: `taskops tasks edit {task_id} --spec "…"`, '
                 f"or assign it to a dev.")
-        hand_over(store, task_id, to, actor=who["id"])
-        return {"task": task_id, "assignee": to}
+        if not to.startswith("agent:"):
+            hand_over(store, task_id, to, actor=who["id"])
+            return {"task": task_id, "assignee": to}
+    # A REQUEST, through the same use case the sidebar posts with — the transport composes use
+    # cases and never reaches past them, which is what the architecture test just refused.
+    say(root, f"dispatch {task_id} to `{to.rsplit('/', 1)[-1]}` — assign it and spawn that "
+              f"sub-agent (or say why not)", card=task_id)
+    return {"task": task_id, "requested": to}
 
 
 def _target(store: Any, assignee: str, dev: str) -> str:

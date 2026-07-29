@@ -126,7 +126,13 @@ export function classify(event: BoardEvent): Kind | null {
       // sentinel, so nothing downstream may assume the tag names a card.
       return 'mention'
     case 'handoff':
-      return String(event.body.assigned_to ?? '') ? 'assignment' : null
+      // Only a handoff the ORCHESTRATOR wrote (through dispatch) reads as an assignment worth
+      // acting on. A manual one used to arrive as an order to spawn, sideways, into a session
+      // that already had its own queue — two deciders for one question. The UI no longer
+      // writes those for agents, but a teammate's CLI still can, and their bookkeeping must
+      // not drive this session's fleet.
+      return String(event.body.assigned_to ?? '') && event.body.dispatched === true
+        ? 'assignment' : null
     case 'status':
       return LOUD_STATUSES.has(String(event.body.to ?? '')) ? 'status' : null
     case 'done':

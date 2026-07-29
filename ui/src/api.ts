@@ -109,7 +109,7 @@ export const api = {
   /* A registry NAME (the server mints `agent:<you>/<name>` from it) or a full actor id. The
    * server refuses a bare name it does not know, and its sentence names the ones it does. */
   assign: (task: string, assignee: string) =>
-    call<{ task: string; assignee: string }>("/api/assign", {
+    call<{ task: string; assignee?: string; requested?: string }>("/api/assign", {
       method: "POST",
       body: JSON.stringify({ task, assignee }),
     }),

@@ -187,6 +187,7 @@ function Assign({ task, people, onDone }: {
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
+  const [asked, setAsked] = useState("");
 
   /* Fetched when the panel opens, not held in the shared state: the registry is read once per
    * card somebody actually assigns, and it does not change while a board is open. A failure is
@@ -201,8 +202,13 @@ function Assign({ task, people, onDone }: {
   async function assign() {
     setBusy(true);
     setFailed("");
+    setAsked("");
     try {
-      await api.assign(task.id, pick.trim());
+      const answer = await api.assign(task.id, pick.trim());
+      /* A specialist is a REQUEST the orchestrator fulfils in its own order, so the button
+       * must not report "assigned" about a decision nobody has made yet. A dev is direct —
+       * bookkeeping spawns nothing — and comes back with `assignee`. */
+      if (answer.requested) setAsked(answer.requested);
       setPick("");
       onDone();
     } catch (failure) {
@@ -220,6 +226,9 @@ function Assign({ task, people, onDone }: {
       <input
         value={pick}
         list="assignees"
+        /* For a specialist this is a REQUEST — the orchestrator dispatches in its own
+         * order — and the caption must not claim otherwise, or the board says "assigned"
+         * about a decision nobody has made yet. */
         placeholder={task.assignee ? "reassign to: a specialist, dev:ana, agent:ana/one"
                                    : "a specialist, dev:ana, agent:ana/one"}
         onChange={(change) => setPick(change.target.value)}
@@ -234,6 +243,7 @@ function Assign({ task, people, onDone }: {
         <button className="primary" disabled={busy || !pick.trim()} onClick={() => void assign()}>
           {task.assignee ? "Reassign" : "Assign"}
         </button>
+        {asked ? <span className="dim">asked the session to dispatch it to {asked}</span> : null}
       </div>
       {failed ? <p className="failed">{failed}</p> : null}
     </section>
