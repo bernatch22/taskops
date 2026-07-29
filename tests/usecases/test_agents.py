@@ -270,3 +270,37 @@ def test_an_assignment_to_the_specialist_beats_its_own_fence(project: Path) -> N
                    actor="dev:ana")
     got = next_task(project, task=made["task"]["id"], actor="agent:ana/collector")
     assert got["claim"] is not None, got.get("reason")
+
+
+def test_the_materialised_copy_spells_taskops_tools_the_way_the_host_resolves_them(
+        project: Path) -> None:
+    """Claude Code namespaces MCP tools as `mcp__<server>__<tool>` and DROPS a `tools:` entry
+    it cannot resolve, in silence. Found live: a specialist written with `taskops_next` was
+    spawned with Read, Edit and Bash and no way to claim the card it had just been handed."""
+    write_agent(project, "api",
+                "---\nname: api\ndescription: d\nlabels: [api]\n"
+                "tools: [Read, Edit, taskops_next, taskops_update]\n---\nbody\n")
+    copy = materialised(specialists(project)[0])
+    assert "mcp__taskops__taskops_next" in copy
+    assert "mcp__taskops__taskops_update" in copy
+    assert "Read, Edit" in copy, "tools we do not own are untouched"
+
+
+def test_a_registry_that_already_qualifies_them_is_left_alone(project: Path) -> None:
+    """Both spellings must work: the plugin's own agents are written the long way, and a
+    double prefix would be as unresolvable as none."""
+    write_agent(project, "api",
+                "---\nname: api\ndescription: d\n"
+                "tools: mcp__taskops__taskops_next, Read\n---\nbody\n")
+    copy = materialised(specialists(project)[0])
+    assert "mcp__taskops__mcp__taskops__" not in copy
+    assert "mcp__taskops__taskops_next" in copy
+
+
+def test_the_short_name_is_only_translated_on_the_tools_line(project: Path) -> None:
+    """The prompt body talks about `taskops_next` in prose constantly. Rewriting it there would
+    put an internal spelling in front of the model for no reason."""
+    write_agent(project, "api",
+                "---\nname: api\ndescription: d\ntools: [Read]\n---\n"
+                "Claim your card with taskops_next task=<id>.\n")
+    assert "with taskops_next task=" in materialised(specialists(project)[0])

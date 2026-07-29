@@ -36,6 +36,7 @@ like everything else. Same format as the plugin's, plus two keys taskops underst
 name: collector
 description: market-data ETL; knows the lake schemas
 tools: [Read, Edit, Bash, taskops_next, taskops_update, taskops_capture, taskops_context]
+                                 # short names are fine — materialisation qualifies them
 model: sonnet
 labels: [collectors, etl]        # WHICH CARDS ARE THIS AGENT'S
 files: ["src/data/**"]           # its edit surface

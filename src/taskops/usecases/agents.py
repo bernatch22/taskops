@@ -21,6 +21,7 @@ and a typo in one of them must not be able to stop a session from starting.
 
 from __future__ import annotations
 
+import re
 import warnings
 from pathlib import Path
 
@@ -94,11 +95,31 @@ def fenced(agent: AgentSpec | None, labels: list[str]) -> str:
 
 
 def materialised(spec: AgentSpec) -> str:
-    """The file to write into `.claude/agents/`: the original, minus our keys, plus the marker."""
-    lines = without_keys(spec["text"], OURS).splitlines()
+    """The file to write into `.claude/agents/`: the original, minus our keys, plus the marker,
+    with the taskops tool names spelled the way the HOST resolves them.
+
+    That last translation is not cosmetic. Claude Code namespaces MCP tools as
+    `mcp__<server>__<tool>`, and a `tools:` entry it cannot resolve is dropped in SILENCE — so a
+    registry saying `taskops_next` produced a specialist with Read, Edit and Bash and no way to
+    claim anything. It was spawned, it read the card, and it could not take it. Writing
+    `mcp__taskops__taskops_next` in the registry would work too, but the registry is a project
+    document people edit by hand and the short name is the one they know.
+    """
+    lines = without_keys(_qualified(spec["text"]), OURS).splitlines()
     close = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), 0)
     marker = f"{MARKER} {REGISTRY_DIR}/{spec['name']}.md"
     return "\n".join([*lines[:close + 1], "", marker, *lines[close + 1:]]) + "\n"
+
+
+def _qualified(text: str) -> str:
+    """`taskops_next` -> `mcp__taskops__taskops_next`, only on a `tools:` line, only for names
+    we own, and only when they are not already qualified."""
+    out: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("tools:"):
+            line = re.sub(r"(?<!__)\b(taskops_[a-z_]+)", r"mcp__taskops__\1", line)
+        out.append(line)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def _plugin_dir() -> Path:
