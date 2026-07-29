@@ -49,6 +49,11 @@ def why_not_this(store: Store, wanted: str, asker: str = "") -> str:
     if task["status"] in ("done", "cancelled"):
         return f"{wanted} is already {task['status']} — nothing to do there"
     if task["assignee"] and task["assignee"] != asker:
-        return (f"{wanted} is assigned to {task['assignee']} — ask taskops_next with no task "
-                f"and it will give you something that is yours")
+        # Naming the actor first, and the pool second. A dispatched specialist that reads this
+        # is USUALLY the assignee and simply did not pass its own id — it resolved to the
+        # developer's. Sending it to the pool instead was watched happen: refused its own card,
+        # it asked for anything, and an api specialist walked off with a frontend one.
+        return (f"{wanted} is assigned to {task['assignee']} — if that is you, say so: "
+                f"taskops_next task={wanted} actor={task['assignee']}. If it is not, "
+                f"taskops_next with no task will give you something that is yours")
     return f"{wanted} is {task['status']}, held by someone else — read it with taskops_ask"

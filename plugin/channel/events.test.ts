@@ -187,3 +187,14 @@ test('an assignment to a plain dev asks for nothing of the sort', () => {
                  body: {assigned_to: 'dev:ana'}, ts: 1, id: 'x'} as BoardEvent
   expect(describe(event, 'assignment').content).not.toContain('Spawn')
 })
+
+test('the delegation line names the actor the sub-agent must use', () => {
+  // Watched live: the sub-agent was spawned, called taskops_next without an actor, resolved to
+  // the developer's own id, was refused the card assigned to it, followed the refusal into the
+  // pool and claimed an unrelated frontend card. Every step correct, nobody had told it who it
+  // was.
+  const event = {actor: 'dev:me', kind: 'handoff', task: 'tk-b61984',
+                 body: {assigned_to: 'agent:me/api'}, ts: 1, id: 'x'} as BoardEvent
+  const line = describe(event, 'assignment').content
+  expect(line).toContain('actor=agent:me/api')
+})

@@ -190,8 +190,11 @@ function line(event: BoardEvent, kind: Kind): string {
       // exactly once, which was enough.
       return `${event.task} was assigned to ${to} by ${who}.`
         + (specialist
-          ? ` Spawn a \`${specialist}\` sub-agent for it — it claims the card itself with`
-            + ` taskops_next task=${event.task}. Do not do the work in this session.`
+          ? ` Spawn a \`${specialist}\` sub-agent and TELL IT ITS IDENTITY: it must call`
+            + ` taskops_next task=${event.task} actor=${to} — passing the actor is not optional,`
+            + ` a sub-agent that omits it resolves to the developer's own id, is refused the`
+            + ` card that was assigned to it, and wanders off into the pool. Do not do the work`
+            + ` in this session.`
           : ' No registered specialist in that id — handle it or dispatch as you see fit.')
     }
     case 'status': {
