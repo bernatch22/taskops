@@ -423,16 +423,46 @@ main { padding: 16px; }
   backdrop-filter: blur(2px);
   display: flex; justify-content: flex-end;
 }
-.panel {
-  width: min(620px, 100%);
+/* The task drawer and the chat sidebar are the SAME surface in two places, so they share every
+ * declaration that makes them look like one — the width and how they arrive is all that differs. */
+.panel, .side {
   height: 100%; overflow-y: auto;
   background: var(--bg);
   border-left: 1px solid var(--line);
   padding: 16px 20px 40px;
   display: flex; flex-direction: column; gap: 16px;
-  animation: slide 180ms ease-out;
 }
+.panel { width: min(620px, 100%); animation: slide 180ms ease-out; }
 @keyframes slide { from { transform: translateX(24px); opacity: 0.6; } }
+
+/* ── the chat sidebar ───────────────────────────────────────────────────────── */
+
+/* Fixed and with NO backdrop, unlike the drawer: it slides over the board and the board stays
+ * readable and clickable underneath, because the whole point is talking about what you are
+ * looking at. Always in the DOM — hidden with `visibility`, never unmounted — so its scroll
+ * position survives a tab switch. `visibility` and not `display`, so the transition has
+ * something to animate; the delayed half of it is what keeps a shut sidebar unclickable.
+ *
+ * Only transform and opacity move: both are composited, so the slide cannot make the board
+ * underneath reflow or repaint. Reduced motion is already handled — the global rule in this
+ * file drops every transition, and this appears in place rather than sliding. */
+.side {
+  position: fixed; top: 0; right: 0; z-index: 45;
+  width: min(400px, 100%);
+  transform: translateX(100%); opacity: 0; visibility: hidden;
+  transition: transform 170ms ease-out, opacity 170ms ease-out, visibility 0s linear 170ms;
+}
+.side.on {
+  transform: none; opacity: 1; visibility: visible;
+  transition: transform 170ms ease-out, opacity 170ms ease-out;
+}
+/* The thread takes the slack, so the compose box sits at the foot on a short conversation. */
+.side .thread { flex: 1 1 auto; }
+.side .compose { margin-top: auto; }
+.unread {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--lime); vertical-align: top; margin-left: 4px;
+}
 
 .panel-head { display: flex; align-items: center; gap: 10px; }
 .panel-head > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

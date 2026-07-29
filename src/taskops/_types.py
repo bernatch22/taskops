@@ -63,6 +63,7 @@ EventKind = Literal[
     "acceptance",  # what a card promises: its EARS criteria, restated whole
     "context",  # a standing fact about the PROJECT: an objective, invariant or decision
     "inferred",  # taskops attributed a call to the card's assignee, the caller named nobody
+    "chat",  # a line said to the open session from the board's sidebar, about no card
 ]
 """What happened. The event log is append-only and every projection — the board,
 a standup, an inbox — is derived from it, so a new fact about a task is a new
@@ -114,7 +115,13 @@ ever do must not hold its dependents hostage forever."""
 WORKING_STATUSES: frozenset[str] = frozenset({"claimed", "in_progress", "review"})
 """Statuses that require a live lease. Losing the lease drops the task out."""
 
-LOCAL_ONLY_KINDS: frozenset[str] = frozenset({"activity"})
+LOCAL_ONLY_KINDS: frozenset[str] = frozenset({"activity", "chat"})
 """Kinds that never reach the git-committed log. `activity` is a per-keystroke
 heartbeat: replicating it through git would add thousands of lines a day to a
-file whose whole value is that a human can read its diff."""
+file whose whole value is that a human can read its diff.
+
+`chat` is here for the opposite reason — not volume, CONTENT. It is a box where a
+person types half-formed thinking at the speed of a terminal prompt, and an
+append-only replicated log has no eraser. What deserves to be read by the team goes
+in a comment or a context fact, deliberately. See `usecases.chat` for the full
+argument, including the one it was weighed against."""

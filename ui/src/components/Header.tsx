@@ -11,7 +11,7 @@ import type { Board, Config, Task } from "../contracts";
 export type View = "board" | "activity" | "reports";
 
 export function Header({ config, board, live, pulse, view, onView,
-                         hideEmpty, onHideEmpty, onOpen }: {
+                         hideEmpty, onHideEmpty, onOpen, chat, unread, onChat }: {
   config: Config | null;
   board: Board | null;
   live: boolean;
@@ -21,6 +21,11 @@ export function Header({ config, board, live, pulse, view, onView,
   hideEmpty: boolean;
   onHideEmpty: (hide: boolean) => void;
   onOpen: (id: string) => void;
+  chat: boolean;
+  /* Something was said while the sidebar was shut. A dot and not a count: the number would be a
+   * thing to read, and the only question it answers is "is there anything I have not seen". */
+  unread: boolean;
+  onChat: () => void;
 }): JSX.Element {
   return (
     <header className="top">
@@ -58,6 +63,13 @@ export function Header({ config, board, live, pulse, view, onView,
           {hideEmpty ? "⊟" : "⊞"}
         </button>
       ) : null}
+
+      {/* In the header and NOT in the view bar, deliberately: the three buttons next to it choose
+        * WHERE you are, and this one changes nothing about where you are. */}
+      <button className={`squeeze${chat ? " on" : ""}`} aria-pressed={chat}
+              title="talk to the session — ⌘/Ctrl+K" onClick={onChat}>
+        ✎{unread ? <span className="unread" /> : null}
+      </button>
 
       <div className="top-right">
         {board ? (

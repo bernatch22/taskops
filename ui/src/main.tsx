@@ -4,11 +4,12 @@
  * one piece of shared state, and every layer of indirection between a click and a fetch is a layer
  * somebody has to read before they can change anything. */
 
-import { StrictMode } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import type { Board as BoardData } from "./contracts";
 import { createRoot } from "react-dom/client";
 import { Activity } from "./components/Activity";
 import { Board, type Grouping } from "./components/Board";
+import { Chat, useChatKeys } from "./components/Chat";
 import { Header, type View } from "./components/Header";
 import { Reports } from "./components/Reports";
 import { TaskPanel } from "./components/TaskPanel";
@@ -23,12 +24,27 @@ function App(): JSX.Element {
   const [grouping, setGrouping] = remembered<Grouping>("taskops-grouping", "date");
   const [view, setView] = remembered<View>("taskops-view", "board");
 
+  /* The chat is open or shut, and NOT remembered: unlike a grouping, it is a thing you are doing
+   * right now, and a board that reopened a sidebar over itself on every reload would be a board
+   * that decided for you. `unread` is the dot on the trigger — set by a line that arrived while
+   * it was shut, cleared by opening it. */
+  const [chat, setChat] = useState(false);
+  const [unread, setUnread] = useState(false);
+  const toggleChat = useCallback(() => setChat((was) => !was), []);
+  const closeChat = useCallback(() => setChat(false), []);
+  useChatKeys(toggleChat, closeChat);
+  useEffect(() => { if (chat) setUnread(false); }, [chat, studio.last]);
+  useEffect(() => {
+    if (!chat && studio.last?.kind === "chat") setUnread(true);
+  }, [chat, studio.last]);
+
   return (
     <>
       <Header config={studio.config} board={studio.board} live={studio.live}
               pulse={studio.pulse} view={view} onView={setView}
               hideEmpty={hideEmpty} onHideEmpty={setHideEmpty}
-              onOpen={studio.openTask} />
+              onOpen={studio.openTask}
+              chat={chat} unread={unread} onChat={toggleChat} />
 
       {studio.error ? (
         <div className="banner">
@@ -60,6 +76,12 @@ function App(): JSX.Element {
           onDone={studio.refresh}
         />
       ) : null}
+
+      {/* Last, and outside `main`, so it slides OVER the content instead of reflowing it — and
+        * mounted whatever the view is, which is what "reachable from anywhere" means here. */}
+      <Chat open={chat} card={studio.open?.task.id ?? ""}
+            readonly={studio.config?.readonly ?? false}
+            last={studio.last} onClose={closeChat} />
     </>
   );
 }

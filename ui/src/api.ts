@@ -95,6 +95,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ task, text, mentions }),
     }),
+  /* The sidebar's conversation. Events, like everything else — so the UI needs no new type, and
+   * a line that arrives on the live socket is the same shape as one read back here. */
+  chat: () => call<Event[]>("/api/chat"),
+  /* `card` is CONTEXT, not a parent: what the board happened to be showing when you typed. It is
+   * omitted on Activity and Reports, which is exactly why the endpoint does not require it. */
+  say: (text: string, card: string) =>
+    call<Event>("/api/chat", { method: "POST", body: JSON.stringify({ text, card }) }),
   agents: () => call<AgentEntry[]>("/api/agents"),
   /* A registry NAME (the server mints `agent:<you>/<name>` from it) or a full actor id. The
    * server refuses a bare name it does not know, and its sentence names the ones it does. */

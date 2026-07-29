@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiFailure, subscribe } from "./api";
-import type { Board, Config, TaskView } from "./contracts";
+import type { Board, Config, Event, TaskView } from "./contracts";
 import { reduce, type Narration } from "./narration";
 
 export interface Studio {
@@ -21,6 +21,10 @@ export interface Studio {
    * HERE rather than inside the reports view because the subscription does: one socket for the
    * whole app, and a component that unmounts must not take the stream down with it. */
   narration: Narration | null;
+  /* The last event off the socket, kept so a listener can react to ONE kind without refetching.
+   * The rule above still holds for the board — it refetches — but the chat thread is not a
+   * projection anybody derives, so appending the frame is both cheaper and correct. */
+  last: Event | null;
   openTask: (id: string | null) => void;
   refresh: () => void;
 }
@@ -38,6 +42,7 @@ export function useStudio(): Studio {
   const [error, setError] = useState("");
   const [pulse, setPulse] = useState(0);
   const [narration, setNarration] = useState<Narration | null>(null);
+  const [last, setLast] = useState<Event | null>(null);
 
   /* The open task id in a ref as well as in state: the refetch callback needs to know which task
    * to reload, and closing over the state value would rebuild the subscription on every task
@@ -78,7 +83,8 @@ export function useStudio(): Studio {
     api.config().then(setConfig).catch(() => setConfig(null));
     void load();
     const stop = subscribe(
-      () => {
+      (event) => {
+        setLast(event);
         setPulse((n) => n + 1);
         refresh();
       },
@@ -104,5 +110,5 @@ export function useStudio(): Studio {
     };
   }, [load, refresh]);
 
-  return { config, board, open, live, error, pulse, narration, openTask, refresh };
+  return { config, board, open, live, error, pulse, narration, last, openTask, refresh };
 }
