@@ -407,3 +407,28 @@ group('sanitize — the Claude Code tool-markup leak', () => {
     expect(sanitize(`Fixed it.${shut('antml:parameter')}${shut('antml:invoke')}`)).toBe('Fixed it.')
   })
 })
+
+test('a chat line restates the orchestrator rule and never names the sentinel', () => {
+  // Asked in the sidebar to assign a card and pick a reviewer, the session did all of it
+  // itself. Nothing in the line said otherwise — the rule lived only in the connect-time
+  // instructions, which are one compaction away from gone.
+  const event = {actor: 'dev:berna', kind: 'chat', task: 'project',
+                 body: {text: 'podes asignar una tarea?', card: ''}, ts: 1, id: 'x'} as BoardEvent
+  const line = describe(event, 'mention').content
+  expect(line).toContain('ORCHESTRATOR')
+  expect(line).toContain('.claude/agents/')
+  expect(line).not.toContain('on project')
+})
+
+test('a chat line sent while a card was open says which one', () => {
+  const event = {actor: 'dev:berna', kind: 'chat', task: 'project',
+                 body: {text: 'esta bien esto?', card: 'tk-4f2a9c'}, ts: 1, id: 'x'} as BoardEvent
+  expect(describe(event, 'mention').content).toContain('looking at tk-4f2a9c')
+})
+
+test('a real mention on a real card is unchanged', () => {
+  const event = {actor: 'agent:ana/api', kind: 'message', task: 'tk-9',
+                 body: {text: 'hold off', mentions: ['dev:berna']}, ts: 1, id: 'x'} as BoardEvent
+  expect(describe(event, 'mention').content)
+    .toBe('agent:ana/api mentioned dev:berna on tk-9: hold off')
+})

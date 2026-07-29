@@ -312,6 +312,19 @@ function line(event: BoardEvent, kind: Kind, card: ReviewCard | null): string {
   const text = String(event.body.text ?? '').trim()
   switch (kind) {
     case 'mention': {
+      // A chat line is somebody TALKING TO THIS SESSION from the board's sidebar, and it needs
+      // the orchestrator rule restated. The connect-time instructions say it once; this arrives
+      // mid-session, after a compaction, and the session cheerfully did the work itself the
+      // first time somebody asked it to assign a card and pick a reviewer. Naming the sentinel
+      // task in the prose would leak `project` into a sentence about nothing of the sort.
+      if (event.kind === 'chat') {
+        const about = String(event.body.card ?? '')
+        return `${who} says${about ? ` (looking at ${about})` : ''}: ${text}`
+          + ` — you are the ORCHESTRATOR. If this is work, put it on the board and hand it to a`
+          + ` specialist from .claude/agents/ (taskops_capture or taskops_plan, then assign and`
+          + ` spawn that sub-agent with actor=agent:<dev>/<name>); do not implement it here.`
+          + ` Answer with the \`reply\` tool and NO card — your transcript never reaches the board.`
+      }
       const to = strings(event.body, 'mentions')
       return `${who} mentioned ${to.join(', ') || 'you'} on ${event.task}: ${text}`
     }

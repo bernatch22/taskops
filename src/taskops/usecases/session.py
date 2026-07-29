@@ -24,6 +24,7 @@ from ..contracts import Event, Inbox, Lease
 from ..engine import record
 from ..storage import Store
 from ._project import caller, heartbeat, project
+from .chat import CHAT_TASK
 from .view import inbox_for
 
 __all__ = ["brief", "inbox", "checkout", "track", "Brief"]
@@ -93,9 +94,15 @@ def track(start: Path | str, *, summary: str, task: str = "", actor: str = "",
     accepts it and no caller supplied it. This hook receives it on every tool call, so stamping it
     here costs nothing and closes the gap.
 
-    Local-only (`LOCAL_ONLY_KINDS`), so it never reaches the committed log. Without a task it is
-    dropped rather than filed under an empty id: an activity event nobody can attribute is noise that
-    would still cost a row per tool call.
+    Local-only (`LOCAL_ONLY_KINDS`), so it never reaches the committed log.
+
+    Without a card it is filed under the SENTINEL, not dropped. It used to be dropped, and the
+    reasoning was sound until the board grew a chat: an ORCHESTRATOR holds no card — it plans,
+    delegates and answers — so every one of its tool calls was discarded, and the sidebar's
+    activity strip was empty for exactly the actor somebody opened the sidebar to watch. The
+    original worry stands and the sentinel answers it better than the drop did: the event is
+    attributable (to its actor), it is local-only so it never reaches anybody's diff, and the
+    row it costs is in the cache taskops rebuilds from scratch on demand.
     """
     with project(start) as store:
         who = caller(store, actor)["id"]
@@ -103,9 +110,7 @@ def track(start: Path | str, *, summary: str, task: str = "", actor: str = "",
         held = store.leases.of_actor(who, now())
         if session:
             _stamp(store, held, session)
-        target = task or (held[0]["task"] if len(held) == 1 else "")
-        if not target:
-            return None
+        target = task or (held[0]["task"] if len(held) == 1 else "") or CHAT_TASK
         return record(store, task=target, actor=who, kind="activity",
                       body={"summary": summary, "session": session})
 
