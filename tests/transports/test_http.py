@@ -638,3 +638,26 @@ def test_assigning_to_an_orchestrator_is_refused_by_the_api_too(
     assert answered.status == 400
     assert "cannot hold a card" in json.loads(answered.body)["error"]
     assert "taskops-worker" in json.loads(answered.body)["error"], "name who CAN take it"
+
+
+def test_the_board_payload_carries_the_reviewer_the_ui_draws(project: Path, route: Any) -> None:
+    """The UI can only show what the wire brings. The reviewer is POLICY — the engine refuses a
+    `done` that disagrees with it — so a board that omitted it would be a board where the rule
+    is invisible until somebody hits it."""
+    made = plan(project, [{"title": "the work", "reviewer": "human"}], actor="dev:ana")
+    task = made["created"][0]["id"]
+
+    board = body_of(route(get("/api/board")))
+    cards = {c["task"]["id"]: c["task"] for col in board["columns"] for c in col["cards"]}
+    assert cards[task]["reviewer"] == "human"
+    assert body_of(route(get("/api/task", id=task)))["task"]["reviewer"] == "human"
+
+
+def test_a_card_with_no_reviewer_says_nothing_rather_than_a_placeholder(
+        project: Path, route: Any) -> None:
+    """Empty is the common case and it must render as absence — a card that said "reviewer:
+    none" on every row would be four hundred characters of noise on a full board."""
+    made = plan(project, [{"title": "the work"}], actor="dev:ana")["created"][0]
+    board = body_of(route(get("/api/board")))
+    cards = {c["task"]["id"]: c["task"] for col in board["columns"] for c in col["cards"]}
+    assert cards[made["id"]]["reviewer"] == ""

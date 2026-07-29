@@ -181,6 +181,16 @@ function Card({ card, onOpen }: { card: CardData; onOpen: (id: string) => void }
           <span className="dim">assigned</span>
         </div>
       ) : null}
+      {task.reviewer ? (
+        /* A person and a specialist read differently and must LOOK different: `human` means
+         * this card waits for somebody, and every agent that tries to close it is refused. */
+        <div className="card-lease">
+          <span className="dim">reviewed by</span>
+          {task.reviewer === "human" || task.reviewer.startsWith("dev:")
+            ? <strong>{task.reviewer}</strong>
+            : <span className="chip">{task.reviewer}</span>}
+        </div>
+      ) : null}
       {task.labels.length > 0 ? (
         <div className="labels">
           {task.labels.map((label) => <span className="label" key={label}>{label}</span>)}

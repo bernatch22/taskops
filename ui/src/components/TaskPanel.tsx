@@ -38,6 +38,7 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
         <p className="meta dim">
           created by <Actor id={task.created_by} /> · {ago(task.created)}
           {task.assignee ? <> · assigned to <Actor id={task.assignee} /></> : null}
+          {task.reviewer ? <> · reviewed by <span className="chip">{task.reviewer}</span></> : null}
           {view.lease ? <> · held by <Actor id={view.lease.actor} /></> : null}
         </p>
 

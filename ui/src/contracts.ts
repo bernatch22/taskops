@@ -30,6 +30,10 @@ export interface Task {
    * alive, this is a decision that outlives one. The scheduler offers an assigned card to
    * nobody else, which is why the board draws it. */
   assignee: string;
+  /* Who closes it: `human`/`dev:…` for a person, a registered agent's name for a specialist,
+   * empty for the project default. It is POLICY, not a hint — the engine refuses a `done` that
+   * disagrees with it — so it belongs where the decision is read. */
+  reviewer: string;
   created: number;
   updated: number;
 }
