@@ -133,3 +133,18 @@ def open_children(store: Store, task_id: str) -> int:
     """How many subtasks are still open — the fact the `done` guard needs."""
     return sum(1 for child in store.tasks.children(task_id)
                if child["status"] in OPEN_STATUSES)
+
+
+def hand_back(store: Store, task_id: str, *, at: float | None = None) -> None:
+    """Everything a release lets go of: the lease, and the ASSIGNMENT.
+
+    Back means back to the pool. Leaving the assignee made a released card invisible to
+    everyone except the agent that had just said it could not do it — a dead card that read as
+    somebody's, and drew the same specialist re-dispatched onto it twice in one day. The
+    releaser may still take it again: ready is ready. Lives here, beside `unblock`, because
+    what a card lets go of on a transition is scheduler semantics — a transport that decided
+    this would be a second opinion waiting to disagree.
+    """
+    when = now() if at is None else at
+    store.leases.release(task_id)
+    store.tasks.set_assignee(task_id, "", when=when)

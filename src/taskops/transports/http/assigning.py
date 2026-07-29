@@ -72,7 +72,15 @@ def _assign(root: Path, task_id: str, assignee: str) -> dict[str, Any]:
         to = _target(store, assignee, who["dev"])
         # `need` first: `set_assignee` is an UPDATE, and an UPDATE that matches no row succeeds
         # silently — so a mistyped id would answer 200 and assign nothing.
-        store.tasks.need(task_id)
+        card = store.tasks.need(task_id)
+        if to.startswith("agent:") and not card["spec"].strip():
+            # An agent handed a title with no spec can only guess or give up — one card
+            # collected two dispatched workers and two releases in a day proving it. A PERSON
+            # may still take a spec-less card: they can ask, and they are not billed by the turn.
+            raise BadRequest(
+                f"{task_id} has no spec — an agent sent to guess releases it and the loop "
+                f"repeats. Write one first: `taskops tasks edit {task_id} --spec \"…\"`, "
+                f"or assign it to a dev.")
         hand_over(store, task_id, to, actor=who["id"])
         return {"task": task_id, "assignee": to}
 
