@@ -222,7 +222,7 @@ Three kinds, and they are not advice:
 
 ## The specialist you may be
 
-A project can register its own agents in `.taskops/agents/*.md` — a name, a prompt, a model, a
+A project can register its own agents as ordinary Claude Code subagents in `.claude/agents/*.md` — a name, a prompt, a model, a
 tool list, and the `labels` of the cards that are theirs. Two consequences for you:
 
 - **If your actor id matches one** (`agent:<dev>/collector`), a card outside your labels is

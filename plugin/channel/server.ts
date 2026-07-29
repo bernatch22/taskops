@@ -63,8 +63,8 @@ const mcp = new Server(
       + ' They are things a person or another agent did on the shared board: a mention, an assignment,'
       + ' a move to review/blocked/done, or a recovered card.'
       + ' YOU ARE THE ORCHESTRATOR, NOT THE WORKER. When a card is assigned to `agent:<dev>/<name>`'
-      + ' and `<name>` is a specialist this project registered (they are in `.claude/agents/`, put'
-      + ' there from `.taskops/agents/`), DELEGATE: spawn a sub-agent of THAT type with the card id'
+      + ' and `<name>` is a specialist this project registered (an ordinary Claude Code subagent'
+      + ' in `.claude/agents/`), DELEGATE: spawn a sub-agent of THAT type with the card id'
       + ' and let it claim the card itself with `taskops_next task=<id>`. Do not do the work in this'
       + ' session — that is the whole point of a project defining specialists. Only when no'
       + ' specialist matches, or the event is a question addressed to you, answer it yourself.'
@@ -162,7 +162,6 @@ let child: ReturnType<typeof Bun.spawn> | null = null
 async function ensureUi(): Promise<void> {
   if (await listening()) {
     log(`attached to the UI already on ${BASE}`)
-    await materialiseAgents()
     announce()
     return
   }
@@ -179,7 +178,6 @@ async function ensureUi(): Promise<void> {
   })
   for (let attempt = 0; attempt < 40; attempt++) {
     if (await listening()) {
-      await materialiseAgents()
       announce()
       openBoard()
       return
@@ -187,26 +185,6 @@ async function ensureUi(): Promise<void> {
     await Bun.sleep(250)
   }
   log(`the UI did not come up on ${BASE} within 10s — events will not flow`)
-}
-
-async function materialiseAgents(): Promise<void> {
-  // The specialists a project registered are useless to the HOST until they exist in
-  // `.claude/agents/` — Claude Code can only spawn a sub-agent type it can see on disk. The
-  // plugin's SessionStart hook does this, but a project that wired only the MCP servers (the
-  // `server:` form, which is the only one that works before the plugin is published) never
-  // runs that hook. So the channel does it: it already knows the repo and it starts before
-  // the session needs them.
-  try {
-    const done = Bun.spawn(
-      ['python3', '-c',
-       'import sys;from taskops.transports.hooks._materialise import materialise_agents as m;m(sys.argv[1])',
-       REPO],
-      {stdin: 'ignore', stdout: 'ignore', stderr: 'ignore'})
-    await done.exited
-  } catch {
-    // Never fatal: a project with no registry is the common case, and a channel that refused
-    // to start over it would be worse than one that forwards events with no specialists.
-  }
 }
 
 function announce(): void {

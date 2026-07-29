@@ -2,7 +2,7 @@
 
 Every assertion here is about a way the feature could be WRONG rather than absent — a parser
 that guesses, an override that does not, a router that picks differently on two runs, a fence
-that catches a human, and a materialiser that eats a file somebody wrote by hand.
+that catches a human, and a registry that is Claude Code's own rather than a copy of it.
 """
 
 from __future__ import annotations
@@ -12,15 +12,13 @@ from pathlib import Path
 import pytest
 
 from taskops import BadRequest
-from taskops.transports.hooks._materialise import TARGET_DIR, materialise_agents
 from taskops.usecases import init, next_task, plan
 from taskops.usecases._agentfile import parse_agent
 from taskops.usecases.agents import (
-    MARKER,
+    REGISTRY_DIR,
     agent_for,
     agent_named,
     fenced,
-    materialised,
     registry,
     specialists,
 )
@@ -41,7 +39,7 @@ You own the ingestion path.
 
 
 def write_agent(root: Path, name: str, text: str) -> Path:
-    folder = root / ".taskops" / "agents"
+    folder = root / REGISTRY_DIR
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.md"
     path.write_text(text, encoding="utf-8")
@@ -133,7 +131,7 @@ def test_no_match_routes_to_nothing(project: Path) -> None:
 
 
 def test_a_project_with_no_registry_routes_to_nothing(project: Path) -> None:
-    """THE regression guard: no `.taskops/agents/`, no behaviour change anywhere."""
+    """THE regression guard: no `.claude/agents/`, no behaviour change anywhere."""
     assert specialists(project) == []
     assert agent_for(project, ["etl"]) == ""
 
@@ -180,127 +178,33 @@ def test_an_agent_with_no_labels_fences_nobody(project: Path) -> None:
     assert fenced(agent_named(project, "agent:berna/taskops-worker"), ["ui"]) == ""
 
 
-# ---- materialisation
+# ---- the registry IS Claude Code's
 
 
-def test_the_copy_carries_the_marker_and_drops_our_keys(project: Path) -> None:
-    """`labels` and `files` are taskops-only; a frontmatter key Claude Code does not know is
-    noise in somebody else's file format."""
-    write_agent(project, "taskops-collectors", COLLECTORS)
-    materialise_agents(str(project))
-
-    written = (project / TARGET_DIR / "taskops-collectors.md").read_text(encoding="utf-8")
-    assert MARKER in written
-    assert "labels:" not in written and "files:" not in written
-    assert "model: sonnet" in written, "keys we do not own must survive untouched"
-    assert "You own the ingestion path." in written
+def test_the_registry_is_claude_codes_own_directory() -> None:
+    """The whole simplification in one assertion. A parallel `.taskops/agents/` needed a
+    copier, a marker, a pruner and a name translator, and every one of those was a bug
+    waiting: Claude Code's project subagents are already committed, already shared with the
+    team, and already the only thing the host can spawn."""
+    assert REGISTRY_DIR == ".claude/agents"
 
 
-def test_a_hand_written_agent_is_never_touched(project: Path) -> None:
-    """A coordination tool that eats a developer's files gets uninstalled the same afternoon."""
-    folder = project / TARGET_DIR
-    folder.mkdir(parents=True)
-    mine = folder / "my-own.md"
-    mine.write_text("---\nname: my-own\ndescription: mine\n---\n\nhands off\n", encoding="utf-8")
-    clash = folder / "taskops-collectors.md"
-    clash.write_text("---\nname: taskops-collectors\ndescription: mine too\n---\n\nkeep\n",
-                     encoding="utf-8")
-    write_agent(project, "taskops-collectors", COLLECTORS)
-
-    materialise_agents(str(project))
-    assert mine.exists(), "an unmarked file was pruned"
-    assert "keep" in clash.read_text(encoding="utf-8"), "an unmarked file was overwritten"
+def test_our_keys_ride_in_the_same_frontmatter(project: Path) -> None:
+    """One file, two readers. Claude Code ignores frontmatter it does not recognise, so
+    `labels` and `files` sit beside `name` and `tools` instead of in a second document that
+    could disagree with the first."""
+    write_agent(project, "api",
+                "---\nname: api\ndescription: d\ntools: [Read]\n"
+                "labels: [api, backend]\nfiles: [\"src/api/**\"]\n---\nbody\n")
+    spec = specialists(project)[0]
+    assert spec["labels"] == ["api", "backend"]
+    assert spec["files"] == ["src/api/**"]
 
 
-def test_a_deleted_agent_stops_being_offered(project: Path) -> None:
-    """A rename would otherwise leave the old specialist invokable forever."""
-    path = write_agent(project, "taskops-collectors", COLLECTORS)
-    materialise_agents(str(project))
-    copied = project / TARGET_DIR / "taskops-collectors.md"
-    assert copied.exists()
-
-    path.unlink()
-    materialise_agents(str(project))
-    assert not copied.exists()
-
-
-def test_materialising_twice_changes_nothing(project: Path) -> None:
-    write_agent(project, "taskops-collectors", COLLECTORS)
-    materialise_agents(str(project))
-    copied = project / TARGET_DIR / "taskops-collectors.md"
-    once = copied.read_text(encoding="utf-8")
-    materialise_agents(str(project))
-    assert copied.read_text(encoding="utf-8") == once
-
-
-def test_the_copy_is_a_valid_agent_file(project: Path) -> None:
-    """It has to parse as one, or the marker line broke the frontmatter it was inserted after."""
-    spec = parse_agent(materialised(parse_agent(COLLECTORS, project / "c.md")), project / "c.md")
-    assert spec["name"] == "taskops-collectors"
+def test_an_agent_written_for_claude_code_alone_is_still_read(project: Path) -> None:
+    """No labels is not an error — it is every subagent anybody already has. It routes to
+    nothing and fences nobody, which is exactly the behaviour a project that never heard of
+    taskops should get."""
+    write_agent(project, "plain", "---\nname: plain\ndescription: d\n---\nbody\n")
+    spec = next(a for a in specialists(project) if a["name"] == "plain")
     assert spec["labels"] == []
-
-
-def test_materialising_outside_a_project_is_silent(tmp_path: Path) -> None:
-    """The hook contract: never speak, never block, never raise."""
-    materialise_agents(str(tmp_path))
-
-
-def test_materialising_stays_inside_the_hook_budget(project: Path) -> None:
-    """It runs on the session's critical path, next to the sweep launch. A hook the session
-    waits on is a hook that has to be over before anybody notices it started."""
-    import time
-
-    for i in range(10):
-        write_agent(project, f"a{i}", COLLECTORS.replace("taskops-collectors", f"a{i}"))
-    started = time.perf_counter()
-    materialise_agents(str(project))
-    assert (time.perf_counter() - started) < 0.1
-
-
-def test_an_assignment_to_the_specialist_beats_its_own_fence(project: Path) -> None:
-    """Labels are the routing HEURISTIC; an assignment is a DECISION. Found live: a card
-    captured with `assign="agent:t/collector"` and no labels was then unclaimable by the very
-    specialist it was assigned to — the fence read "outside your labels" on a card somebody
-    had named it for on purpose."""
-    from taskops.usecases import capture
-
-    write_agent(project, "collector",
-                "---\nname: collector\ndescription: d\nlabels: [collectors]\n---\nbody\n")
-    made = capture(project, "look at the lake schemas", assign="agent:ana/collector",
-                   actor="dev:ana")
-    got = next_task(project, task=made["task"]["id"], actor="agent:ana/collector")
-    assert got["claim"] is not None, got.get("reason")
-
-
-def test_the_materialised_copy_spells_taskops_tools_the_way_the_host_resolves_them(
-        project: Path) -> None:
-    """Claude Code namespaces MCP tools as `mcp__<server>__<tool>` and DROPS a `tools:` entry
-    it cannot resolve, in silence. Found live: a specialist written with `taskops_next` was
-    spawned with Read, Edit and Bash and no way to claim the card it had just been handed."""
-    write_agent(project, "api",
-                "---\nname: api\ndescription: d\nlabels: [api]\n"
-                "tools: [Read, Edit, taskops_next, taskops_update]\n---\nbody\n")
-    copy = materialised(specialists(project)[0])
-    assert "mcp__taskops__taskops_next" in copy
-    assert "mcp__taskops__taskops_update" in copy
-    assert "Read, Edit" in copy, "tools we do not own are untouched"
-
-
-def test_a_registry_that_already_qualifies_them_is_left_alone(project: Path) -> None:
-    """Both spellings must work: the plugin's own agents are written the long way, and a
-    double prefix would be as unresolvable as none."""
-    write_agent(project, "api",
-                "---\nname: api\ndescription: d\n"
-                "tools: mcp__taskops__taskops_next, Read\n---\nbody\n")
-    copy = materialised(specialists(project)[0])
-    assert "mcp__taskops__mcp__taskops__" not in copy
-    assert "mcp__taskops__taskops_next" in copy
-
-
-def test_the_short_name_is_only_translated_on_the_tools_line(project: Path) -> None:
-    """The prompt body talks about `taskops_next` in prose constantly. Rewriting it there would
-    put an internal spelling in front of the model for no reason."""
-    write_agent(project, "api",
-                "---\nname: api\ndescription: d\ntools: [Read]\n---\n"
-                "Claim your card with taskops_next task=<id>.\n")
-    assert "with taskops_next task=" in materialised(specialists(project)[0])

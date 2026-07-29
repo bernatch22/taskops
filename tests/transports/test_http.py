@@ -231,7 +231,7 @@ You own the ingestion path.
 
 @pytest.fixture
 def with_registry(project: Path) -> Path:
-    folder = project / ".taskops" / "agents"
+    folder = project / ".claude" / "agents"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "taskops-collectors.md").write_text(COLLECTORS, encoding="utf-8")
     return project

@@ -203,7 +203,7 @@ def test_preparing_assigns_the_card(project: Path) -> None:
 
 
 def register(project: Path, name: str, labels: str) -> None:
-    folder = project / ".taskops" / "agents"
+    folder = project / ".claude" / "agents"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"{name}.md").write_text(
         f"---\nname: {name}\ndescription: a specialist\nlabels: [{labels}]\n---\n\nwork\n",
@@ -224,7 +224,7 @@ def test_a_dispatched_card_names_the_specialist_it_belongs_to(tmp_path: Path) ->
 
 
 def test_without_a_registry_nothing_about_dispatch_changes(project: Path) -> None:
-    """The regression guard: no `.taskops/agents/`, no agent type, and a brief that reads
+    """The regression guard: no `.claude/agents/`, no agent type, and a brief that reads
     exactly as it did before this card existed."""
     worker = dispatch(project, count=1, actor="dev:berna").launched[0]
     assert worker.agent_type == ""
