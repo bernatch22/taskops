@@ -38,7 +38,14 @@ def move(store: Store, task: Task, who: str, asked: str, comment: str,
     check_move(facts, target)
     if asked == RELEASE:
         hand_back(store, task["id"])          # the lease AND the assignment — see the engine
-    elif target in ("ready", "done", "cancelled"):
+    elif target in ("ready", "done", "cancelled", "review"):
+        # `review` releases the LEASE and keeps the assignee. The work is finished and the card
+        # is waiting for somebody ELSE, so a held card would say "in hand" about nobody — and
+        # a verifier dispatched onto it correctly refuses to touch what another actor holds,
+        # which is how a card got verified and left unchanged. Safe by the table above:
+        # `review -> done` takes `closing`, not `_needs_lease`, so the reviewer needs no claim;
+        # `review -> in_progress` DOES need one, so a worker coming back re-claims; and with no
+        # lease left to expire, `sweep_dead` cannot drag it back to `ready`.
         store.leases.release(task["id"])
     store.tasks.set_status(task["id"], target, when=now())
     record(store, task=task["id"], actor=who,
