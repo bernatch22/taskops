@@ -121,17 +121,21 @@ def _choose(store: Store, wanted: tuple[str, ...], count: int,
             asker: str) -> tuple[list[Task], list[str]]:
     """The cards to dispatch, and the ids that were refused with a reason attached to none.
 
-    A named card must be `ready` and unassigned — the same rule `next` enforces, for the same reason:
-    dispatching a worker onto a blocked card would start a process that immediately finds nothing to
-    do and exits, which reads as a broken dispatch rather than a wrong request.
+    A named card must be `ready`, unassigned, AND carry a spec — the same rules `next` enforces
+    plus one this call needs for itself: a worker is a model spending money unsupervised, and one
+    handed a title with no spec cannot do anything but guess or give up. Both happened to one
+    card in one day: two workers dispatched, two releases, zero work. The human who can write
+    the spec needs a minute; the worker who cannot invent it needs none of ours.
     """
     from ..engine import ready_tasks
 
     if wanted:
         found = [store.tasks.need(task_id) for task_id in wanted]
-        ok = [t for t in found if t["status"] == "ready" and not t["assignee"]]
+        ok = [t for t in found
+              if t["status"] == "ready" and not t["assignee"] and t["spec"].strip()]
         return _capped(ok), [t["id"] for t in found if t not in ok]
-    return _capped(ready_tasks(store, actor=asker)[:count or DEFAULT_WORKERS]), []
+    pool = [t for t in ready_tasks(store, actor=asker) if t["spec"].strip()]
+    return _capped(pool[:count or DEFAULT_WORKERS]), []
 
 
 def _capped(tasks: list[Task]) -> list[Task]:
