@@ -203,3 +203,26 @@ def test_open_print_gives_the_url_and_opens_nothing(
 
 def _refuse(url: str) -> bool:
     raise AssertionError(f"--print must not open a browser, but it opened {url}")
+
+
+def test_cancel_is_the_nearest_thing_to_deleting_a_card(
+        root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """There is no delete, and the difference is not pedantry: the log is append-only, so a
+    deleted card would be a hole in the history every report is derived from. Cancelling closes
+    it — it stops blocking its dependents exactly as `done` does — and keeps the reason."""
+    main(["tasks", "add", "an idea nobody will do", "--repo", str(root)])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+
+    assert main(["tasks", "cancel", task, "--repo", str(root),
+                 "-m", "duplicate of tk-other"]) == 0
+    assert main(["tasks", "show", task, "--repo", str(root)]) == 0
+    shown = capsys.readouterr().out
+    assert "cancelled" in shown
+    assert "duplicate of tk-other" in shown, "the reason is the point"
+
+
+def test_cancelling_without_a_reason_is_refused() -> None:
+    """A cancelled card with no explanation is a card the next person with the same idea
+    recreates. `-m` is required for this one transition and optional for the others."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["tasks", "cancel", "tk-1"])

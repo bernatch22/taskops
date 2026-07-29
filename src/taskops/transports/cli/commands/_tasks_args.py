@@ -59,6 +59,8 @@ def add_subcommands(parent: argparse.ArgumentParser, *, listing: Runner,
 
     _close(sub, "done", "finish a task", "done")
     _close(sub, "release", "hand a task back, unfinished", "released")
+    _close(sub, "cancel", "close a task nobody will do — the nearest thing to deleting one",
+           "cancelled", reason=True)
 
     entries = _flags(sub.add_parser("log", help="the agent's conversation for a card"),
                      log_cmd.run)
@@ -104,13 +106,27 @@ def _edit_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def _close(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", name: str,
-           help_text: str, status: str) -> None:
-    """`done` and `release` are `update` with the status already chosen — the two transitions
-    a person makes by hand, spelled as the actions they are instead of a flag value to recall.
-    The rest of `update`'s namespace is defaulted here, because its `run` reads the whole of it."""
+           help_text: str, status: str, *, reason: bool = False) -> None:
+    """`done`, `release` and `cancel` are `update` with the status already chosen — the
+    transitions a person makes by hand, spelled as the actions they are instead of a flag value
+    to recall. The rest of `update`'s namespace is defaulted here, because its `run` reads the
+    whole of it.
+
+    `cancel` is what "delete this card" means here, and the difference is not pedantry: the log
+    is append-only and has no eraser, so a deleted card would have to be a hole in a history
+    every report is derived from. Cancelling closes it — it stops blocking its dependents
+    exactly as `done` does, leaves the board, and stays readable. What it also does is keep the
+    REASON, which is the thing somebody wants three weeks later when the same card gets
+    proposed again.
+
+    `reason` makes `-m` mandatory for that one: a cancelled card with no explanation is a card
+    that will be recreated by the next person who has the idea.
+    """
     parser = _flags(sub.add_parser(name, help=help_text), update_cmd.run)
     parser.add_argument("task", help="the task id")
-    parser.add_argument("-m", "--comment", default="", help="what happened, for the thread")
+    parser.add_argument("-m", "--comment", default="", required=reason,
+                        help="why it will not be done, for the thread" if reason
+                             else "what happened, for the thread")
     parser.add_argument("--no-code", action="store_true", dest="no_code",
                         help="this task legitimately produces no commit")
-    parser.set_defaults(status=status, mentions="", blocked_on="")
+    parser.set_defaults(status=status, mentions="", blocked_on="", no_code=reason or False)
