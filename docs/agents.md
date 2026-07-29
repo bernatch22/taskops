@@ -19,7 +19,7 @@ Installed with `plugin/`, available in any project:
 | Agent | Model | Does | Deliberately cannot |
 |---|---|---|---|
 | `taskops-manager` | opus | reads the context, the board and the dossiers; plans cards, spots the bottleneck, dispatches | **Edit / Write** — it plans and delegates, it does not implement |
-| `taskops-worker` | sonnet | claims, works, commits, closes with evidence | plan or dispatch — a worker that plans stops being a worker |
+| `taskops-worker` | sonnet | claims, works, commits, finishes at `review` with its evidence stated | plan or dispatch — and closing its own review: `done` on a card it reviewed itself is refused by the engine |
 | `taskops-verifier` | haiku | reads a card's acceptance criteria and the diff, and tries to prove `done` is FALSE | **Write** — an adversary that can edit is not an adversary |
 
 The tool lists are the point. An agent that can do everything is an agent whose role is a
@@ -88,9 +88,14 @@ you ──▶ taskops-manager
                      collector ─ taskops_plan [{…, parent: tk-a}, {…, parent: tk-a}]
                      collector ─ taskops_dispatch             → more briefs
                      collector ─ Task(subagent_type="schema", …)   ← nests, depth 2 of 5
-                     collector ─ taskops_update status=done evidence="…"
+                     collector ─ taskops_update status=review
+                                   + which criteria it met, and how
                 │
-                └─ taskops-verifier reads the criteria and the diff
+                └─ taskops-verifier per review card: tries to prove it FALSE
+                     ├─ holds  → taskops_update status=done evidence="…"
+                     └─ fails  → findings on the card; a worker goes back on it
+                     (the engine refuses `done` from whoever entered review —
+                      nobody declares done on their own work)
 ```
 
 Nesting is real: Claude Code allows sub-agents to spawn sub-agents to **depth 5** (since v2.1.172,

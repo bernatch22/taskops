@@ -19,7 +19,7 @@ list, and it travels by `git push` and `git pull` with no server involved.
 ## The loop
 
 ```
-  taskops_next ──▶  work  ──▶  git commit  ──▶  taskops_update status=done
+  taskops_next ──▶  work  ──▶  git commit  ──▶  taskops_update status=review
        │                            │                     │
    a lease, the spec,          the guard adds        whatever was waiting
    and a collision             `Task: tk-…`         on you becomes ready
@@ -36,8 +36,10 @@ the commit guard matches this exact shape, and an invented name gets your own co
 
 **Commit normally.** The guard adds the `Task:` trailer. You do not write it.
 
-**Close with `taskops_update status=done`.** It will be refused if no commit is bound to the
-task. That refusal is the feature — see below.
+**Finish with `taskops_update status=review`**, and a comment stating which acceptance
+criteria you met and how. Somebody ELSE closes it — the verifier, or a dev. The guard enforces
+this: `done` on a card you yourself put in review is refused. The one exception: a card with no
+criteria and a trivial change may still close `done` directly.
 
 **If the work belongs to no card, make one — do not work around the guard.** A bug you tripped
 over, a fix a reviewer asked for, a refactor the task turned out to need:

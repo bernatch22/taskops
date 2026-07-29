@@ -28,7 +28,7 @@ NEXT = (
 )
 
 UPDATE = (
-    "Record progress, hand work back, close a task, or MESSAGE another developer's agent — "
+    "Record progress, hand work back, finish a task (status=review — another actor closes it; done on your own review is refused), or MESSAGE another developer's agent — "
     "one call, because they are one thought. `comment` is what the next agent and the "
     "human reviewing at 9am will read, so write the decision and the surprise rather than "
     "a restatement of the title. `mentions` reaches other actors' inboxes: they see it "

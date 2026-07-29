@@ -49,7 +49,7 @@ It calls `taskops_plan` once with the whole tree — tasks, specs, dependencies 
 
 > Claim the next task and start.
 
-It calls `taskops_next`, receives the spec, the exact branch to create, and a warning if another agent is editing the same files. It works, commits (the trailer is added for it), and closes with `taskops_update`. Whatever was blocked on that task becomes ready — for every agent, automatically.
+It calls `taskops_next`, receives the spec, the exact branch to create, and a warning if another agent is editing the same files. It works, commits (the trailer is added for it), and finishes at `review`; a verifier — never the worker itself, the engine refuses that — closes it against the card's criteria. Whatever was blocked on it becomes ready, for every agent, automatically.
 
 You watch it happen:
 
