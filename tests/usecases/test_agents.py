@@ -208,3 +208,34 @@ def test_an_agent_written_for_claude_code_alone_is_still_read(project: Path) -> 
     write_agent(project, "plain", "---\nname: plain\ndescription: d\n---\nbody\n")
     spec = next(a for a in specialists(project) if a["name"] == "plain")
     assert spec["labels"] == []
+
+
+def test_an_orchestrator_is_refused_a_card_rather_than_asked_not_to_take_one(
+        project: Path) -> None:
+    """Told in three separate places not to implement the work itself, a session did exactly
+    that — twice. An instruction is what a model weighs against everything else in its context;
+    a refusal is not. `claims: false` is the difference."""
+    write_agent(project, "boss",
+                "---\nname: boss\ndescription: plans\nclaims: false\n---\nbody\n")
+    boss = agent_named(project, "agent:ana/boss")
+    assert boss is not None and boss["claims"] is False
+    refusal = fenced(boss, ["anything"])
+    assert "does not hold cards" in refusal
+    assert "Dispatch" in refusal, "the refusal must name what to do instead"
+
+
+def test_every_other_agent_still_claims(project: Path) -> None:
+    """Absent means yes. A registry written before this key existed, and every ordinary
+    specialist, must keep working unchanged — this is the regression guard."""
+    write_agent(project, "api", "---\nname: api\ndescription: d\nlabels: [api]\n---\nbody\n")
+    api = agent_named(project, "agent:ana/api")
+    assert api is not None and api["claims"] is True
+    assert fenced(api, ["api"]) == ""
+
+
+def test_the_plugins_manager_and_organiser_hold_no_cards(project: Path) -> None:
+    """The two that ship with taskops and plan for a living. If either ever starts claiming,
+    the fleet has a supervisor who is also a worker, and nobody is watching the board."""
+    for name in ("taskops-manager", "taskops-organiser"):
+        agent = next(a for a in registry(project) if a["name"] == name)
+        assert agent["claims"] is False, f"{name} must not hold cards"

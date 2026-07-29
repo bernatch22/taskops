@@ -35,6 +35,14 @@ class AgentSpec(TypedDict):
     """Its edit surface, as globs. A hint for humans and for a future guard; nothing in this
     card enforces it, and a spec that claimed otherwise would be a lie in a contract."""
 
+    claims: bool
+    """Whether this agent may hold a card at all. Default TRUE — everybody works.
+
+    An ORCHESTRATOR must not: it reads the board, plans, and hands work out, and the moment it
+    claims a card it stops orchestrating and becomes one more worker with a plan nobody is
+    keeping. Prompts said so and it took cards anyway, which is what a suggestion is worth
+    against a model mid-task. `claims: false` in the frontmatter makes the CLAIM refuse."""
+
     path: str
     """Where it was read from — every refusal and every warning names it."""
 

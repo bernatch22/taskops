@@ -42,7 +42,7 @@ REGISTRY_DIR = ".claude/agents"
 spawn from. Nested ones are scanned by Claude Code too; taskops reads the project root's,
 which is where a repository keeps the specialists it means for everybody."""
 
-OPTIONAL_KEYS = ("labels", "files")
+OPTIONAL_KEYS = ("labels", "files", "claims")
 """What taskops adds to a subagent file, and what nothing else reads.
 
 They live in the SAME frontmatter as `name`/`description`/`tools`/`model` because a project
@@ -93,7 +93,16 @@ def fenced(agent: AgentSpec | None, labels: list[str]) -> str:
 
     Names BOTH label sets, because the useful refusal is not "no" but "you do X, this is Y".
     """
-    if agent is None or not agent["labels"]:
+    if agent is None:
+        return ""
+    if not agent["claims"]:
+        # The orchestrator rule, enforced instead of asked for. Told in three separate places
+        # not to implement the work itself, a session did exactly that — twice — because an
+        # instruction is what a model weighs against everything else in its context, and a
+        # refusal is not.
+        return (f"{agent['name']} does not hold cards — it plans and hands work out. Dispatch "
+                f"this one to a specialist and spawn that sub-agent instead")
+    if not agent["labels"]:
         return ""
     if set(labels) & set(agent["labels"]):
         return ""

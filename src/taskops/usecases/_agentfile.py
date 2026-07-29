@@ -40,6 +40,10 @@ def parse_agent(text: str, path: Path) -> AgentSpec:
     return AgentSpec(name=str(fields["name"]), description=str(fields.get("description", "")),
                      labels=_as_list(fields.get("labels", [])),
                      files=_as_list(fields.get("files", [])),
+                     # Absent means yes: a registry written before this key existed, and every
+                     # ordinary specialist, must keep working unchanged.
+                     claims=str(fields.get("claims", "true")).strip().lower()
+                     not in ("false", "no", "0"),
                      path=str(path), text=text)
 
 
