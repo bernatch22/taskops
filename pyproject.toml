@@ -51,6 +51,12 @@ pretty = ["rich>=13"]
 
 [project.scripts]
 taskops = "taskops.transports.cli.main:main"
+taskops-hook = "taskops.transports.hooks.__main__:main"
+# A console script and not `python3 -m taskops.transports.hooks`, which is what the hooks used
+# to say. That line depends on whichever python3 happens to be first on PATH having taskops
+# importable — and it is not, for every pipx/uv install and for anybody with pyenv. The failure
+# is a ModuleNotFoundError printed at every session start, on a hook whose whole contract is to
+# be silent. A console script carries its own interpreter in its shebang.
 
 [project.urls]
 Homepage = "https://github.com/bernatch22/taskops"

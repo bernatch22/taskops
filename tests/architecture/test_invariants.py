@@ -230,3 +230,24 @@ def test_the_plugin_declares_the_package_version() -> None:
                           .read_text(encoding="utf-8"))
     assert manifest["version"] == __version__, (
         f"plugin.json says {manifest['version']} and the package is {__version__}")
+
+
+def test_the_hooks_call_a_console_script_and_never_a_bare_interpreter() -> None:
+    """`python3 -m taskops.transports.hooks` depends on whichever python3 is first on PATH
+    having taskops importable — and it is not, for every pipx or uv install and for anybody
+    with pyenv. It printed a ModuleNotFoundError at every session start, on hooks whose whole
+    contract is to be silent. A console script carries its interpreter in its shebang."""
+    from tests.architecture.walk import SRC
+
+    wiring = (SRC.parents[1] / "plugin" / "hooks" / "hooks.json").read_text(encoding="utf-8")
+    assert "python3 -m taskops" not in wiring
+    assert "taskops-hook" in wiring
+
+
+def test_the_console_script_the_hooks_name_is_declared() -> None:
+    """The other half: a hooks file naming a binary nothing installs is the same failure with
+    a different message."""
+    from tests.architecture.walk import SRC
+
+    packaging = (SRC.parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'taskops-hook = "taskops.transports.hooks.__main__:main"' in packaging

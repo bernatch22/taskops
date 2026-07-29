@@ -212,7 +212,7 @@ the repo being worked on, committed alongside it:
     "PostToolUse": [
       { "matcher": "Edit|Write|Bash|NotebookEdit",
         "hooks": [{ "type": "command",
-                    "command": "python3 -m taskops.transports.hooks post-tool-use" }] }
+                    "command": "taskops-hook post-tool-use" }] }
     ]
   }
 }
