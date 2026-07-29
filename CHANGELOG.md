@@ -38,6 +38,16 @@ está muerto al nacer.
   seguía en el pool y el próximo agente se la llevaba de abajo de la persona a la que se la
   acababan de dar). Ahora los dos pasan por `usecases/_handoff.hand_over`, la mención sigue
   para que el inbox pinguee, y el render dice la verdad: *"only they can claim it"*.
+- **Asignar desde el board** (`POST /api/assign`, `GET /api/agents`, `transports/http/assigning.py`):
+  el registro existía y las cards se asignaban solas por `dispatch`, pero una persona no podía
+  dar una card desde la UI. El endpoint llama a `hand_over` — misma asignación, mismo evento
+  `handoff`, misma mención — así que aparece en `/api/live` sin ninguna notificación paralela.
+  Un nombre PELADO se mide contra el registro y se rechaza nombrando los que existen (una card
+  asignada se le esconde a todos los demás: un typo la deja sin dueño posible y el board no
+  dice por qué); un actor id completo (`dev:ana`, `agent:ana/one`) queda libre, igual que el
+  fence de claim trata a un actor que no conoce. Reasignar agrega un SEGUNDO handoff, nunca
+  edita el primero. En el panel: picker con el registro + la gente vista en el board, y el chip
+  del assignee en la card.
 
 ## Unreleased — `taskops login`: entrás con tu GitHub y el remote se configura solo
 
