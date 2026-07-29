@@ -61,14 +61,18 @@ taskops ui        # the live board → http://127.0.0.1:2140
 
 ## The CLI — for people
 
-Twelve commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
+Sixteen commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
 
 | Command | What it does |
 |---|---|
 | `taskops init` | Create `.taskops/`, install the git hooks, write the agent guide. |
+| `taskops status` | The `git status` of a project: what is open, who holds what, what is unwritten, what is unpushed. |
 | `taskops ui` | The live web interface: board, activity timeline, reports. |
+| `taskops open` | Open this project's board — or all your boards — in a browser, credential included. |
 | `taskops tasks` | List, read, create, edit and close tasks. |
-| `taskops report` | Board, standup, or a written dossier of a day, a range, or everything. |
+| `taskops context` | The standing facts: the objective, the invariants, the decisions. |
+| `taskops report` | Board, standup, a written dossier of a day/range/everything — and `sweep`. |
+| `taskops schedule` | Write the Claude Code scheduled task that keeps reports current. |
 | `taskops run` | Run cards with headless Claude workers *(experimental, billed)*. |
 | `taskops recover` | Release cards held by workers that went silent. |
 | `taskops sync` | Reconcile with the committed event log (the git path). |
@@ -76,6 +80,11 @@ Twelve commands, all of them yours. Agents never use the CLI (they have MCP), an
 | `taskops login` | Sign in to a server with your GitHub account; the remote configures itself. |
 | `taskops remote` | Point this project at a server. |
 | `taskops push` / `pull` | Exchange events and reports with the server. |
+
+```sh
+taskops status                      # before you start
+taskops status --prompt             # one line for your shell prompt: tk:payments 6▸1 ⇡5
+```
 
 ### Working with tasks
 
@@ -127,13 +136,14 @@ The cheaper default is `dispatch` through MCP: the orchestrating session spawns 
 
 ## The MCP tools — for agents
 
-Eight tools. The `inputSchema` of each is generated from its typed contract, so a parameter cannot exist on the wire without existing in the dispatch. Deliberately short: every tool costs every connected agent context.
+Nine tools. The `inputSchema` of each is generated from its typed contract, so a parameter cannot exist on the wire without existing in the dispatch. Deliberately short: every tool costs every connected agent context.
 
 | Tool | What it does |
 |---|---|
 | `taskops_next` | Claim work. Returns the spec, the branch to create, the agent's inbox, and a collision warning naming anyone else in your files. Says *why* when there is nothing. |
 | `taskops_update` | Progress, a comment, a close, a handoff — and `mentions`, which is how agents message each other. |
 | `taskops_ask` | One task in full, or free-text search across titles, specs and comments. |
+| `taskops_capture` | ONE card for work nobody planned — created *and* claimed, so a refused commit is one call from allowed. |
 | `taskops_context` | The project's standing objective, invariants and settled decisions — or the slice of them that applies to ONE card. |
 | `taskops_plan` | A whole decomposition in one call: tasks, tree, dependencies. |
 | `taskops_dispatch` | Prepare worker briefs — assign cards, create worktrees. The caller spawns its own sub-agents. |
@@ -380,6 +390,17 @@ The **backup trigger needs no setup at all**: the plugin's `SessionStart` hook f
 - **Reports** — the daily dossiers, rendered. Generate a narration from the browser and **watch it being written**, streamed over the same socket.
 
 The UI ships inside the wheel as a committed bundle — `pip install taskops-cli` serves the board with no Node toolchain anywhere.
+
+## Going deeper
+
+| | |
+|---|---|
+| [docs/remote-developers.md](docs/remote-developers.md) | The guide to hand a new teammate: getting in, the daily rhythm, what their agents do. |
+| [docs/agents.md](docs/agents.md) | Specialists a project defines, orchestration, sub-tasks and worktrees, who invokes whom. |
+| [docs/reports.md](docs/reports.md) | Why the record matters, the narration, and the sweep that writes itself. |
+| [docs/context.md](docs/context.md) | Objectives, invariants and decisions — and the slice each card receives. |
+| [docs/prompt.md](docs/prompt.md) | The shell-prompt segment and the Claude Code statusline. |
+| [docs/exchange.md](docs/exchange.md) | The wire contract between a client and a server. |
 
 ## Architecture, briefly
 

@@ -1,0 +1,168 @@
+# Reports: the record that cannot flatter anyone
+
+A board tells you what is open. A report tells you **what happened** — and on a project where most
+of the typing is done by models, that is the difference between a team that knows what it built and
+a team that has a directory of changes nobody can account for.
+
+Every report here is a **projection of the event log**. Nothing is written by hand into a report and
+then trusted; the facts are derived, every time, from an append-only log with content-hashed ids
+that lives in git. A report cannot be out of date without saying so, and it cannot be edited into
+something flattering without the edit being visible.
+
+---
+
+## 1 · Why this matters more than it sounds
+
+Three failures this exists to prevent, all of them observed:
+
+**"Done" that nobody can account for.** An agent closes five cards overnight. The board is green.
+Nothing in a green board distinguishes five careful implementations from five confident summaries
+of work that was not done. A day report lists every card closed, **who** closed it, how long they
+held it, and every commit with its diff size — so the question "was this real" has an answer that
+does not require reading the whole diff.
+
+**Memory that dies with the session.** A session plans, decides, discovers that the obvious
+approach fails, and ends. Tomorrow's agent re-derives all of it, badly. The narration is where
+"we tried X, it failed because Y" survives — and it survives in the repository, not in somebody's
+scrollback.
+
+**A team that cannot see each other.** Two developers, four agents, three machines. Reports sync
+with `push`/`pull` like everything else, so "what did the other side do yesterday" is a file, not a
+meeting.
+
+## 2 · The generated views
+
+```sh
+taskops report                       # the board
+taskops report standup --since 24h   # what changed, per actor, and what needs a human
+taskops report day                   # one calendar day, in full
+taskops report range --last 7d       # a week, grouped by day
+taskops report all                   # the whole project, from the first event
+```
+
+A **day** is a calendar day in local time, not a rolling 24 hours — computed through `mktime`,
+because a DST day is 23 or 25 hours and never 24.
+
+A day report contains: every card closed with who closed it and how long it was held, each commit
+with its files and diff size, every card opened, every card still waiting and what on, and the
+**whole conversation** — comments, handoffs, messages between agents.
+
+## 3 · The narration — `--digest`
+
+```sh
+taskops report day --digest          # yesterday, explained
+taskops report all --digest          # the whole project as a document you read instead of git log
+```
+
+Claude reads the dossier and writes the part a projection cannot: **what was asked versus what was
+delivered**, card by card, the decisions, the surprises, and what is still owed.
+
+- It **streams into your terminal as it is written**, and into the UI over the same WebSocket.
+- It uses your existing Claude Code login. **Never an API key** — `ANTHROPIC_API_KEY` and friends
+  are stripped from the environment before the call, because an exported key silently beats the
+  subscription you already pay for.
+- It lands in `.taskops/reports/<label>.md`, committed like source.
+
+**The facts are written before the model is called.** A narration that fails costs you nothing —
+the dossier is already on disk. This ordering is the whole reason a failed narration is an
+inconvenience rather than a lost day.
+
+### The narration is the one irreplaceable half
+
+A report file has two halves, and they have opposite properties:
+
+| | can be regenerated? | goes stale? |
+|---|---|---|
+| the **dossier** — facts derived from the log | always, for free | yes, if the day kept happening |
+| the **narration** — prose a model wrote or a person edited | **never** | no |
+
+Everything about how reports are written and synced follows from that asymmetry. `write_report`
+refuses to overwrite an existing file unless `--force`, and `--force` says out loud that the
+narration is lost. When two machines have narrated the same day, the sync rule is: **newest stamp
+wins, equal-but-different is always a `409` naming both**, and an unstamped file is never clobbered
+by a stamped one. A hand-written narration can never be silently replaced by a generated one.
+
+## 4 · `sweep` — the report that writes itself
+
+You should almost never run `--digest` by hand. `sweep` narrates **every day that has ENDED, has
+events, and carries no prose yet**:
+
+```sh
+taskops report sweep                 # narrate what is owed, then stop
+taskops report sweep --push          # …and send the reports up
+```
+
+```
+narrated 0 day(s) — every ended day is already written up
+  skipped 2026-07-28 — it already carries a narration
+```
+
+This is a **barrier, not a clock**, and that is the entire design:
+
+- **The trigger stops mattering.** 00:05, 9am when the laptop wakes, or by hand — all converge on
+  the same state.
+- **Running it twice costs nothing.** The second run makes zero model calls. The tests assert that
+  by *counting calls*, not by diffing files: a version that re-narrated everything and wrote the
+  same prose back would pass a diff and arrive on your invoice.
+- **Today is never narrated.** A day is not finished until it has ended; a report written at 3pm
+  would be missing the evening forever, because the next sweep sees a file that already has prose.
+- **A day narrated on somebody else's machine counts as narrated.** Where the prose was written was
+  never part of the question.
+- **`--limit` (7) caps the run and says when it truncated.** A silent cap reads exactly like
+  "everything is written up", which is the one thing it must never be mistaken for on a repository
+  with a year of history.
+
+Claude Code's own scheduled-task documentation asks for exactly this shape:
+
+> *A task scheduled for 9am might run at 11pm if your computer was asleep all day. If timing
+> matters, add guardrails to the prompt itself.*
+
+The sweep **is** that guardrail.
+
+## 5 · Running it unattended
+
+Two triggers, neither of them touching your operating system.
+
+**It already fires on its own.** The plugin's `SessionStart` hook launches a sweep detached — the
+hook returns immediately, is stamped to at most one sweep per project per day, and is silent on any
+failure, because a broken sweep may never stop a session from starting. `TASKOPS_NO_SWEEP=1` turns
+it off. Open Claude Code at 9am and yesterday writes itself.
+
+**For a real schedule**, use Claude Code's own — not cron, not launchd:
+
+```sh
+taskops schedule install
+```
+
+```
+wrote /Users/you/.claude/scheduled-tasks/taskops-sweep/SKILL.md
+
+That file is the PROMPT. Claude Code keeps the schedule itself, so nothing runs yet — say this to Claude:
+
+  create a daily scheduled task at 00:05 named "taskops-sweep" that runs /taskops:sweep in /path/to/repo
+```
+
+The command is honest about the half it cannot do. The prompt is ours; **the schedule belongs to
+Claude Code**, which is also what gives it the property that matters: on wake or app start it looks
+back seven days and runs **exactly one** catch-up for the most recently missed time. A daily task
+that missed six days runs once.
+
+Of the three scheduling mechanisms, only that one is durable:
+
+| | survives closing Claude | machine off | catch-up |
+|---|---|---|---|
+| `/loop`, `CronCreate` | ✗ session-scoped, 7-day expiry | ✗ | ✗ |
+| **Desktop scheduled tasks** | ✓ | needs the machine awake | **✓ one catch-up** |
+| Routines (cloud) | ✓ | ✓ | n/a |
+
+## 6 · Reading them
+
+```sh
+taskops report day --date 2026-07-28    # in the terminal, rendered
+taskops ui                              # the Reports tab: rendered, with a Generate button
+                                        #   you can watch writing, streamed live
+```
+
+The index knows, per day, whether a report `exists`, whether it is `stale`, how many events landed
+after it was written, and whether it `has_narration` — which is exactly what the sweep uses to
+decide what it owes.
