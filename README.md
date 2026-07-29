@@ -396,6 +396,7 @@ The UI ships inside the wheel as a committed bundle — `pip install taskops-cli
 | [docs/reports.md](docs/reports.md) | Why the record matters, the narration, and the sweep that writes itself. |
 | [docs/context.md](docs/context.md) | Objectives, invariants and decisions — and the slice each card receives. |
 | [docs/exchange.md](docs/exchange.md) | The wire contract between a client and a server. |
+| [docs/production.md](docs/production.md) | The plan for agents that run where the board lives — runner, sandbox → staging → prod. |
 
 ## Architecture, briefly
 
