@@ -38,15 +38,20 @@ __all__ = ["get_agents", "post_assign"]
 
 
 def get_agents(root: Path, request: Request) -> Reply:
-    """The specialist registry, as the picker needs it — and NOT `text` or `path`.
+    """The specialists a card can be GIVEN to — and NOT `text` or `path`.
 
-    The file verbatim is what materialisation needs, not what a dropdown needs; putting a
+    The file verbatim is what a reader of the registry needs, not what a dropdown needs; a
     server-side path and a whole prompt on the wire for three labels would be a bigger payload
     than the board itself.
+
+    Agents that cannot hold a card are left out, and that is the important half. An assignment
+    hides the card from everybody else, so offering an orchestrator in this list would let one
+    click produce a card nobody can ever claim and nobody can see — the exact dead story this
+    board exists to make impossible.
     """
     return guarded(lambda: json_reply(
         [{"name": spec["name"], "description": spec["description"], "labels": spec["labels"]}
-         for spec in registry(root)]))
+         for spec in registry(root) if spec["claims"]]))
 
 
 def post_assign(root: Path, request: Request) -> Reply:
@@ -81,10 +86,18 @@ def _target(store: Any, assignee: str, dev: str) -> str:
         # The identity parser, reused rather than re-spelled: it is the one place that says what
         # an actor id is, and it refuses a malformed one with the message that names the fix.
         return caller(store, assignee)["id"]
-    known = [spec["name"] for spec in registry(store.root)]
-    if assignee not in known:
+    found = {spec["name"]: spec for spec in registry(store.root)}
+    workers = [name for name, spec in found.items() if spec["claims"]]
+    if assignee not in found:
         raise BadRequest(
             f"`{assignee}` is not a specialist this project registered — it knows "
-            f"{', '.join(known) or 'none'}. For a person or an ad-hoc worker, assign to "
+            f"{', '.join(workers) or 'none'}. For a person or an ad-hoc worker, assign to "
             f"`dev:<name>` or `agent:<dev>/<name>` instead.")
+    if not found[assignee]["claims"]:
+        # Belt and braces with the list above: the picker no longer offers these, but an API
+        # is not a dropdown and this one is reachable by anybody with the token.
+        raise BadRequest(
+            f"`{assignee}` plans and hands work out — it cannot hold a card, so assigning this "
+            f"one to it would hide it from everybody and leave it claimable by nobody. Give it "
+            f"to one of {', '.join(workers) or 'a person'}, or let the orchestrator dispatch it.")
     return f"agent:{dev}/{assignee}"

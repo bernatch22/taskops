@@ -12,13 +12,15 @@ sub-task actually is, and how a project defines its own specialists.
 
 ---
 
-## 1 · The three agents that ship with the plugin
+## 1 · The two agents that ship with the plugin
 
-Installed with `plugin/`, available in any project:
+Installed with `plugin/`, available in any project. They are the two ROLES a board needs and
+nothing else — planning is not one of them, because an orchestrator is personal: it belongs in
+`~/.claude/agents/`, where it can know your habits and your other repositories. taskops ships
+what the BOARD requires, not what a person prefers.
 
 | Agent | Model | Does | Deliberately cannot |
 |---|---|---|---|
-| `taskops-manager` | opus | reads the context, the board and the dossiers; plans cards, spots the bottleneck, dispatches | **Edit / Write** — it plans and delegates, it does not implement |
 | `taskops-worker` | sonnet | claims, works, commits, finishes at `review` with its evidence stated | plan or dispatch — and closing its own review: `done` on a card it reviewed itself is refused by the engine |
 | `taskops-verifier` | haiku | reads a card's acceptance criteria and the diff, and tries to prove `done` is FALSE | **Write** — an adversary that can edit is not an adversary |
 
@@ -76,7 +78,7 @@ A repo file with the same `name` as a plugin file **wins** — a project can rep
 ## 3 · The orchestration loop, end to end
 
 ```
-you ──▶ taskops-manager
+you ──▶ your orchestrator (personal, ~/.claude/agents/)
           │
           ├─ taskops_context        what we are chasing, what may never break
           ├─ taskops_report board   what is open, who holds what

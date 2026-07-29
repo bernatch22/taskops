@@ -61,7 +61,7 @@ taskops ui        # the live board → http://127.0.0.1:2140
 
 ## The CLI — for people
 
-Sixteen commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
+Fifteen commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
 
 | Command | What it does |
 |---|---|
@@ -73,7 +73,6 @@ Sixteen commands, all of them yours. Agents never use the CLI (they have MCP), a
 | `taskops context` | The standing facts: the objective, the invariants, the decisions. |
 | `taskops report` | Board, standup, a written dossier of a day/range/everything — and `sweep`. |
 | `taskops schedule` | Write the Claude Code scheduled task that keeps reports current. |
-| `taskops run` | Run cards with headless Claude workers *(experimental, billed)*. |
 | `taskops recover` | Release cards held by workers that went silent. |
 | `taskops sync` | Reconcile with the committed event log (the git path). |
 | `taskops serve` | Host many projects' boards on one port, one token each. |
@@ -119,15 +118,15 @@ taskops report all --digest         # the whole project, as a document you read 
 
 ### Running a fleet
 
+Through MCP, from a session: `taskops_dispatch` assigns the cards, makes a git worktree each, and hands back one brief per card. The session spawns its **own sub-agents**, one per brief, on the subscription it is already paying for.
+
 ```sh
-taskops run --dry-run               # which cards would get a worker — free
-taskops run tk-a99e3f tk-4c84b3     # one headless Claude per card, each in its own git worktree
 taskops recover                     # a killed worker's card returns to the queue
 ```
 
-Each worker gets its own **worktree** on its own branch — a lease coordinates who owns a *task*, not whose bytes are on disk, and the worktree is what keeps parallel agents from overwriting each other. Workers never inherit your `ANTHROPIC_API_KEY`: they use the subscription you are already logged into, and `--use-api-key` is an explicit opt-in.
+Each worker gets its own **worktree** on its own branch — a lease coordinates who owns a *task*, not whose bytes are on disk, and the worktree is what keeps parallel agents from overwriting each other.
 
-The cheaper default is `dispatch` through MCP: the orchestrating session spawns its **own sub-agents**, one per prepared brief, on the subscription that is already paid for.
+There is no detached mode. `taskops run` existed and was removed: it opened a new billed session per card, and it could not hand that worker the specialist a project registered — a detached `claude -p` gets a generic prompt and the shell's default model, which is a worker pretending to be the role rather than being it.
 
 ---
 
@@ -215,7 +214,7 @@ project can add its own without touching any Python.
 
 | Agent | Tools it has | What it does |
 |---|---|---|
-| `taskops-manager` | context, board, plan, dispatch — **no Edit, no Write** | Reads the context, the board and the last week of dossiers; creates the cards that serve the current objective with EARS acceptance criteria; names the card blocking everything else; hands work out. It plans and delegates, never implements. |
+| your orchestrator | context, board, plan, dispatch — **no Edit, no Write** | Reads the context, the board and the last week of dossiers; creates the cards that serve the current objective with EARS acceptance criteria; names the card blocking everything else; hands work out. It plans and delegates, never implements. |
 | `taskops-worker` | claim, ask, update, and the full edit surface | One card: claim → branch → work → commit → close **with evidence** for each criterion. Hands the card back with notes rather than sitting on it. |
 | `taskops-verifier` | ask, update, Read, Bash — **no Write** | The adversary, on a cheap model. Reads the acceptance criteria and the diff and tries to demonstrate `done` is false. |
 

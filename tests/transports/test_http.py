@@ -237,6 +237,12 @@ def with_registry(project: Path) -> Path:
     return project
 
 
+def write_agent(project: Path, name: str, text: str) -> None:
+    folder = project / ".claude" / "agents"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}.md").write_text(text, encoding="utf-8")
+
+
 def first_card(route: Any) -> str:
     board = body_of(route(get("/api/board")))
     return board["columns"][0]["cards"][0]["task"]["id"]
@@ -609,3 +615,26 @@ def test_the_screen_stores_the_credential_where_the_bundle_reads_it(project: Pat
 
 def route_body(route: Any, request: Request) -> bytes:
     return route(request).body
+
+
+def test_the_picker_never_offers_an_agent_that_cannot_hold_a_card(
+        project: Path, route: Any) -> None:
+    """An assignment HIDES the card from everybody else, so offering an agent that cannot hold
+    a card would let one click produce a card nobody can claim and nobody can see — the dead
+    story this board exists to make impossible."""
+    write_agent(project, "boss", "---\nname: boss\ndescription: plans\nclaims: false\n---\nx\n")
+    offered = {agent["name"] for agent in json.loads(route(get("/api/agents")).body)}
+    assert "taskops-worker" in offered
+    assert "boss" not in offered
+
+
+def test_assigning_to_an_orchestrator_is_refused_by_the_api_too(
+        project: Path, route: Any) -> None:
+    """The picker no longer offers them, but an API is not a dropdown and this one is reachable
+    by anybody holding the token."""
+    made = plan(project, [{"title": "the work"}], actor="dev:ana")["created"][0]
+    write_agent(project, "boss", "---\nname: boss\ndescription: plans\nclaims: false\n---\nx\n")
+    answered = route(post("/api/assign", {"task": made["id"], "assignee": "boss"}))
+    assert answered.status == 400
+    assert "cannot hold a card" in json.loads(answered.body)["error"]
+    assert "taskops-worker" in json.loads(answered.body)["error"], "name who CAN take it"

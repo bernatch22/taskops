@@ -233,9 +233,3 @@ def test_every_other_agent_still_claims(project: Path) -> None:
     assert fenced(api, ["api"]) == ""
 
 
-def test_the_plugins_manager_and_organiser_hold_no_cards(project: Path) -> None:
-    """The two that ship with taskops and plan for a living. If either ever starts claiming,
-    the fleet has a supervisor who is also a worker, and nobody is watching the board."""
-    for name in ("taskops-manager", "taskops-organiser"):
-        agent = next(a for a in registry(project) if a["name"] == name)
-        assert agent["claims"] is False, f"{name} must not hold cards"
