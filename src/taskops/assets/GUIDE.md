@@ -39,7 +39,19 @@ the commit guard matches this exact shape, and an invented name gets your own co
 **Close with `taskops_update status=done`.** It will be refused if no commit is bound to the
 task. That refusal is the feature — see below.
 
-## The two rules the server enforces
+**If the work belongs to no card, make one — do not work around the guard.** A bug you tripped
+over, a fix a reviewer asked for, a refactor the task turned out to need:
+
+```
+taskops_capture title="fix the refund timeout" spec="DONE = the retry test passes"
+   → created tk-4987b6, claimed, commit on tk/tk-4987b6/fix-the-refund-timeout
+```
+
+One call: the card exists, you hold it, and the reply names the branch. Use `taskops_plan`
+instead when you are decomposing into SEVERAL cards with dependencies; use this when there is
+one thing and you are already doing it.
+
+## The three rules the server enforces
 
 These are not conventions. The server rejects the call.
 
@@ -53,6 +65,12 @@ said so — which is exactly what a human reading a board instead of the diff is
 avoid. If a task legitimately produced no code (research, a decision, docs elsewhere), pass
 `no_code: true` **with a comment saying what it produced instead**. That is recorded, so a
 review can see which closures had no code and why.
+
+**3. `done` on a card that carries acceptance criteria requires `evidence`.** Name which
+criteria were met and what proves each — a test that passes, a command, a run. If a criterion
+no longer applies, `no_evidence` takes the reason and **writes it into the event**. The exit
+exists because a rule with no honest way out gets bypassed by lying, and a lie is worse than a
+recorded exception.
 
 ## Your claim is a lease, not an assignment
 
@@ -99,6 +117,17 @@ A spec that works says:
 - what must **not** change
 - **where to start** — the files, the sibling to copy, the test that pins the behaviour
 
+Better still, give the card `acceptance` — one criterion per line, in EARS:
+
+```
+WHEN a lease expires THE SYSTEM SHALL return the card to ready
+WHEN a card is requeued THE SYSTEM SHALL keep the previous holder's comments
+```
+
+Lines in that shape map almost one-to-one onto test cases, which is what makes closing the card
+checkable by somebody who was not you. A criterion that does not fit the shape is kept with a
+warning, never rejected — prose criteria beat none.
+
 A one-line spec is the single most common cause of an agent doing the wrong thing correctly.
 
 Also name `files`. It is how the scheduler avoids handing two agents the same file, and it is
@@ -142,14 +171,14 @@ Two rules for the workers, and both are in the brief already:
 - **Nobody ever runs `git switch`.** Sub-agents share the repository, so switching would move the
   branch under every other worker at once. This is the whole reason the worktree exists.
 
-Pass `spawn: true` only if you want detached processes that outlive your session — each one opens a
-NEW Claude session, which is rarely what you want.
+There is no detached mode and no `spawn` flag. It was removed: it opened a NEW billed session per
+worker, and it could not hand that worker the specialist a project registered — the detached
+process got a generic prompt and the shell's default model. A sub-agent of your session gets the
+right prompt, the right model and the right tools, on the subscription already paid for.
 
-A spawned worker inherits your environment MINUS the Anthropic credentials
-(`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`). The `claude` CLI prefers an
-exported key over the logged-in subscription, so without this every worker would quietly bill per
-token against a plan you already pay for. `taskops run --use-api-key` asks for the other mode out
-loud; no MCP tool can.
+**If a brief names an `agent_type`, spawn THAT sub-agent type.** It is the specialist this project
+registered for the card's labels (see below), and it is the difference between a worker that knows
+the domain and one that reads the repository from scratch.
 
 **If you dispatch and then do not spawn**, the cards sit assigned to workers that never existed. Run
 `taskops recover` to hand them back.
@@ -170,14 +199,49 @@ one NOBODY can pick up, since the scheduler hides it from everyone else.
 And it writes on each card what survived: commits are safe in git, and **uncommitted work is named
 with its path**, because a killed agent writes before it commits. Read that before starting over.
 
+## What this project has already decided
+
+Before you design anything, read the standing facts:
+
+```
+taskops_context                     the objective, every invariant, the decisions
+taskops_context task=tk-4f2a9c      …the SLICE that applies to one card
+```
+
+Three kinds, and they are not advice:
+
+- **objective** — what the project is chasing now. If your card does not serve it, say so
+  rather than doing it well.
+- **invariant** — what must never break. Every agent receives every invariant, always; there
+  is no card whose slice leaves one out.
+- **decision** — what was already decided, and *why*. This exists so you do not re-propose a
+  thing that was tried and rejected. If you think a decision is wrong, argue with it in a
+  comment; do not quietly do the other thing.
+
+## The specialist you may be
+
+A project can register its own agents in `.taskops/agents/*.md` — a name, a prompt, a model, a
+tool list, and the `labels` of the cards that are theirs. Two consequences for you:
+
+- **If your actor id matches one** (`agent:<dev>/collector`), a card outside your labels is
+  REFUSED at the claim, naming both label sets. That is not a bug to work around: another
+  specialist owns it. An explicit assignment to you always wins over this.
+- **If you are an orchestrator**, the brief tells you which specialist to spawn. The registry
+  is data in the repository, so it arrives with `git pull` and a teammate's new specialist is
+  available to you the moment you pull.
+
 ## Reading the board
 
 - `taskops_report board` — every column, who holds what
 - `taskops_report standup --since 24h` — what changed, per actor, and what needs a human
-- `taskops_report fleet` — which agents are alive right now, on what, touching what file
+- `taskops_report day` — one calendar day in full: what closed, every commit, the conversation
 
-In `fleet`, `SILENT` means the agent still holds a claim but has gone quiet past the grace
-period. That row is shown rather than hidden, because it is the one somebody needs to act on.
+`taskops_report` only READS. Writing a report, and paying a model to narrate one, is a person's
+call or a scheduled task's — never yours.
+
+**Read the day before yours before you start.** A dossier is where "we tried X, it failed
+because Y" survives after the session that learned it ended. Re-deriving that badly is the most
+expensive thing an agent does.
 
 ## Multi-developer, no server
 
@@ -194,8 +258,8 @@ The `post-merge` hook syncs for you. Run `taskops sync` by hand any time; it is 
 ## Three doors, and which one is yours
 
 ```
-taskops <cmd>                       a person, at a terminal. seven commands.
-taskops_* (MCP)                     you. seven tools — this is your door.
+taskops <cmd>                       a person, at a terminal. fifteen commands.
+taskops_* (MCP)                     you. nine tools — this is your door.
 python -m taskops.transports.hooks  git and Claude Code. never type it.
 ```
 

@@ -18,3 +18,5 @@ ui/node_modules/
 .taskops/GUIDE.md
 .taskops/workers/
 .taskops/trees/
+# .taskops/reports/ is COMMITTED — a written dossier is not derived state
+.taskops/remote.json
