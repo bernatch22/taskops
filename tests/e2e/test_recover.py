@@ -204,3 +204,54 @@ def test_no_dead_field_survives_in_the_field_descriptions() -> None:
     unused = [name for name in _fields.__all__
               if name.isupper() and f"f.{name}" not in source]
     assert not unused, f"unreferenced description constants: {unused}"
+
+
+def test_a_card_just_sent_back_keeps_its_worker(project: Path) -> None:
+    """The send-back keeps the assignee precisely so only its worker retakes it. An ungraced
+    orphan sweep put it straight back in the pool — the opposite of what the verifier asked
+    for — and any `recover` between the bounce and the worker's next turn did it."""
+    from taskops.usecases import next_task, plan, recover, update
+    from taskops.usecases._handoff import hand_over
+
+    card = plan(project, [{"title": "t", "spec": "s"}], actor="dev:ana")["created"][0]["id"]
+    with Store(project) as store:
+        hand_over(store, card, "agent:ana/api1", actor="dev:ana")
+    next_task(project, task=card, actor="agent:ana/api1")
+    update(project, card, status="review", comment="round 1", actor="agent:ana/api1")
+    update(project, card, status="ready", comment="FAILS: no test", actor="agent:ana/tester")
+
+    recover(project, actor="dev:ana")
+
+    with Store(project) as store:
+        assert store.tasks.need(card)["assignee"] == "agent:ana/api1"
+
+
+def test_an_assignment_left_untouched_past_the_grace_is_freed(project: Path) -> None:
+    """The rule this exists for is still enforced: an assignment nobody ever picks up hides the
+    card from every other agent, so it must not hide forever. Only the WAIT changed."""
+    from taskops.usecases import plan, recover
+    from taskops.usecases._handoff import hand_over
+
+    card = plan(project, [{"title": "t", "spec": "s"}], actor="dev:ana")["created"][0]["id"]
+    with Store(project) as store:
+        hand_over(store, card, "agent:ana/ghost", actor="dev:ana")
+
+    recover(project, actor="dev:ana", grace=0.0)
+
+    with Store(project) as store:
+        assert store.tasks.need(card)["assignee"] == ""
+
+
+def test_force_frees_it_regardless(project: Path) -> None:
+    """For the case the docstring names: a fleet that is alive and wrong."""
+    from taskops.usecases import plan, recover
+    from taskops.usecases._handoff import hand_over
+
+    card = plan(project, [{"title": "t", "spec": "s"}], actor="dev:ana")["created"][0]["id"]
+    with Store(project) as store:
+        hand_over(store, card, "agent:ana/api1", actor="dev:ana")
+
+    recover(project, actor="dev:ana", force=True)
+
+    with Store(project) as store:
+        assert store.tasks.need(card)["assignee"] == ""
