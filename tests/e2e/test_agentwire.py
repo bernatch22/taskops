@@ -229,3 +229,39 @@ def test_a_claim_the_local_board_cannot_be_told_about_fails(tmp_path: Path) -> N
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_evidence_survives_the_wire(tmp_path: Path, hub: Serving) -> None:
+    """The second time this pair has been dropped by a transport, after the MCP tool — and the
+    effect is worse here. For a project with a remote EVERY write routes through this endpoint,
+    so a card carrying acceptance criteria could not be closed by anybody, agent or human: the
+    server refused with "nothing says they were met" while the caller was staring at the
+    evidence they had just typed. Found by running two clones against a real server.
+    """
+    card = plan(hub.root, [{"title": "with criteria", "spec": "s",
+                            "acceptance": ["WHEN x THE SYSTEM SHALL y"]}],
+                actor="dev:berna")["created"][0]["id"]
+    mine = machine(tmp_path / "mine", hub.url)
+    next_task(mine, actor="agent:berna/one", task=card)
+    update(mine, card, actor="agent:berna/one", status="review", comment="handed over")
+
+    update(mine, card, actor="dev:ana", status="done", no_code=True,
+           comment="checked", evidence="WHEN x THE SYSTEM SHALL y: ran it, it holds")
+
+    assert ask(hub.root, card)["task"]["status"] == "done"
+
+
+def test_a_reason_for_dropping_the_criteria_crosses_too(tmp_path: Path, hub: Serving) -> None:
+    """`no_evidence` is the other half of the same field and was dropped by the same line. A
+    card whose criteria stopped applying is a real close, and it has to be sayable remotely."""
+    card = plan(hub.root, [{"title": "obsolete", "spec": "s",
+                            "acceptance": ["WHEN x THE SYSTEM SHALL y"]}],
+                actor="dev:berna")["created"][0]["id"]
+    mine = machine(tmp_path / "mine", hub.url)
+    next_task(mine, actor="agent:berna/one", task=card)
+    update(mine, card, actor="agent:berna/one", status="review", comment="handed over")
+
+    update(mine, card, actor="dev:ana", status="done", no_code=True, comment="dropped",
+           no_evidence="the feature was cut; the criterion describes something that is gone")
+
+    assert ask(hub.root, card)["task"]["status"] == "done"

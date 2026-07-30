@@ -36,24 +36,16 @@ def waiting_on(store: Store, *, at: float | None = None) -> list[Waiting]:
 def _move(store: Store, task: Task, held: set[str]) -> Waiting | None:
     """The ONE next move on one card, or None when it is somebody's turn already.
 
-    A lease short-circuits everything: an agent is alive on it and reporting, so whatever the
-    status says, the next move is that agent's. This is the check that keeps a sweep from
-    handing a live card to a second worker — the collision the board exists to prevent.
+    A lease short-circuits everything EXCEPT what `_declared` answers first: an agent alive on
+    a card and reporting owns the next move on it, whatever the board would otherwise say. That
+    is the check keeping a sweep from handing a live card to a second worker.
     """
     if task["status"] in ("done", "cancelled"):
         return None
-    if task["status"] == "blocked":
-        # BEFORE the lease, and that ordering is the fix. Parking a card keeps its lease — only
-        # `ready`, `review`, `done` and `cancelled` release one — so a worker that declared
-        # itself blocked went on looking busy for the fifteen minutes until the TTL ran out.
-        # The declaration is the better evidence: an agent saying "I am blocked on this" is
-        # saying it is NOT working on it, whatever its lease still says.
-        return _stalled(store, task)
+    if (declared := _declared(store, task)) is not None:
+        return declared
     if task["id"] in held:
         return None
-    if task["status"] == "review":
-        who = task["reviewer"] or "the verifier"
-        return _at(task, "verify", f"in review since it was handed over; {who} has not closed it")
     if task["assignee"]:
         # Assigned, no lease: a bounce back from review, or a dispatch nobody spawned. Either
         # way the card is INVISIBLE to every other agent — assignment is what hides it — so it
@@ -64,6 +56,32 @@ def _move(store: Store, task: Task, held: set[str]) -> Waiting | None:
     if not task["spec"].strip():
         return _at(task, "specless", "ready with no spec — a worker can only guess at it")
     return _at(task, "dispatch", "ready, unassigned, and nothing depends on it first")
+
+
+def _declared(store: Store, task: Task) -> Waiting | None:
+    """The two statuses judged BEFORE the lease, because each one CONTRADICTS a live lease.
+
+    Both were found by running the thing rather than by reading it, and both are the same
+    mistake — trusting the lease over what the card itself says:
+
+    `blocked` keeps its lease. Only `ready`, `review`, `done` and `cancelled` release one, so a
+    worker that had just declared itself blocked went on looking busy for the fifteen minutes
+    until the TTL ran out. Its own declaration is the better evidence: an agent saying "I am
+    blocked on this" is saying it is not working on it.
+
+    `review` RELEASES its lease, so a review card holding one is a card whose lease is simply
+    wrong — and with a remote that is routine, because transitions execute in the server's
+    database while the client mirrors the TASK, not the lease release. The machine that did the
+    work keeps a live lease on a card it already handed over, and the sweep went quiet on the
+    one board that most needed to say somebody has to verify this. Two clones against a real
+    server is the only place that gap shows.
+    """
+    if task["status"] == "blocked":
+        return _stalled(store, task)
+    if task["status"] != "review":
+        return None
+    who = task["reviewer"] or "the verifier"
+    return _at(task, "verify", f"in review since it was handed over; {who} has not closed it")
 
 
 def _stalled(store: Store, task: Task) -> Waiting:

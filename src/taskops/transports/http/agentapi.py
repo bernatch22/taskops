@@ -56,6 +56,13 @@ def post_update(root: Path, request: Request) -> Reply:
     Which is the point: the lease that `done` requires, and the commits bound to the task, are
     read from the database every machine writes to, so an agent cannot close a card whose
     lease it lost to somebody else while its own board was stale.
+
+    **Every field the client sends has to be read here**, and `evidence`/`no_evidence` were not
+    — the second time that pair has been dropped by a transport, after the MCP tool. The effect
+    is worse here than it was there: for a project with a remote, EVERY write routes through
+    this endpoint, so a card carrying acceptance criteria could not be closed by anybody, agent
+    or human, and the refusal read "nothing says they were met" while the caller was staring at
+    the evidence they had just typed. Found by running two clones against a real server.
     """
     payload = request.payload()
     task_id = str(payload.get("task", "")).strip()
@@ -66,4 +73,6 @@ def post_update(root: Path, request: Request) -> Reply:
         root, task_id, actor=actor, status=str(payload.get("status", "")),
         comment=str(payload.get("comment", "")), mentions=strings(payload, "mentions"),
         blocked_on=str(payload.get("blocked_on", "")),
-        no_code=bool(payload.get("no_code")), local=True)))
+        no_code=bool(payload.get("no_code")),
+        evidence=str(payload.get("evidence", "")),
+        no_evidence=str(payload.get("no_evidence", "")), local=True)))

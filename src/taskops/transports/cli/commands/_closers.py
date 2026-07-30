@@ -52,5 +52,16 @@ def add_closers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]",
                                   else "what happened, for the thread"))
         parser.add_argument("--no-code", action="store_true", dest="no_code",
                             help="this task legitimately produces no commit")
+        if status == "done":
+            # Without these the CLI could not close a card carrying acceptance criteria AT ALL:
+            # the engine demands evidence, no flag could carry it, and the only way through was
+            # the MCP tool. Found by running the two-person simulacro — a person verifying
+            # somebody else's card is the most ordinary close there is, and it was the one door
+            # that had no handle.
+            parser.add_argument("--evidence", default="",
+                                help="which criteria you met and what proves each — a test, a "
+                                     "command, a run")
+            parser.add_argument("--no-evidence", dest="no_evidence", default="",
+                                help="why the criteria no longer apply")
         parser.set_defaults(status=status, mentions="", blocked_on="",
                             no_code=reason and status == "cancelled")

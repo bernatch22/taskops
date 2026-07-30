@@ -151,3 +151,25 @@ def test_a_parked_card_surfaces_even_though_its_worker_still_holds_the_lease(
     update(repo, card, status="blocked", comment="need a decision", actor=WORKER)
 
     assert moves(repo)[card] == "stalled"
+
+
+def test_a_review_surfaces_even_when_a_stale_lease_says_somebody_holds_it(repo: Path) -> None:
+    """Found by running two clones against a real server. Handing a card over releases its
+    lease, so a `review` card holding one is a card whose lease is WRONG — and with a remote
+    that is routine, because transitions execute in the server's database and the client
+    mirrors the task, not the lease release. The machine that did the work keeps a live lease
+    on a card it already handed over, and the sweep went quiet on the one board that most
+    needed to say somebody has to verify this."""
+    from taskops._clock import now
+    from taskops.contracts import Lease
+    from taskops.storage import Store
+
+    card = a_card(repo)
+    next_task(repo, task=card, actor=WORKER)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+    with Store(repo) as store:
+        store.leases.acquire(Lease(task=card, actor=WORKER, session="s", branch="b",
+                                   acquired=now(), expires=now() + 900))   # the stale mirror
+        assert [lease["task"] for lease in store.leases.live(now())] == [card]
+
+    assert moves(repo)[card] == "verify"
