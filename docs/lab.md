@@ -65,6 +65,24 @@ independientes** en archivos disjuntos y sólo dos con dependencias, y por eso h
 que avisa `STARVING` cuando la cola baja de dos. Al que le falte, se le agregan cards en
 módulos que nadie está tocando.
 
+## El resultado
+
+Un repo semilla vacío, dos sesiones de Claude Code, una palabra a cada una: `dale`.
+
+```
+$ git clone /tmp/lab-origin && cd lab-check
+$ PYTHONPATH=src pytest tests -q
+298 passed in 0.21s
+```
+
+Cuarenta módulos en `main`, treinta y nueve archivos de test, un `__init__.py` que los exporta
+citando el id del invariante que lo obliga. Cuarenta y seis cards cerradas, **todas por el peer
+y ninguna por quien la escribió**, y cero intervenciones humanas después de esa palabra.
+
+Lo que hizo suficiente el `dale` no fue el prompt: fue el `SessionStart` entregando el rol, el
+`SubagentStop` pidiendo el verifier en el momento del handover, el `Stop` negándose a terminar
+un turno con una review abierta, y la rama viajando sola al remoto.
+
 ## Lo que la primera noche midió
 
 Dos developers, cinco rondas cada uno, una palabra por ronda. Al cabo de veinte minutos:
