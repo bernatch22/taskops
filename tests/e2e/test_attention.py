@@ -197,3 +197,17 @@ def test_the_worker_coming_back_to_a_bounced_card_still_gets_it_claimed(repo: Pa
     back = next_task(repo, task=card, actor=WORKER)
 
     assert back["claim"]["view"]["task"]["status"] == "claimed"
+
+
+def test_the_urgent_card_is_first_in_its_group(repo: Path) -> None:
+    """The sort was descending, so `0 urgent … 3 whenever` came out backwards and the sweep
+    recommended the least urgent work first. It went unseen because every card on a normal
+    board carries the default — the bug only shows the day somebody marks something urgent,
+    which on a live board was a priority-0 card sorting below eight priority-2 ones."""
+    whenever = a_card(repo, priority=3)
+    urgent = a_card(repo, priority=0)
+    normal = a_card(repo)
+
+    order = [item["task"]["id"] for item in attention(repo)["waiting"]]
+
+    assert order == [urgent, normal, whenever]

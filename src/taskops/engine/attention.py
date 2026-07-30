@@ -29,8 +29,12 @@ def waiting_on(store: Store, *, at: float | None = None) -> list[Waiting]:
     held = {lease["task"] for lease in store.leases.live(when)}
     found = [item for task in store.tasks.all()
              if (item := _move(store, task, held)) is not None]
+    # Priority ASCENDING, like `scheduler.score` — 0 is urgent here and 3 is "whenever", so a
+    # descending sort recommends the least urgent work first. It did, from the day this was
+    # written until a priority-0 card landed on a live board and sorted below eight priority-2
+    # ones. The one direction nobody checks is the one where every card has the same priority.
     return sorted(found, key=lambda item: (MOVES.index(item["move"]),
-                                           -item["task"]["priority"], item["task"]["updated"]))
+                                           item["task"]["priority"], item["task"]["updated"]))
 
 
 def _move(store: Store, task: Task, held: set[str]) -> Waiting | None:
