@@ -227,3 +227,35 @@ def test_cancelling_without_a_reason_is_refused() -> None:
     recreates. `-m` is required for this one transition and optional for the others."""
     with pytest.raises(SystemExit):
         build_parser().parse_args(["tasks", "cancel", "tk-1"])
+
+
+def test_reject_sends_a_review_back_to_its_worker(root: Path,
+                                                  capsys: pytest.CaptureFixture[str]) -> None:
+    """The human half of the review loop. `reject` is a `ready`, not a `release`, and the
+    difference is who gets it next: a rejected card KEEPS its assignee so the worker that
+    wrote it picks it up, while a release means "I give this up, anybody take it"."""
+    from taskops.storage import Store
+    from taskops.usecases import next_task, update
+    from taskops.usecases._handoff import hand_over
+
+    main(["tasks", "add", "the work", "--repo", str(root), "--spec", "s"])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+    with Store(root) as store:
+        hand_over(store, task, "agent:ana/api1", actor="dev:ana")
+    next_task(root, task=task, actor="agent:ana/api1")
+    update(root, task, status="review", comment="round 1", actor="agent:ana/api1")
+    capsys.readouterr()
+
+    assert main(["tasks", "reject", task, "--repo", str(root),
+                 "-m", "the 409 does not carry the cart"]) == 0
+    with Store(root) as store:
+        after = store.tasks.need(task)
+    assert after["status"] == "ready"
+    assert after["assignee"] == "agent:ana/api1", "back to ITS worker, not to the pool"
+
+
+def test_rejecting_without_a_finding_is_refused() -> None:
+    """A rejection with no reason is a card bounced with nothing to act on — the worker reads
+    "not good enough" and guesses, which is how a card goes round twice for no reason."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["tasks", "reject", "tk-1"])

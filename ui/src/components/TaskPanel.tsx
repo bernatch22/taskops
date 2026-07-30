@@ -7,7 +7,11 @@ import { api } from "../api";
 import type { AgentEntry, CommitRef, Event, Task, TaskView } from "../contracts";
 import { Actor, MARK, Priority, ago } from "./bits";
 
-const CLOSING = ["in_progress", "review", "done", "blocked", "released", "cancelled"];
+/* Every move a PERSON makes by hand. `in_progress` was here and is gone with the status; a
+ * button that 400s is worse than no button. `ready` is the reject — a card in review going
+ * back to its worker, which keeps its assignee, unlike `released`. */
+const CLOSING = ["review", "done", "ready", "blocked", "released", "cancelled"];
+const LABELS: Record<string, string> = { ready: "send back", released: "hand back" };
 
 export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
   view: TaskView;
@@ -297,7 +301,7 @@ function Compose({ task, onDone }: { task: Task; onDone: () => void }): JSX.Elem
         {CLOSING.map((status) => (
           <button key={status} disabled={busy} onClick={() => void act(status)}
                   title={status === "released" ? "hand it back to the queue" : `set ${status}`}>
-            {status.replace("_", " ")}
+            {LABELS[status] ?? status.replace("_", " ")}
           </button>
         ))}
       </div>

@@ -18,7 +18,7 @@ from typing import Callable
 from . import ask as ask_cmd
 from . import log as log_cmd
 from . import plan as plan_cmd
-from . import update as update_cmd
+from ._closers import add_closers
 from ._shared import add_actor, add_target
 
 __all__ = ["add_subcommands", "add_list_flags"]
@@ -57,10 +57,7 @@ def add_subcommands(parent: argparse.ArgumentParser, *, listing: Runner,
                        plan_cmd.run)
     from_json.add_argument("source", help="path to a JSON array of tasks, or - for stdin")
 
-    _close(sub, "done", "finish a task", "done")
-    _close(sub, "release", "hand a task back, unfinished", "released")
-    _close(sub, "cancel", "close a task nobody will do — the nearest thing to deleting one",
-           "cancelled", reason=True)
+    add_closers(sub, _flags)
 
     entries = _flags(sub.add_parser("log", help="the agent's conversation for a card"),
                      log_cmd.run)
@@ -108,28 +105,13 @@ def _edit_flags(parser: argparse.ArgumentParser) -> None:
                         help="who may close it; pass '' to clear and fall back to the verifier")
 
 
-def _close(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", name: str,
-           help_text: str, status: str, *, reason: bool = False) -> None:
-    """`done`, `release` and `cancel` are `update` with the status already chosen — the
-    transitions a person makes by hand, spelled as the actions they are instead of a flag value
-    to recall. The rest of `update`'s namespace is defaulted here, because its `run` reads the
-    whole of it.
+_CLOSERS = (
+    ("done", "finish a task", "done", False),
+    ("release", "hand a task back, unfinished", "released", False),
+    ("reject", "send a card in review back to its worker, with findings", "ready", True),
+    ("cancel", "close a task nobody will do — the nearest thing to deleting one",
+     "cancelled", True),
+)
+"""The four moves a person makes by hand, as data — see `_close` for what each one means."""
 
-    `cancel` is what "delete this card" means here, and the difference is not pedantry: the log
-    is append-only and has no eraser, so a deleted card would have to be a hole in a history
-    every report is derived from. Cancelling closes it — it stops blocking its dependents
-    exactly as `done` does, leaves the board, and stays readable. What it also does is keep the
-    REASON, which is the thing somebody wants three weeks later when the same card gets
-    proposed again.
 
-    `reason` makes `-m` mandatory for that one: a cancelled card with no explanation is a card
-    that will be recreated by the next person who has the idea.
-    """
-    parser = _flags(sub.add_parser(name, help=help_text), update_cmd.run)
-    parser.add_argument("task", help="the task id")
-    parser.add_argument("-m", "--comment", default="", required=reason,
-                        help="why it will not be done, for the thread" if reason
-                             else "what happened, for the thread")
-    parser.add_argument("--no-code", action="store_true", dest="no_code",
-                        help="this task legitimately produces no commit")
-    parser.set_defaults(status=status, mentions="", blocked_on="", no_code=reason or False)
