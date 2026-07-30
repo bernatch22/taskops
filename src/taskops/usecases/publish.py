@@ -31,7 +31,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-__all__ = ["publish_branch"]
+__all__ = ["publish_branch", "publish_all"]
 
 _TIMEOUT = 20.0
 """A hook runs inside somebody's `git commit`. A push that hangs on a dead remote must not hold
@@ -48,6 +48,25 @@ def publish_branch(root: Path, branch: str) -> bool:
                          f"machine will not see this work until it is pushed\n")
         return False
     return True
+
+
+def publish_all(start: Path | str) -> list[str]:
+    """Push every task branch this checkout has. Returns the ones that landed.
+
+    The repair, and the sibling of `journal.reconcile`: a board that predates the auto-publish
+    has a pile of branches that exist on exactly one laptop, and a peer reviewer cannot see any
+    of them. Fifty-five of them had to be pushed by hand once, which is the definition of a
+    missing verb.
+
+    Idempotent — a branch already on the remote is a no-op push — so it is safe to run whenever
+    somebody suspects work is stranded.
+    """
+    root = Path(start)
+    listed = _run(root, "branch", "--list", "tk/*", "--format=%(refname:short)")
+    if listed is None:
+        return []
+    return [branch for branch in listed.splitlines() if branch.strip()
+            and publish_branch(root, branch.strip())]
 
 
 def _has_origin(root: Path) -> bool:

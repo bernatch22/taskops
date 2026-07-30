@@ -353,3 +353,27 @@ def git_init(repo: Path) -> None:
     (repo / "README.md").write_text("x\n", encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "initial")
+
+
+def test_publish_all_is_the_repair_for_work_stranded_on_one_machine(tmp_path: Path) -> None:
+    """The sibling of `journal.reconcile`. A board that predates the auto-publish has a pile of
+    branches that exist on exactly one laptop and a peer reviewer cannot see any of them —
+    fifty-five had to be pushed by hand once, which is the definition of a missing verb."""
+    from taskops.usecases.publish import publish_all
+
+    origin = tmp_path / "origin"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    repo = tmp_path / "clone"
+    git_init(repo)
+    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=repo, check=True)
+    for name in ("tk/tk-a/one", "tk/tk-b/two"):
+        git(repo, "switch", "-q", "-c", name)
+    git(repo, "switch", "-q", "main")
+
+    landed = publish_all(repo)
+
+    assert sorted(landed) == ["tk/tk-a/one", "tk/tk-b/two"]
+    remote = subprocess.run(["git", "ls-remote", "--heads", str(origin)],
+                            capture_output=True, text=True, check=True).stdout
+    assert "tk/tk-a/one" in remote and "main" not in remote
+    assert publish_all(repo) == ["tk/tk-a/one", "tk/tk-b/two"], "idempotent: a no-op push"
