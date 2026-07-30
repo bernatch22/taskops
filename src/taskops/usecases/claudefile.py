@@ -9,9 +9,9 @@ looked complete and was silently missing its whole feedback loop.
 
 A plugin is the wrong home for this. It is a per-MACHINE, per-person install, and what these
 hooks belong to is the PROJECT: joining a board is what should turn a checkout into one where
-sessions know their role and cannot end a turn on a review nobody picked up. Same file, same
-merge discipline, same reasoning as `.mcp.json` — a repository's settings are shared config,
-so this only ever ADDS, and a hook somebody wrote by hand survives untouched.
+sessions know their role and cannot end a turn on a review nobody picked up. Same merge
+discipline as `.mcp.json` — it only ever ADDS, and a hook somebody wrote by hand survives
+untouched — but a different FILE, for the reason under `SETTINGS_FILE`.
 
 The plugin still exists and still carries these; a project that has both simply runs them
 twice, and every one of them is idempotent by design.
@@ -27,7 +27,17 @@ from .mcpfile import _read, hook_binary
 
 __all__ = ["SETTINGS_FILE", "wire_hooks", "hooks_for"]
 
-SETTINGS_FILE = ".claude/settings.json"
+SETTINGS_FILE = ".claude/settings.local.json"
+"""The PERSONAL project settings, not the shared ones, and the reason is one line of output:
+
+    "command": "/Users/berna/.local/share/uv/tools/taskops-cli/bin/taskops-hook session-start"
+
+That path is where `taskops-hook` lives on THIS machine. Committing it would hand every
+teammate a hook pointing into a directory they do not have — five broken hooks and no error
+anybody would connect to the cause. `settings.local.json` is the file Claude Code reads for
+exactly this and the one projects already gitignore; `init` adds it to the block, so a clone
+that runs `join` writes its own.
+"""
 
 _EVENTS: dict[str, str] = {
     "PreToolUse": "pre-tool-use",

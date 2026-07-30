@@ -251,3 +251,18 @@ def test_a_hook_somebody_configured_by_hand_survives(tmp_path: Path) -> None:
     written = json.loads((tmp_path / SETTINGS_FILE).read_text(encoding="utf-8"))["hooks"]
     assert written["Stop"] == theirs["hooks"]["Stop"], "their Stop hook, untouched"
     assert "SessionStart" in written, "and ours, added beside it"
+
+
+def test_the_hook_wiring_is_never_committed(tmp_path: Path) -> None:
+    """It names the absolute path to `taskops-hook` on THIS machine. Committed, it hands a
+    teammate five hooks pointing into a directory they do not have — and hooks fail silently,
+    which is the worst shape a failure can take. So it goes in the personal settings file and
+    `init` puts that file in the ignore block; a clone that joins writes its own."""
+    from taskops.usecases import init
+    from taskops.usecases.claudefile import SETTINGS_FILE
+
+    init(tmp_path, install_git_hooks=False)
+
+    assert SETTINGS_FILE in (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    written = json.loads((tmp_path / SETTINGS_FILE).read_text(encoding="utf-8"))
+    assert Path(written["hooks"]["Stop"][0]["hooks"][0]["command"].split()[0]).is_absolute()

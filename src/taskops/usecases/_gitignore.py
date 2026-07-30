@@ -50,6 +50,11 @@ ran `taskops init` could not pull from one another, because the incoming commit 
 both sides had independently created untracked.
 """
 
+SETTINGS_RULE = ".claude/settings.local.json"
+"""Written by `init` and machine-specific: it names the absolute path to `taskops-hook` on
+THIS machine. Committing it would hand a teammate five hooks pointing into a directory they do
+not have, which fails silently — the worst shape a failure can take."""
+
 BLOCK = f"""
 {MARKER} — commit events.jsonl and NOTHING else under {PROJECT_DIR}/
 {PROJECT_DIR}/db.sqlite
@@ -62,10 +67,11 @@ BLOCK = f"""
 {REPORTS_NOTE}
 {PROJECT_DIR}/*.stamp
 {PROJECT_DIR}/stop-blocks.json
+{SETTINGS_RULE}
 """
 
 _UPGRADES = (REPORTS_NOTE, REMOTE_RULE, f"{PROJECT_DIR}/*.stamp",
-             f"{PROJECT_DIR}/stop-blocks.json")
+             f"{PROJECT_DIR}/stop-blocks.json", SETTINGS_RULE)
 """Lines added to the block AFTER projects existed with it. Order is the order they land in."""
 
 
