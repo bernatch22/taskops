@@ -17,7 +17,9 @@ from pathlib import Path
 
 from ..contracts import Event
 from ..engine import gitio, record
+from ..storage import Store
 from ..storage.sync import event_from
+from ._committer import committer
 from ._project import caller, project
 from ._routing import call_remote
 
@@ -37,6 +39,8 @@ def bind(start: Path | str, body: dict[str, object]) -> Event | None:
     with project(start) as store:
         if kind not in ("commit", "branch") or store.tasks.get(task) is None:
             return None
+        if kind == "commit" and _already(store, task, str(body.get("sha", ""))):
+            return None
         who = caller(store, str(body.get("actor", "")))["id"]
         if kind == "branch":
             branch = str(body.get("branch", ""))
@@ -48,6 +52,19 @@ def bind(start: Path | str, body: dict[str, object]) -> Event | None:
                             "subject": str(body.get("subject", "")),
                             "files": [str(f) for f in body.get("files", [])
                                       if isinstance(f, str)]})
+
+
+def _already(store: Store, task: str, sha: str) -> bool:
+    """Has this exact commit already been bound to this card?
+
+    ONE sha, ONE binding. Two doors lead here — the installed `post-commit` hook and an
+    explicit call — and `--no-verify` closes only the first of them, so the two fire together
+    more often than not. The events are content-hashed but carry a timestamp, so two
+    recordings a second apart are two different ids and the board counted the same commit
+    twice: `done` then has "evidence" it never earned, and a diff-size roll-up doubles.
+    """
+    return any(event["body"].get("sha") == sha
+               for event in store.events.of_task(task, kinds=("commit",)))
 
 
 def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> Event | None:
@@ -65,7 +82,7 @@ def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> E
             gitio.task_of_branch(gitio.current_branch(root))
         if task is None:
             return None
-        who = caller(store, actor)["id"]
+        who = committer(store, gitio.current_branch(root), actor)
     body = {"kind": "commit", "task": task, "actor": who, "sha": resolved,
             "subject": message.splitlines()[0], "files": gitio.changed_files(root, resolved)}
     # THE fact the done-guard reads, so it must land where the guard runs. With a remote that
@@ -74,7 +91,7 @@ def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> E
     if (answer := call_remote(root, "bind", body)) is not None:
         return event_from(answer)
     with project(start) as store:
-        if store.tasks.get(task) is None:
+        if store.tasks.get(task) is None or _already(store, task, resolved):
             return None
         return record(store, task=task, actor=who, kind="commit",
                       body={"sha": resolved, "subject": body["subject"],
@@ -95,7 +112,7 @@ def ingest_branch(start: Path | str, branch: str = "", *, actor: str = "") -> Ev
         task = gitio.task_of_branch(name)
         if not task:
             return None
-        who = caller(project_store, actor)["id"]
+        who = committer(project_store, name, actor)
     sent = call_remote(root, "bind", {"kind": "branch", "task": task, "actor": who,
                                       "branch": name})
     if sent is not None:

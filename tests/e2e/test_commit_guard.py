@@ -273,3 +273,27 @@ def test_a_stated_actor_is_never_overridden_by_the_lease(repo: Path) -> None:
 
 def _switch(repo: Path, branch: str) -> None:
     git(repo, "switch", "-c", branch)
+
+
+def test_the_recorded_commit_names_the_agent_not_the_machine(repo: Path) -> None:
+    """Half a fix is its own bug. The guard was taught to attribute a commit to the branch's
+    lease holder and the RECORDER was left resolving git config — so a live run produced eight
+    commits made by `agent:dev1/w1..w8` and bound every one of them to `dev:dev1`. The board
+    then shows a person as the author of work eight agents did, and the fix that was supposed
+    to prevent exactly that reads as if it had worked."""
+    from taskops.storage import Store
+    from taskops.usecases.ingest import ingest_commit
+
+    card = plan(repo, [{"title": "held by an agent", "spec": "x"}],
+                actor="dev:berna")["created"][0]["id"]
+    claimed = next_task(repo, task=card, actor="agent:berna/w2")["claim"]
+    _switch(repo, claimed["branch"])
+    (repo / "work.py").write_text("x = 1\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", f"feat: x\n\nTask: {card}", "--no-verify")
+
+    ingest_commit(repo)
+
+    with Store(repo) as store:
+        bound = store.events.of_task(card, kinds=("commit",))
+    assert [event["actor"] for event in bound] == ["agent:berna/w2"]
