@@ -205,3 +205,18 @@ def test_a_flag_nobody_passed_is_not_a_statement() -> None:
     assert said({"title": "x", "reviewer": None}, "reviewer") is None
     assert said({"title": "x", "reviewer": ""}, "reviewer") == ""
     assert said({"title": "x", "reviewer": "human"}, "reviewer") == "human"
+
+
+def test_a_decision_keeps_its_reason_and_still_names_a_reviewer(tmp_path: Path) -> None:
+    """The feature disabled itself the first time somebody used it properly. This project asks
+    every decision to carry its why, so a real one reads `reviewer: peer — nobody closes work
+    produced by their own agents` — the whole tail was read as a NAME, nothing matched, and the
+    degradation to "" made every card come out with no reviewer. Silent, and indistinguishable
+    from never having stated it."""
+    init(tmp_path, install_git_hooks=False)
+    state(tmp_path, "decision",
+                  "reviewer: peer — nobody closes work produced by their own agents")
+
+    made = plan(tmp_path, [{"title": "t", "spec": "s"}], actor="dev:berna")["created"][0]
+
+    assert made["reviewer"] == "peer"

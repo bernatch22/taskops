@@ -76,6 +76,21 @@ def for_new(store: Store, value: str | None) -> str:
     return project_default(store) if value is None else named(store, value)
 
 
+def _first_word(rest: str) -> str:
+    """The reviewer is the FIRST token; everything after it is the reason it was chosen.
+
+    It used to be the whole line, and that quietly disabled the feature the first time somebody
+    used it properly: this project asks every decision to carry its why, so the text read
+    `reviewer: peer — nobody closes work produced by their own agents`, the whole tail was
+    taken as a name, no specialist matched, and the degradation to "" made every card come out
+    with no reviewer at all. Silent, and indistinguishable from never having stated it.
+
+    A reviewer is `human`, `peer`, `dev:ana`, `agent:ana/api` or a registered name — none of
+    which contain whitespace — so the split is unambiguous and the rest is free prose.
+    """
+    return rest.strip().split(maxsplit=1)[0] if rest.strip() else ""
+
+
 def project_default(store: Store) -> str:
     """The `reviewer: <who>` decision in force, or "" for the stock verifier.
 
@@ -86,7 +101,7 @@ def project_default(store: Store) -> str:
     for fact in reversed(in_force(facts(store))["decisions"]):
         text = fact["text"].strip()
         if text.lower().startswith(_DEFAULT_PREFIX):
-            wanted = text[len(_DEFAULT_PREFIX):].strip()
+            wanted = _first_word(text[len(_DEFAULT_PREFIX):])
             try:
                 return named(store, wanted)
             except BadRequest:
