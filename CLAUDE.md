@@ -50,6 +50,13 @@ somebody is working on, and `taskops status` counts it as open.
 
 ## The orchestrator does not implement
 
+**And it does not have to be told.** `SessionStart` states the role, the context and
+`attention` before anybody types; `SubagentStop` asks for the verifier the instant a worker
+hands a card over; `Stop` refuses to end a turn on a review that session opened. All three
+were written after watching two live sessions do the work themselves and leave both cards dead
+in `review` — because the opening injection ended with "Run taskops_next to claim one".
+
+
 **Open every turn with `taskops attention`.** It is the one read that says what the board is
 waiting for — reviews nobody verified, cards assigned to workers that are not running, ready work
 to dispatch, and the two kinds only a person can fix. It replaced the board channel, which pushed

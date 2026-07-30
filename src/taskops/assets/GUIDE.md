@@ -158,6 +158,22 @@ If you discover a dependency mid-task, use `blocked_on` — it adds the edge **a
 blocked. A dependency that lives only in a comment is one the scheduler will walk somebody
 straight into.
 
+## You do not have to be told you are the orchestrator
+
+If you are reading a session's FIRST message, the hook already said so: `SessionStart` fires
+for the main conversation only — sub-agents never see it — so the event itself proves which one
+you are. It injects your role, the project's standing facts, and `attention`, before anybody
+types anything.
+
+Two more hooks close the loop, and neither is advice:
+
+- when one of your workers hands a card to `review`, **SubagentStop tells you to spawn the
+  verifier**, with the card id. That is the moment the fact exists and the only moment anybody
+  is holding it.
+- **your turn cannot end on a review you opened.** Stop blocks — twice, then lets you go — on
+  cards your session finished and left unverified. It never blocks on work nobody started: a
+  ready card is not this turn's debt.
+
 ## If you are an ORCHESTRATOR: start every turn with `attention`
 
 ```

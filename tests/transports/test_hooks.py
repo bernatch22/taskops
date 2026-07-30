@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from taskops.engine import commitline
+from taskops.transports.hooks import _door
 from taskops.transports.hooks import events as _events
 from taskops.usecases import init, next_task, plan
 
@@ -116,9 +117,20 @@ def test_the_response_is_json_serialisable(project: Path) -> None:
 # ---- SessionStart and PostToolUse
 
 
-def test_session_start_is_silent_on_an_empty_project(project: Path) -> None:
-    """A session told "you hold nothing" has paid tokens to learn nothing."""
-    assert _events.session_start(event(project)) == {}
+def test_session_start_states_the_role_even_on_an_empty_board(project: Path) -> None:
+    """This replaces a test that pinned SILENCE on an empty project, and the replacement is
+    the point rather than an accommodation.
+
+    The old rule was "a session told you hold nothing has paid tokens to learn nothing", and
+    it was right about the STATE and wrong about the ROLE. An empty board is exactly when the
+    main session is about to be handed work and decide to do it itself — which is what two
+    real sessions did, because the injection they read ended with "Run taskops_next to claim
+    one". The role is the one thing worth saying to a session that holds nothing.
+    """
+    said = _events.session_start(event(project))["hookSpecificOutput"]["additionalContext"]
+
+    assert "ORCHESTRATOR" in said
+    assert "taskops_next" not in said, "the opening must never tell the main session to claim"
 
 
 def test_session_start_injects_what_the_session_holds(project: Path,
@@ -132,6 +144,21 @@ def test_session_start_injects_what_the_session_holds(project: Path,
     output = response["hookSpecificOutput"]
     assert output["hookEventName"] == "SessionStart"
     assert planned["created"][0]["id"] in output["additionalContext"]
+
+
+def test_session_start_leads_with_the_role_then_the_project_then_the_board(
+        project: Path) -> None:
+    """The ORDER is the argument. A session told the state before the role does the state
+    itself; told the role first, it reads the same state as something to delegate."""
+    from taskops.usecases import context_state
+
+    context_state(project, "invariant", "no runtime dependencies outside the stdlib")
+    plan(project, [{"title": "Something ready", "spec": "x"}])
+
+    said = _events.session_start(event(project))["hookSpecificOutput"]["additionalContext"]
+
+    assert said.index("ORCHESTRATOR") < said.index("no runtime dependencies") \
+        < said.index("Waiting on a decision")
 
 
 def test_post_tool_use_delivers_a_message_from_another_agent(project: Path,
@@ -309,3 +336,67 @@ def test_a_broken_board_never_traps_a_session(tmp_path: Path) -> None:
     from taskops.transports.hooks.claude import HANDLERS
 
     assert HANDLERS["subagent-stop"]({"cwd": str(tmp_path), "session_id": "s-1"}) == {}
+
+
+# ---- the review that nobody picked up
+
+
+def _handover(project: Path, monkeypatch: Any) -> str:
+    """One card taken to `review` by a worker — the exact state two live sessions died in."""
+    from taskops.usecases import update
+
+    monkeypatch.setenv("TASKOPS_ACTOR", "agent:berna/w1")
+    card = plan(project, [{"title": "The parser", "spec": "x",
+                           "acceptance": ["WHEN x THE SYSTEM SHALL y"]}])["created"][0]["id"]
+    next_task(project, task=card, actor="agent:berna/w1", session="sess-1")
+    update(project, card, status="review", actor="agent:berna/w1", comment="criterion met")
+    return card
+
+
+def test_a_worker_stopping_asks_the_orchestrator_for_a_verifier(project: Path,
+                                                                monkeypatch: Any) -> None:
+    """The half that was missing, and the whole reason two cards sat dead for an hour. A
+    worker hands its card over correctly and returns; the orchestrator reads a summary and
+    moves on. The handover is the only moment anybody is holding the fact, so it is said
+    there — as CONTEXT, never a block: a worker cannot verify its own work, which is the
+    entire reason the card is in review."""
+    card = _handover(project, monkeypatch)
+
+    said = _door.subagent_stop(event(project))
+
+    assert "decision" not in said, "a worker may always stop; it is not the one who verifies"
+    text = said["hookSpecificOutput"]["additionalContext"]
+    assert card in text
+    assert "taskops-verifier" in text
+
+
+def test_a_turn_cannot_end_on_a_review_this_session_opened(project: Path,
+                                                           monkeypatch: Any) -> None:
+    """Stop holds the door for the case the session CAUSED: work it finished and left
+    unverified. A card in review reads as active on the board for as long as nobody looks."""
+    card = _handover(project, monkeypatch)
+
+    verdict = _events.stop(event(project))
+
+    assert verdict["decision"] == "block"
+    assert card in verdict["reason"]
+
+
+def test_stop_never_blocks_over_work_nobody_started(project: Path, monkeypatch: Any) -> None:
+    """The scope, and it is deliberate. Blocking on everything `attention` reports would trap
+    somebody who asked a question into doing a board's worth of work first — a ready card is
+    not this turn's debt, and a turn that cannot end is a worse failure than a stale board."""
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:berna")
+    plan(project, [{"title": "Nobody has touched this", "spec": "x"}])
+
+    assert _events.stop(event(project)) == {}
+
+
+def test_a_session_is_let_go_after_being_told_twice(project: Path, monkeypatch: Any) -> None:
+    """The same limit `unfinished` uses, for the same reason: an agent that has read the
+    message twice will not act on a third copy."""
+    _handover(project, monkeypatch)
+
+    assert _events.stop(event(project))["decision"] == "block"
+    assert _events.stop(event(project))["decision"] == "block"
+    assert _events.stop(event(project)) == {}, "told twice, then let go"

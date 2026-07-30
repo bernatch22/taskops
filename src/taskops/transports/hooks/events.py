@@ -15,8 +15,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from ...render import render_brief, render_inbox
-from ...usecases import brief, check_command, checkout, inbox, track
+from ...render import render_inbox, render_opening
+from ...usecases import check_command, checkout, inbox, track
+from ...usecases.opening import opening
 from ._args import cwd, session_of
 from ._door import unfinished_verdict
 
@@ -57,8 +58,17 @@ def _rewrite(command: str) -> dict[str, Any]:
 
 
 def session_start(payload: dict[str, Any]) -> dict[str, Any]:
-    """Inject what this session holds and who messaged it."""
-    said = render_brief(brief(cwd(payload), session=session_of(payload)))
+    """Inject the ROLE, the project's standing facts, and what is waiting on a decision.
+
+    It used to inject what the session HELD, which for a fresh conversation is nothing, and
+    ended with "Run taskops_next to claim one." That sentence is why two real sessions did the
+    work themselves and left their cards dead in review: the first thing the main agent read
+    told it to be a worker. SessionStart fires for the main conversation only — sub-agents
+    never see it — so this event is the proof of which one is reading, and the role can be
+    stated as a fact instead of hoped for in a prompt.
+    """
+    said = render_opening(cast("dict[str, Any]", opening(cwd(payload),
+                                                         session=session_of(payload))))
     return _context("SessionStart", said)
 
 
@@ -94,11 +104,36 @@ def stop(payload: dict[str, Any]) -> dict[str, Any]:
     An instruction is not a mechanism — that lesson is carved into this codebase four times
     over — and "remember to close your card" was an instruction. This is the mechanism.
     """
-    verdict = unfinished_verdict(payload)
+    verdict = unfinished_verdict(payload) or _reviews_pending(payload)
     if verdict:
         return verdict
     checkout(cwd(payload), summary="Session ended.", session=session_of(payload))
     return {}
+
+
+def _reviews_pending(payload: dict[str, Any]) -> dict[str, Any]:
+    """Hold the turn while cards this session finished sit unverified.
+
+    ONLY reviews. Blocking on everything `attention` reports would trap a person who asked a
+    question into doing a board's worth of work before they could get an answer — but a card
+    in `review` is work this session already started, and letting the turn end on it is the
+    exact shape of the two cards that died.
+
+    The same BLOCK_LIMIT that governs `unfinished`, for the same reason: an agent that has read
+    the message twice will not act on a third copy, and a trapped session is a worse failure
+    than a stale board.
+    """
+    try:
+        from ...usecases.pending import unverified, verify_text
+        from ...usecases.unfinished import should_block
+
+        where = cwd(payload)
+        rows = unverified(where)
+        if not rows or not should_block(where, session_of(payload), "unverified-reviews"):
+            return {}
+        return {"decision": "block", "reason": verify_text(rows, closing=True)}
+    except Exception:  # noqa: BLE001 — never trap a session at the door over our own bug
+        return {}
 
 
 

@@ -16,11 +16,37 @@ __all__ = ["unfinished_verdict", "subagent_stop"]
 
 
 def subagent_stop(payload: dict[str, Any]) -> dict[str, Any]:
-    """The net WITHOUT the standup. A worker finishing is not the session ending, and a
-    shared handler was posting "Session ended." onto every card each time any sub-agent
-    returned — a checkout per worker on a five-worker dispatch is five lies about one session.
+    """The net WITHOUT the standup, then the ASK: a handover has to reach the orchestrator.
+
+    A worker finishing is not the session ending, so no checkout is posted — a shared handler
+    was writing "Session ended." onto every card each time any sub-agent returned.
+
+    What IS said here is the half that was missing. A worker that hands its card over releases
+    it correctly and then returns; the orchestrator reads a summary and moves on, and the card
+    waits for a verifier nobody asked for. Watched live: two sessions, two cards, both dead in
+    `review`. The moment the handover happens is the only moment anybody is holding the fact,
+    so it is said here rather than left for somebody to notice.
     """
-    return unfinished_verdict(payload)
+    verdict = unfinished_verdict(payload)
+    if verdict:
+        return verdict
+    return _ask_for_review(payload)
+
+
+def _ask_for_review(payload: dict[str, Any]) -> dict[str, Any]:
+    """Additional context, never a block. Refusing to let a WORKER stop until somebody else
+    verified its card would hold the wrong door — the worker cannot verify its own work, which
+    is the entire reason the card is in review."""
+    try:
+        from ...usecases.pending import unverified, verify_text
+
+        rows = unverified(cwd(payload))
+        if not rows:
+            return {}
+        return {"hookSpecificOutput": {"hookEventName": "SubagentStop",
+                                       "additionalContext": verify_text(rows, closing=False)}}
+    except Exception:  # noqa: BLE001 — a hint is never worth trapping a sub-agent over
+        return {}
 
 
 def unfinished_verdict(payload: dict[str, Any]) -> dict[str, Any]:
