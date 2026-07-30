@@ -28,6 +28,7 @@ from ..engine import record, unblock
 from ..storage import Store
 from . import _entry as field
 from ._after import resolve_after
+from ._autosync import shared
 from ._project import caller, heartbeat, project
 from .acceptance import attach, criteria_in
 from .reviewer import for_new
@@ -45,7 +46,13 @@ def plan(start: Path | str, entries: list[dict[str, Any]], *,
         heartbeat(store, who)
         created = [_create(store, entry, who) for entry in entries]
         deps = _wire(store, entries, created)
-        return PlanResult(created=created, deps=deps, unblocked=unblock(store))
+        result = PlanResult(created=created, deps=deps, unblocked=unblock(store))
+    # AFTER the store closes, so the export sees committed events. A plan that only this
+    # machine knew about was the first thing the three-person simulacro tripped on: the manager
+    # planned, the developers pulled nothing, and a rule ("push after every change") did what
+    # rules do. On a project with no remote this is a no-op; on an unreachable one, a warning.
+    shared(start)
+    return result
 
 
 def _create(store: Store, entry: dict[str, Any], who: str) -> Task:

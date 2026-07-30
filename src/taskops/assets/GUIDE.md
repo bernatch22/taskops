@@ -274,6 +274,23 @@ call or a scheduled task's — never yours.
 because Y" survives after the session that learned it ended. Re-deriving that badly is the most
 expensive thing an agent does.
 
+## A team on a server: one URL each, and sync is nobody's job
+
+Joining a shared board is ONE command — the URL is the one the board itself shows:
+
+```
+git clone <repo> && cd <repo>
+taskops join https://server/project?token=…
+```
+
+That is init, hooks, MCP wiring, the remote, and the first pull, in one. Re-running it repairs
+a clone (fresh checkouts lose their git hooks).
+
+After that, **nobody pushes or pulls by hand**: claims and closes already execute on the
+server, a plan shares itself the moment it exists, and `attention` pulls before it answers.
+`taskops push`/`pull` still exist for forcing the matter, and a sync that cannot reach the
+server warns and leaves you on the last board this machine saw — never an error, never silent.
+
 ## Multi-developer, no server
 
 `.taskops/events.jsonl` is an append-only log, and it is **committed**. Two developers'

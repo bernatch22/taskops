@@ -103,11 +103,14 @@ def test_removing_the_remote_deletes_the_token(tmp_path: Path) -> None:
 
 # ── events ──────────────────────────────────────────────────────────────────────────────
 
-def test_a_push_sends_the_local_log(tmp_path: Path, base: str, fake: Fake) -> None:
+def test_a_plan_reaches_the_server_without_anybody_pushing(tmp_path: Path, base: str,
+                                                           fake: Fake) -> None:
+    """The three-person simulacro ran on "push after every change", and the rule was broken
+    within minutes by the person who wrote it. A plan on a remote project now shares itself;
+    the manual `push` remains for everything else and finds nothing left to send."""
     plan(make(tmp_path, base), [{"title": "wire the client"}], actor="dev:berna")
-    done = push(tmp_path)
-    assert done.accepted > 0
     assert any(event["kind"] == "created" for event in fake.events)
+    assert push(tmp_path).accepted == 0, "the plan already carried itself"
 
 
 def test_a_second_push_sends_nothing_and_the_server_grows_by_nothing(
@@ -249,7 +252,11 @@ def test_push_sends_a_board_the_git_path_already_exported(
     went up as `0 event(s) out`, silently. Push keeps its own cursor now."""
     from taskops.usecases import sync
 
-    plan(make(tmp_path, base), [{"title": "Ya exportada por git"}], actor="dev:t")
+    # No remote yet, so the plan lands locally exactly as a git-only project's would; the
+    # remote arrives AFTER, which is precisely the adoption case this test pins.
+    init(tmp_path, install_git_hooks=False)
+    plan(tmp_path, [{"title": "Ya exportada por git"}], actor="dev:t")
     sync(tmp_path)                       # marks everything exported, as a git project would be
+    add_remote(tmp_path, base, TOKEN)
     done = push(tmp_path)
     assert done.accepted > 0, "a git-synced board must still push to a server"

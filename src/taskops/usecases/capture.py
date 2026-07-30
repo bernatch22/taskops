@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from ..contracts import NextResult
+from ._autosync import shared
 from ._handoff import hand_over
 from ._project import project
 from .claim import next_task
@@ -45,7 +46,9 @@ def capture(start: Path | str, title: str, *, spec: str = "", files: str = "",
         entry["priority"] = priority
     task = plan(start, [entry], actor=actor)["created"][0]
     if assign:
-        return {"task": task, "claim": None, "assigned": _hand(start, task["id"], assign, actor)}
+        given = _hand(start, task["id"], assign, actor)
+        shared(start)       # the handoff event lands AFTER plan's own push
+        return {"task": task, "claim": None, "assigned": given}
     if not claim:
         return {"task": task, "claim": None, "assigned": ""}
     held: NextResult = next_task(start, task=task["id"], actor=actor, session=session)

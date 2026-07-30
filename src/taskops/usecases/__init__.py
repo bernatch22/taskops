@@ -37,6 +37,7 @@ from .feed import follow, is_wire
 from .guard import Verdict, check_command, check_commit
 from .index import report_index
 from .ingest import ingest_branch, ingest_commit
+from .join import join
 from .log import session_log
 from .login import is_session, login, logins, logout, session_of
 from .plan import plan
@@ -54,7 +55,7 @@ from .update import update
 
 __all__ = [
     # the five MCP tools
-    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "attention", "standup", "fleet", "activity",
+    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "attention", "join", "standup", "fleet", "activity",
     "day", "period", "Selector",
     "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path",
     "report_index", "recover", "Recovered",

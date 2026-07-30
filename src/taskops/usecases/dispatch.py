@@ -41,6 +41,7 @@ from ..contracts import Task
 from ..engine import branch_for, unblock
 from ..engine.worker import Launched
 from ..storage import Store
+from ._autosync import shared
 from ._handoff import assign_worker, route_of
 from ._project import caller, heartbeat, project
 
@@ -105,7 +106,10 @@ def dispatch(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0, 
         # at a glance which workers are theirs. `_handoff.assign_worker` does the rest.
         prepared = [assign_worker(store, task, f"agent:{who['dev']}/{prefix or 'w'}{i}")
                     for i, task in enumerate(chosen, start=1)]
-        return DispatchResult(launched=prepared, skipped=skipped)
+    # An assignment is a fact about who may touch a card, which is exactly the kind of fact
+    # another machine acts on: shared the moment it exists, not when somebody remembers.
+    shared(start)
+    return DispatchResult(launched=prepared, skipped=skipped)
 
 
 def _preview(store: Store, task: Task, dev: str, prefix: str, index: int) -> Launched:

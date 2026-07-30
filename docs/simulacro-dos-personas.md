@@ -83,7 +83,21 @@ git clone -q ~/demo-origin ~/demo-p1 && git clone -q ~/demo-origin ~/demo-p2
 
 ---
 
-## Paso 2 — inicializar taskops en cada clon
+## Paso 2 — cada clon se suma con UN comando
+
+> Desde el commit de autosync, los pasos 2 y 3 son uno solo:
+
+```bash
+# [P1] y [P2], cada uno en su directorio
+taskops join https://taskops.bernardocastro.dev/demo-dos?token=<el-token>
+```
+
+Eso es `init` + hooks + `.mcp.json` + `remote add` + el primer `pull`, junto. Y desde el mismo
+commit **los `taskops push` / `taskops pull` del resto de esta guía son opcionales**: el plan se
+comparte solo, y `attention` sincroniza antes de responder. Quedan en la guía porque muestran
+qué viaja y cuándo.
+
+## Paso 2 (manual) — inicializar taskops en cada clon
 
 ```bash
 # [P1]

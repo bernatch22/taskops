@@ -19,13 +19,20 @@ from pathlib import Path
 from ..contracts.attention import Attention
 from ..engine import unblock
 from ..engine.attention import waiting_on
+from ._autosync import fresh
 from ._project import project
 
 __all__ = ["attention"]
 
 
 def attention(start: Path | str) -> Attention:
-    """The cards that need a decision. Read-only, and safe to run in a loop."""
+    """The cards that need a decision. Read-only on the BOARD; it does sync first.
+
+    Pulling here is what makes "open every turn with attention" a complete instruction. The
+    verb that answers "what is waiting on me" has to include what happened on other machines,
+    or it answers for one clone and pretends it answered for the team.
+    """
+    fresh(start)
     with project(start) as store:
         unblock(store)
         waiting = waiting_on(store)

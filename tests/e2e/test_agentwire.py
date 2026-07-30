@@ -359,3 +359,36 @@ def test_a_pulled_board_survives_losing_its_cache(tmp_path: Path, hub: Serving) 
     titles = {card["task"]["title"] for column in board(mine)["columns"]
               for card in column["cards"]}
     assert "planned on the server" in titles, "the log had to carry what the server sent"
+
+
+def test_join_is_the_whole_onboarding(tmp_path: Path, hub: Serving) -> None:
+    """One pasted URL — the string the server itself prints — replaces init + remote add +
+    a token handed around in a chat. It has to end on a WORKING board: the first pull is part
+    of joining, or the command ends on a promise instead of on the answer."""
+    from taskops.usecases import join
+
+    plan(hub.root, [{"title": "already on the board", "spec": "s"}], actor="dev:berna")
+    where = tmp_path / "newcomer"
+    init(where, install_git_hooks=False)     # a fresh clone's state, minus git
+
+    done = join(where, f"{hub.url}?token={TOKEN}")
+
+    assert not done.needs_login
+    titles = {card["task"]["title"] for column in board(where)["columns"]
+              for card in column["cards"]}
+    assert "already on the board" in titles, "joining ends looking at the board"
+
+
+def test_attention_answers_for_the_team_not_for_one_clone(tmp_path: Path,
+                                                          hub: Serving) -> None:
+    """The verb that opens every turn pulls first. Without that, "open with attention" answers
+    from whatever this machine last saw — which in the simulacro meant a manager staring at
+    "nothing is waiting" while a developer's handover sat on the server."""
+    card = the_card(hub.root)
+    mine, theirs = machine(tmp_path / "mine", hub.url), machine(tmp_path / "theirs", hub.url)
+    next_task(mine, actor="agent:berna/one", task=card)
+    update(mine, card, actor="agent:berna/one", status="review", comment="over to you")
+
+    waiting = attention(theirs)["waiting"]       # no pull anywhere in sight
+
+    assert [item["move"] for item in waiting if item["task"]["id"] == card] == ["verify"]
