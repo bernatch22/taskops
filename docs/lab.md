@@ -65,6 +65,20 @@ independientes** en archivos disjuntos y sólo dos con dependencias, y por eso h
 que avisa `STARVING` cuando la cola baja de dos. Al que le falte, se le agregan cards en
 módulos que nadie está tocando.
 
+## Lo que la primera noche midió
+
+Dos developers, cinco rondas cada uno, una palabra por ronda. Al cabo de veinte minutos:
+
+```
+38 cards · 19 cerradas · 0 intervenciones humanas despues del `dale`
+cerradas por un PEER: 19      cerradas por el mismo dev: 0
+commits atados a un agente: 20   atados a una persona: 8   (las 8 son de antes del fix)
+```
+
+Los ceros son el resultado. Ninguna card la firmó quien la escribió, y nadie tuvo que
+acordarse de nada: el rol lo entregó el `SessionStart`, la review la pidió el `SubagentStop`,
+el turno no pudo morir sucio por el `Stop`, y la rama viajó sola.
+
 ## Lo que cada corrida encontró
 
 Ninguna de estas apareció en la suite. Todas aparecieron mirando la máquina.
