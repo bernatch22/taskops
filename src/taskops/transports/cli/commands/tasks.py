@@ -64,7 +64,7 @@ def run_add(args: argparse.Namespace) -> str:
         "title": str(args.title), "spec": str(args.spec),
         "labels": str(args.labels), "files": str(args.files),
         "after": [part.strip() for part in str(args.after).split(",") if part.strip()],
-        "reviewer": str(getattr(args, "reviewer", "") or "")}
+        "reviewer": getattr(args, "reviewer", None)}
     if args.priority is not None:
         entry["priority"] = int(args.priority)
     return render_plan(create(repo_of(args), [entry], actor=str(args.actor)))

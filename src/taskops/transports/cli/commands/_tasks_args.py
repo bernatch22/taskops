@@ -88,8 +88,11 @@ def _add_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--files", default="", help="comma-separated edit surface")
     parser.add_argument("--priority", type=int, default=None, help="0 urgent … 3 whenever")
     parser.add_argument("--label", default="", dest="labels", help="comma-separated labels")
-    parser.add_argument("--reviewer", default="",
-                        help="who may close it: `human`, `dev:<name>`, or a registered agent")
+    # `None` is ABSENT, so the project's default applies; anything typed is honoured, and
+    # `none` is how somebody says nobody without the shell swallowing an empty string.
+    parser.add_argument("--reviewer", default=None,
+                        help="who may close it: `human`, `dev:<name>`, a registered agent, or "
+                             "`none` to skip review on this card (default: the project's)")
 
 
 def _edit_flags(parser: argparse.ArgumentParser) -> None:

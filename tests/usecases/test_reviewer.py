@@ -173,3 +173,35 @@ def test_a_card_with_no_reviewer_and_no_criteria_closes_exactly_as_before() -> N
 def test_the_reviewer_is_shown_where_the_card_is_read(project: Path) -> None:
     task = card(project, reviewer=HUMAN)
     assert "reviewer human" in render_view(ask(project, task["id"]))
+
+
+def test_a_card_can_say_nobody_against_a_project_default(project: Path) -> None:
+    """The case this exists for: a project decides `reviewer: human`, and a text fix has to be
+    able to opt out. Before, an empty reviewer was indistinguishable from an omitted one, so
+    the default won and every card — however trivial — waited for a person."""
+    from taskops.storage import Store
+    from taskops.usecases import context_state, plan
+
+    context_state(project, "decision", "reviewer: human", actor="dev:ana")
+
+    absent = plan(project, [{"title": "a", "spec": "s"}], actor="dev:ana")["created"][0]
+    stated = plan(project, [{"title": "b", "spec": "s", "reviewer": "none"}],
+                  actor="dev:ana")["created"][0]
+    empty = plan(project, [{"title": "c", "spec": "s", "reviewer": ""}],
+                 actor="dev:ana")["created"][0]
+
+    with Store(project) as store:
+        assert store.tasks.need(absent["id"])["reviewer"] == "human", "absent takes the default"
+        assert store.tasks.need(stated["id"])["reviewer"] == "", "`none` means nobody"
+        assert store.tasks.need(empty["id"])["reviewer"] == "", "stated-empty means nobody too"
+
+
+def test_a_flag_nobody_passed_is_not_a_statement() -> None:
+    """argparse hands an unset flag over as None, and reading that as "explicitly nothing"
+    would make every card created from the CLI opt out of the project's decision silently."""
+    from taskops.usecases._entry import stated as said
+
+    assert said({"title": "x"}, "reviewer") is None
+    assert said({"title": "x", "reviewer": None}, "reviewer") is None
+    assert said({"title": "x", "reviewer": ""}, "reviewer") == ""
+    assert said({"title": "x", "reviewer": "human"}, "reviewer") == "human"

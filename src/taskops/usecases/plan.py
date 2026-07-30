@@ -67,7 +67,7 @@ def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
                 created_by=who, assignee=field.optional(entry, "assignee") or "",
                 # Resolved HERE and stored, so the card carries the answer: who may close it is
                 # part of what was decided when the work was planned, not a lookup at close time.
-                reviewer=for_new(store, field.optional(entry, "reviewer") or ""),
+                reviewer=for_new(store, field.stated(entry, "reviewer")),
                 created=when, updated=when)
     store.tasks.insert(task)
     # The WHOLE task in the body, not just its title. The log is the source of truth another
