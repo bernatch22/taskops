@@ -11,7 +11,7 @@ from .._clock import now
 
 __all__ = ["ago", "span", "bullet", "table", "truncate", "STATUS_MARK"]
 
-STATUS_MARK = {"backlog": "·", "ready": "○", "claimed": "◐", "in_progress": "●",
+STATUS_MARK = {"backlog": "·", "ready": "◐",
                "blocked": "✕", "review": "◆", "done": "✓", "cancelled": "—"}
 """One glyph per status, so a board scans vertically without reading words.
 

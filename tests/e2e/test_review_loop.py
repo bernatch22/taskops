@@ -101,5 +101,4 @@ def test_a_card_bounced_back_out_of_review_is_the_worker_s_again(repo: Path) -> 
     # Re-CLAIMED, because `review` released the lease: while it sat there nobody held it, which
     # is what let the verifier read it in the first place. Coming back to work is claiming.
     next_task(repo, task=task, actor=WORKER)
-    update(repo, task, actor=WORKER, status="in_progress", comment="picking the findings up")
     closes(repo, task, WORKER)

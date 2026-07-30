@@ -36,10 +36,13 @@ the commit guard matches this exact shape, and an invented name gets your own co
 
 **Commit normally.** The guard adds the `Task:` trailer. You do not write it.
 
-**Finish with `taskops_update status=review`**, and a comment stating which acceptance
-criteria you met and how. Somebody ELSE closes it — the verifier, or a dev. The guard enforces
-this: `done` on a card you yourself put in review is refused. The one exception: a card with no
-criteria and a trivial change may still close `done` directly.
+**How you finish depends on what the card promised.**
+
+- The card names a `reviewer` or carries `acceptance` criteria → `taskops_update status=review`
+  with a comment saying which criterion you met and how. Somebody ELSE closes it; the engine
+  refuses a `done` on a review you opened.
+- It carries neither → close it yourself: `status=done` with `evidence`. Review is for work
+  that promised something checkable, and there is nothing here to check against.
 
 **If the work belongs to no card, make one — do not work around the guard.** A bug you tripped
 over, a fix a reviewer asked for, a refactor the task turned out to need:

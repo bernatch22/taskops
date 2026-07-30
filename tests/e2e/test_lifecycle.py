@@ -111,7 +111,7 @@ def test_closing_without_a_commit_is_refused(repo: Path) -> None:
     planned = plan(repo, [{"title": "Claims to be done", "spec": "x"}])
     task_id = planned["created"][0]["id"]
     next_task(repo, actor="agent:berna/one", task=task_id)
-    update(repo, task_id, actor="agent:berna/one", status="in_progress")
+    update(repo, task_id, actor="agent:berna/one", comment="on it")
 
     from taskops import GuardFailed
 

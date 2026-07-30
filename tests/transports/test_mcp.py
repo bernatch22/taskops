@@ -293,7 +293,7 @@ def test_a_specialist_that_forgets_its_actor_is_not_refused_its_own_card(
     assert "isError" not in claimed
 
     moved = call("taskops_update", {"repo_path": str(tmp_path), "task": task,
-                                    "status": "in_progress", "comment": "on it"})
+                                    "status": "review", "comment": "on it"})
     assert "isError" not in moved
 
     with project(tmp_path) as store:

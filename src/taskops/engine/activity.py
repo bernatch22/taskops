@@ -22,7 +22,7 @@ from .gitstate import branch_states, unknown
 
 __all__ = ["standup", "fleet", "tasks_of"]
 
-_IN_FLIGHT = ("claimed", "in_progress", "review")
+_IN_FLIGHT = ("claimed", "review")
 
 
 def standup(store: Store, *, since: float, actor: str = "") -> Standup:

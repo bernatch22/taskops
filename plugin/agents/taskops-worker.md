@@ -28,7 +28,15 @@ with what you learned — that is a success, not a failure.
 6. **Report as you go.** `taskops_update` with a `comment` when you learn something the next
    agent would want. If you discover a prerequisite, `blocked_on` puts it in the graph instead
    of in a sentence nobody schedules against.
-7. **Hand it on for review — you do not close your own card.**
+7. **Review is for cards that promised something checkable.**
+
+   Look at the card: does it name a `reviewer`, or carry `acceptance` criteria?
+
+   - **Yes** — hand it on: `status=review`, saying which criterion you believe you met and how.
+     You do not close it; the engine refuses a `done` on a review you opened.
+   - **No** — close it yourself: `status=done` with `evidence` naming what proves it. There is
+     nothing for a verifier to check against, and spawning one to read a diff with no criteria
+     costs a model and answers nothing.
 
 ```
 taskops_update status=review comment="<criterion 1>: test_requeues_on_expiry passes

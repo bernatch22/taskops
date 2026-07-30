@@ -84,11 +84,11 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
         lease = take_lease(store, candidate, actor=who, session=session)
         if lease is None:
             continue
-        if candidate["status"] == "ready":
-            # A review card KEEPS its status: claiming it means "I am coming back to it", and
-            # stamping `claimed` over `review` would erase the fact the board and the guard
-            # both read — that this card has been worked and is in its handoff.
-            store.tasks.set_status(candidate["id"], "claimed", when=now())
+        # Claiming ALWAYS lands on `claimed`, including out of `review`. Coming back to a
+        # bounced card IS leaving the handoff: the findings are in, the card is the worker's
+        # again, and leaving it in `review` would keep the guard refusing the one agent that
+        # was sent back to fix it.
+        store.tasks.set_status(candidate["id"], "claimed", when=now())
         record(store, task=candidate["id"], actor=who, kind="claimed",
                body={"session": session, "branch": branch_for(candidate)})
         return Claim(view=view(store, candidate["id"]), lease=lease,

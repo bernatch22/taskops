@@ -106,7 +106,7 @@ def test_heartbeats_never_reach_the_dossier(store: Store) -> None:
 
 def test_the_day_counts_commits_and_shows_what_is_still_open(store: Store) -> None:
     start, _ = window(DATE)
-    _task(store, "tk-1", status="in_progress")
+    _task(store, "tk-1", status="claimed")
     _task(store, "tk-2", status="blocked")
     _log(store, "tk-1", "agent:berna/v22", "commit", start + 10.0, sha="a" * 40,
          subject="first", files=["src/x.py"])

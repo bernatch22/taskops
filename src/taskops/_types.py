@@ -29,9 +29,15 @@ __all__ = [
 ]
 
 Status = Literal[
-    "backlog", "ready", "claimed", "in_progress", "blocked", "review", "done", "cancelled"
+    "backlog", "ready", "claimed", "blocked", "review", "done", "cancelled"
 ]
 """Where a task is. See `engine.machine` for which moves between these are legal.
+
+`in_progress` was here and is gone. It meant "claimed and actually working", which is what
+`claimed` already meant to everyone who used the board: ONE transition to it in the whole
+history of this project, written by hand in a test. A state nobody enters is a column that
+splits attention and answers nothing. A log that still carries it replays as `claimed` — see
+`engine.replay` — because that is what it always was.
 
 `ready` is a stored status and not a derived view, so that "what can I pick up"
 is one indexed read rather than a graph walk per caller. `engine.machine.unblock`
@@ -73,7 +79,6 @@ STATUSES: tuple[Status, ...] = (
     "backlog",
     "ready",
     "claimed",
-    "in_progress",
     "blocked",
     "review",
     "done",
@@ -104,7 +109,7 @@ Not normalised into a `dev:` id: the session naming it does not know who will pi
 up, and it is what a person actually types."""
 
 OPEN_STATUSES: frozenset[str] = frozenset(
-    {"backlog", "ready", "claimed", "in_progress", "blocked", "review"}
+    {"backlog", "ready", "claimed", "blocked", "review"}
 )
 """A dependency in one of these still blocks whatever waits on it."""
 
@@ -112,7 +117,7 @@ CLOSED_STATUSES: frozenset[str] = frozenset({"done", "cancelled"})
 """`cancelled` closes a dependency as surely as `done` does: a task nobody will
 ever do must not hold its dependents hostage forever."""
 
-WORKING_STATUSES: frozenset[str] = frozenset({"claimed", "in_progress", "review"})
+WORKING_STATUSES: frozenset[str] = frozenset({"claimed", "review"})
 """Statuses that require a live lease. Losing the lease drops the task out."""
 
 LOCAL_ONLY_KINDS: frozenset[str] = frozenset({"activity", "chat"})

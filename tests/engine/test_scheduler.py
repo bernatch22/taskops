@@ -38,7 +38,7 @@ def test_a_task_with_an_open_dependency_is_not_ready(store: Store) -> None:
 
 def test_closing_a_dependency_unblocks_its_dependents(store: Store) -> None:
     """The auto-unblock. Nothing polls: `unblock` runs on the write path."""
-    make(store, "tk-first", status="in_progress")
+    make(store, "tk-first", status="claimed")
     make(store, "tk-second", status="backlog")
     store.deps.add("tk-first", "tk-second")
     scheduler.unblock(store, at=CLOCK)
@@ -51,7 +51,7 @@ def test_closing_a_dependency_unblocks_its_dependents(store: Store) -> None:
 
 def test_a_ready_task_that_gains_a_dependency_is_demoted(store: Store) -> None:
     """A discovery made mid-flight must not leave work that only LOOKS pickable."""
-    make(store, "tk-blocker", status="in_progress")
+    make(store, "tk-blocker", status="claimed")
     make(store, "tk-target", status="ready")
     store.deps.add("tk-blocker", "tk-target")
     scheduler.unblock(store, at=CLOCK)
@@ -78,7 +78,7 @@ def test_a_file_another_agent_is_editing_sorts_last(store: Store) -> None:
     An urgent task handed to a second agent in the same file is not urgent work, it
     is two agents about to undo each other.
     """
-    busy = make(store, "tk-busy", status="in_progress", files=["a.py"])
+    busy = make(store, "tk-busy", status="claimed", files=["a.py"])
     make(store, "tk-urgent", priority=0, files=["a.py"])
     make(store, "tk-quiet", priority=3, files=["b.py"])
     scheduler.claim(store, busy, actor="agent:ana/one", at=CLOCK)
@@ -122,7 +122,7 @@ def test_an_expired_lease_returns_the_task_to_ready(store: Store) -> None:
     which is the entire reason `now` is a parameter everywhere."""
     task = make(store, "tk-abandoned")
     scheduler.claim(store, task, actor="agent:berna/gone", at=CLOCK)
-    store.tasks.set_status(task["id"], "in_progress", when=CLOCK)
+    store.tasks.set_status(task["id"], "claimed", when=CLOCK)
 
     later = CLOCK + LEASE_TTL + 1
     assert scheduler.sweep_dead(store, at=later) == ["tk-abandoned"]
