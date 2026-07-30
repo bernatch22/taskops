@@ -17,6 +17,8 @@ from typing import Any, cast
 
 from ...render import render_brief, render_inbox
 from ...usecases import brief, check_command, checkout, inbox, track
+from ._args import cwd, session_of
+from ._door import unfinished_verdict
 
 __all__ = ["pre_tool_use", "post_tool_use", "session_start", "stop"]
 
@@ -81,9 +83,25 @@ def _summary(payload: dict[str, Any]) -> str:
 
 
 def stop(payload: dict[str, Any]) -> dict[str, Any]:
-    """The auto-standup: post the session's own account to every task it holds."""
+    """The net at the door, then the auto-standup.
+
+    A turn may not END with a half-done card. The refusal comes here — at Stop for the main
+    conversation, at SubagentStop for the workers, which is where the forgetting actually
+    happens: a worker is a sub-agent, and the main Stop never fires for it. Same judgement for
+    both; only the payload differs (`agent_type` narrows a SubagentStop to the one stopping,
+    so a verifier is never held at the door over a parallel worker's card).
+
+    An instruction is not a mechanism — that lesson is carved into this codebase four times
+    over — and "remember to close your card" was an instruction. This is the mechanism.
+    """
+    verdict = unfinished_verdict(payload)
+    if verdict:
+        return verdict
     checkout(cwd(payload), summary="Session ended.", session=session_of(payload))
     return {}
+
+
+
 
 
 def _context(event: str, text: str) -> dict[str, Any]:
@@ -98,10 +116,4 @@ def input_of(payload: dict[str, Any]) -> dict[str, Any]:
     return cast("dict[str, Any]", found) if isinstance(found, dict) else {}
 
 
-def cwd(payload: dict[str, Any]) -> str:
-    """Where the session is. Defaults to "." so a hand-run hook still works."""
-    return str(payload.get("cwd") or ".")
 
-
-def session_of(payload: dict[str, Any]) -> str:
-    return str(payload.get("session_id") or "")

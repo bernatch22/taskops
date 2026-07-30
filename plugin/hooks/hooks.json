@@ -4,7 +4,10 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "taskops-hook pre-tool-use" }
+          {
+            "type": "command",
+            "command": "taskops-hook pre-tool-use"
+          }
         ]
       }
     ],
@@ -12,21 +15,40 @@
       {
         "matcher": "Edit|Write|Bash|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "taskops-hook post-tool-use" }
+          {
+            "type": "command",
+            "command": "taskops-hook post-tool-use"
+          }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "taskops-hook session-start" }
+          {
+            "type": "command",
+            "command": "taskops-hook session-start"
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "taskops-hook stop" }
+          {
+            "type": "command",
+            "command": "taskops-hook stop"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "taskops-hook subagent-stop"
+          }
         ]
       }
     ]

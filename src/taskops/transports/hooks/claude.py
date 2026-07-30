@@ -26,6 +26,7 @@ import sys
 from typing import Any, Callable, cast
 
 from ..._errors import TaskopsError
+from . import _door as door
 from . import events
 from ._sweeplaunch import launch_sweep
 
@@ -53,6 +54,7 @@ HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "pre-tool-use": events.pre_tool_use,
     "post-tool-use": events.post_tool_use,
     "session-start": session_start,
+    "subagent-stop": door.subagent_stop,
     "stop": events.stop,
 }
 
