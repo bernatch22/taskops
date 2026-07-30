@@ -113,6 +113,15 @@ from the log.
 
 ## Things that cost a day each, so you do not repeat them
 
+- **Nothing that stays on one machine can be reviewed.** A card's branch is pushed when its
+  worker commits, and it has to be: with `reviewer: peer`, the only person allowed to close a
+  card was the only one who could not see it, and seven cards got implemented twice.
+- **A root cause written by an agent in a card is a HYPOTHESIS.** One reported that "an update
+  with only a comment closes the card"; it does not — the events showed one call carrying both
+  a comment and `status=done`. Reproduce it before you fix it.
+- **The direction nobody checks is the one where every value is the same.** `attention` sorted
+  priority backwards from the day it was written, invisible until a board finally had a card
+  that was not the default.
 - **An instruction is not a mechanism.** Anything a model must remember across a long session
   belongs in the message that needs it, or in a guard that refuses. Prompts dissolve.
 - **Two directories for one concept is three bugs.** `.taskops/agents/` mirrored into
