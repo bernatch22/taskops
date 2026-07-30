@@ -15,12 +15,11 @@ caught later by a resolve.
 the list of every board on the server, which is exactly the enumeration a per-project token is
 there to prevent. The reply says nothing, including whether the name was wrong or the secret was.
 
-**Narration is isolated too, and not by this file.** `WireMessage` (a narration delta) rides a
-process-global broadcast, so for a while a browser watching one board could see the prose of a
-report being written on another — the one leak this design had. It was closed on the contract:
-a wire message carries the `root` that emitted it, and `usecases.feed.follow` yields only the
-ones matching its own root (a message without a root is dropped). This module still knows
-nothing about frames, which is exactly why the filter is not here — it never sees one.
+**Narration is isolated too, and not by this file.** A `WireMessage` rides a process-global
+broadcast, so a browser watching one board could once see prose being written on another. It
+was closed on the contract — a wire message carries the `root` that emitted it and
+`usecases.feed.follow` filters on it — which is why the filter is not here: this module never
+sees a frame.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ from urllib.parse import urlencode
 from ..._errors import TaskopsError
 from ...usecases import locate
 from ...usecases._sessions import opens
+from ...usecases.journal import reconcile
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 from .root import bearer, root_route
@@ -68,8 +68,7 @@ def mount(root: Path, *, readonly: bool = False, rate_limit: int = 0) -> Route:
         if found is None:
             return error_reply(404, "no such project", "no_such_project")
         if name not in cache:
-            policy = Policy(token=_token(found), readonly=readonly, rate_limit=rate_limit)
-            cache[name] = (policy, build(found, policy, base=f"/{name}/"))
+            cache[name] = _open(found, name, readonly=readonly, rate_limit=rate_limit)
         policy, route = cache[name]
         opened = _exchanged(home, name, _token(found), request)
         if not rest:
@@ -84,6 +83,22 @@ def mount(root: Path, *, readonly: bool = False, rate_limit: int = 0) -> Route:
         return route(replace(opened, path=rest))
 
     return dispatch
+
+
+def _open(found: Path, name: str, *, readonly: bool,
+          rate_limit: int) -> tuple[Policy, Route]:
+    """Everything done ONCE per board per boot: repair its log, then build its router.
+
+    The repair is for every board that predates the journal — four had full databases and
+    0-byte logs. Never fatal: refusing to serve a board that cannot be journalled would turn a
+    backup problem into an outage.
+    """
+    try:
+        reconcile(found)
+    except (OSError, ValueError):
+        pass
+    policy = Policy(token=_token(found), readonly=readonly, rate_limit=rate_limit)
+    return policy, build(found, policy, base=f"/{name}/")
 
 
 def _exchanged(home: Path, name: str, token: str, request: Request) -> Request:
