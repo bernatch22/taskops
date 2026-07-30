@@ -42,8 +42,14 @@ def named(store: Store, value: str) -> str:
 
     "" is legal and means "nobody named" — that is how `tasks edit` clears a reviewer, and it
     is what every card written before this existed already says.
+
+    `none` and `nobody` normalise to it. They exist because "" is what somebody has to type on
+    a command line to mean "no reviewer", and `--reviewer ""` reads as a mistake next to
+    `--reviewer none`.
     """
     wanted = value.strip()
+    if wanted.lower() in ("none", "nobody"):
+        return ""
     if not wanted or wanted == HUMAN:
         return wanted
     if ":" in wanted:
@@ -59,9 +65,15 @@ def named(store: Store, value: str) -> str:
     return wanted
 
 
-def for_new(store: Store, value: str) -> str:
-    """The reviewer a card is created with: what was asked for, else the project's decision."""
-    return named(store, value) if value.strip() else project_default(store)
+def for_new(store: Store, value: str | None) -> str:
+    """The reviewer a card is created with: what was ASKED FOR, else the project's decision.
+
+    `None` means the field was absent and the default applies; anything else — including "" —
+    was stated and is honoured. That distinction is the whole point: with a project-wide
+    `reviewer: human`, a card that could not say "nobody" would have no way to be a text fix,
+    and an empty string was indistinguishable from an omission.
+    """
+    return project_default(store) if value is None else named(store, value)
 
 
 def project_default(store: Store) -> str:
