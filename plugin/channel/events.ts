@@ -283,8 +283,13 @@ function reviewInstruction(event: BoardEvent, card: ReviewCard): string {
         + ` yourself. ${facts}. Open ${card.board}/#${event.task}. Stop here and say so.`
     }
     case 'default':
-      return ` No reviewer named — the stock rule applies: anyone but the agent that asked for`
-        + ` the review may close it, with evidence. Do not close it as that agent.`
+      // A card that reached review needs SOMEBODY, and the stock reviewer is the one taskops
+      // ships. Stating the rule without naming who fulfils it is how a card sat in review for
+      // an afternoon while everyone agreed, correctly, that they were not allowed to close it.
+      return ` No reviewer named — spawn a \`taskops-verifier\` sub-agent on this card`
+        + ` (actor=agent:<dev>/verifier): read its acceptance criteria and the diff on`
+        + ` ${card.branch || 'its branch'}, run the tests, then close it with evidence or send`
+        + ` it back with findings. Do not close it as the agent that asked for the review.`
   }
 }
 

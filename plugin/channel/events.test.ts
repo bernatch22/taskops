@@ -262,10 +262,11 @@ group('a card in review routes', () => {
     expect(content).not.toContain('Spawn')
   })
 
-  test('NO reviewer states the default instead of leaving it unsaid', () => {
+  test('NO reviewer names the stock verifier, not just the rule', () => {
     const { content } = describe(moved, 'status', card({ reviewer: '' }))
     expect(content).toContain('No reviewer named')
-    expect(content).toContain('anyone but the agent that asked for the review')
+    expect(content).toContain('taskops-verifier')
+    expect(content).toContain('Do not close it as the agent that asked for the review')
     expect(content).not.toContain('Spawn')
   })
 
@@ -447,4 +448,17 @@ test('a manual handoff is not an order to spawn', () => {
 
   const dispatched = {...manual, body: {...manual.body, dispatched: true}} as BoardEvent
   expect(classify(dispatched)).toBe('assignment')
+})
+
+
+test('a review with no reviewer still names who does it', () => {
+  // Stating the rule without naming who fulfils it is how a card sat in review for an
+  // afternoon while everyone agreed, correctly, that they were not allowed to close it.
+  const event = {actor: 'agent:me/api', kind: 'status', task: 'tk-7',
+                 body: {to: 'review', from: 'claimed'}, ts: 1, id: 'x'} as BoardEvent
+  const card = {reviewer: '', branch: 'tk/tk-7/x', commit: 'abc', criteria: 1,
+                board: 'http://b'}
+  const line = describe(event, 'status', card).content
+  expect(line).toContain('taskops-verifier')
+  expect(line).toContain('send it back with findings')
 })
