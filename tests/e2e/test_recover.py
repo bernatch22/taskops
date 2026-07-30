@@ -13,9 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from taskops._clock import HEARTBEAT_GRACE
+from taskops._clock import HEARTBEAT_GRACE, now
+from taskops.contracts import Lease
 from taskops.storage import Store
-from taskops.usecases import ask, dispatch, init, next_task, plan, recover
+from taskops.usecases import ask, dispatch, init, next_task, plan, recover, update
 
 
 def git(root: Path, *args: str) -> None:
@@ -255,3 +256,26 @@ def test_force_frees_it_regardless(project: Path) -> None:
 
     with Store(project) as store:
         assert store.tasks.need(card)["assignee"] == ""
+
+
+def test_recover_never_reopens_a_card_that_was_already_closed(tmp_path: Path) -> None:
+    """A stale lease on a closed card walked it back to `ready`, with a fresh timestamp that
+    beats the `done` it came from — so the next push would have shipped that regression to
+    everybody. `sweep_dead` has always checked the status here and this path never did.
+
+    Stale leases on closed cards are not exotic: a remote write that closes a card leaves the
+    lease behind on any clone whose mirror missed it, which is exactly how this was found.
+    """
+    init(tmp_path, install_git_hooks=False)
+    card = plan(tmp_path, [{"title": "t", "spec": "s"}], actor="dev:berna")["created"][0]["id"]
+    next_task(tmp_path, task=card, actor="agent:berna/one")
+    update(tmp_path, card, status="done", no_code=True, comment="shipped", actor="agent:berna/one")
+    with Store(tmp_path) as store:      # the lease a mirror failed to drop
+        store.leases.acquire(Lease(task=card, actor="agent:berna/one", session="s", branch="b",
+                                   acquired=now(), expires=now() + 900))
+
+    recover(tmp_path, actor="dev:berna", force=True)
+
+    with Store(tmp_path) as store:
+        assert store.tasks.need(card)["status"] == "done"
+        assert store.leases.live(now()) == [], "the stale lease still goes"

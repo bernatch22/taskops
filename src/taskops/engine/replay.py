@@ -15,16 +15,27 @@ contradicts newer local state loses.
 
 from __future__ import annotations
 
-from .._types import EDITABLE_FIELDS, STATUSES, Status
+from .._types import EDITABLE_FIELDS, STATUSES
 from ..contracts import Event, Task
 from ..storage import Store
 
 __all__ = ["apply", "REPLAYED"]
 
-REPLAYED = ("created", "blocked", "status", "done", "edited")
+REPLAYED = ("created", "blocked", "status", "done", "edited", "claimed", "released")
 """The kinds that describe STATE. Everything else — comments, commits, activity — is history: worth
 keeping and rendering, but it does not tell you what a task IS. Listing them positively rather than
-skipping a blocklist means a new kind is inert here until somebody decides it should not be."""
+skipping a blocklist means a new kind is inert here until somebody decides it should not be.
+
+`claimed` and `released` were missing: a card one developer held read `ready` on every other
+clone, so every other board offered work already in hand. The claim itself was never at risk —
+writes route to the server so two machines cannot both win one — but a sweep reading a stale
+replica turns that into "dispatch this". The LEASE is still never replayed: it belongs to a
+process alive on one machine.
+"""
+
+_IMPLIED: dict[str, str] = {"claimed": "claimed", "released": "ready"}
+"""What a kind says about status when the body does not. These two predate `status` events and
+their bodies carry a session and a branch instead of a target, so the kind IS the statement."""
 
 
 def apply(store: Store, events: list[Event]) -> int:
@@ -35,7 +46,7 @@ def apply(store: Store, events: list[Event]) -> int:
             changed += int(_create(store, event))
         elif event["kind"] == "blocked":
             changed += int(_block(store, event))
-        elif event["kind"] in ("status", "done"):
+        elif event["kind"] in ("status", "done", "claimed", "released"):
             changed += int(_status(store, event))
         elif event["kind"] == "edited":
             changed += int(_edited(store, event))
@@ -114,12 +125,13 @@ def _status(store: Store, event: Event) -> bool:
     importing one would mean claiming a task on behalf of an agent that is not running here.
     """
     task = store.tasks.get(event["task"])
-    target = _RETIRED.get(event["body"].get("to"), event["body"].get("to"))
+    stated = event["body"].get("to", _IMPLIED.get(event["kind"]))
+    target: object = _RETIRED.get(stated, stated)
     if task is None or not isinstance(target, str) or target not in _STATUSES:
         return False
     if event["ts"] <= task["updated"]:
         return False
-    store.tasks.set_status(event["task"], _as_status(target), when=event["ts"])
+    store.tasks.set_status(event["task"], target, when=event["ts"])  # type: ignore[arg-type]
     return True
 
 
@@ -127,10 +139,6 @@ def _status(store: Store, event: Event) -> bool:
 # refuse history, and a teammate's log can still carry `in_progress`.
 _RETIRED = {"in_progress": "claimed"}
 _STATUSES = frozenset(STATUSES)     # derived: a second hand-written list would drift
-
-
-def _as_status(value: str) -> Status:
-    return value          # type: ignore[return-value]
 
 
 def _int(value: object, fallback: int) -> int:

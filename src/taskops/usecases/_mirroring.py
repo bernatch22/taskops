@@ -23,13 +23,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .._types import LEASE_ENDS
 from ..contracts import Claim, Task
 from ._project import project
 
 __all__ = ["mirror_claim", "mirror_update"]
-
-_LEASE_ENDS = ("ready", "done", "cancelled")
-
 
 def mirror_claim(start: Path | str, claim: Claim) -> None:
     """Record the lease the server granted, and put the card in `claimed` here too."""
@@ -48,10 +46,15 @@ def mirror_update(start: Path | str, task: Task) -> None:
     The status is copied rather than replayed because this caller has the authoritative row
     in its hands; the lease has to be dropped here because releasing one is local state and
     `replay` has no business writing it, so nothing else would ever clear it.
+
+    `LEASE_ENDS` is IMPORTED and not restated. It was restated, and the copy here missed
+    `review` when the transition gained it: a developer who handed a card over kept a live lease
+    on it, so their own board read the card as being worked on and said nothing was waiting —
+    for the review, and again when it came back rejected. Two lists of one fact is three bugs.
     """
     with project(start) as store:
         if store.tasks.get(task["id"]) is None:
             return
         store.tasks.set_status(task["id"], task["status"], when=task["updated"])
-        if task["status"] in _LEASE_ENDS:
+        if task["status"] in LEASE_ENDS:
             store.leases.release(task["id"])

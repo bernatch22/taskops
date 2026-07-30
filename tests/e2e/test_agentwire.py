@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Iterator
@@ -24,7 +25,18 @@ import pytest
 from taskops._errors import Unreachable
 from taskops.storage import Store
 from taskops.transports.http import Policy, bound_port, build_server
-from taskops.usecases import add_remote, ask, init, next_task, plan, update
+from taskops.usecases import (
+    add_remote,
+    ask,
+    attention,
+    board,
+    init,
+    next_task,
+    plan,
+    pull,
+    sync,
+    update,
+)
 
 TOKEN = "s3cr3t-token"
 
@@ -265,3 +277,85 @@ def test_a_reason_for_dropping_the_criteria_crosses_too(tmp_path: Path, hub: Ser
            no_evidence="the feature was cut; the criterion describes something that is gone")
 
     assert ask(hub.root, card)["task"]["status"] == "done"
+
+
+def test_a_teammates_board_stops_offering_a_card_somebody_is_holding(tmp_path: Path,
+                                                                     hub: Serving) -> None:
+    """Found the first time three clones shared one board. A claim records its own kind, and
+    replay did not know that kind meant a status — so a card one developer was working on read
+    `ready` on everybody else's machine. The claim was never at risk (writes route here, so two
+    machines cannot both win one), but every other board OFFERED work already in hand, and the
+    sweep turned that into "dispatch this". Bad advice from a stale replica is still bad advice.
+    """
+    card = the_card(hub.root)
+    mine, theirs = machine(tmp_path / "mine", hub.url), machine(tmp_path / "theirs", hub.url)
+    next_task(mine, actor="agent:berna/one", task=card)
+
+    pull(theirs)
+
+    assert ask(theirs, card)["task"]["status"] == "claimed"
+    assert card not in {item["task"]["id"] for item in attention(theirs)["waiting"]}
+
+
+def test_a_lease_that_expired_here_frees_the_card_everywhere(tmp_path: Path,
+                                                             hub: Serving) -> None:
+    """The other half, and it only became necessary because of the test above: now that a
+    `claimed` replays, an expiry that stayed local would strand every teammate showing a card as
+    held by an agent that died fifteen minutes ago, with nothing to ever tell them otherwise."""
+    from taskops._clock import LEASE_TTL
+    from taskops.engine import sweep_dead
+
+    card = the_card(hub.root)
+    mine, theirs = machine(tmp_path / "mine", hub.url), machine(tmp_path / "theirs", hub.url)
+    next_task(mine, actor="agent:berna/one", task=card)
+    pull(theirs)
+
+    with Store(hub.root) as store:            # the worker goes silent past its TTL
+        sweep_dead(store, at=time.time() + LEASE_TTL + 1)
+    pull(theirs)
+
+    assert ask(theirs, card)["task"]["status"] == "ready"
+
+
+def test_handing_a_card_over_remotely_lets_go_of_the_lease_here_too(tmp_path: Path,
+                                                                    hub: Serving) -> None:
+    """`LEASE_ENDS` was written down twice and the copies drifted: the transition gained
+    `review`, the mirror that a remote write updates did not. So a developer who handed a card
+    over kept a live lease on it forever, their own board read that lease as "somebody is
+    working on this", and the sweep went silent about a card waiting for a reviewer — and about
+    the same card when it came back rejected. Found by running three clones, twice."""
+    from taskops._clock import now
+
+    card = the_card(hub.root)
+    mine = machine(tmp_path / "mine", hub.url)
+    next_task(mine, actor="agent:berna/one", task=card)
+
+    update(mine, card, actor="agent:berna/one", status="review", comment="over to you")
+
+    with Store(mine) as store:
+        assert store.leases.live(now()) == [], "the handover let go of it here as well"
+    assert {item["move"] for item in attention(mine)["waiting"]} == {"verify"}
+
+    update(mine, card, actor="dev:ana", status="ready",
+           comment="criterion 2 fails on an empty file")
+    bounced = {item["task"]["id"] for item in attention(mine)["waiting"]}
+    assert card in bounced, "a rejected card is waiting on somebody, not silently held"
+
+
+def test_a_pulled_board_survives_losing_its_cache(tmp_path: Path, hub: Serving) -> None:
+    """`db.sqlite` is documented as disposable — delete it, `taskops sync` rebuilds it from the
+    log. That was true for git-synced projects and false for remote ones: `relay` stores a
+    server's events marked exported so they are never echoed back, and the cost was that they
+    reached the database and nothing else. Deleting the cache, the documented repair, emptied
+    the board instead. It is also the stated architecture broken — nothing may hold state that
+    is not derived from the log — so the log is what got fixed."""
+    plan(hub.root, [{"title": "planned on the server", "spec": "s"}], actor="dev:berna")
+    mine = machine(tmp_path / "mine", hub.url)
+    pull(mine)
+
+    (mine / ".taskops" / "db.sqlite").unlink()
+    sync(mine)
+
+    titles = {card["task"]["title"] for column in board(mine)["columns"]
+              for card in column["cards"]}
+    assert "planned on the server" in titles, "the log had to carry what the server sent"

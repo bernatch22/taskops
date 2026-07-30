@@ -21,6 +21,7 @@ __all__ = [
     "OPEN_STATUSES",
     "CLOSED_STATUSES",
     "WORKING_STATUSES",
+    "LEASE_ENDS",
     "STATUSES",
     "EVENT_KINDS",
     "LOCAL_ONLY_KINDS",
@@ -119,6 +120,13 @@ ever do must not hold its dependents hostage forever."""
 
 WORKING_STATUSES: frozenset[str] = frozenset({"claimed", "review"})
 """Statuses that require a live lease. Losing the lease drops the task out."""
+
+LEASE_ENDS: frozenset[str] = frozenset({"ready", "done", "cancelled", "review"})
+"""Arriving at one of these RELEASES the lease. Stated once because it was stated twice and the
+two copies drifted: `review` was added to the transition and not to the mirror that a remote
+write updates, so a developer who handed a card over kept a live lease on it forever. Its own
+board then read that lease as "somebody is working on this" and went silent about a card that
+was waiting for a reviewer — and about the same card when it came back rejected."""
 
 LOCAL_ONLY_KINDS: frozenset[str] = frozenset({"activity", "chat"})
 """Kinds that never reach the git-committed log. `activity` is a per-keystroke

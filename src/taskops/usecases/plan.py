@@ -27,6 +27,7 @@ from ..contracts import Dep, PlanResult, Task
 from ..engine import record, unblock
 from ..storage import Store
 from . import _entry as field
+from ._after import resolve_after
 from ._project import caller, heartbeat, project
 from .acceptance import attach, criteria_in
 from .reviewer import for_new
@@ -99,7 +100,8 @@ def _wire(store: Store, entries: list[dict[str, Any]],
     # would be a dependency wired to the WRONG task.
     for entry, task in zip(entries, created, strict=True):
         for reference in field.references(entry):
-            out.append(_edge(store, _resolve(reference, created), task["id"], task["created_by"]))
+            out.append(_edge(store, resolve_after(store, reference, created),
+                             task["id"], task["created_by"]))
         for waiting in field.blocked_ids(entry):
             # The INVERSE direction: this new card blocks an existing one. Same edge, other way
             # round, which is what makes the stuck-agent flow a single call.
@@ -117,21 +119,3 @@ def _edge(store: Store, blocker: str, waiting: str, who: str) -> Dep:
     store.deps.add(blocker, waiting)
     record(store, task=waiting, actor=who, kind="blocked", body={"on": blocker})
     return Dep(task=blocker, blocks=waiting)
-
-
-def _resolve(reference: object, created: list[Task]) -> str:
-    """An `after` entry -> a task id.
-
-    An out-of-range index is an ERROR, never a skipped edge: a plan whose dependencies
-    silently did not apply looks finished and schedules wrongly, which is the most
-    expensive way for this to fail. `bool` is rejected before `int` because `True == 1`
-    would otherwise resolve to the first task in the batch.
-    """
-    if isinstance(reference, bool):
-        raise BadRequest(f"`after` got {reference!r} — expected an index or a task id")
-    if isinstance(reference, int):
-        if not 0 <= reference < len(created):
-            raise BadRequest(f"`after` index {reference} is outside this batch of "
-                             f"{len(created)} — indexes are 0-based")
-        return created[reference]["id"]
-    return str(reference)

@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .._clock import now
+from .._types import WORKING_STATUSES
 from ..contracts import Lease
 from ..engine import record
 from ..engine.gitstate import porcelain
@@ -49,8 +50,14 @@ def release_lease(store: Store, lease: Lease, who: str, quiet: float) -> Stuck:
     leftovers = porcelain(tree)
     commits = len(store.events.of_task(lease["task"], kinds=("commit",)))
     store.leases.release(lease["task"])
-    store.tasks.set_status(lease["task"], "ready", when=now())
-    store.tasks.set_assignee(lease["task"], "", when=now())
+    if store.tasks.need(lease["task"])["status"] in WORKING_STATUSES:
+        # The lease always goes; the STATUS only moves for a card that was still being worked
+        # on. `sweep_dead` has always had this check and this path never did, so a stale lease
+        # on a card somebody had already closed walked it back to `ready` — with a fresh
+        # timestamp, which beats the server's `done` and would have pushed the regression to
+        # everybody. Harmless while `released` stayed local; not any more, now that it replays.
+        store.tasks.set_status(lease["task"], "ready", when=now())
+        store.tasks.set_assignee(lease["task"], "", when=now())
     record(store, task=lease["task"], actor=who, kind="released",
            body={"text": _note(lease, quiet, commits, leftovers, tree),
                  "recovered_from": lease["actor"], "leftovers": leftovers})

@@ -31,6 +31,7 @@ from typing import Any, cast
 from .._types import LOCAL_ONLY_KINDS
 from ..contracts import Event
 from ..engine import relay, replay, unblock
+from ..storage.sync import record_arrivals
 from ._project import locate, project
 from ._reportsync import ReportSwap, exchange
 from ._wireclient import PAGE, Wire
@@ -115,5 +116,6 @@ def _receive(start: Path | str, wire: Wire, cursor: int) -> Exchange:
         # Replay is not optional. Without it the events landed and the board stays empty.
         done = Exchange(events_in=len(fresh), applied=replay.apply(store, fresh),
                         unblocked=unblock(store))
+        record_arrivals(store.root, fresh)
     save_cursor(start, cursor)
     return done

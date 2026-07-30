@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from .._clock import now
 from .._errors import BadRequest
-from .._types import Status
+from .._types import LEASE_ENDS, Status
 from ..contracts import Task
 from ..engine import check_move, hand_back, record
 from ..storage import Store
@@ -38,7 +38,7 @@ def move(store: Store, task: Task, who: str, asked: str, comment: str,
     check_move(facts, target)
     if asked == RELEASE:
         hand_back(store, task["id"])          # the lease AND the assignment — see the engine
-    elif target in ("ready", "done", "cancelled", "review"):
+    elif target in LEASE_ENDS:
         # `review` releases the LEASE and keeps the assignee. The work is finished and the card
         # is waiting for somebody ELSE, so a held card would say "in hand" about nobody — and
         # a verifier dispatched onto it correctly refuses to touch what another actor holds,

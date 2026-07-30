@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from taskops._errors import BadRequest
 from taskops.storage import Store
 from taskops.usecases import board, dispatch, init, next_task, plan
 from taskops.usecases.dispatch import DEFAULT_WORKERS, MAX_WORKERS
@@ -229,3 +230,25 @@ def test_without_a_registry_nothing_about_dispatch_changes(project: Path) -> Non
     worker = dispatch(project, count=1, actor="dev:berna").launched[0]
     assert worker.agent_type == ""
     assert "agent_type" not in worker.brief
+
+
+def test_an_after_naming_nothing_is_refused_rather_than_silently_flat(tmp_path: Path) -> None:
+    """`_resolve` promises a dependency never silently fails to apply. It kept that for indexes
+    and broke it for strings: anything not an int fell through to "it is an id", `deps` has no
+    foreign key, and `open_blockers_of` JOINs on `tasks` — so an edge to a task that does not
+    exist blocks nothing while the card reads as wired.
+
+    Found by writing `after: "0,1"`, which is the shape `tasks add --after` takes on the command
+    line: the board showed a card depending on something and offered it to three workers at once.
+    """
+    init(tmp_path, install_git_hooks=False)
+
+    with pytest.raises(BadRequest, match="not a task in this batch"):
+        plan(tmp_path, [{"title": "one", "spec": "s"}, {"title": "two", "spec": "s"},
+                        {"title": "last", "spec": "s", "after": "0,1"}], actor="dev:berna")
+
+    created = plan(tmp_path, [{"title": "one", "spec": "s"}, {"title": "two", "spec": "s"},
+                              {"title": "last", "spec": "s", "after": [0, 1]}],
+                   actor="dev:berna")["created"]
+    assert board(tmp_path)["ready"] == 2, "the third waits on both, as written"
+    assert created[2]["status"] == "backlog"

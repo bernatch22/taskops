@@ -29,7 +29,8 @@ from ._rows import as_dict
 from .locate import LOG_FILE
 from .store import Store
 
-__all__ = ["export_events", "import_events", "all_events", "read_log", "event_from"]
+__all__ = ["export_events", "import_events", "all_events", "read_log", "event_from",
+           "record_arrivals"]
 
 
 def export_events(store: Store, *, limit: int = 1000) -> int:
@@ -47,6 +48,26 @@ def export_events(store: Store, *, limit: int = 1000) -> int:
         # Local-only kinds are marked too, or every export re-scans every activity
         # event this machine has ever written.
         store.events.mark_exported([e["id"] for e in fresh])
+    return len(shared)
+
+
+def record_arrivals(root: Path, events: list[Event]) -> int:
+    """Write events that arrived from a SERVER into this checkout's log. Returns how many.
+
+    `relay` stores them marked exported, so `export_events` will never write them — correct,
+    since echoing a server's events back at it is how a log doubles. The cost was that they
+    reached the database and nothing else, which made `db.sqlite` the only copy of a remote
+    project's board: deleting it, the documented way to repair a cache, emptied the board
+    instead, and `taskops sync` rebuilt nothing because the log genuinely did not have them.
+
+    That is also the stated architecture being broken — nothing may hold state that is not
+    derived from the log — so the fix is to make the log true rather than to document the
+    exception. It has the side effect the project wants anyway: a teammate who syncs by git
+    now receives what the server knew.
+    """
+    shared = [event for event in events if event["kind"] not in LOCAL_ONLY_KINDS]
+    if shared:
+        _append(root / LOG_FILE, shared)
     return len(shared)
 
 
