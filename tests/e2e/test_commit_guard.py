@@ -297,3 +297,59 @@ def test_the_recorded_commit_names_the_agent_not_the_machine(repo: Path) -> None
     with Store(repo) as store:
         bound = store.events.of_task(card, kinds=("commit",))
     assert [event["actor"] for event in bound] == ["agent:berna/w2"]
+
+
+def test_a_task_branch_publishes_itself(tmp_path: Path) -> None:
+    """The deadlock that `reviewer: peer` made fatal, watched live: eight cards implemented on
+    eight branches, handed over, and the OTHER developer rejected seven with "no hay codigo".
+    Every rejection was false — the commits existed on branches that had never left the first
+    machine, and the reviewer was looking at its own checkout of `main`.
+
+    The only person allowed to close was the only person who could not see the work.
+    """
+    from taskops.usecases.ingest import ingest_commit
+
+    origin = tmp_path / "origin"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    repo = tmp_path / "clone"
+    git_init(repo)
+    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=repo, check=True)
+    init(repo)
+    card = plan(repo, [{"title": "work", "spec": "x"}], actor="dev:berna")["created"][0]["id"]
+    claimed = next_task(repo, task=card, actor="agent:berna/w1")["claim"]
+    git(repo, "switch", "-c", claimed["branch"])
+    (repo / "work.py").write_text("x = 1\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", f"feat: x\n\nTask: {card}", "--no-verify")
+
+    ingest_commit(repo)
+
+    landed = subprocess.run(["git", "ls-remote", "--heads", str(origin)],
+                            capture_output=True, text=True, check=True).stdout
+    assert claimed["branch"] in landed, "a peer on another machine has to be able to fetch it"
+
+
+def test_main_is_never_published_on_your_behalf(tmp_path: Path) -> None:
+    """Only `tk/` branches, which taskops created for exactly this. Pushing anything else would
+    be a coordination tool taking a decision about somebody's own work."""
+    from taskops.usecases.publish import publish_branch
+
+    origin = tmp_path / "origin"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    repo = tmp_path / "clone"
+    git_init(repo)
+    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=repo, check=True)
+
+    assert publish_branch(repo, "main") is False
+    assert subprocess.run(["git", "ls-remote", "--heads", str(origin)],
+                          capture_output=True, text=True, check=True).stdout.strip() == ""
+
+
+def git_init(repo: Path) -> None:
+    repo.mkdir(parents=True, exist_ok=True)
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "b@e.com")
+    git(repo, "config", "user.name", "B")
+    (repo / "README.md").write_text("x\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "initial")

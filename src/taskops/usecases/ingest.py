@@ -17,11 +17,12 @@ from pathlib import Path
 
 from ..contracts import Event
 from ..engine import gitio, record
-from ..storage import Store
 from ..storage.sync import event_from
+from ._binding import already_bound
 from ._committer import committer
 from ._project import caller, project
 from ._routing import call_remote
+from .publish import publish_branch
 
 __all__ = ["ingest_commit", "ingest_branch", "bind"]
 
@@ -39,7 +40,7 @@ def bind(start: Path | str, body: dict[str, object]) -> Event | None:
     with project(start) as store:
         if kind not in ("commit", "branch") or store.tasks.get(task) is None:
             return None
-        if kind == "commit" and _already(store, task, str(body.get("sha", ""))):
+        if kind == "commit" and already_bound(store, task, str(body.get("sha", ""))):
             return None
         who = caller(store, str(body.get("actor", "")))["id"]
         if kind == "branch":
@@ -52,19 +53,6 @@ def bind(start: Path | str, body: dict[str, object]) -> Event | None:
                             "subject": str(body.get("subject", "")),
                             "files": [str(f) for f in body.get("files", [])
                                       if isinstance(f, str)]})
-
-
-def _already(store: Store, task: str, sha: str) -> bool:
-    """Has this exact commit already been bound to this card?
-
-    ONE sha, ONE binding. Two doors lead here — the installed `post-commit` hook and an
-    explicit call — and `--no-verify` closes only the first of them, so the two fire together
-    more often than not. The events are content-hashed but carry a timestamp, so two
-    recordings a second apart are two different ids and the board counted the same commit
-    twice: `done` then has "evidence" it never earned, and a diff-size roll-up doubles.
-    """
-    return any(event["body"].get("sha") == sha
-               for event in store.events.of_task(task, kinds=("commit",)))
 
 
 def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> Event | None:
@@ -88,10 +76,13 @@ def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> E
     # THE fact the done-guard reads, so it must land where the guard runs. With a remote that
     # is the server; unreachable, it lands locally and `push` carries it later — recorded in
     # exactly one of the two places, never both, or the same commit binds twice (tk-a6daef).
+    # PUBLISHED as soon as it is bound. A peer reviewer on another machine cannot check work
+    # that never left this one — seven cards were rejected as "no code" for exactly that.
+    publish_branch(root, gitio.current_branch(root))
     if (answer := call_remote(root, "bind", body)) is not None:
         return event_from(answer)
     with project(start) as store:
-        if store.tasks.get(task) is None or _already(store, task, resolved):
+        if store.tasks.get(task) is None or already_bound(store, task, resolved):
             return None
         return record(store, task=task, actor=who, kind="commit",
                       body={"sha": resolved, "subject": body["subject"],
