@@ -61,10 +61,11 @@ def test_the_mcp_serves_day_as_text(project: Path) -> None:
     assert "# " in str(result["content"][0]["text"])
 
 
-def test_the_report_schema_offers_exactly_four_kinds() -> None:
+def test_the_report_schema_offers_exactly_five_kinds() -> None:
     """The enum IS the documentation an agent reads before it guesses a value."""
     schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_report")
-    assert schema["properties"]["kind"]["enum"] == ["board", "standup", "day", "range"]
+    assert schema["properties"]["kind"]["enum"] == ["attention", "board", "standup",
+                                                    "day", "range"]
     assert "date" in schema["properties"]
     for field in ("last", "from_date", "to"):
         assert field in schema["properties"], f"kind=range cannot be aimed without {field}"

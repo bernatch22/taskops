@@ -15,6 +15,7 @@ from __future__ import annotations
 from . import replay
 from ._acceptance import Evidence, evidenced
 from .activity import fleet, standup
+from .attention import waiting_on
 from .bus import BUS, EventBus
 from .day import date_of, day_report, first_date, label_of, period_report, shift
 from .gitstate import branch_state, branch_states
@@ -31,5 +32,5 @@ from .worker import Launched
 
 __all__ = ["Facts", "Evidence", "evidenced", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "hand_back", "ready_tasks", "claim",
-           "branch_for", "sweep_dead", "open_children", "board", "standup", "fleet", "activity", "day_report", "period_report", "first_date", "label_of", "shift", "date_of",
+           "branch_for", "sweep_dead", "open_children", "board", "standup", "waiting_on", "fleet", "activity", "day_report", "period_report", "first_date", "label_of", "shift", "date_of",
            "counts", "replay", "narrate", "OnPass", "OnText", "stamp", "stamped_seq", "NO_STAMP", "missing_events", "branch_state", "branch_states", "Launched", "WIRE", "Broadcast", "is_wire"]

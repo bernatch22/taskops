@@ -18,6 +18,7 @@ from typing import Sequence
 from ..._errors import TaskopsError
 from ..._version import __version__
 from .commands import (
+    attention,
     context,
     init,
     login,
@@ -37,9 +38,9 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, setup, ui, serve, tasks, context, status, report, schedule, recover,
-             sync, login, open_, remote, pushpull)
-"""Every command there is. Sixteen, and `--help` lists all sixteen.
+_COMMANDS = (init, setup, ui, serve, tasks, attention, context, status, report, schedule,
+             recover, sync, login, open_, remote, pushpull)
+"""Every command there is. Seventeen, and `--help` lists all seventeen.
 
 `login` sits with them because it is the first thing a new teammate types and the last thing
 they should have to look for. It is the only command here that touches nothing under

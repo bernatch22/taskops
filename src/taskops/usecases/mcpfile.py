@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -35,16 +36,19 @@ def servers_for(root: Path) -> dict[str, Any]:
     channel started `taskops ui --repo .`, served a completely different repository, found the
     port already taken and attached to that instead. Two symptoms, one relative path.
 
-    The channel is included even though it needs `--dangerously-load-development-channels` to
-    register: naming it here is what makes that flag work at all, and a project that never
-    turns it on pays nothing for the entry.
+    The CHANNEL is opt-in behind `$TASKOPS_CHANNEL=1`, and used to be written unconditionally.
+    It pushed board events into an open session so the session could react to them — and every
+    one of those reactions turned out to be idempotent and derivable from state, which is what
+    `report kind=attention` now reads in one call. What was left was echoes: a session was
+    notified about the dispatch it had just made and the review its own sub-agent had just
+    returned. See `docs/orchestrator.md`; the code stays, the default does not.
     """
     here = root.expanduser().resolve()
     channel = Path(__file__).resolve().parents[3] / "plugin" / "channel" / "server.ts"
     servers: dict[str, Any] = {
         "taskops": {"command": sys.executable, "args": ["-m", "taskops.transports.mcp"]},
     }
-    if channel.is_file():
+    if channel.is_file() and os.environ.get("TASKOPS_CHANNEL") == "1":
         servers["taskops-channel"] = {
             "command": "bun", "args": [str(channel)],
             "env": {"TASKOPS_REPO": str(here), "TASKOPS_BIN": _binary(),

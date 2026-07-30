@@ -1,9 +1,16 @@
-"""`taskops setup` — wire this machine: the project's MCP servers, and the channel alias.
+"""`taskops setup` — wire this machine: the project's MCP servers, and nothing else by default.
 
-The alias half writes to a file the user owns, so the interaction is built around showing
-before doing: `--print` renders the exact block and the exact path and changes nothing, and the
-prompt names what it found rather than guessing. `--remove` exists because an installer with no
-uninstaller is a guest that moved in.
+The shell half is now behind `--channel`, and the inversion is the point. That alias exists for
+exactly one reason — to add `--dangerously-load-development-channels` — and the channel left the
+default path when the sweep replaced it (`docs/orchestrator.md`). A setup that still edited
+`~/.zshrc` to enable something the project no longer uses would be the most invasive thing in
+the package doing it for nothing.
+
+`--remove` still needs no flag: an uninstaller you have to opt into is not one, and somebody
+running it wants the block gone whether or not they remember how it got there.
+
+The half that stays writes to a file the user owns, so the interaction is built around showing
+before doing: `--print` renders the exact block and the exact path and changes nothing.
 """
 
 from __future__ import annotations
@@ -27,8 +34,8 @@ DEFAULT_ALIAS = "claude-tk"
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("setup", help="wire the MCP servers, and the shell alias that "
-                                          "opens a session with the board channel")
+    parser = sub.add_parser("setup", help="wire this project's MCP servers (and, with "
+                                          "--channel, the opt-in board-channel alias)")
     add_target(parser)
     parser.add_argument("--claude", default="",
                         help=f"pin the binary in the written line (default: defer to "
@@ -38,8 +45,9 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     parser.add_argument("--print", dest="print_only", action="store_true",
                         help="show the block and the file it would go in, and write nothing")
     parser.add_argument("--remove", action="store_true", help="take the block back out")
-    parser.add_argument("--no-shell", action="store_true",
-                        help="only wire .mcp.json — do not touch any shell file")
+    parser.add_argument("--channel", action="store_true",
+                        help="also install the shell alias for the EXPERIMENTAL board channel "
+                             "— off by default; `taskops attention` is what replaced it")
     parser.set_defaults(run=run)
 
 
@@ -50,8 +58,10 @@ def run(args: argparse.Namespace) -> str:
                 else f"nothing of ours in {where} — already clean")
 
     lines = _wire(repo_of(args))
-    if args.no_shell:
-        return "\n".join([*lines, "shell untouched (--no-shell)"])
+    if not args.channel:
+        return "\n".join([*lines, "shell untouched — pass --channel for the experimental "
+                                  "board channel, or open your sessions with "
+                                  "`taskops attention`"])
 
     stanza = block(str(args.alias), str(args.claude), shell="")
     if args.print_only:

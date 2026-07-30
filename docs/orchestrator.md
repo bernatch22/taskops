@@ -164,7 +164,27 @@ That is the honest verdict on the channel: it optimised the latency of a reactio
 need to be fast, in the one deployment (laptop, you present) where you were the trigger anyway,
 and it was structurally absent in the deployment (prod) that motivated it.
 
-## 6. Recommendation
+## 6. What was built
+
+All four recommendations below, in one change. The sweep is `taskops attention` (`taskops_report
+kind=attention` for agents): one read, five groups, `verify` first because finishing beats
+starting. It writes nothing — that is the line between it and `recover`, and a test pins it.
+
+Two things the implementation found that this note had wrong, both by writing the test first:
+
+- **A cancelled dependency is not a dead end.** `unblock` counts `cancelled` as closed and frees
+  the card the next time anything runs. The real hole was one status up: `unblock` only scans
+  `backlog` and `ready`, so a card parked with `blocked_on` sits there until a person moves it —
+  the failure this project already named "never leave a story dead".
+- **A parked card keeps its lease.** Only `ready`, `review`, `done` and `cancelled` release one,
+  so a worker that had just declared itself blocked went on looking busy for the fifteen minutes
+  until the TTL ran out. `blocked` is therefore judged BEFORE the lease: an agent saying "I am
+  blocked on this" is saying it is not working on it, whatever its lease still claims.
+
+The channel is opt-in behind `$TASKOPS_CHANNEL=1` and `taskops setup --channel`. Nothing was
+deleted.
+
+## 7. Recommendation
 
 1. **Cut the channel from the default path.** No `--channels` flag in `taskops setup`, no
    channel lifecycle coupled to the UI. The code moves to a branch or stays as an opt-in the

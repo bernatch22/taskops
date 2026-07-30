@@ -158,6 +158,30 @@ If you discover a dependency mid-task, use `blocked_on` — it adds the edge **a
 blocked. A dependency that lives only in a comment is one the scheduler will walk somebody
 straight into.
 
+## If you are an ORCHESTRATOR: start every turn with `attention`
+
+```
+taskops_report kind=attention
+```
+
+One read, and it is the only one that tells you what the board is WAITING for rather than what
+is on it. Five groups, in the order to act on them:
+
+| group | what it means | what you do |
+|---|---|---|
+| `VERIFY` | handed to review, nobody closed it | spawn `taskops-verifier` on each |
+| `RESUME` | assigned to a worker that is not running | spawn that worker, or release the card |
+| `DISPATCH` | ready, unassigned, has a spec | `taskops_dispatch`, then spawn one per brief |
+| `NEEDS A SPEC` | ready with nothing a worker could follow | a PERSON writes it — do not guess |
+| `PARKED` | `blocked`, and nothing ever unblocks that on its own | unblock, re-plan, or cancel |
+
+Finishing comes before starting on purpose: closing a review may unblock three cards, while a
+dispatch adds a fourth thing in flight.
+
+It writes nothing and it is safe to run in a loop, which is what makes it the right thing to run
+after every batch of sub-agents returns as well as at the start. A card being worked on right now
+never appears — if it is in this list, nothing is going to happen to it until you decide something.
+
 ## If you are an ORCHESTRATOR: dispatching workers
 
 `taskops_dispatch` assigns cards, creates a git worktree per card, and hands you a **brief per
@@ -238,6 +262,7 @@ tool list, and the `labels` of the cards that are theirs. Two consequences for y
 
 ## Reading the board
 
+- `taskops_report attention` — what is WAITING on a decision, and the move each card needs
 - `taskops_report board` — every column, who holds what
 - `taskops_report standup --since 24h` — what changed, per actor, and what needs a human
 - `taskops_report day` — one calendar day in full: what closed, every commit, the conversation

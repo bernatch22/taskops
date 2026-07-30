@@ -64,7 +64,11 @@ PLAN = (
 )
 
 REPORT = (
-    "The generated view: `board` (every column, who holds what), `standup` (what changed "
+    "The generated view: `attention` — START AN ORCHESTRATOR TURN WITH THIS. It is the one "
+    "read that says what the board is WAITING FOR and what to do about each card: reviews "
+    "nobody verified, cards assigned to a worker that is not running, ready work to dispatch, "
+    "and the two kinds only a person can fix. It writes nothing and is safe to run in a loop. "
+    "Or: `board` (every column, who holds what), `standup` (what changed "
     "in a window, per actor, and what needs a human), or `day` (ONE calendar day in full — "
     "every card closed with who closed it, how long it was held, each of its commits with "
     "the size of its diff, what is still in flight or blocked, the whole conversation, and "

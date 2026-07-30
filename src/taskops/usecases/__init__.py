@@ -20,6 +20,7 @@ from .acceptance import acceptance_for, set_acceptance
 from .accounts import authenticate
 from .agents import agent_for, agent_named, fenced, registry, specialists
 from .ask import ask, search
+from .attention import attention
 from .browse import board_url, root_url
 from .capture import capture
 from .claim import next_task
@@ -53,7 +54,7 @@ from .update import update
 
 __all__ = [
     # the five MCP tools
-    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "standup", "fleet", "activity",
+    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "attention", "standup", "fleet", "activity",
     "day", "period", "Selector",
     "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path",
     "report_index", "recover", "Recovered",

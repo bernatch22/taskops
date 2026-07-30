@@ -50,6 +50,14 @@ somebody is working on, and `taskops status` counts it as open.
 
 ## The orchestrator does not implement
 
+**Open every turn with `taskops attention`.** It is the one read that says what the board is
+waiting for — reviews nobody verified, cards assigned to workers that are not running, ready work
+to dispatch, and the two kinds only a person can fix. It replaced the board channel, which pushed
+those same facts in as notifications: every reaction to one turned out to be idempotent and
+derivable from state, so five of every six events were echoes of what this session had just done.
+`docs/orchestrator.md` has the before/after.
+
+
 A session that plans and dispatches is doing a different job from a session that codes, and
 doing both means the plan stops being kept the moment the coding gets interesting. `.claude/agents/`
 holds the specialists; `taskops_dispatch` hands them briefs; the host spawns them.
@@ -69,7 +77,7 @@ test and failed the first time a human looked at them: a report that regenerated
 narrations, a channel that adopted a UI it never started, a specialist spawned with no tools.
 
 - `.venv/bin/ruff check . && .venv/bin/python -m pytest -q` — both, always
-- `cd plugin/channel && bun test` — when the channel changed
+- `cd plugin/channel && bun test` — when the channel changed (opt-in; see `docs/orchestrator.md`)
 - `cd ui && npm run build` — when the UI changed, and **commit the bundle**
 - then exercise it by hand and paste the real output
 

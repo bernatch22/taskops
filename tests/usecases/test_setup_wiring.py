@@ -159,13 +159,14 @@ def test_the_block_names_its_own_uninstall() -> None:
     assert "taskops setup --remove" in block("claude-tk", "claude", shell="/bin/zsh")
 
 
-def test_every_path_written_is_absolute() -> None:
+def test_every_path_written_is_absolute(monkeypatch: pytest.MonkeyPatch) -> None:
     """A relative path in a config is resolved against the cwd of whoever READS it, and the
     reader is an MCP server Claude Code spawned from somewhere neither of us chose. Written as
     `.` — the default `--repo` — the channel started `taskops ui --repo .`, served a different
     repository entirely, found the port taken and attached to that. Two symptoms, one dot."""
     from taskops.usecases.mcpfile import servers_for
 
+    monkeypatch.setenv("TASKOPS_CHANNEL", "1")
     entry = servers_for(Path("."))["taskops-channel"]
     assert Path(entry["env"]["TASKOPS_REPO"]).is_absolute()
     assert entry["env"]["TASKOPS_REPO"] != "."
@@ -189,3 +190,26 @@ def test_a_project_keeps_its_port_across_runs(tmp_path: Path) -> None:
 
     assert port_for(tmp_path) == port_for(tmp_path)
     assert 1024 < port_for(tmp_path) < 65535
+
+
+def test_the_channel_is_not_wired_by_default(tmp_path: Path,
+                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """It pushed board events into an open session so the session could react to them — and
+    every one of those reactions turned out to be idempotent and derivable from state, which
+    `report kind=attention` reads in one call. What was left was echoes: a session notified
+    about the dispatch it had just made. The code stays; the default does not."""
+    monkeypatch.delenv("TASKOPS_CHANNEL", raising=False)
+    wire_mcp(tmp_path)
+    written = json.loads((tmp_path / MCP_FILE).read_text(encoding="utf-8"))
+    assert "taskops" in written["mcpServers"]
+    assert "taskops-channel" not in written["mcpServers"]
+
+
+def test_the_channel_is_still_there_for_anybody_who_wants_it(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opt-in, not deleted. It is 1 200 tested lines and the one deployment it was written for
+    — several machines writing to one board — is the one where a push still beats a sweep."""
+    monkeypatch.setenv("TASKOPS_CHANNEL", "1")
+    wire_mcp(tmp_path)
+    written = json.loads((tmp_path / MCP_FILE).read_text(encoding="utf-8"))
+    assert "taskops-channel" in written["mcpServers"]

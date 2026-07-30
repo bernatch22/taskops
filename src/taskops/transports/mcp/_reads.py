@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...render import (
+    render_attention,
     render_board,
     render_context,
     render_day,
@@ -20,6 +21,7 @@ from ...render import (
 from ...usecases import (
     Selector,
     ask,
+    attention,
     board,
     context_for,
     context_show,
@@ -61,7 +63,7 @@ def ask_(args: dict[str, Any]) -> str:
 
 
 def report_(args: dict[str, Any]) -> str:
-    """Four kinds, and an unknown one is REFUSED rather than quietly given a board.
+    """Five kinds, and an unknown one is REFUSED rather than quietly given a board.
 
     `fleet` and `burndown` used to be answerable here. Falling through to the board would
     hand an agent that asked for one of them a report about something else and no way to
@@ -69,6 +71,8 @@ def report_(args: dict[str, Any]) -> str:
     """
     kind = arg.optional(args, "kind") or "board"
     where = arg.repo(args)
+    if kind == "attention":
+        return render_attention(attention(where))
     if kind == "standup":
         return render_standup(standup(where, since=arg.optional(args, "since") or "24h",
                                       actor=arg.optional(args, "actor")))
@@ -77,8 +81,8 @@ def report_(args: dict[str, Any]) -> str:
     if kind == "range":
         return render_day(period(where, _span(args)))
     if kind != "board":
-        raise arg.Missing(f"`{kind}` is not a report — ask for `board`, `standup`, `day` "
-                          f"or `range`")
+        raise arg.Missing(f"`{kind}` is not a report — ask for `attention`, `board`, "
+                          f"`standup`, `day` or `range`")
     return render_board(board(where))
 
 
