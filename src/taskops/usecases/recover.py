@@ -63,22 +63,36 @@ def recover(start: Path | str, *, actor: str = "", grace: float = HEARTBEAT_GRAC
                 alive.append(f"{lease['actor']} on {lease['task']}")
                 continue
             released.append(release_lease(store, lease, who, quiet))
-        released += _orphans(store, who)
+        released += _orphans(store, who, when, grace, force=force)
         return Recovered(released=released, alive=alive)
 
 
-def _orphans(store: Store, who: str) -> list[Stuck]:
-    """Cards ASSIGNED to a worker that holds no lease — a dispatch nobody spawned.
+def _orphans(store: Store, who: str, when: float, grace: float, *,
+             force: bool = False) -> list[Stuck]:
+    """Cards ASSIGNED to a worker that holds no lease, and has had time to start.
 
-    Always recovered, with no grace period, because there is nothing to wait for: an assignment with
-    no lease means the worker never started, and the card is meanwhile hidden from every other agent
-    by the very filter that makes assignment useful. Left alone it is unclaimable forever.
+    An assignment with no lease hides the card from every other agent — that hiding is what
+    makes assignment useful — so one nobody ever picks up is unclaimable forever. That was the
+    whole rule, and it used to run with NO grace, because the only way to be in this state was
+    a dispatch nobody spawned.
+
+    Two deliberate ways have appeared since, and the ungraced sweep robbed both: a verifier
+    sending a card BACK keeps the assignee precisely so only its worker retakes it, and
+    `capture(assign=…)` hands a card to an agent that is not running yet, on purpose. A
+    `recover` in between put each of them straight back in the pool — the exact opposite of
+    what the caller had just asked for.
+
+    So the same grace the silent-worker sweep gets: untouched past it, judged by the card's own
+    `updated`, and it is an orphan. A bounce from thirty seconds ago is somebody's turn about
+    to happen.
     """
     out: list[Stuck] = []
     for task in store.tasks.all():
         if not task["assignee"] or store.leases.get(task["id"]) is not None:
             continue
         if task["status"] in ("done", "cancelled"):
+            continue
+        if not force and when - task["updated"] < grace:
             continue
         out.append(unassign(store, task["id"], task["assignee"], who))
     return out
