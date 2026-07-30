@@ -96,7 +96,25 @@ def test_fish_gets_fish_syntax() -> None:
     """`alias name='...'` is a POSIX line. In `config.fish` it fails at every new terminal,
     with an error most people blame on the last thing they installed."""
     assert "=" not in alias_line("tk", "claude", shell="/usr/local/bin/fish").split(" ", 2)[1]
-    assert alias_line("tk", "claude", shell="/bin/zsh").startswith("alias tk='claude ")
+    assert alias_line("tk", "claude", shell="/bin/zsh").startswith('alias tk="claude ')
+
+
+def test_the_alias_defers_to_the_env_var_rather_than_baking_a_choice() -> None:
+    """Which claude you want depends on the terminal you are in, not on what you answered the
+    day you installed this. So setup stopped asking: the line reads the var at RUN time, falls
+    back to plain `claude`, and a work shell exports its own."""
+    posix = alias_line("tk", shell="/bin/zsh")
+    assert "${TASKOPS_CLAUDE:-claude}" in posix
+
+    fishy = alias_line("tk", shell="/usr/local/bin/fish")
+    assert "${TASKOPS_CLAUDE:-claude}" not in fishy, "fish has no such expansion"
+    assert "TASKOPS_CLAUDE" in fishy and fishy.startswith("alias tk '")
+
+
+def test_a_pinned_binary_still_overrides_everything() -> None:
+    """For a machine with one account and no interest in the var, or a per-project rc."""
+    assert "TASKOPS_CLAUDE" not in alias_line("tk", "claude-jp", shell="/bin/zsh")
+    assert "claude-jp " in alias_line("tk", "claude-jp", shell="/bin/zsh")
 
 
 def test_the_block_is_written_once_however_many_times_it_runs(tmp_path: Path) -> None:

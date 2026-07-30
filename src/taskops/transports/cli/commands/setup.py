@@ -12,6 +12,7 @@ import argparse
 
 from ....usecases.mcpfile import MCP_FILE, wire_mcp
 from ....usecases.shellrc import (
+    ENV_CLAUDE,
     block,
     claude_binaries,
     install_alias,
@@ -30,7 +31,8 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
                                           "opens a session with the board channel")
     add_target(parser)
     parser.add_argument("--claude", default="",
-                        help="which claude binary the alias runs (default: ask)")
+                        help=f"pin the binary in the written line (default: defer to "
+                             f"${ENV_CLAUDE}, falling back to `claude`)")
     parser.add_argument("--alias", default=DEFAULT_ALIAS, help=f"the alias name "
                                                                f"(default: {DEFAULT_ALIAS})")
     parser.add_argument("--print", dest="print_only", action="store_true",
@@ -51,12 +53,18 @@ def run(args: argparse.Namespace) -> str:
     if args.no_shell:
         return "\n".join([*lines, "shell untouched (--no-shell)"])
 
-    stanza = block(str(args.alias), _claude(args), shell="")
+    stanza = block(str(args.alias), str(args.claude), shell="")
     if args.print_only:
         return "\n".join([*lines, f"\nwould write into {where}:\n", stanza.rstrip()])
     changed = install_alias(where, stanza)
     lines.append(f"{'wrote' if changed else 'already had'} the alias block in {where}")
     lines.append(f"open a new shell, then: {args.alias}")
+    found = claude_binaries()
+    if not args.claude and len(found) > 1:
+        # Told, not asked. Which account you want depends on the terminal you are in, so the
+        # answer belongs in an env var rather than in a line written the day you installed.
+        lines.append(f"this machine has {', '.join(found)} — `export {ENV_CLAUDE}=<one>` "
+                     f"in a shell to pick, otherwise it runs `claude`")
     return "\n".join(lines)
 
 
@@ -70,21 +78,3 @@ def _wire(repo: object) -> list[str]:
     return [f"{MCP_FILE} already names our servers"]
 
 
-def _claude(args: argparse.Namespace) -> str:
-    """Which claude the alias runs — asked, never guessed.
-
-    A machine with `claude` and `claude-jp` on it has two ACCOUNTS, and picking one silently
-    would wire a board to the wrong work. Non-interactive callers pass `--claude`; an
-    interactive one is shown what is actually on PATH.
-    """
-    if args.claude:
-        return str(args.claude)
-    found = claude_binaries() or ["claude"]
-    if len(found) == 1:
-        return found[0]
-    print("which claude should the alias run?")
-    for index, name in enumerate(found, start=1):
-        print(f"  {index}) {name}")
-    answer = input(f"[1-{len(found)}, default 1]: ").strip()
-    chosen = int(answer) if answer.isdigit() and 1 <= int(answer) <= len(found) else 1
-    return found[chosen - 1]

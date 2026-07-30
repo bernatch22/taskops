@@ -33,7 +33,9 @@ with what you learned — that is a success, not a failure.
    Look at the card: does it name a `reviewer`, or carry `acceptance` criteria?
 
    - **Yes** — hand it on: `status=review`, saying which criterion you believe you met and how.
-     You do not close it; the engine refuses a `done` on a review you opened.
+     You CANNOT close it: the engine refuses a `done` from an agent on a card that carries
+     criteria, and refuses it again on a review you opened. That is not a suggestion to weigh
+     against finishing quickly — it is the door being locked.
    - **No** — close it yourself: `status=done` with `evidence` naming what proves it. There is
      nothing for a verifier to check against, and spawning one to read a diff with no criteria
      costs a model and answers nothing.

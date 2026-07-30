@@ -252,3 +252,43 @@ def test_a_log_that_still_carries_in_progress_replays_as_claimed(repo: Path) -> 
     with Store(repo) as store:
         assert replay.apply(store, [theirs]) >= 0
         assert store.tasks.need(card)["status"] == "claimed"
+
+
+def test_criteria_make_review_MANDATORY_for_an_agent(repo: Path) -> None:
+    """The critical one, found live: a card with three EARS criteria went straight from claimed
+    to done, signed by the agent that wrote it, minutes after review was made optional. A card
+    carrying criteria is EXACTLY the card somebody else should check — that is what criteria
+    are for — and a worker signing off on its own is the self-certification the loop exists to
+    prevent."""
+    card = plan(repo, [{"title": "t", "spec": "s",
+                        "acceptance": ["WHEN x THE SYSTEM SHALL y"]}],
+                actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor=WORKER)
+
+    with pytest.raises(GuardFailed, match="acceptance criteria"):
+        update(repo, card, status="done", no_code=True, comment="mine",
+               evidence="I checked it", actor=WORKER)
+
+    update(repo, card, status="review", comment="criterion 1 met", actor=WORKER)
+    update(repo, card, status="done", no_code=True, comment="verified",
+           evidence="WHEN x THE SYSTEM SHALL y: ran it", actor=VERIFIER)
+
+
+def test_a_dev_closes_a_card_with_criteria_without_ceremony(repo: Path) -> None:
+    """A human reading the diff IS the review. Making a person hand their own card to an agent
+    before they could close it would get the guard removed within the hour."""
+    card = plan(repo, [{"title": "t", "spec": "s",
+                        "acceptance": ["WHEN x THE SYSTEM SHALL y"]}],
+                actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor=DEV)
+    update(repo, card, status="done", no_code=True, comment="read it myself",
+           evidence="WHEN x…: checked", actor=DEV)
+
+
+def test_a_card_with_nothing_promised_still_closes_in_one_step(repo: Path) -> None:
+    """The regression guard for the case review was made optional FOR: a text fix promises
+    nothing checkable, so there is nothing for a verifier to check against."""
+    card = plan(repo, [{"title": "fix the copy", "spec": "s"}], actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor=WORKER)
+    update(repo, card, status="done", no_code=True, comment="typo", evidence="read it",
+           actor=WORKER)

@@ -118,5 +118,30 @@ def closing(facts: Facts) -> str | None:
     branch somebody else lands — and a repository with no remote would otherwise be unable to
     close anything, which is the most common way taskops is first tried.
     """
-    return (_reviewer_is_a_person(facts) or _handed_on(facts) or _needs_children_closed(facts)
-            or _needs_code(facts) or evidenced(facts.evidence))
+    return (_reviewer_is_a_person(facts) or _needs_a_reviewer(facts) or _handed_on(facts)
+            or _needs_children_closed(facts) or _needs_code(facts)
+            or evidenced(facts.evidence))
+
+
+def _needs_a_reviewer(facts: Facts) -> str | None:
+    """An agent may not close a card that promised checkable things without handing it over.
+
+    A card carrying acceptance criteria is EXACTLY the card somebody else should check — that
+    is what criteria are for, and a worker signing off on its own is the self-certification
+    the whole review loop exists to prevent. Watched happen: a card with three EARS criteria
+    went straight from claimed to done, by the agent that wrote it, minutes after review was
+    made optional.
+
+    Optional was the right call for the card it was meant for — a text fix, a rename, work that
+    promised nothing to check — and that card has no criteria, so this is a no-op for it. What
+    was wrong was letting "optional" mean optional for cards that DID promise something.
+
+    A `dev:` is never stopped: a human reading the diff IS the review.
+    """
+    if not facts.evidence or not facts.evidence.criteria:
+        return None
+    if not facts.actor.startswith("agent:") or facts.task["status"] == "review":
+        return None
+    return (f"{facts.task['id']} carries {len(facts.evidence.criteria)} acceptance criteria — "
+            f"somebody else checks those. Hand it over with `status=review` saying which you "
+            f"met and how; a verifier (or a dev) closes it from there.")

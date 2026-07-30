@@ -39,8 +39,9 @@ the commit guard matches this exact shape, and an invented name gets your own co
 **How you finish depends on what the card promised.**
 
 - The card names a `reviewer` or carries `acceptance` criteria → `taskops_update status=review`
-  with a comment saying which criterion you met and how. Somebody ELSE closes it; the engine
-  refuses a `done` on a review you opened.
+  with a comment saying which criterion you met and how. Somebody ELSE closes it, and this is
+  ENFORCED twice: an agent cannot `done` a card that carries criteria at all, and cannot close
+  a review it opened.
 - It carries neither → close it yourself: `status=done` with `evidence`. Review is for work
   that promised something checkable, and there is nothing here to check against.
 

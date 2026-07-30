@@ -91,14 +91,20 @@ def test_a_card_that_never_saw_review_closes_exactly_as_before(repo: Path) -> No
     update(repo, task, actor=WORKER, status="done", comment="trivial", no_code=True)
 
 
-def test_a_card_bounced_back_out_of_review_is_the_worker_s_again(repo: Path) -> None:
-    """The rule is "you may not close a review you opened", not "you may never close a card you
-    once put in review". A verifier that sends work back leaves the card in the worker's hands,
-    and a guard that kept refusing there would strand it."""
+def test_a_card_bounced_back_goes_round_again_rather_than_closing(repo: Path) -> None:
+    """A bounce does not hand the worker a shortcut. The card still carries criteria, so the
+    FIX gets checked too — the worker re-claims, works, hands it over again, and the verifier
+    closes. Letting it self-close after a bounce would make one rejection the price of skipping
+    review entirely, which is the loophole a determined agent finds first."""
     task = a_card(repo)
     update(repo, task, actor=WORKER, status="review", comment="ready")
-    update(repo, task, actor=VERIFIER, comment="FAILS: criterion 1 — no test asserts it")
+    update(repo, task, actor=VERIFIER, status="ready", comment="FAILS: no test asserts it")
+
     # Re-CLAIMED, because `review` released the lease: while it sat there nobody held it, which
     # is what let the verifier read it in the first place. Coming back to work is claiming.
     next_task(repo, task=task, actor=WORKER)
-    closes(repo, task, WORKER)
+    with pytest.raises(GuardFailed, match="acceptance criteria"):
+        closes(repo, task, WORKER)
+
+    update(repo, task, actor=WORKER, status="review", comment="round 2: asserted")
+    closes(repo, task, VERIFIER)

@@ -62,8 +62,8 @@ def rc_path(shell: str = "") -> Path:
 def claude_binaries() -> list[str]:
     """Every `claude*` on PATH, so the prompt offers what this machine actually has.
 
-    Berna has `claude-jp` for work alongside `claude`; guessing one would wire the alias to the
-    wrong account, and asking with no options to show is a question nobody can answer well.
+    Not used to CHOOSE any more — `$TASKOPS_CLAUDE` decides that at run time — but still worth
+    printing, because somebody who has two of these wants to be told the var exists.
     """
     seen: dict[str, None] = {}
     for folder in os.environ.get("PATH", "").split(os.pathsep):
@@ -79,15 +79,31 @@ def claude_binaries() -> list[str]:
     return list(seen)
 
 
-def alias_line(name: str, command: str, *, shell: str = "") -> str:
+ENV_CLAUDE = "TASKOPS_CLAUDE"
+"""The env var the alias defers to, so which claude it runs is decided WHEN IT RUNS.
+
+Setup used to ask, and baking the answer into a line in a startup file is the wrong place for
+it: a machine with `claude` and `claude-jp` on it has two accounts, and which one you want
+depends on the terminal you are in — not on what you happened to answer the day you installed
+this. `export TASKOPS_CLAUDE=claude-jp` in a work shell, and the same alias follows."""
+
+
+def alias_line(name: str, command: str = "", *, shell: str = "") -> str:
     """The alias, in the syntax the shell in question actually parses.
 
-    fish has no `=` in `alias`, and a POSIX line written into `config.fish` fails at every new
-    terminal with an error most people blame on the last thing they installed.
+    It defers to `$TASKOPS_CLAUDE` and falls back to plain `claude`, so nothing is decided at
+    install time. `command` overrides that entirely for somebody who wants a fixed binary
+    written down — a per-project rc, a machine with one account and no interest in the var.
+
+    fish is spelled separately, and not for tidiness: it has no `=` in `alias` and no
+    `${VAR:-default}`, so a POSIX line in `config.fish` fails at every new terminal with an
+    error most people blame on whatever they installed last.
     """
     if Path(shell or os.environ.get("SHELL", "")).name == "fish":
-        return f"alias {name} '{command} {CHANNEL_FLAG}'"
-    return f"alias {name}='{command} {CHANNEL_FLAG}'"
+        runs = command or f"(test -n \"${ENV_CLAUDE}\"; and echo ${ENV_CLAUDE}; or echo claude)"
+        return f"alias {name} '{runs} {CHANNEL_FLAG}'"
+    runs = command or f"${{{ENV_CLAUDE}:-claude}}"
+    return f"alias {name}=\"{runs} {CHANNEL_FLAG}\""
 
 
 def block(name: str, command: str, *, shell: str = "") -> str:
