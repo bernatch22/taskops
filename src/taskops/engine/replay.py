@@ -15,7 +15,7 @@ contradicts newer local state loses.
 
 from __future__ import annotations
 
-from .._types import EDITABLE_FIELDS, Status
+from .._types import EDITABLE_FIELDS, STATUSES, Status
 from ..contracts import Event, Task
 from ..storage import Store
 
@@ -114,7 +114,7 @@ def _status(store: Store, event: Event) -> bool:
     importing one would mean claiming a task on behalf of an agent that is not running here.
     """
     task = store.tasks.get(event["task"])
-    target = event["body"].get("to")
+    target = _RETIRED.get(event["body"].get("to"), event["body"].get("to"))
     if task is None or not isinstance(target, str) or target not in _STATUSES:
         return False
     if event["ts"] <= task["updated"]:
@@ -123,8 +123,10 @@ def _status(store: Store, event: Event) -> bool:
     return True
 
 
-_STATUSES = frozenset({"backlog", "ready", "claimed", "in_progress", "blocked", "review",
-                       "done", "cancelled"})
+# Retired statuses map to what they always meant: replay is the one reader that may never
+# refuse history, and a teammate's log can still carry `in_progress`.
+_RETIRED = {"in_progress": "claimed"}
+_STATUSES = frozenset(STATUSES)     # derived: a second hand-written list would drift
 
 
 def _as_status(value: str) -> Status:

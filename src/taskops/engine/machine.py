@@ -73,18 +73,16 @@ def _needs_lease(facts: Facts) -> str | None:
 TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
     "backlog": {"ready": None, "cancelled": None},
     "ready": {"claimed": _needs_lease, "backlog": None, "cancelled": None},
-    "claimed": {"in_progress": _needs_lease, "review": _needs_lease, "done": closing,
+    "claimed": {"review": _needs_lease, "done": closing,
                 "ready": None, "blocked": _needs_lease, "cancelled": None},
-    "in_progress": {"review": _needs_lease, "done": closing, "blocked": _needs_lease,
-                    "ready": None, "cancelled": None},
-    "blocked": {"ready": None, "backlog": None, "in_progress": _needs_lease,
+    "blocked": {"ready": None, "backlog": None, "claimed": _needs_lease,
                 "cancelled": None},
     # `ready` is the reviewer's SEND-BACK, and it takes no lease on purpose: the reviewer
     # holds nothing (review released the lease), and demanding one would leave findings with
     # no way to act on them — watched live: a verifier that had proven the work could neither
     # close the card nor return it, and a whole session went to negotiating with the board.
     # The assignee survives the move, so only the worker it belongs to picks it back up.
-    "review": {"done": closing, "in_progress": _needs_lease, "ready": None, "blocked": None,
+    "review": {"done": closing, "claimed": _needs_lease, "ready": None, "blocked": None,
                "cancelled": None},
     "done": {},
     "cancelled": {"backlog": None},

@@ -96,4 +96,4 @@ def test_an_invalid_status_is_refused_by_name(
     assert main(["tasks", "--repo", str(root), "--status", "finito"]) == 1
     err = capsys.readouterr().err
     assert "`finito` is not a status" in err
-    assert "in_progress" in err and "cancelled" in err
+    assert "review" in err and "cancelled" in err

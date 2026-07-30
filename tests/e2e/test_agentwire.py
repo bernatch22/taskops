@@ -150,9 +150,9 @@ def test_a_remote_update_lands_and_is_mirrored(tmp_path: Path, hub: Serving) -> 
     mine = machine(tmp_path / "mine", hub.url)
     card = the_card(hub.root)
     next_task(mine, actor="agent:berna/one", task=card)
-    update(mine, card, actor="agent:berna/one", status="in_progress", comment="on it")
-    assert ask(hub.root, card)["task"]["status"] == "in_progress"
-    assert ask(mine, card)["task"]["status"] == "in_progress"
+    update(mine, card, actor="agent:berna/one", status="review", comment="on it")
+    assert ask(hub.root, card)["task"]["status"] == "review"
+    assert ask(mine, card)["task"]["status"] == "review"
 
 
 def test_a_malformed_actor_is_refused_rather_than_given_an_identity(tmp_path: Path,

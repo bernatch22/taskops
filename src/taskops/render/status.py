@@ -82,7 +82,7 @@ def _rows(status: Status) -> list[Row]:
         # Absent until the objective feature lands, and absent is NOTHING — never a
         # placeholder row that teaches the reader to skip that line forever.
         rows.append(("objective", status["objective"], "italic"))
-    flight = sum(status["counts"].get(name, 0) for name in ("claimed", "in_progress", "review"))
+    flight = sum(status["counts"].get(name, 0) for name in ("claimed", "review"))
     rows.append(("board", f"{status['total']} card(s)  ·  {status['ready']} ready  ·  {flight}"
                           f" in flight  ·  {status['blocked']} blocked  ·  "
                           f"{status['counts'].get('done', 0)} done", ""))

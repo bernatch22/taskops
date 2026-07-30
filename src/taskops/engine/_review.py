@@ -59,7 +59,15 @@ def _handed_on(facts: Facts) -> str | None:
     `entered_review_by` is derived from the card's EVENTS and not from a column, which is why
     this needs no new state: the log already says who moved it and where to, and a column
     would be a second copy of that answer able to disagree with it.
+
+    Only while the card IS in review. The rule is "you may not close a review you opened", not
+    "you may never close a card you once handed over": a verifier sends work back, the worker
+    RE-CLAIMS it, and the card is `claimed` again — its own, with no review pending. Refusing
+    there stranded the returning worker with nowhere to go, which is exactly what the bounce
+    exists to avoid.
     """
+    if facts.task["status"] != "review":
+        return None
     if not facts.entered_review_by or facts.actor != facts.entered_review_by:
         return None
     if not facts.actor.startswith("agent:"):

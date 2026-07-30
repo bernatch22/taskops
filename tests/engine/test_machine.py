@@ -41,7 +41,7 @@ def test_done_is_terminal() -> None:
     "we shipped it and it was wrong" is a new task referencing the old one."""
     assert allowed_from("done") == ()
     with pytest.raises(IllegalTransition):
-        check_move(facts("done"), "in_progress")
+        check_move(facts("done"), "claimed")
 
 
 def test_an_impossible_arrow_names_the_possible_ones() -> None:
@@ -54,7 +54,7 @@ def test_an_impossible_arrow_names_the_possible_ones() -> None:
 
 def test_working_on_a_task_requires_a_live_lease() -> None:
     with pytest.raises(GuardFailed) as caught:
-        check_move(facts("claimed", has_live_lease=False), "in_progress")
+        check_move(facts("claimed", has_live_lease=False), "review")
     assert "lease" in str(caught.value)
 
 
@@ -63,16 +63,16 @@ def test_closing_requires_a_commit() -> None:
     that an agent said so — which is what reading a board instead of the diff is
     meant to avoid."""
     with pytest.raises(GuardFailed) as caught:
-        check_move(facts("in_progress", commits=0), "done")
+        check_move(facts("claimed", commits=0), "done")
     assert "no commit bound" in str(caught.value)
 
 
 def test_no_code_closes_a_task_only_with_a_justification() -> None:
     """An unexplained exemption is indistinguishable from a shortcut."""
     with pytest.raises(GuardFailed) as caught:
-        check_move(facts("in_progress", commits=0, no_code=True), "done")
+        check_move(facts("claimed", commits=0, no_code=True), "done")
     assert "comment" in str(caught.value)
-    check_move(facts("in_progress", commits=0, no_code=True,
+    check_move(facts("claimed", commits=0, no_code=True,
                      justification="Decided to keep the existing scheme; see thread."),
                "done")
 
@@ -90,7 +90,7 @@ def test_the_children_check_comes_before_the_commit_check() -> None:
     and does the wrong work. Told about the subtasks, it does the right one.
     """
     with pytest.raises(GuardFailed) as caught:
-        check_move(facts("in_progress", commits=0, open_children=1), "done")
+        check_move(facts("claimed", commits=0, open_children=1), "done")
     assert "open subtask" in str(caught.value)
 
 
@@ -100,7 +100,7 @@ def test_releasing_is_always_allowed() -> None:
     A guard here would make waiting for the lease to lapse the easier move, and a
     lapsed lease carries none of the context a release comment does.
     """
-    for status in ("claimed", "in_progress"):
+    for status in ("claimed", "claimed"):
         check_move(facts(status, has_live_lease=False, commits=0), "ready")
 
 
@@ -108,13 +108,13 @@ def test_unpushed_work_does_not_block_closing() -> None:
     """It is RECORDED, not enforced. Pushing is not always the closer's job — a task can finish on
     a branch somebody else lands — and a repository with no remote at all would otherwise be unable
     to close anything, which is the most common way taskops is first tried."""
-    check_move(facts("in_progress", unpushed=3), "done")
+    check_move(facts("claimed", unpushed=3), "done")
 
 
 def test_cancelling_is_always_allowed_from_an_open_status() -> None:
     """A human deciding a task should not happen cannot be blocked by a guard about
     evidence — there is deliberately no work to show."""
-    for status in ("backlog", "ready", "claimed", "in_progress", "blocked", "review"):
+    for status in ("backlog", "ready", "claimed", "claimed", "blocked", "review"):
         check_move(facts(status, has_live_lease=False, commits=0), "cancelled")
 
 
@@ -140,7 +140,7 @@ def test_a_dev_closes_a_review_whoever_opened_it() -> None:
 def test_a_card_that_never_entered_review_is_untouched() -> None:
     """Compatibility, stated as a test: the fact defaults to empty, so every card written
     before this rule existed closes on exactly the guards it always had."""
-    check_move(facts("in_progress"), "done")
+    check_move(facts("claimed"), "done")
 
 
 def test_the_handoff_is_refused_before_the_commit_check() -> None:

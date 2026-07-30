@@ -7,7 +7,7 @@ this file pins was first found live, with a worker stuck on it.
 
 The lifecycle under test:
 
-    plan ──▶ assign ──▶ claim ──▶ in_progress ──▶ review ──▶ done
+    plan ──▶ assign ──▶ claim ──▶ review ──▶ done
               (hides)   (lease)                    │  ▲  │
                                                    │  │  └── by ANOTHER actor, with evidence
                                      findings ─────┘  │
@@ -65,8 +65,9 @@ def test_the_full_lifecycle_hand_to_hand(repo: Path) -> None:
     assert held["claim"] is not None
     assert leases_of(repo, card) == [assignee]
 
-    # WORK: claimed -> in_progress needs the lease it has.
-    update(repo, card, status="in_progress", comment="on it", actor=assignee)
+    # WORK: a comment renews the lease and says what is happening; there is no second
+    # "started" state to announce — claimed IS working.
+    update(repo, card, comment="on it", actor=assignee)
 
     # REVIEW: the handoff. The work is finished, so the LEASE is released — a held card would
     # say "in hand" about nobody, which is exactly how a verifier got refused live.
@@ -100,14 +101,15 @@ def test_the_bounce_back_walks_the_whole_circle(repo: Path) -> None:
     # The verifier reads it without claiming anything and posts findings.
     update(repo, card, comment="FAILS: criterion 1 — nothing asserts y", actor=VERIFIER)
 
-    # The worker returns. Claiming a review card grants the lease and KEEPS the status —
-    # stamping `claimed` over `review` would erase the fact the guard reads.
+    # The worker returns. Claiming lands on `claimed`: the findings are in and the card is
+    # its own again, with no review pending for the guard to refuse it over.
     back = next_task(repo, task=card, actor=WORKER)
     assert back["claim"] is not None, "the bounced-back card must be reachable by its worker"
     with Store(repo) as store:
-        assert store.tasks.need(card)["status"] == "review", "claiming a review keeps review"
+        assert store.tasks.need(card)["status"] == "claimed", (
+            "coming back to a bounced card IS leaving the handoff — it is the worker's again")
 
-    update(repo, card, status="in_progress", comment="picking findings up", actor=WORKER)
+    update(repo, card, comment="picking findings up", actor=WORKER)
     update(repo, card, status="review", comment="round 2: y asserted", actor=WORKER)
     update(repo, card, status="done", no_code=True, comment="holds now",
            evidence="criterion 1: asserted", actor=VERIFIER)
@@ -151,25 +153,6 @@ def test_a_released_review_lease_cannot_be_swept_back_to_ready(repo: Path) -> No
         sweep_dead(store, at=now() + 10_000_000)
         assert store.tasks.need(card)["status"] == "review", "review outlives every clock"
 
-
-def test_a_commit_moves_a_claimed_card_into_progress(repo: Path) -> None:
-    """`in_progress` used to be a call an agent had to remember, and the numbers were blunt:
-    ONE transition to it in the whole history of this project, written by hand in a test. The
-    commit IS the work landing, so the card says so without anybody announcing it."""
-    from taskops.usecases import ingest_commit
-
-    card = plan(repo, [{"title": "t", "spec": "s"}], actor=DEV)["created"][0]["id"]
-    claim = next_task(repo, task=card, actor=WORKER)["claim"]
-    assert claim is not None
-
-    subprocess.run(["git", "switch", "-qc", claim["branch"]], cwd=repo, check=True)
-    (repo / "a.txt").write_text("x", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", f"work\n\nTask: {card}"], cwd=repo, check=True)
-
-    ingest_commit(repo, actor=WORKER)
-    with Store(repo) as store:
-        assert store.tasks.need(card)["status"] == "in_progress"
 
 
 def test_a_refused_move_never_costs_the_commit_binding(repo: Path) -> None:
@@ -225,3 +208,47 @@ def test_the_verifier_needs_exactly_two_verbs(repo: Path) -> None:
     update(repo, card, status="review", comment="round 2: asserted", actor=worker)
     update(repo, card, status="done", no_code=True, comment="verified",
            evidence="WHEN x THE SYSTEM SHALL y: asserted, ran it", actor=VERIFIER)
+
+
+def test_a_card_with_nothing_to_check_closes_without_a_review(repo: Path) -> None:
+    """Review is OPTIONAL, and the engine always said so — what made it feel mandatory was the
+    instructions. A card that named no reviewer and promised no criteria has nothing for a
+    verifier to check against, and spawning one to read a diff with no criteria costs a model
+    and answers nothing."""
+    card = plan(repo, [{"title": "tidy the imports", "spec": "s"}], actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor=WORKER)
+
+    update(repo, card, status="done", no_code=True, comment="no code, just the imports",
+           evidence="ran the linter", actor=WORKER)
+
+    with Store(repo) as store:
+        assert store.tasks.need(card)["status"] == "done"
+
+
+def test_in_progress_is_gone_from_the_vocabulary(repo: Path) -> None:
+    """It meant "claimed and actually working", which is what claimed already meant to everyone
+    using the board: ONE transition to it in the whole history of this project, written by hand
+    in a test. A state nobody enters is a column that splits attention and answers nothing."""
+    from taskops._errors import IllegalTransition
+    from taskops._types import STATUSES
+
+    assert "in_progress" not in STATUSES
+    card = plan(repo, [{"title": "t", "spec": "s"}], actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor=WORKER)
+    with pytest.raises(IllegalTransition, match="in_progress"):
+        update(repo, card, status="in_progress", comment="on it", actor=WORKER)
+
+
+def test_a_log_that_still_carries_in_progress_replays_as_claimed(repo: Path) -> None:
+    """Replay is the one reader that may never refuse history: a teammate on an older taskops
+    is still writing that status, and it lands where it always belonged."""
+    from taskops.engine import replay
+    from taskops.engine.log import build
+
+    card = plan(repo, [{"title": "t", "spec": "s"}], actor=DEV)["created"][0]["id"]
+    theirs = build(task=card, actor="agent:ana/old", kind="status",
+                   body={"from": "claimed", "to": "in_progress"}, ts=now() + 60)
+
+    with Store(repo) as store:
+        assert replay.apply(store, [theirs]) >= 0
+        assert store.tasks.need(card)["status"] == "claimed"

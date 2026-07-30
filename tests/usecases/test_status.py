@@ -57,8 +57,8 @@ def _hide_rich(monkeypatch: pytest.MonkeyPatch) -> None:
 def project(root: Path) -> Path:
     """A small board: one card claimed by me, one by somebody else, one blocker."""
     with Store(root) as store:
-        _task(store, "tk-mine", "in_progress", title="The card I am on")
-        _task(store, "tk-theirs", "in_progress")
+        _task(store, "tk-mine", "claimed", title="The card I am on")
+        _task(store, "tk-theirs", "claimed")
         _task(store, "tk-stuck", "ready", title="The blocker")
         _task(store, "tk-old", "ready", age_days=30.0)
         _lease(store, "tk-mine", ME)
@@ -93,7 +93,7 @@ def test_a_lease_running_out_is_marked_before_it_lapses(root: Path) -> None:
     threshold — two screens disagreeing about which claim is in trouble is worse than
     neither of them saying so."""
     with Store(root) as store:
-        _task(store, "tk-soon", "in_progress")
+        _task(store, "tk-soon", "claimed")
         _lease(store, "tk-soon", ME, left=30.0)
     claim = status(root, actor=ME)["mine"][0]
     assert claim["expiring"] and claim["left"] < 60.0
