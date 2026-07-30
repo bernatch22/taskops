@@ -79,6 +79,26 @@ Los ceros son el resultado. Ninguna card la firmó quien la escribió, y nadie t
 acordarse de nada: el rol lo entregó el `SessionStart`, la review la pidió el `SubagentStop`,
 el turno no pudo morir sucio por el `Stop`, y la rama viajó sola.
 
+## Dos cosas que sólo se ven con dos personas
+
+**El trabajo se hizo dos veces.** Siete cards fueron implementadas por un agente de dev1 y
+después, entero y de cero, por uno de dev2 — porque dev2 rechazó las siete como "no hay código"
+y no podía ver la rama. Ése es el costo medido del bug de publicación, y es el argumento de por
+qué una rama tiene que publicarse sola: no es comodidad, es que si no, dos personas escriben el
+mismo módulo.
+
+**Nadie mergea.** Cada card vive en su rama y `src/textkit/` en `main` sigue vacío, así que el
+objetivo del proyecto no se puede cumplir por construcción: cada spec dice "NO TOCAR los módulos
+de las otras cards" y ninguna card se hacía cargo de juntarlos. Lo encontró dev2, no un test —
+un board puede estar entero en `done` y el repo vacío. Ahora hay una card de aterrizaje, la
+única autorizada a tocar `main` y `__init__.py`.
+
+**Y una advertencia sobre leer estos logs.** Dev2 reportó como causa raíz que "un update con
+sólo un comentario cierra la card". Es falso — lo probé y un comentario no mueve nada; lo que
+había era una sola llamada con comentario Y `status=done`, que el modelo leyó como dos. Un
+diagnóstico escrito por un agente en una card es una HIPÓTESIS. Las dos cards que reportó como
+rotas estaban, en los eventos, correctamente cerradas por su peer.
+
 ## Lo que cada corrida encontró
 
 Ninguna de estas apareció en la suite. Todas aparecieron mirando la máquina.
