@@ -113,6 +113,10 @@ from the log.
 
 ## Things that cost a day each, so you do not repeat them
 
+- **Pin a session's actor in the environment, never in git config.** An agent rewrote a lab
+  clone's `user.email` mid-run — because this very file tells it which git identity to use —
+  and a whole developer silently became somebody else. Two clones drifting to the SAME name
+  would deadlock `reviewer: peer`: the only actor allowed to close would be the author.
 - **Nothing that stays on one machine can be reviewed.** A card's branch is pushed when its
   worker commits, and it has to be: with `reviewer: peer`, the only person allowed to close a
   card was the only one who could not see it, and seven cards got implemented twice.

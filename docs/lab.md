@@ -29,6 +29,18 @@ nohup /tmp/lab-run.sh dev2 5 60 &
 Claude Code la prefiere sobre el login de claude.ai y la corrida muere con *"Credit balance is
 too low"* sin tocar la suscripción que ya está paga.
 
+**`TASKOPS_ACTOR=dev:<dev>`** también, y por una razón que costó encontrar: a mitad de la
+primera noche el clon de dev1 apareció trabajando como `dev:me`. Un agente le había cambiado
+`git config user.email` al repo — porque el `CLAUDE.md` global del usuario dice cuál debe ser la
+identidad de git, y el agente lo leyó y "corrigió" el checkout. taskops resuelve el actor desde
+git cuando nadie lo fija, así que la identidad de un developer entero derivó sin que nada
+fallara. No rompió nada esa vez porque `me` y `dev2` siguen siendo dos personas distintas; si
+los dos clones hubieran derivado al MISMO nombre, `reviewer: peer` se trababa entero — el único
+autorizado a cerrar habría sido el autor.
+
+La identidad de una sesión no puede depender de un archivo que un agente puede editar. Se fija
+en el entorno, que es exactamente para lo que existe la variable.
+
 ## Qué mirar
 
 ```bash
