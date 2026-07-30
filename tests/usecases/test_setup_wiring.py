@@ -213,3 +213,41 @@ def test_the_channel_is_still_there_for_anybody_who_wants_it(
     wire_mcp(tmp_path)
     written = json.loads((tmp_path / MCP_FILE).read_text(encoding="utf-8"))
     assert "taskops-channel" in written["mcpServers"]
+
+
+def test_init_wires_the_claude_hooks_into_the_project(tmp_path: Path) -> None:
+    """The failure this exists for: two developers joined a board, worked it, and both left
+    their cards dead in `review` — because the hooks that prevent exactly that ship in the
+    taskops PLUGIN, the plugin was not installed, and nothing said so. They had the MCP tools
+    and the git hooks, so the setup looked complete and was missing its whole feedback loop.
+
+    A plugin is a per-machine, per-person install. These hooks belong to the PROJECT: joining
+    a board is what should turn a checkout into one whose sessions know their role.
+    """
+    from taskops.usecases import init
+    from taskops.usecases.claudefile import SETTINGS_FILE
+
+    init(tmp_path, install_git_hooks=False)
+
+    written = json.loads((tmp_path / SETTINGS_FILE).read_text(encoding="utf-8"))["hooks"]
+    assert set(written) == {"PreToolUse", "PostToolUse", "SessionStart", "Stop", "SubagentStop"}
+    command = written["SessionStart"][0]["hooks"][0]["command"]
+    assert command.endswith("session-start")
+    assert Path(command.split()[0]).is_absolute(), "a hook runs from a cwd nobody chose"
+
+
+def test_a_hook_somebody_configured_by_hand_survives(tmp_path: Path) -> None:
+    """Shared config, merged never replaced — the same rule `.mcp.json` follows, for the same
+    reason: a tool that rewrote the file would delete a teammate's work to add its own."""
+    from taskops.usecases import init
+    from taskops.usecases.claudefile import SETTINGS_FILE
+
+    theirs = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "make lint"}]}]}}
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / SETTINGS_FILE).write_text(json.dumps(theirs), encoding="utf-8")
+
+    init(tmp_path, install_git_hooks=False)
+
+    written = json.loads((tmp_path / SETTINGS_FILE).read_text(encoding="utf-8"))["hooks"]
+    assert written["Stop"] == theirs["hooks"]["Stop"], "their Stop hook, untouched"
+    assert "SessionStart" in written, "and ours, added beside it"

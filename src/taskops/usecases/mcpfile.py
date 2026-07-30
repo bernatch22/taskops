@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-__all__ = ["MCP_FILE", "wire_mcp", "servers_for", "port_for"]
+__all__ = ["MCP_FILE", "wire_mcp", "servers_for", "port_for", "hook_binary"]
 
 MCP_FILE = ".mcp.json"
 
@@ -88,13 +88,22 @@ def wire_mcp(root: Path) -> list[str]:
 
 
 def _binary() -> str:
-    """The `taskops` console script beside this interpreter, or the bare name.
+    return _beside("taskops")
+
+
+def hook_binary() -> str:
+    """`taskops-hook`, absolute. Read by `claudefile`, which wires the Claude Code hooks."""
+    return _beside("taskops-hook")
+
+
+def _beside(name: str) -> str:
+    """The named console script beside this interpreter, or the bare name.
 
     The bare name is the honest fallback: a global install has it on PATH, and a checkout that
     somehow does not is a case where naming a path that is not there would be worse.
     """
-    beside = Path(sys.executable).with_name("taskops")
-    return str(beside) if beside.is_file() else "taskops"
+    found = Path(sys.executable).with_name(name)
+    return str(found) if found.is_file() else name
 
 
 def _read(path: Path) -> dict[str, Any]:

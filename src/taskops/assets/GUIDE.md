@@ -299,7 +299,7 @@ git clone <repo> && cd <repo>
 taskops join https://server/project?token=…
 ```
 
-That is init, hooks, MCP wiring, the remote, and the first pull, in one. Re-running it repairs
+That is init, the git hooks, the CLAUDE CODE hooks (into the project, not a plugin), the MCP wiring, the remote, and the first pull, in one. Re-running it repairs
 a clone (fresh checkouts lose their git hooks).
 
 After that, **the server IS the board** — there is no sync because there is nothing to

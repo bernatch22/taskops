@@ -1,7 +1,7 @@
 """`taskops init` — making a repository coordinated.
 
-Three things, and the order is deliberate: the project directory, the gitignore entry,
-then the git hooks. If hook installation fails the project still works — every hook here
+Four things, and the order is deliberate: the project directory, the gitignore entry, the
+project's Claude Code wiring (`.mcp.json` + `.claude/settings.json`), then the git hooks. If hook installation fails the project still works — every hook here
 is an optimisation of something the MCP tools already do — so a partial init leaves a
 usable system rather than a broken one.
 
@@ -17,6 +17,7 @@ from pathlib import Path
 from .._errors import BadRequest
 from ..storage import GUIDE_FILE, LOG_FILE, PROJECT_DIR, Store, find_root
 from ._gitignore import ignore
+from .claudefile import wire_hooks
 from .hooks import install_hooks
 from .mcpfile import wire_mcp
 
@@ -58,6 +59,7 @@ def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
     _guide(root)
     (root / LOG_FILE).touch(exist_ok=True)
     wire_mcp(root)      # the project's own file, merged — see `mcpfile`
+    wire_hooks(root)    # and the Claude Code hooks, for the same reason and the same way
     adopted = _adopt(root)
     hooks, skipped = install_hooks(root) if install_git_hooks else ([], [])
     return InitReport(root=root, created=created, hooks=hooks, skipped=skipped,
