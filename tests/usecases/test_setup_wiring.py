@@ -266,3 +266,49 @@ def test_the_hook_wiring_is_never_committed(tmp_path: Path) -> None:
     assert SETTINGS_FILE in (tmp_path / ".gitignore").read_text(encoding="utf-8")
     written = json.loads((tmp_path / SETTINGS_FILE).read_text(encoding="utf-8"))
     assert Path(written["hooks"]["Stop"][0]["hooks"][0]["command"].split()[0]).is_absolute()
+
+
+def test_init_writes_the_specialists_where_claude_code_reads_them(tmp_path: Path) -> None:
+    """`Agent type 'taskops-worker' not found` — the third rendering of the same failure
+    (.mcp.json, then the hooks, now the agents), each one a piece the project needed that
+    lived in a plugin nobody installs. Worst of the three: by then SessionStart was ORDERING
+    sessions to dispatch a specialist that did not exist, and every one fell back to
+    general-purpose — a verifier without the sonnet/read-only constraints spent twenty
+    minutes building venvs to check three calendar functions."""
+    from taskops.usecases import init
+
+    init(tmp_path, install_git_hooks=False)
+
+    agents = tmp_path / ".claude" / "agents"
+    assert (agents / "taskops-worker.md").is_file()
+    verifier = (agents / "taskops-verifier.md").read_text(encoding="utf-8")
+    assert "model: sonnet" in verifier, "the constraint that makes verification fast"
+    assert ".claude/agents/taskops-*.md" in (tmp_path / ".gitignore").read_text(
+        encoding="utf-8"), "generated like GUIDE.md, ignored like GUIDE.md"
+
+
+def test_a_projects_own_agents_survive_init(tmp_path: Path) -> None:
+    """Only `taskops-*` is ours. A project's own specialist is its code."""
+    from taskops.usecases import init
+
+    agents = tmp_path / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    (agents / "db-migrator.md").write_text("---\nname: db-migrator\n---\ntheirs",
+                                           encoding="utf-8")
+
+    init(tmp_path, install_git_hooks=False)
+
+    assert (agents / "db-migrator.md").read_text(encoding="utf-8").endswith("theirs")
+
+
+def test_the_plugin_and_the_package_carry_the_same_agents() -> None:
+    """Two copies exist on purpose — the plugin still ships them — and two copies of one
+    concept is three bugs unless something pins them together. This is the something."""
+    import pathlib
+
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    assets = repo / "src" / "taskops" / "assets" / "agents"
+    plugin = repo / "plugin" / "agents"
+    for spec in sorted(assets.glob("taskops-*.md")):
+        assert (plugin / spec.name).read_bytes() == spec.read_bytes(), \
+            f"{spec.name} drifted between plugin/ and assets/"

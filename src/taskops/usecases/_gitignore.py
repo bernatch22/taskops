@@ -50,6 +50,12 @@ ran `taskops init` could not pull from one another, because the incoming commit 
 both sides had independently created untracked.
 """
 
+AGENTS_RULE = ".claude/agents/taskops-*.md"
+"""Ours are GENERATED — rewritten by every init to match the installed version, exactly like
+GUIDE.md and for the same reason: a stale copy describes tools that no longer exist, and two
+developers on different versions would fight over the file forever. Only `taskops-*` is
+ignored; a project's own agents are its code and commit normally."""
+
 SETTINGS_RULE = ".claude/settings.local.json"
 """Written by `init` and machine-specific: it names the absolute path to `taskops-hook` on
 THIS machine. Committing it would hand a teammate five hooks pointing into a directory they do
@@ -68,10 +74,11 @@ BLOCK = f"""
 {PROJECT_DIR}/*.stamp
 {PROJECT_DIR}/stop-blocks.json
 {SETTINGS_RULE}
+{AGENTS_RULE}
 """
 
 _UPGRADES = (REPORTS_NOTE, REMOTE_RULE, f"{PROJECT_DIR}/*.stamp",
-             f"{PROJECT_DIR}/stop-blocks.json", SETTINGS_RULE)
+             f"{PROJECT_DIR}/stop-blocks.json", SETTINGS_RULE, AGENTS_RULE)
 """Lines added to the block AFTER projects existed with it. Order is the order they land in."""
 
 

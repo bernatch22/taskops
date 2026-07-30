@@ -93,6 +93,11 @@ class EventTable:
         row = self.db.execute("SELECT COALESCE(MAX(seq), 0) AS n FROM events").fetchone()
         return int(row["n"])
 
+    def all(self) -> list[Event]:
+        """Every event, log order. The reconcile's read — nothing hot-path calls this."""
+        rows = self.db.execute("SELECT * FROM events ORDER BY ts, seq").fetchall()
+        return [to_event(row) for row in rows]
+
     def unexported(self, *, limit: int = 1000) -> list[Event]:
         """What the committed log has not seen yet, oldest first."""
         rows = self.db.execute("SELECT * FROM events WHERE exported = 0 "

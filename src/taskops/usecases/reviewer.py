@@ -24,7 +24,7 @@ going to be in a registry.
 from __future__ import annotations
 
 from .._errors import BadRequest
-from .._types import HUMAN
+from .._types import HUMAN, PEER
 from ..storage import Store
 from ..storage.context import facts
 from ._contextslice import in_force
@@ -50,7 +50,7 @@ def named(store: Store, value: str) -> str:
     wanted = value.strip()
     if wanted.lower() in ("none", "nobody"):
         return ""
-    if not wanted or wanted == HUMAN:
+    if not wanted or wanted in (HUMAN, PEER):
         return wanted
     if ":" in wanted:
         # A person or an ad-hoc worker. Left free-form on purpose, exactly as assignment
@@ -61,7 +61,7 @@ def named(store: Store, value: str) -> str:
         raise BadRequest(
             f"`{wanted}` is not a specialist this project registered — it knows "
             f"{', '.join(known) or 'none'}. For a person, use `human`, `dev:<name>` or "
-            f"`agent:<dev>/<name>`.")
+            f"`agent:<dev>/<name>`; for \"anybody but the author\", `peer`.")
     return wanted
 
 

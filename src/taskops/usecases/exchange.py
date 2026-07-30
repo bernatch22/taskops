@@ -25,6 +25,7 @@ from ..contracts import Event
 from ..engine import relay, replay, unblock
 from ..storage import event_from
 from ._project import project
+from .journal import journal
 
 __all__ = ["accept_events", "pull_events", "MAX_BATCH", "MAX_PAGE"]
 
@@ -55,11 +56,13 @@ def accept_events(start: Path | str, raw: list[Any]) -> dict[str, int]:
                          f"request and repeat until the cursor stops moving")
     events = [_coerce(item, index) for index, item in enumerate(raw)]
     with project(start) as store:
-        fresh = [e for e in events if e is not None and relay(store, e)]
+        fresh = [e for e in events if e is not None and relay(store, e, exported=False)]
         if fresh:
             replay.apply(store, fresh)
             unblock(store)
-        return {"accepted": len(fresh), "max_seq": store.events.max_seq()}
+        answer = {"accepted": len(fresh), "max_seq": store.events.max_seq()}
+    journal(start)
+    return answer
 
 
 def pull_events(start: Path | str, *, after: int = 0, limit: int = MAX_PAGE) -> dict[str, Any]:

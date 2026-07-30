@@ -22,7 +22,8 @@ from pathlib import Path
 from .._clock import now
 from ..engine import commitline, gitio
 from ..storage import Store
-from ._project import caller, heartbeat, project
+from ._committer import committer
+from ._project import heartbeat, project
 
 __all__ = ["Verdict", "check_commit", "check_command"]
 
@@ -73,9 +74,9 @@ def check_commit(start: Path | str, message: str, *, actor: str = "") -> Verdict
     to also state which invites the one answer that is wrong.
     """
     with project(start) as store:
-        who = caller(store, actor)["id"]
-        heartbeat(store, who)
         branch = gitio.current_branch(store.root)
+        who = committer(store, branch, actor)
+        heartbeat(store, who)
         return _judge(store, who, branch, message)
 
 

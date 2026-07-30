@@ -230,3 +230,46 @@ def test_the_agent_loop_from_mcp_plan_to_a_guarded_commit(repo: Path) -> None:
     done = git(repo, "commit", "-m", "Ship the loop", env=as_agent(), check=False)
     assert done.returncode == 0, done.stderr
     assert f"Task: {branch.split('/')[1]}" in message_of(repo)
+
+
+def test_a_commit_in_a_worktree_belongs_to_the_lease_holder_not_the_machine(
+        repo: Path) -> None:
+    """Found in a live run and diagnosed from a card comment, which is the wrong place to find
+    out. A worker sub-agent commits through Bash inside its worktree; that Bash carries no
+    `$TASKOPS_ACTOR`, so the guard resolved the DEVELOPER — `dev:dev1` instead of
+    `agent:dev1/w2` — and waved the commit through with "allowed, you are not an agent". The
+    agent rules did not apply to an agent.
+
+    A task branch with a live lease already knows better than git config: whoever holds it is
+    by definition the one doing this work.
+    """
+    from taskops.usecases.guard import check_commit
+
+    card = plan(repo, [{"title": "held by an agent", "spec": "x"}],
+                actor="dev:berna")["created"][0]["id"]
+    claimed = next_task(repo, task=card, actor="agent:berna/w2")["claim"]
+    _switch(repo, claimed["branch"])
+
+    verdict = check_commit(repo, "feat: work done in the worktree")
+
+    assert verdict.allowed, verdict.reason
+    assert f"Task: {card}" in verdict.message
+
+
+def test_a_stated_actor_is_never_overridden_by_the_lease(repo: Path) -> None:
+    """The first fence, same as `attributed`: an identity somebody stated is theirs, right or
+    wrong. Inferring over it would make a wrong `--actor` impossible to see."""
+    from taskops.usecases.guard import check_commit
+
+    card = plan(repo, [{"title": "held", "spec": "x"}], actor="dev:berna")["created"][0]["id"]
+    claimed = next_task(repo, task=card, actor="agent:berna/w2")["claim"]
+    _switch(repo, claimed["branch"])
+
+    verdict = check_commit(repo, "feat: x", actor="agent:berna/somebody-else")
+
+    assert not verdict.allowed
+    assert "holds no live lease" in verdict.reason
+
+
+def _switch(repo: Path, branch: str) -> None:
+    git(repo, "switch", "-c", branch)

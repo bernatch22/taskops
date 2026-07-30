@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from .._types import HUMAN
 from ._acceptance import evidenced
+from ._peer import reviewer_is_a_peer
 
 if TYPE_CHECKING:                          # pragma: no cover - typing only
     from .machine import Facts
@@ -118,7 +119,8 @@ def closing(facts: Facts) -> str | None:
     branch somebody else lands — and a repository with no remote would otherwise be unable to
     close anything, which is the most common way taskops is first tried.
     """
-    return (_reviewer_is_a_person(facts) or _needs_a_reviewer(facts) or _handed_on(facts)
+    return (_reviewer_is_a_person(facts) or reviewer_is_a_peer(facts)
+            or _needs_a_reviewer(facts) or _handed_on(facts)
             or _needs_children_closed(facts) or _needs_code(facts)
             or evidenced(facts.evidence))
 

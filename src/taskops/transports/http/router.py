@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
+from ...usecases.journal import journal
 from . import agentapi, api, assigning, chat, exchange, live, reports, rpc, static, unlock
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
@@ -66,7 +67,17 @@ def build(root: Path, policy: Policy, base: str = "/") -> Route:
             return unlock.instead(refusal, request, base)
         route = routes.get((request.method, request.path))
         if route is not None:
-            return route(request)
+            answer = route(request)
+            if request.method != "GET":
+                # The journal, HERE, because this is the one door every write walks through —
+                # a per-handler call is the pattern that already missed two handlers once.
+                # Cheap on a no-op (one indexed query, zero rows) and never fatal: losing a
+                # journal write must not fail the request whose events are safely in the db.
+                try:
+                    journal(root)
+                except OSError:
+                    pass
+            return answer
         if request.method == "GET" and not request.path.startswith("/api/"):
             # Everything that is not the API is the single-page app, INCLUDING unknown paths:
             # the UI routes in the browser, so a reload on /task/tk-1 must serve index.html

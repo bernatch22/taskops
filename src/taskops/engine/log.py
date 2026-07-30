@@ -52,7 +52,7 @@ def record(store: Store, *, task: str, actor: str, kind: EventKind,
     return event
 
 
-def relay(store: Store, event: Event) -> bool:
+def relay(store: Store, event: Event, *, exported: bool = True) -> bool:
     """Accept an event that came from elsewhere, verbatim. True if it was new.
 
     The id is NOT recomputed. A foreign event's id is its identity, and rebuilding
@@ -61,8 +61,14 @@ def relay(store: Store, event: Event) -> bool:
 
     That means a bad actor could forge an id, which is worth being explicit about:
     the trust boundary is the git remote and the relay's token, not this function.
+
+    `exported` is who-am-I in one flag. A CLONE relays with the default: what arrived came
+    from the server, and exporting it back out is how a log doubles. A SERVER relays with
+    False, because for a server "export" means its own `events.jsonl` — the only durable copy
+    it has — and marking arrivals exported is exactly how four boards ended up with full
+    databases and empty logs.
     """
-    accepted = store.events.append(event, exported=True)
+    accepted = store.events.append(event, exported=exported)
     if accepted:
         BUS.publish(event)
     return accepted

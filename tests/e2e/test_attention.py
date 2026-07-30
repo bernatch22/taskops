@@ -153,23 +153,47 @@ def test_a_parked_card_surfaces_even_though_its_worker_still_holds_the_lease(
     assert moves(repo)[card] == "stalled"
 
 
-def test_a_review_surfaces_even_when_a_stale_lease_says_somebody_holds_it(repo: Path) -> None:
-    """Found by running two clones against a real server. Handing a card over releases its
-    lease, so a `review` card holding one is a card whose lease is WRONG — and with a remote
-    that is routine, because transitions execute in the server's database and the client
-    mirrors the task, not the lease release. The machine that did the work keeps a live lease
-    on a card it already handed over, and the sweep went quiet on the one board that most
-    needed to say somebody has to verify this."""
-    from taskops._clock import now
-    from taskops.contracts import Lease
-    from taskops.storage import Store
+def test_a_review_a_verifier_is_holding_is_not_offered_to_anybody_else(repo: Path) -> None:
+    """This REPLACES a test that pinned the opposite — that a review card must surface even
+    with a live lease on it — and the replacement is the point rather than an accommodation.
 
+    That test existed for a bug: a remote handover left a stale lease behind, because the
+    mirror's copy of `LEASE_ENDS` had missed `review`. The stale lease is gone at the root now
+    (one list, imported by both), so a LIVE lease on a review card has exactly one remaining
+    meaning: a verifier claimed it and is checking. Showing it anyway is what had one real card
+    verified three times in parallel, each run building its own venv.
+    """
     card = a_card(repo)
     next_task(repo, task=card, actor=WORKER)
     update(repo, card, status="review", comment="over to you", actor=WORKER)
-    with Store(repo) as store:
-        store.leases.acquire(Lease(task=card, actor=WORKER, session="s", branch="b",
-                                   acquired=now(), expires=now() + 900))   # the stale mirror
-        assert [lease["task"] for lease in store.leases.live(now())] == [card]
+    assert moves(repo)[card] == "verify", "with nobody on it, it is everybody's to pick up"
 
-    assert moves(repo)[card] == "verify"
+    taken = next_task(repo, task=card, actor="agent:berna/verifier")
+
+    assert taken["claim"] is not None
+    assert card not in moves(repo), "somebody is checking it; it is that verifier's turn"
+
+
+def test_a_verifier_claiming_a_review_leaves_it_in_review(repo: Path) -> None:
+    """The close guard is written against a card that IS in review, so a verification claim
+    may not walk it to `claimed` on the way in — that would make the verdict unlandable."""
+    card = a_card(repo)
+    next_task(repo, task=card, actor=WORKER)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+
+    taken = next_task(repo, task=card, actor="agent:berna/verifier")
+
+    assert taken["claim"]["view"]["task"]["status"] == "review"
+
+
+def test_the_worker_coming_back_to_a_bounced_card_still_gets_it_claimed(repo: Path) -> None:
+    """The other half, and the reason `lands_on` reads the log: the SAME agent returning to
+    its own bounced card is leaving the handoff, not verifying it. Refusing that stranded the
+    one worker the findings were addressed to."""
+    card = a_card(repo)
+    next_task(repo, task=card, actor=WORKER)
+    update(repo, card, status="review", comment="done my half", actor=WORKER)
+
+    back = next_task(repo, task=card, actor=WORKER)
+
+    assert back["claim"]["view"]["task"]["status"] == "claimed"

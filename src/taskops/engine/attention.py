@@ -42,7 +42,7 @@ def _move(store: Store, task: Task, held: set[str]) -> Waiting | None:
     """
     if task["status"] in ("done", "cancelled"):
         return None
-    if (declared := _declared(store, task)) is not None:
+    if (declared := _declared(store, task, held)) is not None:
         return declared
     if task["id"] in held:
         return None
@@ -58,28 +58,26 @@ def _move(store: Store, task: Task, held: set[str]) -> Waiting | None:
     return _at(task, "dispatch", "ready, unassigned, and nothing depends on it first")
 
 
-def _declared(store: Store, task: Task) -> Waiting | None:
-    """The two statuses judged BEFORE the lease, because each one CONTRADICTS a live lease.
+def _declared(store: Store, task: Task, held: set[str]) -> Waiting | None:
+    """The two statuses the lease does not simply veto, because each means something extra.
 
-    Both were found by running the thing rather than by reading it, and both are the same
-    mistake — trusting the lease over what the card itself says:
+    `blocked` keeps its lease and is judged AS IF it had none: only `ready`, `review`, `done`
+    and `cancelled` release one, so a worker that had just declared itself blocked went on
+    looking busy for the fifteen minutes until the TTL ran out. Its own declaration is the
+    better evidence — an agent saying "I am blocked on this" is saying it is not working on it.
 
-    `blocked` keeps its lease. Only `ready`, `review`, `done` and `cancelled` release one, so a
-    worker that had just declared itself blocked went on looking busy for the fifteen minutes
-    until the TTL ran out. Its own declaration is the better evidence: an agent saying "I am
-    blocked on this" is saying it is not working on it.
-
-    `review` RELEASES its lease, so a review card holding one is a card whose lease is simply
-    wrong — and with a remote that is routine, because transitions execute in the server's
-    database while the client mirrors the TASK, not the lease release. The machine that did the
-    work keeps a live lease on a card it already handed over, and the sweep went quiet on the
-    one board that most needed to say somebody has to verify this. Two clones against a real
-    server is the only place that gap shows.
+    `review` reads the lease the other way round: the handover RELEASED it everywhere (the
+    mirror included, since `LEASE_ENDS` became one list), so a LIVE lease on a review card now
+    has exactly one meaning — a verifier claimed it and is checking right now. That lease is
+    what ended triple verification: one real card was verified three times in parallel, each
+    run building its own venv, because a review card appeared in every session's sweep at once.
     """
     if task["status"] == "blocked":
         return _stalled(store, task)
     if task["status"] != "review":
         return None
+    if task["id"] in held:
+        return None          # a verifier holds it — it is that verifier's turn, not yours
     who = task["reviewer"] or "the verifier"
     return _at(task, "verify", f"in review since it was handed over; {who} has not closed it")
 

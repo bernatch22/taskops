@@ -88,7 +88,8 @@ def test_a_malformed_file_warns_and_is_skipped_not_raised(project: Path) -> None
     write_agent(project, "bad", "not frontmatter at all\n")
     with pytest.warns(UserWarning, match="bad.md"):
         names = [a["name"] for a in specialists(project)]
-    assert names == ["taskops-collectors"]
+    assert "taskops-collectors" in names
+    assert "bad" not in names
 
 
 # ---- the two directories, one registry
@@ -130,9 +131,11 @@ def test_no_match_routes_to_nothing(project: Path) -> None:
     assert agent_for(project, ["ui"]) == ""
 
 
-def test_a_project_with_no_registry_routes_to_nothing(project: Path) -> None:
-    """THE regression guard: no `.claude/agents/`, no behaviour change anywhere."""
-    assert specialists(project) == []
+def test_the_stock_specialists_route_nothing_by_label(project: Path) -> None:
+    """`init` now writes taskops-worker and taskops-verifier into every project, so "no
+    registry" no longer exists — this pins what replaced it: the stock pair carries no
+    labels, so label routing still resolves to nothing until a project defines its own."""
+    assert {a["name"] for a in specialists(project)} == {"taskops-verifier", "taskops-worker"}
     assert agent_for(project, ["etl"]) == ""
 
 

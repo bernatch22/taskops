@@ -27,6 +27,7 @@ __all__ = [
     "LOCAL_ONLY_KINDS",
     "EDITABLE_FIELDS",
     "HUMAN",
+    "PEER",
 ]
 
 Status = Literal[
@@ -98,6 +99,11 @@ EDITABLE_FIELDS: tuple[str, ...] = ("title", "spec", "priority", "reviewer")
 """The columns a person may rewrite after a card exists. Named here rather than in
 `storage` because three layers ask the same question — the CLI validates a flag, the
 use case records one event per field, and replay refuses a body naming anything else."""
+
+PEER = "peer"
+"""A reviewer that means "anybody but this card's own developer". Stated once as a project
+decision (`reviewer: peer`) rather than written per card, because it is a team's policy and a
+per-card copy of a policy is a policy with exceptions nobody meant."""
 
 HUMAN = "human"
 """What a card's `reviewer` says when a PERSON closes it — "whoever is reading the board".

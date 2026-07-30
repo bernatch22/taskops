@@ -108,3 +108,38 @@ def test_a_card_bounced_back_goes_round_again_rather_than_closing(repo: Path) ->
 
     update(repo, task, actor=WORKER, status="review", comment="round 2: asserted")
     closes(repo, task, VERIFIER)
+
+
+def test_peer_review_refuses_the_author_s_own_developer(repo: Path) -> None:
+    """The hole found in a live two-developer run, and the same bug that was called critical
+    once already arriving through a different door: `_handed_on` compares ACTOR IDS, so
+    `dev:dev2` closing what `agent:dev2/w1` handed over is two different strings and passes —
+    while being, in every sense that matters, the author closing their own work. It happened to
+    two real cards, WHILE independent verifiers were still running on them."""
+    from taskops.usecases import context_state
+
+    context_state(repo, "decision", "reviewer: peer", actor=DEV)
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA}],
+                actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor="agent:berna/w1")
+    update(repo, card, status="review", comment="over to you", actor="agent:berna/w1")
+
+    with pytest.raises(GuardFailed, match="nobody on berna closes work berna produced"):
+        update(repo, card, status="done", no_code=True, comment="mine",
+               evidence="checked", actor="dev:berna")
+
+    update(repo, card, status="done", no_code=True, comment="checked it",
+           evidence="ran it", actor="dev:ana")
+
+
+def test_peer_review_is_opt_in_and_a_solo_board_is_untouched(repo: Path) -> None:
+    """The default has to keep a solo developer working: with nobody else on the board,
+    refusing every close would make the tool unusable for the most common way it is first
+    tried. A team states it once as a project decision."""
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA}],
+                actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor="agent:berna/w1")
+    update(repo, card, status="review", comment="over to you", actor="agent:berna/w1")
+
+    update(repo, card, status="done", no_code=True, comment="read the diff myself",
+           evidence="ran it", actor="dev:berna")

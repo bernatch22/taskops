@@ -444,3 +444,43 @@ def _local_board(where: Path):
 
     with Store(where) as store:
         return build_board(store)
+
+
+def test_the_servers_log_is_never_the_empty_file_again(tmp_path: Path, hub: Serving) -> None:
+    """Found on the box: four production boards, full databases, `events.jsonl` at exactly 0
+    bytes — while the architecture calls the log truth and the database disposable. Two writers,
+    neither exporting: the server's own use cases left events unexported with nothing running
+    the exporter, and relayed arrivals came marked exported and were skipped by design. After
+    the single-source refactor retired the clones' logs, that empty file was one `rm db.sqlite`
+    from total loss."""
+    from taskops.storage import read_log
+
+    card = plan(hub.root, [{"title": "must reach the journal", "spec": "s"}],
+                actor="dev:berna")["created"][0]["id"]
+    mine = machine(tmp_path / "mine", hub.url)
+    next_task(mine, actor="agent:berna/one", task=card)     # a write through the wire
+
+    logged = {event["id"] for event in read_log(hub.root)}
+    with Store(hub.root) as store:
+        stored = {event["id"] for event in store.events.all()
+                  if event["kind"] not in ("activity", "chat")}
+    assert stored, "the premise: the database saw events"
+    assert stored <= logged, "every durable event is in the file the moment the request ends"
+
+
+def test_reconcile_backfills_a_board_with_a_full_database_and_an_empty_log(
+        hub: Serving) -> None:
+    """The repair for every board that predates the journal. The `exported` flag is ignored on
+    purpose: it means "the git path sent this", and on a server that path never ran — trusting
+    it is exactly how the four boards got this way."""
+    from taskops.storage import LOG_FILE, read_log
+    from taskops.usecases.journal import reconcile
+
+    plan(hub.root, [{"title": "history", "spec": "s"}], actor="dev:berna")
+    (hub.root / LOG_FILE).write_text("", encoding="utf-8")      # the box, as found
+
+    backfilled = reconcile(hub.root)
+
+    assert backfilled > 0
+    assert {e["kind"] for e in read_log(hub.root)} >= {"created"}
+    assert reconcile(hub.root) == 0, "idempotent — a healthy board writes nothing"

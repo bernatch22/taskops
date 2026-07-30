@@ -47,15 +47,17 @@ def sweep_dead(store: Store, *, at: float | None = None) -> list[str]:
     freed: list[str] = []
     for task_id in store.leases.sweep(when):
         task = store.tasks.get(task_id)
-        if task is not None and task["status"] in WORKING_STATUSES:
-            store.tasks.set_status(task_id, "ready", when=when)
-            # RECORDED, not just written. Now that a `claimed` replays onto other clones, an
-            # expiry that stayed local would strand them: every teammate would keep showing a
-            # card as held by an agent that died fifteen minutes ago, and nothing would ever
-            # tell them otherwise. A state change worth making is a state change worth syncing.
-            record(store, task=task_id, actor="taskops", kind="status",
-                   body={"to": "ready", "why": "the lease expired"}, ts=when)
-            freed.append(task_id)
+        if task is None or task["status"] not in WORKING_STATUSES:
+            continue
+        if task["status"] == "review":
+            freed.append(task_id)   # a verifier died: still finished, still unverified
+            continue
+        store.tasks.set_status(task_id, "ready", when=when)
+        # RECORDED: a `claimed` replays onto other clones now, so an expiry that stayed
+        # local would leave every teammate showing a card held by an agent that died.
+        record(store, task=task_id, actor="taskops", kind="status",
+               body={"to": "ready", "why": "the lease expired"}, ts=when)
+        freed.append(task_id)
     return freed
 
 

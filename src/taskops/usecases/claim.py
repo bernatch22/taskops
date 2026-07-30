@@ -19,6 +19,7 @@ from ..contracts import Claim, NextResult, Task
 from ..engine import branch_for, counts, ready_tasks, record, unblock
 from ..engine import claim as take_lease
 from ..storage import Store
+from ._claiming import claimable, lands_on
 from ._project import caller, heartbeat, project
 from ._reasons import why_nothing
 from ._routing import claim_remotely, routed, whoami
@@ -75,7 +76,7 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
     """
     if wanted:
         asked_for = store.tasks.need(wanted)
-        pool = [asked_for] if _claimable(asked_for, who) else []
+        pool = [asked_for] if claimable(asked_for, who) else []
     else:
         mine = agent_named(store.root, who)
         pool = [t for t in ready_tasks(store, labels=labels, actor=who)
@@ -84,17 +85,18 @@ def _take(store: Store, who: str, session: str, labels: tuple[str, ...],
         lease = take_lease(store, candidate, actor=who, session=session)
         if lease is None:
             continue
-        # Claiming ALWAYS lands on `claimed`, including out of `review`. Coming back to a
-        # bounced card IS leaving the handoff: the findings are in, the card is the worker's
-        # again, and leaving it in `review` would keep the guard refusing the one agent that
-        # was sent back to fix it.
-        store.tasks.set_status(candidate["id"], "claimed", when=now())
+        target = lands_on(store, candidate, who)
+        if target != candidate["status"]:
+            store.tasks.set_status(candidate["id"], target, when=now())
         record(store, task=candidate["id"], actor=who, kind="claimed",
-               body={"session": session, "branch": branch_for(candidate)})
+               body={"session": session, "branch": branch_for(candidate), "to": target})
         return Claim(view=view(store, candidate["id"]), lease=lease,
                      branch=branch_for(candidate),
                      inbox=inbox_for(store, who))
     return None
+
+
+
 
 
 def _fence(store: Store, who: str, wanted: str) -> str:

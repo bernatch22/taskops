@@ -18,10 +18,10 @@ from .locate import (
     resolve_root,
 )
 from .store import BUSY_TIMEOUT, Store
-from .sync import all_events, event_from, export_events, import_events
+from .sync import all_events, append_events, event_from, export_events, import_events, read_log
 
 __all__ = [
-    "Store",
+    "Store", "read_log", "append_events",
     "BUSY_TIMEOUT",
     "PROJECT_DIR",
     "DB_FILE",

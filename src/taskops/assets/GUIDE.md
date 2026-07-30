@@ -245,6 +245,17 @@ one NOBODY can pick up, since the scheduler hides it from everyone else.
 And it writes on each card what survived: commits are safe in git, and **uncommitted work is named
 with its path**, because a killed agent writes before it commits. Read that before starting over.
 
+## Reviewing: one verifier per card, and never your own work
+
+Claiming a card that is in `review` is how you say **"I am checking this"**. It takes the lease
+and LEAVES the card in review, so it stops appearing in everybody else's sweep — one real card
+was verified three times in parallel before that existed. Its own worker claiming it back means
+the opposite (leaving the handoff to fix the findings) and lands on `claimed`.
+
+If the project decided `reviewer: peer`, the engine refuses a `done` from anybody on the
+AUTHOR'S dev — `dev:ana` and `agent:ana/w1` are one person with two hands. Hand it to another
+developer's session, or to a verifier they spawn.
+
 ## What this project has already decided
 
 Before you design anything, read the standing facts:

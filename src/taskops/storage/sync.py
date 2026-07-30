@@ -29,7 +29,8 @@ from ._rows import as_dict
 from .locate import LOG_FILE
 from .store import Store
 
-__all__ = ["export_events", "import_events", "all_events", "read_log", "event_from"]
+__all__ = ["export_events", "import_events", "all_events", "read_log", "event_from",
+           "append_events"]
 
 
 def export_events(store: Store, *, limit: int = 1000) -> int:
@@ -48,6 +49,11 @@ def export_events(store: Store, *, limit: int = 1000) -> int:
         # event this machine has ever written.
         store.events.mark_exported([e["id"] for e in fresh])
     return len(shared)
+
+
+def append_events(path: Path, events: list[Event]) -> None:
+    """The raw appender, exposed for the journal's reconcile — same writer, same format."""
+    _append(path, events)
 
 
 def _append(path: Path, events: list[Event]) -> None:

@@ -58,6 +58,7 @@ def init(start: Path | str, *, install_git_hooks: bool = True) -> InitReport:
     ignore(root)
     _guide(root)
     (root / LOG_FILE).touch(exist_ok=True)
+    _specialists(root)
     wire_mcp(root)      # the project's own file, merged — see `mcpfile`
     wire_hooks(root)    # and the Claude Code hooks, for the same reason and the same way
     adopted = _adopt(root)
@@ -95,6 +96,34 @@ def _adopt(root: Path) -> int:
         applied = replay.apply(store, import_events(store))
         unblock(store)
         return applied
+
+
+def _specialists(root: Path) -> None:
+    """Write the two sub-agents into `.claude/agents/`, OVERWRITING ours every init.
+
+    The third rendering of the same failure, closed at the pattern this time. `.mcp.json` was
+    missing (specialists spawned with no tools), the Claude hooks were missing (sessions never
+    learned their role), and then `Agent type 'taskops-worker' not found` — because the agents
+    lived in a plugin nobody installs. Worse, by then the SessionStart injection was ORDERING
+    sessions to dispatch a specialist that did not exist; every one fell back to
+    `general-purpose`, and a verifier without the sonnet/read-only constraints spent twenty
+    minutes building venvs to check three calendar functions.
+
+    Same discipline as GUIDE.md: these ship with the package and describe THIS version's
+    tools, so ours are overwritten on every init and stay in step — while any agent the
+    project defined itself is untouched, because only files named taskops-* are ours. This is
+    not the mirrored-directory bug (`CLAUDE.md` carries the scar): there is no second registry
+    and no translation — the package is the source, `.claude/agents/` is the one place Claude
+    Code reads, and a test pins the plugin's copies to these bytes.
+    """
+    source = Path(__file__).resolve().parents[1] / "assets" / "agents"
+    if not source.is_dir():
+        return
+    destination = root / ".claude" / "agents"
+    destination.mkdir(parents=True, exist_ok=True)
+    for spec in sorted(source.glob("taskops-*.md")):
+        (destination / spec.name).write_text(spec.read_text(encoding="utf-8"),
+                                             encoding="utf-8")
 
 
 def _guide(root: Path) -> None:
