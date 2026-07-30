@@ -279,3 +279,33 @@ def test_a_broken_project_fails_open(tmp_path: Path, monkeypatch: Any) -> None:
     payload = json.dumps(event(tmp_path, tool_input={"command": "git commit -m 'x'"}))
     monkeypatch.setattr("sys.stdin", io.StringIO(payload))
     assert main(["pre-tool-use"]) == 0
+
+
+def test_a_stop_with_a_half_done_card_blocks_naming_both_exits(root: Path) -> None:
+    """The net, through the real handler. The reason IS the fix: both exits, per card, with
+    the actor spelled out — a block that only says no teaches an agent to argue with the door."""
+    from taskops.transports.hooks.claude import HANDLERS
+    from taskops.usecases import next_task, plan
+
+    task = plan(root, [{"title": "t", "spec": "s"}], actor="dev:ana")["created"][0]["id"]
+    next_task(root, task=task, actor="agent:ana/api1", session="s-1")
+
+    answer = HANDLERS["subagent-stop"]({"cwd": str(root), "session_id": "s-1",
+                                        "agent_type": "api"})
+    assert answer["decision"] == "block"
+    assert "status=review" in answer["reason"] and "status=ready" in answer["reason"]
+    assert "actor=agent:ana/api1" in answer["reason"]
+
+
+def test_a_clean_stop_passes_and_still_posts_the_standup(root: Path) -> None:
+    from taskops.transports.hooks.claude import HANDLERS
+
+    assert HANDLERS["stop"]({"cwd": str(root), "session_id": "s-1"}) == {}
+
+
+def test_a_broken_board_never_traps_a_session(tmp_path: Path) -> None:
+    """Fail OPEN: a taskops bug may never hold somebody's session at the door. A directory
+    that is not even a project is the cheapest stand-in for every internal failure."""
+    from taskops.transports.hooks.claude import HANDLERS
+
+    assert HANDLERS["subagent-stop"]({"cwd": str(tmp_path), "session_id": "s-1"}) == {}

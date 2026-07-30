@@ -60,9 +60,12 @@ BLOCK = f"""
 {PROJECT_DIR}/trees/
 {REMOTE_RULE}
 {REPORTS_NOTE}
+{PROJECT_DIR}/*.stamp
+{PROJECT_DIR}/stop-blocks.json
 """
 
-_UPGRADES = (REPORTS_NOTE, REMOTE_RULE)
+_UPGRADES = (REPORTS_NOTE, REMOTE_RULE, f"{PROJECT_DIR}/*.stamp",
+             f"{PROJECT_DIR}/stop-blocks.json")
 """Lines added to the block AFTER projects existed with it. Order is the order they land in."""
 
 

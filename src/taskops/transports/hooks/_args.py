@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+from typing import Any
 
 __all__ = ["add_target", "repo_of", "committer_is_agent", "unclaimed_is_allowed"]
 
@@ -67,3 +68,11 @@ def unclaimed_is_allowed() -> bool:
     an invisible one.
     """
     return os.environ.get(ESCAPE, "").strip() not in ("", "0")
+
+def cwd(payload: dict[str, Any]) -> str:
+    """Where the session is. Defaults to "." so a hand-run hook still works."""
+    return str(payload.get("cwd") or ".")
+
+
+def session_of(payload: dict[str, Any]) -> str:
+    return str(payload.get("session_id") or "")
