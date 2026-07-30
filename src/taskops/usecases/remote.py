@@ -22,7 +22,7 @@ from ..storage import resolve_root
 from ._remotefile import REMOTE_FILE, load, remote_path, write
 from ._sessionfile import as_credential, session_for
 
-__all__ = ["REMOTE_FILE", "add_remote", "read_remote", "require_remote",
+__all__ = ["REMOTE_FILE", "add_remote", "read_remote", "require_remote", "reset_cursor",
            "remove_remote", "save_cursor", "save_pushed", "remote_path"]
 
 read_remote = load
@@ -74,6 +74,20 @@ def remove_remote(start: Path | str) -> str:
     gone = require_remote(start)
     remote_path(resolve_root(start)).unlink(missing_ok=True)
     return gone["url"]
+
+
+def reset_cursor(start: Path | str) -> None:
+    """Forget how far this machine has read the server — the next pull refetches everything.
+
+    The one deliberate backwards move, and it exists for exactly one caller: `sync` on a
+    remote project, where the cache was deleted and the cursor is the only thing still
+    claiming those events were seen. `relay` accepts each content-hashed id once, so a full
+    refetch over a surviving cache costs a read and changes nothing.
+    """
+    current = require_remote(start)
+    stored = dict(current)
+    stored["cursor"] = 0
+    write(resolve_root(start), cast("Remote", stored))
 
 
 def save_cursor(start: Path | str, cursor: int) -> None:

@@ -19,6 +19,7 @@ from ..contracts.acceptance import ACCEPTANCE_KIND, KEYWORDS, SHALL, AcceptanceC
 from ..engine import record
 from ..storage import Store
 from ._project import caller, heartbeat, project
+from ._routing import call_remote, whoami
 
 __all__ = ["criteria_in", "check", "attach", "criteria_of", "set_acceptance", "acceptance_for"]
 
@@ -86,6 +87,9 @@ def criteria_of(store: Store, task_id: str) -> list[str]:
 def set_acceptance(start: Path | str, task_id: str, criteria: list[str], *,
                    actor: str = "") -> AcceptanceCheck:
     """The verb behind `tasks edit --acceptance` and the `acceptance` field of a plan entry."""
+    if (answer := call_remote(start, "acceptance", {"task": task_id, "criteria": criteria,
+                                                    "actor": whoami(start, actor)})) is not None:
+        return cast("AcceptanceCheck", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)

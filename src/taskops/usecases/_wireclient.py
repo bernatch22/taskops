@@ -99,6 +99,10 @@ class Wire:
         """`POST /api/update` — the transition, checked by the server's guards."""
         return self.call("POST", "/api/update", body=body)
 
+    def rpc(self, verb: str, args: dict[str, Any]) -> Any:
+        """`POST /api/rpc` — any registered verb, executed in the server's store."""
+        return self.call("POST", "/api/rpc", body={"verb": verb, "args": args})
+
     def call(self, method: str, path: str, *, body: Any = None,
              allow: tuple[int, ...] = ()) -> dict[str, Any]:
         """One request. A status in `allow` comes back as data with `status` set."""

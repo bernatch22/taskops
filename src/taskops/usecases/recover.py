@@ -29,6 +29,7 @@ from ..engine import fleet
 from ..storage import Store
 from ._freeing import Stuck, release_lease, unassign
 from ._project import caller, heartbeat, project
+from ._routing import call_remote, whoami
 
 __all__ = ["recover", "Recovered", "Stuck"]
 
@@ -49,6 +50,13 @@ def recover(start: Path | str, *, actor: str = "", grace: float = HEARTBEAT_GRAC
     view uses to print SILENT, so what you see is what this acts on. `force` releases even the ones
     still reporting, which is for the case where a fleet is alive and wrong.
     """
+    if (answer := call_remote(start, "recover", {"actor": whoami(start, actor),
+                                                 "grace": grace, "force": force})) is not None:
+        return Recovered(
+            released=[Stuck(task=s["task"], actor=s["actor"], silent_for=s["silent_for"],
+                            commits=s["commits"], leftovers=list(s["leftovers"]),
+                            tree=Path(s["tree"])) for s in answer["released"]],
+            alive=list(answer["alive"]))
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)

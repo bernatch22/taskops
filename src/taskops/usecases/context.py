@@ -25,6 +25,7 @@ from ..engine import record
 from ..storage.context import fact_of, facts
 from ._contextslice import for_task, in_force
 from ._project import caller, heartbeat, project
+from ._routing import call_remote, read_remote_first, whoami
 
 __all__ = ["state", "retire", "show", "history", "context_for"]
 
@@ -46,6 +47,10 @@ def state(start: Path | str, sort: str, text: str, *, labels: Sequence[str] = ()
         raise BadRequest(f"an {sort} needs text — a fact with no statement states nothing")
     body: dict[str, Any] = {"sort": sort, "text": text.strip(), "labels": list(labels),
                             "files": list(files), "horizon": horizon, "owner": owner}
+    if (answer := call_remote(start, "context_state", {"sort": sort, "text": text,
+                                                       "labels": list(labels),
+                                                       "actor": whoami(start, actor)})) is not None:
+        return cast("Fact", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
@@ -57,6 +62,9 @@ def state(start: Path | str, sort: str, text: str, *, labels: Sequence[str] = ()
 
 def retire(start: Path | str, fact_id: str, *, actor: str = "") -> Fact:
     """Withdraw a fact. It leaves `show` and stays in `log`, because there is no eraser."""
+    if (answer := call_remote(start, "context_retire", {"id": fact_id,
+                                                        "actor": whoami(start, actor)})) is not None:
+        return cast("Fact", answer)
     with project(start) as store:
         known = {f["id"]: f for f in facts(store, retired=True)}
         if fact_id not in known:
@@ -68,12 +76,16 @@ def retire(start: Path | str, fact_id: str, *, actor: str = "") -> Fact:
 
 
 def show(start: Path | str) -> ContextSlice:
+    if (answer := read_remote_first(start, "context_show", {})) is not None:
+        return cast("ContextSlice", answer)
     """What is in force, project-wide."""
     with project(start) as store:
         return in_force(facts(store))
 
 
 def history(start: Path | str) -> list[Fact]:
+    if (answer := read_remote_first(start, "context_history", {})) is not None:
+        return cast("list[Fact]", answer)
     """Everything ever stated, retired ones included and marked."""
     with project(start) as store:
         return facts(store, retired=True)
@@ -82,6 +94,8 @@ def history(start: Path | str) -> list[Fact]:
 def context_for(start: Path | str, task_id: str) -> ContextSlice:
     """The slice one card gets: every invariant, the current objective, and the decisions
     that match its labels or its files. This is what a worker is handed instead of the book."""
+    if (answer := read_remote_first(start, "context_for", {"task": task_id})) is not None:
+        return cast("ContextSlice", answer)
     with project(start) as store:
         task: Task = store.tasks.need(task_id)
         return for_task(facts(store), task)

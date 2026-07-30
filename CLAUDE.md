@@ -111,6 +111,10 @@ from the log.
 - **Two directories for one concept is three bugs.** `.taskops/agents/` mirrored into
   `.claude/agents/` needed a marker, a pruner and a name translator, and each one broke. The
   specialists are Claude Code subagents, read where they already live.
+- **A project with a remote has ONE source of truth: the server.** Every write routes there
+  (`/api/rpc` + the claim/update endpoints); reads degrade to the local cache with a warning.
+  Five bugs in one day came from the replica thinking it was an authority. A new remote-safe
+  verb is a ROW in `transports/http/_verbs.py`, not a bespoke endpoint.
 - **A project is a directory whose `.taskops/` holds the LOG.** Matching on the directory made
   `~` a project, because `~/.taskops/sessions.json` is where login lives.
 - **Never `python3 -m taskops…` from outside.** Console scripts (`taskops`, `taskops-hook`)

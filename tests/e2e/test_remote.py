@@ -52,6 +52,16 @@ def make(where: Path, url: str = "") -> Path:
     return where
 
 
+def planned(where: Path, url: str, title: str) -> Path:
+    """A board with one card, connected AFTER planning. This file's fake speaks the pre-rpc
+    contract, so a plan on an already-connected project — which executes on the real server —
+    is the real server's test (`test_agentwire`), never this one's."""
+    init(where, install_git_hooks=False)
+    plan(where, [{"title": title}], actor="dev:berna")
+    add_remote(where, url, TOKEN)
+    return where
+
+
 # ── the token ───────────────────────────────────────────────────────────────────────────
 
 def test_the_token_file_is_readable_only_by_its_owner(tmp_path: Path) -> None:
@@ -103,21 +113,25 @@ def test_removing_the_remote_deletes_the_token(tmp_path: Path) -> None:
 
 # ── events ──────────────────────────────────────────────────────────────────────────────
 
-def test_a_plan_reaches_the_server_without_anybody_pushing(tmp_path: Path, base: str,
-                                                           fake: Fake) -> None:
-    """The three-person simulacro ran on "push after every change", and the rule was broken
-    within minutes by the person who wrote it. A plan on a remote project now shares itself;
-    the manual `push` remains for everything else and finds nothing left to send."""
-    plan(make(tmp_path, base), [{"title": "wire the client"}], actor="dev:berna")
+def test_a_board_that_predates_the_remote_is_carried_up_by_push(tmp_path: Path, base: str,
+                                                                fake: Fake) -> None:
+    """The adoption path. A project that lived on git grows a server later; its history has to
+    arrive whole. (A plan made AFTER the remote exists never touches this path — it executes
+    on the server via rpc, which is the real server's test, not this contract fake's.)"""
+    init(tmp_path, install_git_hooks=False)
+    plan(tmp_path, [{"title": "wire the client"}], actor="dev:berna")
+    add_remote(tmp_path, base, TOKEN)
+    assert push(tmp_path).accepted > 0
     assert any(event["kind"] == "created" for event in fake.events)
-    assert push(tmp_path).accepted == 0, "the plan already carried itself"
 
 
 def test_a_second_push_sends_nothing_and_the_server_grows_by_nothing(
         tmp_path: Path, base: str, fake: Fake) -> None:
     """Idempotency, asserted where it matters: not "the second call succeeded" but "the log
     on the server is the same length"."""
-    plan(make(tmp_path, base), [{"title": "wire the client"}], actor="dev:berna")
+    init(tmp_path, install_git_hooks=False)
+    plan(tmp_path, [{"title": "wire the client"}], actor="dev:berna")
+    add_remote(tmp_path, base, TOKEN)
     push(tmp_path)
     held = len(fake.events)
     assert push(tmp_path).accepted == 0
@@ -127,7 +141,9 @@ def test_a_second_push_sends_nothing_and_the_server_grows_by_nothing(
 def test_nothing_is_marked_exported_when_the_push_never_lands(tmp_path: Path) -> None:
     """A push cut off mid-flight must re-send. Marking first and posting after is how an
     event that never left the machine becomes an event nothing will ever send again."""
-    plan(make(tmp_path, "http://127.0.0.1:1"), [{"title": "unsent"}], actor="dev:berna")
+    init(tmp_path, install_git_hooks=False)
+    plan(tmp_path, [{"title": "unsent"}], actor="dev:berna")
+    add_remote(tmp_path, "http://127.0.0.1:1", TOKEN)
     with pytest.raises(Exception, match="could not reach"):
         push(tmp_path)
     with Store(tmp_path) as store:
@@ -137,8 +153,10 @@ def test_nothing_is_marked_exported_when_the_push_never_lands(tmp_path: Path) ->
 def test_a_pull_puts_the_card_on_the_board(tmp_path: Path, base: str) -> None:
     """The materialisation bug, pinned. Relaying without replaying leaves every event in the
     table and the board empty, which is precisely what a teammate saw and reported."""
-    mine = make(tmp_path / "mine", base)
+    mine = tmp_path / "mine"
+    init(mine, install_git_hooks=False)
     plan(mine, [{"title": "wire the client"}], actor="dev:berna")
+    add_remote(mine, base, TOKEN)
     push(mine)
     theirs = make(tmp_path / "theirs", base)
     assert pull(theirs).events_in > 0
@@ -149,7 +167,7 @@ def test_a_pull_puts_the_card_on_the_board(tmp_path: Path, base: str) -> None:
 
 def test_the_cursor_advances_and_is_the_servers_number(tmp_path: Path, base: str,
                                                        fake: Fake) -> None:
-    plan(make(tmp_path, base), [{"title": "wire the client"}], actor="dev:berna")
+    planned(tmp_path, base, "wire the client")
     push(tmp_path)
     saved = read_remote(tmp_path)
     assert saved is not None and saved["cursor"] == len(fake.events)
@@ -158,7 +176,7 @@ def test_the_cursor_advances_and_is_the_servers_number(tmp_path: Path, base: str
 def test_a_pull_re_reads_a_server_that_forgot_the_cursor(tmp_path: Path, base: str) -> None:
     """A store recreated on the server answers from 0. Re-importing everything is a no-op,
     not a repair job — content-hash ids make `relay` accept each event exactly once."""
-    plan(make(tmp_path / "mine", base), [{"title": "wire the client"}], actor="dev:berna")
+    planned(tmp_path / "mine", base, "wire the client")
     push(tmp_path / "mine")
     theirs = make(tmp_path / "theirs", base)
     pull(theirs)
@@ -168,7 +186,7 @@ def test_a_pull_re_reads_a_server_that_forgot_the_cursor(tmp_path: Path, base: s
 # ── reports ─────────────────────────────────────────────────────────────────────────────
 
 def test_a_report_the_server_lacks_goes_up(tmp_path: Path, base: str, fake: Fake) -> None:
-    plan(make(tmp_path, base), [{"title": "wire the client"}], actor="dev:berna")
+    planned(tmp_path, base, "wire the client")
     label = write_report(tmp_path).stem
     assert label in push(tmp_path).reports.uploaded
     assert label in fake.reports
@@ -214,7 +232,7 @@ def test_a_server_without_the_listing_route_still_syncs(tmp_path: Path, base: st
     way to learn exists. A 400 on the proposed listing must degrade to "reconcile what is on
     this disk", never fail the whole command."""
     fake.serve_labels = False
-    plan(make(tmp_path, base), [{"title": "wire the client"}], actor="dev:berna")
+    planned(tmp_path, base, "wire the client")
     label = write_report(tmp_path).stem
     assert push(tmp_path).reports.uploaded == [label]
 

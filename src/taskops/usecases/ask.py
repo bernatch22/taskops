@@ -9,10 +9,12 @@ have it choose wrong half the time. With `task` it returns the whole context; wi
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from .._errors import BadRequest
 from ..contracts import Task, TaskView
 from ._project import caller, heartbeat, project
+from ._routing import read_remote_first
 from .view import view
 
 __all__ = ["ask", "search"]
@@ -22,6 +24,9 @@ def ask(start: Path | str, task_id: str, *, actor: str = "") -> TaskView:
     """One task and everything around it."""
     if not task_id.strip():
         raise BadRequest("`task` is required — pass `query` instead to search")
+    if (answer := read_remote_first(start, "ask", {"task": task_id.strip(),
+                                                   "actor": actor})) is not None:
+        return cast("TaskView", answer)
     with project(start) as store:
         heartbeat(store, caller(store, actor)["id"])
         return view(store, task_id.strip())
@@ -35,6 +40,9 @@ def search(start: Path | str, query: str, *, limit: int = 20) -> list[Task]:
     where somebody mentioned a word once, ranked identically to the task the word
     names. When this needs to be better it needs ranking, not a wider LIKE.
     """
+    if (answer := read_remote_first(start, "search", {"query": query,
+                                                      "limit": limit})) is not None:
+        return cast("list[Task]", answer)
     if not query.strip():
         raise BadRequest("`query` is required — a non-empty string")
     with project(start) as store:

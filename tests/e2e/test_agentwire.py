@@ -392,3 +392,55 @@ def test_attention_answers_for_the_team_not_for_one_clone(tmp_path: Path,
     waiting = attention(theirs)["waiting"]       # no pull anywhere in sight
 
     assert [item["move"] for item in waiting if item["task"]["id"] == card] == ["verify"]
+
+
+def test_a_plan_executes_in_the_servers_store_not_in_the_clones(tmp_path: Path,
+                                                                hub: Serving) -> None:
+    """THE single-source property. A plan on a remote project runs on the server via rpc, so
+    a teammate sees it with no push, no pull and no cursor in between — there is nothing to
+    carry, because it was never anywhere else."""
+    mine, theirs = machine(tmp_path / "mine", hub.url), machine(tmp_path / "theirs", hub.url)
+
+    plan(mine, [{"title": "born on the server", "spec": "s"}], actor="dev:berna")
+
+    titles = {card["task"]["title"] for column in board(theirs)["columns"]
+              for card in column["cards"]}
+    assert "born on the server" in titles
+
+
+def test_a_write_never_falls_back_to_local_when_the_server_is_down(tmp_path: Path) -> None:
+    """The asymmetry that keeps one truth. A write that "fell back to local" on a network
+    blip would fork the board precisely when nobody is watching — so it refuses, naming the
+    URL, exactly as a claim always has."""
+    where = tmp_path / "mine"
+    init(where, install_git_hooks=False)
+    add_remote(where, "http://127.0.0.1:1", "t0k3n")
+
+    with pytest.raises(Exception, match="could not reach"):
+        plan(where, [{"title": "must not land here"}], actor="dev:berna")
+    assert all(not column["cards"] for column in _local_board(where)["columns"])
+
+
+def test_a_read_degrades_to_the_cache_when_the_server_is_down(tmp_path: Path,
+                                                              hub: Serving) -> None:
+    """The other half of the asymmetry: refusing to READ without the server would make it a
+    single point of failure for looking at your own last-known board."""
+    from taskops.usecases import remove_remote
+
+    mine = machine(tmp_path / "mine", hub.url)
+    pull(mine)                                    # the cache knows the card
+    remove_remote(mine)
+    add_remote(mine, "http://127.0.0.1:1", "t0k3n")
+
+    titles = {card["task"]["title"] for column in board(mine)["columns"]
+              for card in column["cards"]}
+    assert "the one card" in titles, "the last-known board still answers"
+
+
+def _local_board(where: Path):
+    """The clone's own cache, read around the router — what a fallback WOULD show."""
+    from taskops.engine import board as build_board
+    from taskops.storage import Store
+
+    with Store(where) as store:
+        return build_board(store)

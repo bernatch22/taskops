@@ -15,12 +15,13 @@ reports. `unblock` is the single exception below and it is not a decision — it
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from ..contracts.attention import Attention
 from ..engine import unblock
 from ..engine.attention import waiting_on
-from ._autosync import fresh
 from ._project import project
+from ._routing import read_remote_first
 
 __all__ = ["attention"]
 
@@ -28,11 +29,13 @@ __all__ = ["attention"]
 def attention(start: Path | str) -> Attention:
     """The cards that need a decision. Read-only on the BOARD; it does sync first.
 
-    Pulling here is what makes "open every turn with attention" a complete instruction. The
-    verb that answers "what is waiting on me" has to include what happened on other machines,
-    or it answers for one clone and pretends it answered for the team.
+    With a remote, the answer comes from the SERVER — the one store every claim, plan and
+    close lands in — so it answers for the team by construction. Unreachable, it degrades to
+    this machine's cache with a warning, which is the read-side deal everywhere: writes refuse
+    to fork the truth, reads refuse to go blind.
     """
-    fresh(start)
+    if (answer := read_remote_first(start, "attention", {})) is not None:
+        return cast("Attention", answer)
     with project(start) as store:
         unblock(store)
         waiting = waiting_on(store)

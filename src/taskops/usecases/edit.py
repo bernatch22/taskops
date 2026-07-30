@@ -19,6 +19,7 @@ converging on both edits.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from .._clock import now
 from .._errors import BadRequest
@@ -27,6 +28,7 @@ from ..contracts import EditResult, Task
 from ..engine import record
 from ..storage import Store
 from ._project import caller, heartbeat, project
+from ._routing import call_remote, whoami
 from .acceptance import attach, criteria_in
 from .reviewer import named
 
@@ -57,6 +59,11 @@ def edit(start: Path | str, task_id: str, *, title: str | None = None,
     if not wanted and acceptance is None:
         raise BadRequest("nothing to edit — pass a `title`, a `spec`, a `priority`, "
                          "a `reviewer` or `acceptance`")
+    if (answer := call_remote(start, "edit", {
+            "task": task_id, "title": title, "spec": spec, "priority": priority,
+            "reviewer": reviewer, "acceptance": acceptance,
+            "actor": whoami(start, actor)})) is not None:
+        return cast("EditResult", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)

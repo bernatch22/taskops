@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, cast
 
-from .._errors import Unreachable
+from .._errors import TaskopsError, Unreachable
 from ..contracts import NextResult, Remote, UpdateResult
 from ..engine import identity
 from ._mirroring import mirror_claim, mirror_update
@@ -35,7 +35,8 @@ from ._project import locate
 from ._wireclient import Wire
 from .remote import read_remote
 
-__all__ = ["routed", "whoami", "claim_remotely", "update_remotely"]
+__all__ = ["routed", "whoami", "claim_remotely", "update_remotely", "call_remote",
+           "read_remote_first"]
 
 
 def routed(start: Path | str, local: bool) -> Remote | None:
@@ -51,6 +52,42 @@ def whoami(start: Path | str, actor: str) -> str:
     remote agent filed as one `dev:` on the box.
     """
     return identity.resolve(locate(start), actor)["id"]
+
+
+def call_remote(start: Path | str, verb: str, args: dict[str, Any], *,
+                local: bool = False) -> Any | None:
+    """Run one registered verb in the server's store, or None when this project has none.
+
+    THE door for every verb that is not a claim or a transition (those two predate it and keep
+    their endpoints). A verb that writes goes through here unconditionally — the server is the
+    source of truth, and a write that "fell back to local" on a network blip would fork the
+    board precisely when nobody is watching. Unreachable therefore RAISES, exactly as `next`
+    does, naming the URL.
+    """
+    remote = routed(start, local)
+    if remote is None:
+        return None
+    return _relay(start, remote, lambda wire: wire.rpc(verb, args))
+
+
+def read_remote_first(start: Path | str, verb: str, args: dict[str, Any]) -> Any | None:
+    """A READ from the server, degrading to None — the caller then answers from its cache.
+
+    The asymmetry with `call_remote` is the design: refusing to WRITE without the server keeps
+    one truth, refusing to READ without it would make the server a single point of failure for
+    looking at your own last-known board. The degradation is loud (stderr), because a silently
+    stale answer is the bug the whole mode exists to kill.
+    """
+    remote = routed(start, False)
+    if remote is None:
+        return None
+    try:
+        return _relay(start, remote, lambda wire: wire.rpc(verb, args))
+    except TaskopsError as err:
+        import sys
+        sys.stderr.write(f"taskops: could not reach {remote['url']} ({err}) — answering "
+                         f"from the last board this machine saw\n")
+        return None
 
 
 def claim_remotely(start: Path | str, remote: Remote, body: dict[str, Any]) -> NextResult:

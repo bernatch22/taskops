@@ -20,7 +20,6 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from .._errors import BadRequest
-from ._autosync import fresh
 from .remote import add_remote, read_remote
 from .setup import init
 
@@ -53,7 +52,9 @@ def join(start: Path | str, url: str) -> Joined:
         raise BadRequest(f"this project already syncs with {already['url']} — one board per "
                          f"project; `taskops remote remove` first if you mean to move it")
     if token:
-        fresh(report.root)      # the first pull, so `join` ends on a board, not on a promise
+        from .pushpull import pull
+
+        pull(report.root)       # the first cache fill, so `join` ends on a board
     return Joined(root=report.root, url=base, hooks=report.hooks, adopted=report.adopted,
                   needs_login=not token)
 

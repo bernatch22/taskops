@@ -17,9 +17,37 @@ from pathlib import Path
 
 from ..contracts import Event
 from ..engine import gitio, record
+from ..storage.sync import event_from
 from ._project import caller, project
+from ._routing import call_remote
 
-__all__ = ["ingest_commit"]
+__all__ = ["ingest_commit", "ingest_branch", "bind"]
+
+
+def bind(start: Path | str, body: dict[str, object]) -> Event | None:
+    """Record a commit or branch fact a CLONE observed, in this store — the rpc half.
+
+    The git repository lives on the developer's machine and the truth lives here, so the clone
+    reads git and this records. Only the two kinds the git hooks produce; anything else in
+    `kind` is refused by omission (returns None), because this is reachable with a project
+    token and a recorder that stored arbitrary kinds would let a token write history.
+    """
+    kind = str(body.get("kind", ""))
+    task = str(body.get("task", ""))
+    with project(start) as store:
+        if kind not in ("commit", "branch") or store.tasks.get(task) is None:
+            return None
+        who = caller(store, str(body.get("actor", "")))["id"]
+        if kind == "branch":
+            branch = str(body.get("branch", ""))
+            store.leases.set_branch(task_id=task, branch=branch)
+            return record(store, task=task, actor=who, kind="branch",
+                          body={"branch": branch})
+        return record(store, task=task, actor=who, kind="commit",
+                      body={"sha": str(body.get("sha", "")),
+                            "subject": str(body.get("subject", "")),
+                            "files": [str(f) for f in body.get("files", [])
+                                      if isinstance(f, str)]})
 
 
 def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> Event | None:
@@ -30,17 +58,27 @@ def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> E
     author wrote, and when they disagree the author is right.
     """
     with project(start) as store:
-        resolved = gitio.head_sha(store.root) if sha == "HEAD" else sha
-        message = gitio.commit_message(store.root, resolved)
+        root = store.root
+        resolved = gitio.head_sha(root) if sha == "HEAD" else sha
+        message = gitio.commit_message(root, resolved)
         task = gitio.task_of_message(message) or \
-            gitio.task_of_branch(gitio.current_branch(store.root))
-        if task is None or store.tasks.get(task) is None:
+            gitio.task_of_branch(gitio.current_branch(root))
+        if task is None:
             return None
         who = caller(store, actor)["id"]
-        bound = record(store, task=task, actor=who, kind="commit",
-                       body={"sha": resolved, "subject": message.splitlines()[0],
-                             "files": gitio.changed_files(store.root, resolved)})
-        return bound
+    body = {"kind": "commit", "task": task, "actor": who, "sha": resolved,
+            "subject": message.splitlines()[0], "files": gitio.changed_files(root, resolved)}
+    # THE fact the done-guard reads, so it must land where the guard runs. With a remote that
+    # is the server; unreachable, it lands locally and `push` carries it later — recorded in
+    # exactly one of the two places, never both, or the same commit binds twice (tk-a6daef).
+    if (answer := call_remote(root, "bind", body)) is not None:
+        return event_from(answer)
+    with project(start) as store:
+        if store.tasks.get(task) is None:
+            return None
+        return record(store, task=task, actor=who, kind="commit",
+                      body={"sha": resolved, "subject": body["subject"],
+                            "files": body["files"]})
 
 
 
@@ -52,11 +90,19 @@ def ingest_branch(start: Path | str, branch: str = "", *, actor: str = "") -> Ev
     of asking the agent to remember it.
     """
     with project(start) as project_store:
-        name = branch or gitio.current_branch(project_store.root)
+        root = project_store.root
+        name = branch or gitio.current_branch(root)
         task = gitio.task_of_branch(name)
-        if not task or project_store.tasks.get(task) is None:
+        if not task:
+            return None
+        who = caller(project_store, actor)["id"]
+    sent = call_remote(root, "bind", {"kind": "branch", "task": task, "actor": who,
+                                      "branch": name})
+    if sent is not None:
+        return event_from(sent)
+    with project(start) as project_store:
+        if project_store.tasks.get(task) is None:
             return None
         project_store.leases.set_branch(task_id=task, branch=name)
-        return record(project_store, task=task,
-                      actor=caller(project_store, actor)["id"],
+        return record(project_store, task=task, actor=who,
                       kind="branch", body={"branch": name})

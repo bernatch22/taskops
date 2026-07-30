@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 
-from . import agentapi, api, assigning, chat, exchange, live, reports, static, unlock
+from . import agentapi, api, assigning, chat, exchange, live, reports, rpc, static, unlock
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 
@@ -45,6 +45,7 @@ def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
         ("PUT", "/api/report/file"): partial(exchange.put_report_file, root),
         ("POST", "/api/next"): partial(agentapi.post_next, root),
         ("POST", "/api/update"): partial(agentapi.post_update, root),
+        ("POST", "/api/rpc"): partial(rpc.post_rpc, root),
     }
 
 

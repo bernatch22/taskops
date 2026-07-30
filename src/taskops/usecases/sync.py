@@ -28,6 +28,8 @@ from pathlib import Path
 from ..engine import replay, unblock
 from ..storage import all_events, export_events, import_events
 from ._project import project
+from .pushpull import pull
+from .remote import read_remote, reset_cursor
 
 __all__ = ["sync", "rebuild", "SyncReport"]
 
@@ -53,6 +55,14 @@ def sync(start: Path | str) -> SyncReport:
     useful here once the tasks waiting on it become pickable, and that promotion happens now rather
     than at the next `next` call — so somebody who just ran `git pull` sees the real queue.
     """
+    if read_remote(start) is not None:
+        # A remote project's truth is the SERVER, not a committed log — so "sync" means
+        # refetch, from zero. The cursor reset is what makes a deleted `db.sqlite` a
+        # non-event again: the cache rebuilds from the store that never lost anything.
+        reset_cursor(start)
+        got = pull(start)
+        return SyncReport(imported=got.events_in, applied=got.applied,
+                          exported=0, unblocked=got.unblocked)
     with project(start) as store:
         fresh = import_events(store)
         applied = replay.apply(store, fresh)

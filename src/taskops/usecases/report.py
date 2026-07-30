@@ -8,6 +8,7 @@ either. What this module owns is turning a human's `24h` into a timestamp.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from .._clock import now
 from .._errors import BadRequest
@@ -20,6 +21,7 @@ from ..engine import period_report as build_period
 from ..engine import standup as build_standup
 from ._project import project
 from ._range import Selector, parse_date, resolve
+from ._routing import read_remote_first
 
 __all__ = ["board", "standup", "fleet", "activity", "day", "period", "parse_window",
            "parse_date", "DEFAULT_WINDOW", "HISTORY_WINDOW"]
@@ -34,11 +36,16 @@ _UNITS = {"m": 60.0, "h": 3600.0, "d": 86400.0, "w": 604800.0}
 
 
 def board(start: Path | str) -> Board:
+    if (answer := read_remote_first(start, "board", {})) is not None:
+        return cast("Board", answer)
     with project(start) as store:
         return build_board(store)
 
 
 def standup(start: Path | str, *, since: str = DEFAULT_WINDOW, actor: str = "") -> Standup:
+    if (answer := read_remote_first(start, "standup", {"since": since,
+                                                       "actor": actor})) is not None:
+        return cast("Standup", answer)
     with project(start) as store:
         return build_standup(store, since=now() - parse_window(since), actor=actor)
 
@@ -54,6 +61,8 @@ def fleet(start: Path | str) -> Fleet:
 
 
 def day(start: Path | str, date_text: str = "") -> DayReport:
+    if (answer := read_remote_first(start, "day", {"date": date_text})) is not None:
+        return cast("DayReport", answer)
     with project(start) as store:
         return build_day(store, parse_date(date_text))
 
@@ -64,8 +73,11 @@ def period(start: Path | str, sel: Selector | None = None) -> PeriodReport:
     `day` above is this with both ends on the same date; keeping it as its own name is for
     the callers that only ever want one, not a second code path.
     """
+    asked = sel or Selector()
+    if (answer := read_remote_first(start, "period", asked._asdict())) is not None:
+        return cast("PeriodReport", answer)
     with project(start) as store:
-        return build_period(store, *resolve(store, sel or Selector()))
+        return build_period(store, *resolve(store, asked))
 
 
 

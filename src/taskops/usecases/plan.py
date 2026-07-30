@@ -18,7 +18,7 @@ model meant by a field it spelled its own way.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .._clock import now
 from .._errors import BadRequest
@@ -28,8 +28,8 @@ from ..engine import record, unblock
 from ..storage import Store
 from . import _entry as field
 from ._after import resolve_after
-from ._autosync import shared
 from ._project import caller, heartbeat, project
+from ._routing import call_remote, whoami
 from .acceptance import attach, criteria_in
 from .reviewer import for_new
 
@@ -41,18 +41,15 @@ def plan(start: Path | str, entries: list[dict[str, Any]], *,
     """Create every task in `entries`, wire the dependencies, return what unblocked."""
     if not entries:
         raise BadRequest("`tasks` is empty — a plan with no tasks is not a plan")
+    if (answer := call_remote(start, "plan",
+                              {"entries": entries, "actor": whoami(start, actor)})) is not None:
+        return cast("PlanResult", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
         created = [_create(store, entry, who) for entry in entries]
         deps = _wire(store, entries, created)
-        result = PlanResult(created=created, deps=deps, unblocked=unblock(store))
-    # AFTER the store closes, so the export sees committed events. A plan that only this
-    # machine knew about was the first thing the three-person simulacro tripped on: the manager
-    # planned, the developers pulled nothing, and a rule ("push after every change") did what
-    # rules do. On a project with no remote this is a no-op; on an unreachable one, a warning.
-    shared(start)
-    return result
+        return PlanResult(created=created, deps=deps, unblocked=unblock(store))
 
 
 def _create(store: Store, entry: dict[str, Any], who: str) -> Task:

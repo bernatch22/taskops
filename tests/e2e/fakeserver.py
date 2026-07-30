@@ -121,6 +121,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(status, answer)
         if not self._authorised():
             return
+        if not urlparse(self.path).path.endswith("/api/sync"):
+            # A server from before that route existed. Answering 200 to any POST would make
+            # this fake vouch for endpoints the contract never froze — and it silently DID,
+            # which let an rpc "read" mistake a sync receipt for a board.
+            return self._json(404, {"error": f"no route {self.path}", "code": "no_such_route"})
         body = self._body()
         self.fake.posts += 1
         accepted = self.fake.accept(list(body.get("events", [])))

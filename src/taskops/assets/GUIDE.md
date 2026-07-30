@@ -286,10 +286,17 @@ taskops join https://server/project?token=…
 That is init, hooks, MCP wiring, the remote, and the first pull, in one. Re-running it repairs
 a clone (fresh checkouts lose their git hooks).
 
-After that, **nobody pushes or pulls by hand**: claims and closes already execute on the
-server, a plan shares itself the moment it exists, and `attention` pulls before it answers.
-`taskops push`/`pull` still exist for forcing the matter, and a sync that cannot reach the
-server warns and leaves you on the last board this machine saw — never an error, never silent.
+After that, **the server IS the board** — there is no sync because there is nothing to
+synchronise. Every verb that writes (plan, claim, close, assign, context) executes in the
+server's store; every verb that reads answers from it. Two rules cover every failure:
+
+- a WRITE never falls back to local: unreachable server → a refusal naming the URL. A write
+  that quietly landed somewhere else would fork the board precisely when nobody is watching.
+- a READ degrades to this machine's last-known cache, with a warning on stderr. Refusing to
+  show your own last-known board because a server is down helps nobody.
+
+`db.sqlite` is that cache and stays disposable: `taskops sync` refetches everything from the
+server. `push`/`pull` remain only for adopting a board that predates the server.
 
 ## Multi-developer, no server
 

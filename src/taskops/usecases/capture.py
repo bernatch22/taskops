@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any
 
 from ..contracts import NextResult
-from ._autosync import shared
 from ._handoff import hand_over
 from ._project import project
+from ._routing import call_remote, whoami
 from .claim import next_task
 from .plan import plan
 from .update import update
@@ -46,13 +46,18 @@ def capture(start: Path | str, title: str, *, spec: str = "", files: str = "",
         entry["priority"] = priority
     task = plan(start, [entry], actor=actor)["created"][0]
     if assign:
-        given = _hand(start, task["id"], assign, actor)
-        shared(start)       # the handoff event lands AFTER plan's own push
-        return {"task": task, "claim": None, "assigned": given}
+        return {"task": task, "claim": None, "assigned": _hand(start, task["id"], assign, actor)}
     if not claim:
         return {"task": task, "claim": None, "assigned": ""}
     held: NextResult = next_task(start, task=task["id"], actor=actor, session=session)
     return {"task": task, "claim": held.get("claim"), "assigned": ""}
+
+
+def assign(start: Path | str, task: str, to: str, *, actor: str = "") -> str:
+    """Assignment as a start-rooted verb — what the rpc registry runs, and `_hand`'s core."""
+    with project(start) as store:
+        hand_over(store, task, to, actor=actor)
+    return to
 
 
 def _hand(start: Path | str, task: str, to: str, actor: str) -> str:
@@ -68,6 +73,7 @@ def _hand(start: Path | str, task: str, to: str, actor: str) -> str:
     person it was given to has to be TOLD, and their inbox is where they look.
     """
     update(start, task, comment=f"assigned to {to}", mentions=(to,), actor=actor)
-    with project(start) as store:
-        hand_over(store, task, to, actor=actor)
+    if call_remote(start, "assign", {"task": task, "to": to,
+                                     "actor": whoami(start, actor)}) is None:
+        assign(start, task, to, actor=actor)
     return to
