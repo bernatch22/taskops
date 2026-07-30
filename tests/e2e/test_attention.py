@@ -211,3 +211,22 @@ def test_the_urgent_card_is_first_in_its_group(repo: Path) -> None:
     order = [item["task"]["id"] for item in attention(repo)["waiting"]]
 
     assert order == [urgent, normal, whenever]
+
+
+def test_the_verifier_brief_tells_it_to_claim() -> None:
+    """The brief said "do not claim the card", written when claiming a review walked it to
+    `claimed` and broke the close guard. That changed — a claim now LEAVES a review card in
+    review precisely so a verifier can take one — and the document was left contradicting the
+    mechanism built for it, and without the tool to obey either version. Zero of eight reviews
+    on a live board had a verifier holding them.
+
+    A brief that forbids the mechanism is the same failure as a brief that names an agent type
+    nobody installed: an instruction and a mechanism disagreeing, in writing."""
+    import pathlib
+
+    brief = (pathlib.Path(__file__).resolve().parents[2] / "src" / "taskops" / "assets" /
+             "agents" / "taskops-verifier.md").read_text(encoding="utf-8")
+
+    assert "taskops_next task=<id>" in brief, "it has to be told to take the lease"
+    assert "mcp__taskops__taskops_next" in brief, "and given the tool to do it"
+    assert "do not claim the card" not in brief.lower()
