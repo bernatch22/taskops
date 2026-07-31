@@ -84,12 +84,14 @@ Un repo semilla vacío, dos sesiones de Claude Code, una palabra a cada una: `da
 ```
 $ git clone /tmp/lab-origin && cd lab-check
 $ PYTHONPATH=src pytest tests -q
-461 passed in 0.28s
+731 passed in 0.79s
 ```
 
-Sesenta y dos módulos en `main`, un `__init__.py` que los exporta citando el id del invariante
-que lo obliga, y sesenta y dos cards cerradas — **todas por el peer y ninguna por quien la
-escribió**, con cero intervenciones humanas después de esa palabra.
+Ciento seis módulos en `main` y ciento dieciocho cards cerradas — **ciento diecisiete por el
+peer y NINGUNA por quien la escribió**, con cero intervenciones humanas después de esa palabra.
+
+Dos tandas: la primera corrió CON los bugs que fue encontrando, la segunda con todo arreglado
+desde el minuto cero. La segunda encontró dos más, que es el argumento para que haya una tercera.
 
 La card que hace el merge pasa por las mismas reglas que las demás, y lo hace en tandas: cada
 vez que un lote cierra, la vuelve a tomar alguien y `main` crece sin que la suite se ponga en
@@ -133,6 +135,27 @@ sólo un comentario cierra la card". Es falso — lo probé y un comentario no m
 había era una sola llamada con comentario Y `status=done`, que el modelo leyó como dos. Un
 diagnóstico escrito por un agente en una card es una HIPÓTESIS. Las dos cards que reportó como
 rotas estaban, en los eventos, correctamente cerradas por su peer.
+
+## Lo que la segunda tanda agregó
+
+- **`attention` recomendaba lo imposible**: le decía a un dev que verificara once cards que
+  tiene estructuralmente prohibido cerrar, y la sesión gastó seis llamadas rechazadas antes de
+  deducirlo. Consejo que el motor va a rechazar cuesta llamadas y enseña a desconfiar de la
+  lista — que es lo único que una barrida no puede permitirse. Después de arreglarlo, una
+  sesión corrió `taskops recover` por iniciativa propia por primera vez: cuando la lista deja
+  de mentir, se vuelve creíble entera.
+- **La integración no se repite sola.** La card de aterrizaje era UNA, se cerró, y el board
+  llegó a 101 cerradas con `main` congelado. Hace falta que esa card vuelva a existir, o
+  taskops necesita noción de *aterrizar* — hoy no la tiene, y el síntoma es un board que dice
+  "todo hecho" sobre un repo que no lo refleja.
+
+Y lo que encontró una SESIÓN, que vale más que los dos anteriores: quince de sesenta y un
+archivos de test importaban `pytest`, contra el invariante de cero dependencias fuera de la
+stdlib. Nadie lo había visto porque **la revisión por card no puede ver deriva acumulada** —
+cada verificador mira su propio diff y la suite pasaba. La sesión lo midió, diagnosticó la
+causa, reconoció que la salida era una decisión de proyecto y no la tomó: dejó las dos opciones
+con su costo en la card. Eso no lo arregla un verifier mejor; necesita una revisión periódica
+del conjunto contra los invariantes.
 
 ## Lo que cada corrida encontró
 
