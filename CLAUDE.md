@@ -111,6 +111,25 @@ the clock. When a module will not fit, that is the invariant telling you it does
 cache and is disposable: `taskops sync` rebuilds it. Nothing may write state that is not derived
 from the log.
 
+## Test the SEAM, not the module
+
+Twelve bugs in three days, and **not one was a bug in the logic**. Every one lived between two
+machines — client/server, clone/clone, clone/origin — and every test in the suite ran one repo,
+one process, one store. That is why they were all found by a person running it.
+
+`tests/e2e/test_the_real_topology.py` is the fix and it is deliberately the only one of its
+kind: a real HTTP server on a real port, a BARE origin, two clones that ran `taskops join`, and
+a card walked from plan to trunk. Eight mutations of real past bugs were fed to it and it
+caught eight.
+
+**When something breaks in a live run, ask where it lived before you fix it.** If the answer is
+a seam, the test belongs there — a unit test of the same bug will pass either way, which is how
+the same class came back four times.
+
+And mutation-test the new test: break the fix on purpose and check it fails. Twice here a test
+that "covered" a fix stayed green when the fix was deleted — once because the trunk was already
+up to date, once because it claimed through an agent id when the failure took the dev id.
+
 ## Things that cost a day each, so you do not repeat them
 
 - **A hook speaks to whoever its event delivers to, and no further.** `SubagentStop` injects
