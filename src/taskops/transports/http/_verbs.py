@@ -75,6 +75,7 @@ VERBS: dict[str, Verb] = {
                                                      actor=str(a.get("actor", ""))),
     # reads — served from the one store every write above landed in
     "ask": lambda root, a: uc.ask(root, str(a.get("task", "")), actor=str(a.get("actor", ""))),
+    "inbox": lambda root, a: uc.inbox(root, actor=str(a.get("actor", ""))),
     "search": lambda root, a: uc.search(root, str(a.get("query", "")),
                                      limit=int(a.get("limit", 20) or 20)),
     "attention": lambda root, a: uc.attention(root, actor=str(a.get("actor", ""))),

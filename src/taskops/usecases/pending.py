@@ -17,7 +17,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .._types import HUMAN, PEER
 from .attention import attention
+
+POLICIES = frozenset({HUMAN, PEER})
+"""Reviewer values that say WHO may close, not WHAT to spawn. A policy in a spawn instruction
+is an agent type that does not exist."""
 
 __all__ = ["unverified", "verify_text"]
 
@@ -29,6 +34,18 @@ def unverified(start: Path | str) -> list[dict[str, Any]]:
     for a verifier" and a board that disagrees with the sweep is impossible by construction.
     """
     return [item for item in attention(start)["waiting"] if item["move"] == "verify"]
+
+
+def _agent_for(reviewer: str) -> str:
+    r"""The sub-agent TYPE to spawn, which is not the same thing as the card's reviewer.
+
+    It was, and the message came out saying `spawn a \`peer\` sub-agent` — there is no such
+    agent. `peer` and `human` are POLICIES about who may close a card; only a registered
+    specialist is a name you can spawn. A live session read that line, ignored it, and spawned
+    the right thing anyway, which is luck rather than design: this is the fifth time an
+    instruction has named something that does not exist, and every previous one cost a run.
+    """
+    return reviewer if reviewer and reviewer not in POLICIES else "taskops-verifier"
 
 
 def verify_text(rows: list[dict[str, Any]], *, closing: bool) -> str:
@@ -45,8 +62,8 @@ def verify_text(rows: list[dict[str, Any]], *, closing: bool) -> str:
     for row in rows:
         task = row["task"]
         lines.append(f"- {task['id']} “{task['title']}”")
-        lines.append(f"    spawn a `{task['reviewer'] or 'taskops-verifier'}` sub-agent for it, "
-                     f"and tell it the card id — it claims and closes the card itself.")
+        lines.append(f"    spawn a `{_agent_for(task['reviewer'])}` sub-agent for it, and tell "
+                     f"it the card id — it claims and closes the card itself.")
     lines.append("If you are the one reviewing, read the diff and close it yourself with "
                  "`taskops_update status=done` and evidence per criterion.")
     return "\n".join(lines)

@@ -400,3 +400,37 @@ def test_a_session_is_let_go_after_being_told_twice(project: Path, monkeypatch: 
     assert _events.stop(event(project))["decision"] == "block"
     assert _events.stop(event(project))["decision"] == "block"
     assert _events.stop(event(project)) == {}, "told twice, then let go"
+
+
+
+def test_the_hook_never_tells_a_session_to_spawn_a_policy() -> None:
+    r"""It did: `spawn a \`peer\` sub-agent for it`. There is no such agent — `peer` and `human`
+    are POLICIES about who may close a card, and only a registered specialist is a name you can
+    spawn. A live session read that line, ignored it, and spawned the right thing anyway, which
+    is luck. Five separate failures this session have been an instruction naming something that
+    does not exist, and every previous one cost a run."""
+    from taskops.usecases.pending import verify_text
+
+    rows = [{"task": {"id": "tk-1", "title": "t", "reviewer": "peer"}},
+            {"task": {"id": "tk-2", "title": "t", "reviewer": "human"}},
+            {"task": {"id": "tk-3", "title": "t", "reviewer": ""}},
+            {"task": {"id": "tk-4", "title": "t", "reviewer": "db-migrator"}}]
+
+    said = verify_text(rows, closing=False)
+
+    assert "`peer` sub-agent" not in said and "`human` sub-agent" not in said
+    assert said.count("`taskops-verifier`") == 3, "policies and blank fall to the verifier"
+    assert "`db-migrator`" in said, "a real registered specialist is still named"
+
+
+def test_a_peer_review_does_not_nag_the_author_s_own_session(project: Path,
+                                                             monkeypatch: Any) -> None:
+    """With `reviewer: peer` the author's session gets NO reminder, and that silence is the
+    fix working: the review belongs to the other developer, and telling this session to spawn
+    a verifier would tell it to spawn one the close guard is going to refuse."""
+    from taskops.usecases import context_state
+
+    context_state(project, "decision", "reviewer: peer — the other developer reviews")
+    _handover(project, monkeypatch)
+
+    assert _door.subagent_stop(event(project)) == {}

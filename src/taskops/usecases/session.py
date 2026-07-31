@@ -18,12 +18,14 @@ event the moment it is committed.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from .._clock import now
 from ..contracts import Event, Inbox, Lease
 from ..engine import record
 from ..storage import Store
 from ._project import caller, heartbeat, project
+from ._routing import read_remote_first
 from .chat import CHAT_TASK
 from .view import inbox_for
 
@@ -76,7 +78,15 @@ def inbox(start: Path | str, *, actor: str = "") -> Inbox:
 
     Cheap on purpose — one indexed query and usually zero rows. It runs after every
     tool call an agent makes, so anything expensive here is a tax on all of its work.
+
+    ROUTED, like every other read, and it was the last one that was not — which made
+    agent-to-agent messaging silently local-only: a mention written by one developer landed in
+    the server's log, and the developer it named read their own clone and found nothing. It is
+    also a WRITE disguised as a read (delivery is marked), so the local fallback would hand the
+    same message out twice on two machines.
     """
+    if (answer := read_remote_first(start, "inbox", {"actor": actor})) is not None:
+        return cast("Inbox", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
