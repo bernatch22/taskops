@@ -29,9 +29,11 @@ from pathlib import Path
 
 from ..storage import LOG_FILE
 from ._gitland import TRUNKS
+from ._gitland import catch_trunk_up as _catch_trunk_up
 from ._gitland import fetched as _fetched
 from ._gitland import has_board as _has_board
 from ._gitland import merged as _merged
+from ._gitland import pushed as _pushed
 from ._gitland import run as _run
 from ._gitland import sha as _sha
 from ._gitland import trunk_of as _trunk
@@ -104,13 +106,24 @@ def _merge(root: Path, trunk: str, branch: str) -> Landing:
     if _run(root, "checkout", "--quiet", trunk) is None:
         return Landing(ok=False, why=f"could not check out {trunk}")
     try:
+        if not _catch_trunk_up(root, trunk):
+            return Landing(ok=False, trunk=trunk,
+                           why=f"your {trunk} has commits the remote does not — push or "
+                               f"rebase them, then `taskops land` this card")
         if _run(root, "merge", "--no-ff", "--no-edit", branch) is None:
             _run(root, "merge", "--abort")
             return Landing(ok=False, trunk=trunk,
                            why=f"{branch} conflicts with {trunk} — spawn a `taskops-fixer` "
                                f"sub-agent for this card; it resolves and merges")
         sha = _sha(root, "HEAD")
-        _run(root, "push", "--quiet", "origin", f"{trunk}:{trunk}")
+        if not _pushed(root, trunk):
+            # The merge happened HERE and nowhere else, so saying `ok` would put a card in a
+            # trunk nobody else can see. Reported as unlanded, which is what it is; `attention`
+            # lists it under LAND and a second `taskops land` now catches the trunk up first.
+            return Landing(ok=False, trunk=trunk, sha=sha,
+                           why=f"merged locally but {trunk} was refused by the remote — "
+                               f"somebody landed while this ran. `taskops land` this card "
+                               f"again; it picks their work up first")
         return Landing(ok=True, why="", trunk=trunk, sha=sha)
     finally:
         if was != trunk:

@@ -13,7 +13,8 @@ from pathlib import Path
 
 from ..storage import LOG_FILE
 
-__all__ = ["fetched", "has_board", "merged", "run", "sha", "trunk_of", "TRUNKS", "TIMEOUT"]
+__all__ = ["catch_trunk_up", "fetched", "has_board", "merged", "pushed", "run", "sha",
+           "trunk_of", "TRUNKS", "TIMEOUT"]
 
 TRUNKS = ("main", "master")
 """Where work lands, in preference order. A repository whose trunk is neither is not guessed
@@ -40,6 +41,40 @@ def fetched(root: Path, branch: str) -> bool:
         return False
     run(root, "fetch", "--quiet", "origin", f"{branch}:{branch}")
     return run(root, "rev-parse", "--verify", "--quiet", branch) is not None
+
+
+def catch_trunk_up(root: Path, trunk: str) -> bool:
+    """Bring the SHARED trunk in before merging onto it. False when it cannot fast-forward.
+
+    Landing is concurrent by construction — two developers approving each other's cards is the
+    normal case, not the edge one — and each of them merges into their own copy of the trunk.
+    Without this, the second one merges onto a trunk that is hours old: the merge succeeds
+    locally, the push is rejected as non-fast-forward, and the two histories fork. Watched on a
+    live board with two clones and three cards.
+
+    Fast-forward ONLY. If the local trunk carries commits the remote has not seen, that is a
+    person's work sitting on their trunk and a landing is not the place to reconcile it.
+    """
+    if run(root, "remote") in ("", None):
+        return True
+    if run(root, "fetch", "--quiet", "origin", trunk) is None:
+        return True          # offline is not a reason to refuse a local merge
+    if run(root, "rev-parse", "--verify", "--quiet", f"origin/{trunk}") is None:
+        return True          # a trunk the remote does not have yet
+    return run(root, "merge", "--ff-only", f"origin/{trunk}") is not None
+
+
+def pushed(root: Path, trunk: str) -> bool:
+    """Did the trunk actually REACH the remote?
+
+    The push used to be fire-and-forget, and its failure was the whole bug: git refused a
+    non-fast-forward, `land` reported `ok` anyway, and the board said a card was in the trunk
+    that the shared trunk had never heard of. "Done" meaning "an agent said so" is the one
+    thing this system exists to prevent, and landing had quietly reinvented it.
+    """
+    if run(root, "remote") in ("", None):
+        return True          # nowhere to push: the local trunk IS the trunk
+    return run(root, "push", "--quiet", "origin", f"{trunk}:{trunk}") is not None
 
 
 def has_board(root: Path, trunk: str) -> bool:

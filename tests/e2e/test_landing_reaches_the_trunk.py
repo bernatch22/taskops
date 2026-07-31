@@ -36,14 +36,15 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def a_card_with_a_commit(repo: Path) -> str:
-    card = plan(repo, [{"title": "Ship it", "spec": "s"}], actor="dev:uno")["created"][0]["id"]
+def a_card_with_a_commit(repo: Path, *, name: str = "hecho.txt",
+                         title: str = "Ship it") -> str:
+    card = plan(repo, [{"title": title, "spec": "s"}], actor="dev:uno")["created"][0]["id"]
     next_task(repo, task=card, actor="agent:uno/w1")
     from taskops.engine import branch_for
-    branch = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+    branch = branch_for({"id": card, "title": title})    # type: ignore[arg-type]
     git(repo, "switch", "-qc", branch)
-    (repo / "hecho.txt").write_text("el trabajo\n")
-    git(repo, "add", "hecho.txt")
+    (repo / name).write_text("el trabajo\n")
+    git(repo, "add", name)
     git(repo, "commit", "-qm", f"[{card}] hecho")
     git(repo, "switch", "-q", "main")
     return card
@@ -103,6 +104,29 @@ def test_the_server_never_tries_to_merge(repo: Path) -> None:
             "the server must record no landing at all — a lie is worse than a silence")
 
 
+def shared(repo: Path, tmp_path: Path) -> Path:
+    """A BARE origin both clones push to — the only shape a team actually has.
+
+    Cloning one developer's working repository instead was a test artefact that hid a real
+    assertion: git refuses a push to a non-bare repository's checked-out branch, so "did this
+    reach the remote" could never be answered honestly against it.
+    """
+    origin = tmp_path / "origin.git"
+    # `-b main`: a bare repo created with a different default branch leaves HEAD dangling,
+    # and every clone of it comes up with no checkout at all.
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+    git(repo, "remote", "add", "origin", str(origin))
+    git(repo, "push", "-q", "origin", "main")
+    return origin
+
+
+def clone_of(origin: Path, where: Path) -> Path:
+    subprocess.run(["git", "clone", "-q", str(origin), str(where)], check=True)
+    for args in (("config", "user.email", "b@example.com"), ("config", "user.name", "Berna")):
+        subprocess.run(["git", *args], cwd=where, check=True, capture_output=True)
+    return where
+
+
 def test_the_closer_lands_a_branch_it_has_never_seen(repo: Path, tmp_path: Path) -> None:
     """Peer review means the closer is NOT the author, so the branch was written elsewhere.
 
@@ -113,16 +137,17 @@ def test_the_closer_lands_a_branch_it_has_never_seen(repo: Path, tmp_path: Path)
     card = a_card_with_a_commit(repo)
     from taskops.engine import branch_for
     branch = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+    origin = shared(repo, tmp_path)
+    git(repo, "push", "-q", "origin", branch)
 
-    reviewer = tmp_path / "clon-del-revisor"
-    subprocess.run(["git", "clone", "-q", str(repo), str(reviewer)], check=True)
-    for args in (("config", "user.email", "b@example.com"), ("config", "user.name", "Berna")):
-        subprocess.run(["git", *args], cwd=reviewer, check=True, capture_output=True)
+    reviewer = clone_of(origin, tmp_path / "clon-del-revisor")
     assert branch not in git(reviewer, "branch", "--format=%(refname:short)").splitlines()
 
     done = land(reviewer, branch)
     assert done.ok, done.why
     assert "hecho.txt" in git(reviewer, "ls-tree", "--name-only", "main")
+    assert git(origin, "rev-parse", "main") == git(reviewer, "rev-parse", "main"), (
+        "landing means the SHARED trunk has it, not this machine's copy")
 
 
 def test_a_modified_gitignore_does_not_block_every_landing_forever(repo: Path) -> None:
@@ -137,3 +162,37 @@ def test_a_modified_gitignore_does_not_block_every_landing_forever(repo: Path) -
     from taskops.engine import branch_for
     done = land(repo, branch_for({"id": card, "title": "Ship it"}))  # type: ignore[arg-type]
     assert done.ok, done.why
+
+
+def test_two_developers_landing_at_once_do_not_fork_the_trunk(repo: Path,
+                                                              tmp_path: Path) -> None:
+    """The failure that ended a run where everything else went right.
+
+    Two developers approving each other's cards is the NORMAL case, and each merges into their
+    own copy of the trunk. The second one merged onto a trunk hours old: the merge succeeded
+    locally, the push was refused as non-fast-forward, and `land` reported `ok` anyway — so the
+    board said a card was in a trunk that had never heard of it, which is "done means an agent
+    said so", the one thing this system exists to prevent.
+
+    Both halves are asserted here, because either alone leaves the hole: the trunk is caught up
+    before the merge, and the push is verified after it.
+    """
+    first = a_card_with_a_commit(repo, name="uno.txt", title="Card uno")
+    second = a_card_with_a_commit(repo, name="dos.txt", title="Card dos")
+    origin = shared(repo, tmp_path)
+    from taskops.engine import branch_for
+    ramas = {card: branch_for({"id": card, "title": title})    # type: ignore[arg-type]
+             for card, title in ((first, "Card uno"), (second, "Card dos"))}
+    for branch in ramas.values():
+        git(repo, "push", "-q", "origin", branch)
+
+    ana = clone_of(origin, tmp_path / "ana")
+    leo = clone_of(origin, tmp_path / "leo")      # both cloned BEFORE either landed
+
+    assert land(ana, ramas[first]).ok
+    landed = land(leo, ramas[second])             # leo's trunk is now stale
+
+    assert landed.ok, landed.why
+    assert git(origin, "rev-parse", "main") == git(leo, "rev-parse", "main")
+    trunk = git(leo, "ls-tree", "--name-only", "main")
+    assert "uno.txt" in trunk and "dos.txt" in trunk, "neither developer's work is lost"
