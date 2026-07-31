@@ -84,12 +84,17 @@ Un repo semilla vacío, dos sesiones de Claude Code, una palabra a cada una: `da
 ```
 $ git clone /tmp/lab-origin && cd lab-check
 $ PYTHONPATH=src pytest tests -q
-298 passed in 0.21s
+461 passed in 0.28s
 ```
 
-Cuarenta módulos en `main`, treinta y nueve archivos de test, un `__init__.py` que los exporta
-citando el id del invariante que lo obliga. Cuarenta y seis cards cerradas, **todas por el peer
-y ninguna por quien la escribió**, y cero intervenciones humanas después de esa palabra.
+Sesenta y dos módulos en `main`, un `__init__.py` que los exporta citando el id del invariante
+que lo obliga, y sesenta y dos cards cerradas — **todas por el peer y ninguna por quien la
+escribió**, con cero intervenciones humanas después de esa palabra.
+
+La card que hace el merge pasa por las mismas reglas que las demás, y lo hace en tandas: cada
+vez que un lote cierra, la vuelve a tomar alguien y `main` crece sin que la suite se ponga en
+rojo una sola vez. Un merge que dejara los tests rotos sería el fracaso silencioso más caro de
+todos, y es lo que más veces verifiqué.
 
 Lo que hizo suficiente el `dale` no fue el prompt: fue el `SessionStart` entregando el rol, el
 `SubagentStop` pidiendo el verifier en el momento del handover, el `Stop` negándose a terminar
