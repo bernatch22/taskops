@@ -18,6 +18,11 @@ __all__ = ["PROJECT_DIR", "DB_FILE", "LOG_FILE", "GUIDE_FILE", "REPORTS_DIR", "E
 
 PROJECT_DIR = ".taskops"
 
+WORKTREES = "trees"
+"""Where a dispatch puts one checkout per card, under `.taskops/`. Named here rather than in
+`engine.worker` because `find_root` has to know it to REFUSE it: the log is committed, so a
+worktree carries one and would otherwise resolve as a project of its own."""
+
 DB_FILE = f"{PROJECT_DIR}/db.sqlite"
 """GITIGNORED. Derived state — every row in it can be rebuilt from the log."""
 
@@ -60,6 +65,13 @@ def find_root(start: Path | str) -> Path | None:
     directory instead of creating a project. Found the first time somebody made a scratch repo
     in `~/experiments`.
 
+    **A worktree is never its own project**, and that took a live run to see. The log is a
+    COMMITTED file, so every worktree a dispatch creates carries a copy of it — which made each
+    one look like a separate project holding a separate board. A worker's commit then bound
+    itself into a phantom database with no `remote.json`, so nothing ever reached the server:
+    four cards, four real commits, and a board that said zero. `WORKTREES` is skipped on the
+    way up for exactly that, which puts the answer back where the project actually is.
+
     `$TASKOPS_ROOT` wins outright, and it is checked the same way for the same reason.
     """
     forced = os.environ.get(ENV_ROOT, "").strip()
@@ -68,9 +80,20 @@ def find_root(start: Path | str) -> Path | None:
         return candidate if is_project(candidate) else None
     here = Path(start).expanduser().resolve()
     for candidate in (here, *here.parents):
-        if is_project(candidate):
+        if is_project(candidate) and not _inside_a_worktree(candidate):
             return candidate
     return None
+
+
+def _inside_a_worktree(candidate: Path) -> bool:
+    """Is this path one of the project's own card worktrees, or under one?
+
+    Matched on the two segments together — `.taskops/trees` — rather than on the directory
+    name alone, so a repository that happens to have a folder called `trees` is untouched.
+    """
+    parts = candidate.parts
+    return any(parts[i:i + 2] == (PROJECT_DIR, WORKTREES)
+               for i in range(len(parts) - 1))
 
 
 def is_project(candidate: Path) -> bool:

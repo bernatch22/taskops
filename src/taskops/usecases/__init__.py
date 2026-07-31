@@ -36,7 +36,8 @@ from .exchange import MAX_BATCH, MAX_PAGE, accept_events, pull_events
 from .feed import follow, is_wire
 from .guard import Verdict, check_command, check_commit
 from .index import report_index
-from .ingest import ingest_branch, ingest_commit
+from .ingest import ingest_commit
+from .ingestbranch import ingest_branch
 from .join import join
 from .log import session_log
 from .login import is_session, login, logins, logout, session_of

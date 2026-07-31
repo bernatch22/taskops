@@ -454,3 +454,57 @@ def test_a_board_that_predates_landing_is_not_filled_with_history(tmp_path: Path
     update(tmp_path, card, status="done", no_code=True, comment="no code", actor="dev:ana")
 
     assert card not in {i["task"]["id"] for i in attention(tmp_path)["waiting"]}
+
+
+def test_a_card_worktree_is_never_mistaken_for_its_own_project(tmp_path: Path) -> None:
+    """The bug under every other symptom, and it took a four-card run to see.
+
+    `.taskops/events.jsonl` is COMMITTED, so every worktree a dispatch creates carries a copy —
+    which made each one look like a separate project with its own board. A worker's commit bound
+    itself into a phantom database with no `remote.json`, so nothing reached the server: four
+    branches, four real commits, and a board reporting zero. The agents then closed the cards
+    with `no_code` to get past the guard, which is exactly what a guard nobody can satisfy
+    teaches an agent to do.
+    """
+    from taskops.engine.worker import prepare
+    from taskops.storage import find_root
+
+    git_init(tmp_path)
+    init(tmp_path)
+    git(tmp_path, "add", "-A")
+    git(tmp_path, "commit", "-q", "-m", "chore: the log lives on the trunk")
+    card = plan(tmp_path, [{"title": "work", "spec": "x"}],
+                actor="dev:berna")["created"][0]["id"]
+    next_task(tmp_path, task=card, actor="agent:berna/w1")
+
+    tree = prepare(tmp_path, ask(tmp_path, card)["task"], actor="agent:berna/w1").tree
+
+    assert (tree / ".taskops" / "events.jsonl").exists(), "the premise: the log rides along"
+    assert find_root(tree) == tmp_path.resolve(), "a worktree belongs to the project it is in"
+
+
+def test_a_commit_made_inside_a_worktree_binds_to_its_card(tmp_path: Path) -> None:
+    """The consequence, end to end: git is read WHERE THE COMMIT HAPPENED. Reading the project
+    root instead asks for the HEAD of a checkout nobody touched — the trunk — and the answer is
+    a commit with no task, so the binding silently does not happen."""
+    from taskops.engine.worker import prepare
+    from taskops.storage import Store
+    from taskops.usecases.ingest import ingest_commit
+
+    git_init(tmp_path)
+    init(tmp_path)
+    git(tmp_path, "add", "-A")
+    git(tmp_path, "commit", "-q", "-m", "chore: taskops")
+    card = plan(tmp_path, [{"title": "work", "spec": "x"}],
+                actor="dev:berna")["created"][0]["id"]
+    next_task(tmp_path, task=card, actor="agent:berna/w1")
+    tree = prepare(tmp_path, ask(tmp_path, card)["task"], actor="agent:berna/w1").tree
+    (tree / "work.py").write_text("x = 1\n", encoding="utf-8")
+    git(tree, "add", "-A")
+    git(tree, "commit", "-q", "-m", f"feat: x\n\nTask: {card}", "--no-verify")
+
+    ingest_commit(tree)
+
+    with Store(tmp_path) as store:
+        bound = store.events.of_task(card, kinds=("commit",))
+    assert len(bound) == 1, "the card's own project sees the commit its worker made"

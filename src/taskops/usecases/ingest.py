@@ -24,7 +24,7 @@ from ._project import caller, project
 from ._routing import call_remote
 from .publish import publish_branch
 
-__all__ = ["ingest_commit", "ingest_branch", "bind"]
+__all__ = ["ingest_commit", "bind"]
 
 
 def bind(start: Path | str, body: dict[str, object]) -> Event | None:
@@ -61,24 +61,31 @@ def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> E
     The task comes from the trailer FIRST and the branch second. That order matters
     after a rebase: the branch is whatever is checked out now, the trailer is what the
     author wrote, and when they disagree the author is right.
+
+    **git is read WHERE THE COMMIT HAPPENED, not at the project root.** Those are different
+    directories the moment worktrees exist, which is always: a dispatch gives every card one.
+    Reading the root asks for the HEAD of a checkout nobody touched, and the binding silently
+    does not happen. Found by a four-card run where every branch and every commit existed and
+    the board said zero.
     """
+    where = Path(start)
     with project(start) as store:
         root = store.root
-        resolved = gitio.head_sha(root) if sha == "HEAD" else sha
-        message = gitio.commit_message(root, resolved)
+        resolved = gitio.head_sha(where) if sha == "HEAD" else sha
+        message = gitio.commit_message(where, resolved)
         task = gitio.task_of_message(message) or \
-            gitio.task_of_branch(gitio.current_branch(root))
+            gitio.task_of_branch(gitio.current_branch(where))
         if task is None:
             return None
-        who = committer(store, gitio.current_branch(root), actor)
+        who = committer(store, gitio.current_branch(where), actor)
     body = {"kind": "commit", "task": task, "actor": who, "sha": resolved,
-            "subject": message.splitlines()[0], "files": gitio.changed_files(root, resolved)}
+            "subject": message.splitlines()[0], "files": gitio.changed_files(where, resolved)}
     # THE fact the done-guard reads, so it must land where the guard runs. With a remote that
     # is the server; unreachable, it lands locally and `push` carries it later — recorded in
     # exactly one of the two places, never both, or the same commit binds twice (tk-a6daef).
     # PUBLISHED as soon as it is bound. A peer reviewer on another machine cannot check work
     # that never left this one — seven cards were rejected as "no code" for exactly that.
-    publish_branch(root, gitio.current_branch(root))
+    publish_branch(where, gitio.current_branch(where))
     if (answer := call_remote(root, "bind", body)) is not None:
         return event_from(answer)
     with project(start) as store:
@@ -87,30 +94,3 @@ def ingest_commit(start: Path | str, sha: str = "HEAD", *, actor: str = "") -> E
         return record(store, task=task, actor=who, kind="commit",
                       body={"sha": resolved, "subject": body["subject"],
                             "files": body["files"]})
-
-
-
-def ingest_branch(start: Path | str, branch: str = "", *, actor: str = "") -> Event | None:
-    """Note that a task's branch exists, and record it on the lease.
-
-    Called from `post-checkout`. The lease carries the branch so the live board can show
-    where an agent is working, and so a later `taskops_ask` can name the branch instead
-    of asking the agent to remember it.
-    """
-    with project(start) as project_store:
-        root = project_store.root
-        name = branch or gitio.current_branch(root)
-        task = gitio.task_of_branch(name)
-        if not task:
-            return None
-        who = committer(project_store, name, actor)
-    sent = call_remote(root, "bind", {"kind": "branch", "task": task, "actor": who,
-                                      "branch": name})
-    if sent is not None:
-        return event_from(sent)
-    with project(start) as project_store:
-        if project_store.tasks.get(task) is None:
-            return None
-        project_store.leases.set_branch(task_id=task, branch=name)
-        return record(project_store, task=task, actor=who,
-                      kind="branch", body={"branch": name})
