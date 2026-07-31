@@ -278,3 +278,46 @@ def test_push_sends_a_board_the_git_path_already_exported(
     add_remote(tmp_path, base, TOKEN)
     done = push(tmp_path)
     assert done.accepted > 0, "a git-synced board must still push to a server"
+
+
+def test_a_project_that_ignores_the_whole_directory_is_left_alone(tmp_path: Path) -> None:
+    """A board that lives on a server makes `.taskops/` a cache, and clones ignore it whole.
+
+    The upgrade test was literal — it asked whether the STRING was in the file — so those
+    projects gained four rules that changed nothing, on every `init` and every `join`. The cost
+    was not cosmetic: a modified tracked file is exactly what `git switch` and `git merge`
+    refuse on, so no card in any joined clone could ever reach the trunk.
+    """
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text(
+        "# taskops — el board vive en el servidor\n.taskops/\n.mcp.json\n"
+        ".claude/settings.local.json\n.claude/agents/taskops-*.md\n", encoding="utf-8")
+    before = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+
+    make(tmp_path, "https://taskops.example.com")
+
+    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == before, (
+        "nothing to add: git already ignores every path those rules name")
+
+
+def test_a_personal_global_ignore_never_stands_in_for_the_repository_s_own(
+        tmp_path: Path) -> None:
+    """The flaw in the first version of the fix above, and the reason the secret rule exists.
+
+    `git check-ignore` consults `~/.config/git/ignore` too. On the machine this was written on,
+    a personal global file already covered `.taskops/remote.json`, so taskops happily skipped
+    writing the rule that guards a bearer token — and the repository would have reached a
+    teammate with no such file and nothing protecting the secret. Only a `.gitignore` inside
+    the repository counts, because only that one travels.
+    """
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    personal = tmp_path / "mis-preferencias"
+    personal.write_text(".taskops/remote.json\n", encoding="utf-8")
+    subprocess.run(["git", "config", "core.excludesFile", str(personal)],
+                   cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text("# taskops — older\n.taskops/db.sqlite\n",
+                                         encoding="utf-8")
+
+    make(tmp_path, "https://taskops.example.com")
+
+    assert ".taskops/remote.json" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
