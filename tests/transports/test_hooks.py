@@ -353,21 +353,34 @@ def _handover(project: Path, monkeypatch: Any) -> str:
     return card
 
 
-def test_a_worker_stopping_asks_the_orchestrator_for_a_verifier(project: Path,
-                                                                monkeypatch: Any) -> None:
-    """The half that was missing, and the whole reason two cards sat dead for an hour. A
-    worker hands its card over correctly and returns; the orchestrator reads a summary and
-    moves on. The handover is the only moment anybody is holding the fact, so it is said
-    there — as CONTEXT, never a block: a worker cannot verify its own work, which is the
-    entire reason the card is in review."""
-    card = _handover(project, monkeypatch)
+def test_a_worker_stopping_is_told_nothing_it_cannot_do(project: Path,
+                                                        monkeypatch: Any) -> None:
+    """This REPLACES a test that pinned the opposite, and the replacement is the whole lesson.
+
+    `SubagentStop` injects into the context of the SUB-AGENT that just stopped — a worker,
+    whose tools are taskops plus Read/Write/Edit/Bash. Spawning a sub-agent is the
+    orchestrator's capability alone. The old message asked the worker to spawn a verifier: it
+    could not, said so, was asked again, and spent four turns explaining to nobody that it
+    lacks the tool. An instruction delivered to somebody who cannot act on it is worse than
+    silence — it costs turns and teaches the reader that this channel talks nonsense.
+    """
+    _handover(project, monkeypatch)
 
     said = _door.subagent_stop(event(project))
 
-    assert "decision" not in said, "a worker may always stop; it is not the one who verifies"
-    text = said["hookSpecificOutput"]["additionalContext"]
-    assert card in text
-    assert "taskops-verifier" in text
+    assert said == {}, "a worker that owes nothing leaves quietly"
+
+
+def test_the_orchestrator_is_the_one_asked_for_the_verifier(project: Path,
+                                                            monkeypatch: Any) -> None:
+    """The ask belongs to `Stop`, which fires for the MAIN conversation — the one reader that
+    can actually spawn."""
+    card = _handover(project, monkeypatch)
+
+    verdict = _events.stop(event(project))
+
+    assert verdict["decision"] == "block"
+    assert card in verdict["reason"] and "taskops-verifier" in verdict["reason"]
 
 
 def test_a_turn_cannot_end_on_a_review_this_session_opened(project: Path,

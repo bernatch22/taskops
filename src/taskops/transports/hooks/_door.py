@@ -16,37 +16,20 @@ __all__ = ["unfinished_verdict", "subagent_stop"]
 
 
 def subagent_stop(payload: dict[str, Any]) -> dict[str, Any]:
-    """The net WITHOUT the standup, then the ASK: a handover has to reach the orchestrator.
+    """The unfinished-card net, and NOTHING ELSE. A worker finishing is not a session ending.
 
-    A worker finishing is not the session ending, so no checkout is posted — a shared handler
-    was writing "Session ended." onto every card each time any sub-agent returned.
+    This hook used to also ask for a verifier, and the ask was addressed to the wrong reader.
+    `SubagentStop` injects into the context of the SUB-AGENT that just stopped — a worker,
+    whose tools are taskops plus Read/Write/Edit/Bash. Spawning a sub-agent is the
+    orchestrator's capability alone. So a worker read "spawn a `taskops-verifier` for this
+    card", could not, said so, was asked again, and spent four turns explaining to nobody that
+    it lacks the tool. An instruction delivered to somebody who cannot act on it is worse than
+    silence: it costs turns and it teaches the reader that this channel talks nonsense.
 
-    What IS said here is the half that was missing. A worker that hands its card over releases
-    it correctly and then returns; the orchestrator reads a summary and moves on, and the card
-    waits for a verifier nobody asked for. Watched live: two sessions, two cards, both dead in
-    `review`. The moment the handover happens is the only moment anybody is holding the fact,
-    so it is said here rather than left for somebody to notice.
+    The ask belongs to `Stop`, which fires for the MAIN conversation — the orchestrator, the
+    one reader that can actually spawn — and that is where it lives now.
     """
-    verdict = unfinished_verdict(payload)
-    if verdict:
-        return verdict
-    return _ask_for_review(payload)
-
-
-def _ask_for_review(payload: dict[str, Any]) -> dict[str, Any]:
-    """Additional context, never a block. Refusing to let a WORKER stop until somebody else
-    verified its card would hold the wrong door — the worker cannot verify its own work, which
-    is the entire reason the card is in review."""
-    try:
-        from ...usecases.pending import unverified, verify_text
-
-        rows = unverified(cwd(payload))
-        if not rows:
-            return {}
-        return {"hookSpecificOutput": {"hookEventName": "SubagentStop",
-                                       "additionalContext": verify_text(rows, closing=False)}}
-    except Exception:  # noqa: BLE001 — a hint is never worth trapping a sub-agent over
-        return {}
+    return unfinished_verdict(payload)
 
 
 def unfinished_verdict(payload: dict[str, Any]) -> dict[str, Any]:

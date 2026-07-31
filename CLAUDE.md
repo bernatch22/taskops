@@ -113,6 +113,10 @@ from the log.
 
 ## Things that cost a day each, so you do not repeat them
 
+- **A hook speaks to whoever its event delivers to, and no further.** `SubagentStop` injects
+  into the sub-agent that stopped — a worker, with no ability to spawn anything. An ask for a
+  verifier placed there had a worker spend four turns explaining it lacks the tool. Before
+  writing an instruction into a hook, name the reader and check it can do the thing.
 - **Pin a session's actor in the environment, never in git config.** An agent rewrote a lab
   clone's `user.email` mid-run — because this very file tells it which git identity to use —
   and a whole developer silently became somebody else. Two clones drifting to the SAME name

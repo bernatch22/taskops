@@ -167,9 +167,10 @@ types anything.
 
 Two more hooks close the loop, and neither is advice:
 
-- when one of your workers hands a card to `review`, **SubagentStop tells you to spawn the
-  verifier**, with the card id. That is the moment the fact exists and the only moment anybody
-  is holding it.
+- when a worker of yours hands a card to `review`, it shows up in your `attention` — and if
+  you try to end the turn with it still unverified, **Stop blocks and names it**. Nothing is
+  said to the worker itself: a worker cannot spawn a sub-agent, so telling it to would just
+  cost it turns.
 - **your turn cannot end on a review you opened.** Stop blocks — twice, then lets you go — on
   cards your session finished and left unverified. It never blocks on work nobody started: a
   ready card is not this turn's debt.
