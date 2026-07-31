@@ -78,9 +78,20 @@ def land(root: Path, branch: str) -> Landing:
                        why=f"{branch} is nowhere this clone can see — the author's machine "
                            f"has not published it. `taskops publish` on their side, then "
                            f"`taskops land` this card")
-    if _merged(root, trunk, branch):
-        return Landing(ok=True, why="", trunk=trunk, sha=_sha(root, trunk))
+    # The "already merged" shortcut lives INSIDE `_merge`, after the trunk is caught up. Asked
+    # here it was answered against a LOCAL trunk and returned `ok` without pushing anything:
+    # a card reported as landed whose work the shared trunk had never seen. Merged-into-my-copy
+    # is not landed. Landed is "the trunk everybody pulls has it".
     return _merge(root, trunk, branch)
+
+
+def _shared(root: Path, trunk: str) -> Landing:
+    """A trunk that already contains the branch — landed only once the remote has it too."""
+    if not _pushed(root, trunk):
+        return Landing(ok=False, trunk=trunk, sha=_sha(root, trunk),
+                       why=f"already merged into {trunk} here, but the remote refused it — "
+                           f"`taskops land` this card again")
+    return Landing(ok=True, why="", trunk=trunk, sha=_sha(root, trunk))
 
 
 def _merge(root: Path, trunk: str, branch: str) -> Landing:
@@ -110,6 +121,8 @@ def _merge(root: Path, trunk: str, branch: str) -> Landing:
             return Landing(ok=False, trunk=trunk,
                            why=f"your {trunk} has commits the remote does not — push or "
                                f"rebase them, then `taskops land` this card")
+        if _merged(root, trunk, branch):
+            return _shared(root, trunk)
         if _run(root, "merge", "--no-ff", "--no-edit", branch) is None:
             _run(root, "merge", "--abort")
             return Landing(ok=False, trunk=trunk,

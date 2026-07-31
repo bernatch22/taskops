@@ -196,3 +196,31 @@ def test_two_developers_landing_at_once_do_not_fork_the_trunk(repo: Path,
     assert git(origin, "rev-parse", "main") == git(leo, "rev-parse", "main")
     trunk = git(leo, "ls-tree", "--name-only", "main")
     assert "uno.txt" in trunk and "dos.txt" in trunk, "neither developer's work is lost"
+
+
+def test_already_merged_here_is_not_landed(repo: Path, tmp_path: Path) -> None:
+    """The second door the same lie walked through.
+
+    A shortcut answered "is this branch already in the trunk" against the LOCAL one and
+    returned `ok` without pushing anything — so a retry of a landing whose push had been
+    refused reported success, twice, while the shared trunk had still never seen the work.
+    It was found by re-running a real landing to repair a real board: `ok: True`, and the sha
+    it named was the old merge nobody else had.
+
+    Landed means the trunk everybody pulls has it. Anything else is a card that reads done.
+    """
+    card = a_card_with_a_commit(repo)
+    from taskops.engine import branch_for
+    branch = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+    origin = shared(repo, tmp_path)
+    git(repo, "push", "-q", "origin", branch)
+    mine = clone_of(origin, tmp_path / "mio")
+
+    git(mine, "fetch", "-q", "origin", f"{branch}:{branch}")
+    git(mine, "merge", "--no-ff", "--no-edit", "-q", branch)     # merged, never pushed
+    assert git(origin, "rev-parse", "main") != git(mine, "rev-parse", "main")
+
+    done = land(mine, branch)
+    assert done.ok, done.why
+    assert git(origin, "rev-parse", "main") == git(mine, "rev-parse", "main"), (
+        "the shortcut has to push, not just agree with itself")
