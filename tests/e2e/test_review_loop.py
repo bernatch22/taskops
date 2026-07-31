@@ -143,3 +143,49 @@ def test_peer_review_is_opt_in_and_a_solo_board_is_untouched(repo: Path) -> None
 
     update(repo, card, status="done", no_code=True, comment="read the diff myself",
            evidence="ran it", actor="dev:berna")
+
+
+def test_two_verifiers_cannot_check_the_same_card(repo: Path) -> None:
+    """Watched live, and the user spotted it before I did. Dev:dos spawned its verifier AND
+    read the diff itself; the verifier closed first, so the orchestrator's work was thrown
+    away. The lease that prevents that existed and nothing made anybody take it.
+
+    Now the CLOSE claims. A closer holding nothing gets the lease silently — which keeps a
+    person closing a review they just read from having to claim first, the contract every
+    existing flow depends on — and a second checker meets a held card instead of duplicating.
+    """
+    card = a_card(repo, criteria=CRITERIA)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+    next_task(repo, task=card, actor="agent:berna/v1")      # v1 says "I am checking this"
+
+    with pytest.raises(GuardFailed, match="already checking"):
+        update(repo, card, status="done", no_code=True, comment="me too",
+               evidence="ran it", actor="agent:berna/v2")
+
+    update(repo, card, status="done", no_code=True, comment="mine",
+           evidence="ran it", actor="agent:berna/v1")
+
+
+def test_closing_a_review_nobody_holds_needs_no_ceremony(repo: Path) -> None:
+    """The contract that had to survive: a person who just read a review closes it, full stop.
+    The lease is taken for them rather than demanded from them."""
+    card = a_card(repo, criteria=CRITERIA)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+
+    update(repo, card, status="done", no_code=True, comment="read it myself",
+           evidence="checked", actor=DEV)
+
+
+def test_a_verifier_that_went_quiet_can_be_taken_over(repo: Path) -> None:
+    """A held card must not be held forever by somebody who died. The refusal names the way
+    out, and the way out is the verb that already exists for it."""
+    from taskops.usecases import recover
+
+    card = a_card(repo, criteria=CRITERIA)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+    next_task(repo, task=card, actor="agent:berna/v1")
+
+    recover(repo, actor=DEV, force=True)
+
+    update(repo, card, status="done", no_code=True, comment="took it over",
+           evidence="ran it", actor="agent:berna/v2")

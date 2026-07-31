@@ -50,7 +50,16 @@ def release_lease(store: Store, lease: Lease, who: str, quiet: float) -> Stuck:
     leftovers = porcelain(tree)
     commits = len(store.events.of_task(lease["task"], kinds=("commit",)))
     store.leases.release(lease["task"])
-    if store.tasks.need(lease["task"])["status"] in WORKING_STATUSES:
+    status = store.tasks.need(lease["task"])["status"]
+    if status == "review":
+        # A VERIFIER died, not a worker. The work is still finished and still unverified, so
+        # the card stays in review for the next checker — walking it back to `ready` would
+        # erase a handover because somebody's reviewer crashed, and the worker would be handed
+        # its own finished card again. `sweep_dead` already made this distinction for a lease
+        # that lapsed on its own; an explicit `recover` of the same lease has to agree with it.
+        return Stuck(task=lease["task"], actor=lease["actor"], silent_for=quiet,
+                     commits=commits, leftovers=leftovers, tree=tree)
+    if status in WORKING_STATUSES:
         # The lease always goes; the STATUS only moves for a card that was still being worked
         # on. `sweep_dead` has always had this check and this path never did, so a stale lease
         # on a card somebody had already closed walked it back to `ready` — with a fresh

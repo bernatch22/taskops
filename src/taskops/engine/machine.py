@@ -82,6 +82,10 @@ TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
     # no way to act on them — watched live: a verifier that had proven the work could neither
     # close the card nor return it, and a whole session went to negotiating with the board.
     # The assignee survives the move, so only the worker it belongs to picks it back up.
+    # `review → done` takes no lease HERE, and that is deliberate: a person closing a review
+    # they just read must not have to claim it first, and every existing flow depends on it.
+    # Exclusivity is won a layer up instead — `_transition` takes the lease ON BEHALF of the
+    # closer, so a second checker meets a held card rather than duplicating the first.
     "review": {"done": closing, "claimed": _needs_lease, "ready": None, "blocked": None,
                "cancelled": None},
     "done": {},

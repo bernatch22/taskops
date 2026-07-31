@@ -8,10 +8,11 @@ and this MOVES, which is a different concern with its own rules about what a car
 from __future__ import annotations
 
 from .._clock import now
-from .._errors import BadRequest
+from .._errors import BadRequest, GuardFailed
 from .._types import LEASE_ENDS, Status
 from ..contracts import Task
 from ..engine import check_move, hand_back, record
+from ..engine import claim as take_lease
 from ..storage import Store
 from ._facts import facts_for
 
@@ -33,6 +34,8 @@ def move(store: Store, task: Task, who: str, asked: str, comment: str,
     that skipped it — a reason buried in prose is a reason nobody audits.
     """
     target: Status = "ready" if asked == RELEASE else _status(asked)
+    if target == "done" and task["status"] == "review":
+        _reserve_the_review(store, task, who)
     facts = facts_for(store, task, who, no_code=no_code, justification=comment,
                       evidence=evidence, no_evidence=no_evidence)
     check_move(facts, target)
@@ -55,6 +58,32 @@ def move(store: Store, task: Task, who: str, asked: str, comment: str,
                  "no_evidence": no_evidence})
     return store.tasks.need(task["id"])
 
+
+
+def _reserve_the_review(store: Store, task: Task, who: str) -> None:
+    """Take the review's lease on the closer's behalf, or refuse if somebody else holds it.
+
+    Exclusivity without ceremony. A verifier is TOLD to claim first — that is how it says "I am
+    checking this" and how the card stops appearing in everybody else's sweep — but nothing
+    could make it, and a live run had one card checked twice inside a single session: the
+    orchestrator read the diff while its own sub-agent read the same diff, and the sub-agent
+    closed it first. The orchestrator's work was thrown away.
+
+    So the CLOSE claims. A closer that already holds the lease is unaffected; one that holds
+    nothing gets it silently, which keeps a person closing a review they just read from having
+    to claim it first — the contract every existing flow depends on. And a closer meeting
+    somebody else's live lease is refused HERE, before the expensive guards run: being told
+    "you need evidence per criterion" and then "somebody else has this" is doing the work twice
+    for nothing.
+    """
+    holder = store.leases.get(task["id"])
+    if holder is not None and holder["actor"] != who and holder["expires"] > now():
+        raise GuardFailed(
+            f"{holder['actor']} is already checking {task['id']} — it claimed the review, which "
+            f"is what stops two verifiers doing the same work. Leave it to them, or take it "
+            f"over with `taskops recover` if they have gone quiet.")
+    if holder is None:
+        take_lease(store, task, actor=who)
 
 
 def _status(asked: str) -> Status:

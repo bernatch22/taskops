@@ -54,6 +54,12 @@ def verify_text(rows: list[dict[str, Any]], *, closing: bool) -> str:
     `closing` shifts the framing rather than the content. At SubagentStop the session is mid-
     flow and the line is an instruction; at Stop it is the last thing between a card and a
     week of silence, so it says what the silence would cost.
+
+    ONE path, and that is the fix. It used to end with "if you are the one reviewing, close it
+    yourself" — telling a session to delegate and offering it the inline route in the same
+    breath. A live session quoted both lines back at itself and took both: it spawned the
+    verifier AND read the diff, and the verifier closed the card first, so the orchestrator's
+    work was thrown away. An instruction with two doors is an instruction that opens both.
     """
     head = ("Before this turn ends — these cards are finished and unverified. A review nobody "
             "picks up is a card that reads as active for a week:" if closing else
@@ -64,6 +70,7 @@ def verify_text(rows: list[dict[str, Any]], *, closing: bool) -> str:
         lines.append(f"- {task['id']} “{task['title']}”")
         lines.append(f"    spawn a `{_agent_for(task['reviewer'])}` sub-agent for it, and tell "
                      f"it the card id — it claims and closes the card itself.")
-    lines.append("If you are the one reviewing, read the diff and close it yourself with "
-                 "`taskops_update status=done` and evidence per criterion.")
+    lines.append("Spawn it — do not read the diff yourself. You already have the worker's "
+                 "summary in this context, so you are the one reader who cannot judge it "
+                 "cold; the sub-agent starts empty and that is the whole of its value.")
     return "\n".join(lines)

@@ -279,3 +279,20 @@ def test_recover_never_reopens_a_card_that_was_already_closed(tmp_path: Path) ->
     with Store(tmp_path) as store:
         assert store.tasks.need(card)["status"] == "done"
         assert store.leases.live(now()) == [], "the stale lease still goes"
+
+
+def test_recovering_a_verifier_leaves_the_card_in_review(tmp_path: Path) -> None:
+    """A verifier dying does not un-finish the work. `sweep_dead` already made this
+    distinction for a lease that lapsed on its own, and an explicit `recover` of the same lease
+    disagreed with it: it walked the card back to `ready`, erasing a handover because somebody's
+    reviewer crashed — and handing the worker its own finished card again."""
+    init(tmp_path, install_git_hooks=False)
+    card = plan(tmp_path, [{"title": "t", "spec": "s"}], actor="dev:berna")["created"][0]["id"]
+    next_task(tmp_path, task=card, actor="agent:berna/w1")
+    update(tmp_path, card, status="review", comment="over", actor="agent:berna/w1")
+    next_task(tmp_path, task=card, actor="agent:berna/v1")
+
+    recover(tmp_path, actor="dev:berna", force=True)
+
+    assert ask(tmp_path, card)["task"]["status"] == "review", "still finished, still unchecked"
+    assert ask(tmp_path, card)["lease"] is None, "and free for the next verifier"
