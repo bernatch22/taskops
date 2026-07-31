@@ -21,6 +21,7 @@ from ._delivered import DeliveredTable
 from ._deps import DepTable
 from ._events import EventTable
 from ._leases import LeaseTable
+from ._presence import PresenceTable
 from ._tasks import TaskTable
 from .locate import DB_FILE
 
@@ -74,6 +75,11 @@ class Store:
     @cached_property
     def delivered(self) -> DeliveredTable:
         return DeliveredTable(self.db)
+
+    @cached_property
+    def presence(self) -> PresenceTable:
+        """Who has touched this store lately. Fed by `heartbeat`, read by routing."""
+        return PresenceTable(self.db)
 
     # ---- lifecycle
 

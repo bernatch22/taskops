@@ -21,6 +21,7 @@ from ..contracts.attention import MOVES, Waiting
 from ..storage import Store
 from ._peer import reviewer_is_a_peer
 from ._peerfacts import facts_of
+from .routereview import routed_elsewhere
 
 __all__ = ["waiting_on"]
 
@@ -83,6 +84,10 @@ def _refused(store: Store, item: Waiting, actor: str) -> bool:
     """
     if not actor or item["move"] != "verify":
         return False
+    # Routed, and not to you: hidden. Showing it IS the broadcast this design buried — two
+    # free developers starting the same review because both were told. Stale routing reopens it.
+    if routed_elsewhere(item["task"], actor):
+        return True
     return bool(reviewer_is_a_peer(facts_of(store, item["task"], actor)))
 
 

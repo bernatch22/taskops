@@ -75,5 +75,13 @@ CREATE TABLE IF NOT EXISTS delivered (
     PRIMARY KEY (actor, event)
 );
 
+-- Presence is LOCAL, like leases: it describes processes alive against THIS store.
+CREATE TABLE IF NOT EXISTS presence (
+    actor TEXT PRIMARY KEY,
+    dev TEXT NOT NULL DEFAULT '',
+    last_seen REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_presence_seen ON presence(last_seen);
+
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 """

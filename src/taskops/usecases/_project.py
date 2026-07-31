@@ -95,6 +95,25 @@ def _mark_once(store: Store, task_id: str, actor: str) -> None:
 
 
 def heartbeat(store: Store, actor: str, *, at: float | None = None) -> None:
+    _presence_beat(store, actor, at)
+    _heartbeat_leases(store, actor, at=at)
+
+
+def _presence_beat(store: Store, actor: str, at: float | None) -> None:
+    """Presence rides the heartbeat: every server call says "this dev is here".
+
+    Never fatal and never fancy — a presence row is a hint for routing and the team brief,
+    and refusing a write because an actor id would not parse would break the call carrying it.
+    """
+    try:
+        from ..engine.identity import parse
+
+        store.presence.beat(actor, parse(actor)["dev"], now() if at is None else at)
+    except Exception:  # noqa: BLE001 — a hint, not a fact anybody depends on
+        pass
+
+
+def _heartbeat_leases(store: Store, actor: str, *, at: float | None = None) -> None:
     """Push this actor's LIVE lease deadlines out, and expire every dead one.
 
     Both halves belong together: the sweep is what makes another agent's crash

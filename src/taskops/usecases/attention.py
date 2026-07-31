@@ -20,7 +20,7 @@ from typing import cast
 from ..contracts.attention import Attention
 from ..engine import unblock
 from ..engine.attention import waiting_on
-from ._project import caller, project
+from ._project import caller, heartbeat, project
 from ._routing import read_remote_first, whoami
 
 __all__ = ["attention"]
@@ -39,6 +39,7 @@ def attention(start: Path | str, *, actor: str = "") -> Attention:
         return cast("Attention", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
+        heartbeat(store, who)      # a --wait poll IS presence: this dev is here, watching
         unblock(store)
         waiting = waiting_on(store, actor=who)
         return Attention(repo=str(store.root), waiting=waiting, quiet=not waiting)

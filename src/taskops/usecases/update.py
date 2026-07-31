@@ -15,10 +15,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from .._errors import BadRequest
+from .._types import PEER
 from ..contracts import Task, UpdateResult
 from ..engine import record, unblock
+from ..engine.routereview import route_review
 from ..storage import Store
 from ._freeing_news import announce_unblocked
+from ._landing import landed
 from ._project import caller, heartbeat, project
 from ._routing import routed, update_remotely, whoami
 from ._transition import move
@@ -44,12 +47,12 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
             "task": task_id, "actor": whoami(start, actor), "status": status,
             "comment": comment, "mentions": list(mentions), "blocked_on": blocked_on,
             "no_code": no_code, "evidence": evidence, "no_evidence": no_evidence})
-        return _landed(start, answer, status, whoami(start, actor))
+        return landed(start, answer, status, whoami(start, actor))
     answer, who = _apply(start, task_id, actor, status, comment, mentions, blocked_on,
                          no_code, evidence, no_evidence)
     # OUTSIDE the store, and only for a close: git is slow, and a merge holding the write lock
     # would block every other agent on this machine for the length of a checkout.
-    return _landed(start, answer, status, who)
+    return landed(start, answer, status, who)
 
 
 def _apply(start: Path | str, task_id: str, actor: str, status: str, comment: str,
@@ -77,43 +80,17 @@ def _apply(start: Path | str, task_id: str, actor: str, status: str, comment: st
         if status:
             task = move(store, task, who, status, comment, no_code,
                          evidence=evidence, no_evidence=no_evidence)
+            if task["status"] == "review" and task["reviewer"] == PEER:
+                # The server picks the reviewer HERE, inside the same locked transaction the
+                # handover happened in. A review is an assignment, not news: one dev gets it,
+                # one directed message goes out, and nobody else hears anything.
+                route_review(store, task, who)
         opened = [store.tasks.need(i) for i in unblock(store)]
         # The news reaches the people it is about: a freed card would otherwise sit pickable
         # and invisible until somebody's next turn happens to ask.
         told = announce_unblocked(store, opened, who)
         return UpdateResult(task=store.tasks.need(task_id), unblocked=opened,
                             notified=[*mentions, *told]), who
-
-
-def _landed(start: Path | str, answer: UpdateResult, status: str, who: str) -> UpdateResult:
-    """A card that just reached `done` gets its branch merged into the trunk, here.
-
-    Approval IS the trigger: the card was read by somebody who is not its author, which is
-    exactly when a merge is justified — so nobody has to remember, and no message has to
-    arrive. It runs on the CLIENT because the server has state and no checkout.
-
-    A failure never reaches the caller as an exception. The work IS done; refusing the close
-    over a git conflict would strand a finished card behind a problem nobody is looking at.
-    The outcome is recorded on the card instead, and `attention` reports what did not land.
-    """
-    if status != "done":
-        return answer
-    from ..engine import branch_for
-    from ._project import locate
-    from .land import land
-
-    with project(start) as store:
-        if not store.events.of_task(answer["task"]["id"], kinds=("commit",)):
-            # Nothing to land, and saying so would be noise: a `no_code` close, a research
-            # card, a decision — real work that never produced a branch. Reporting those as
-            # "not in the trunk" would fill the sweep with cards nobody can act on.
-            return answer
-    root = locate(start)
-    done = land(root, branch_for(answer["task"]))
-    with project(start) as store:
-        record(store, task=answer["task"]["id"], actor=who, kind="landed",
-               body={"ok": done.ok, "why": done.why, "trunk": done.trunk, "sha": done.sha})
-    return answer
 
 
 def _say(store: Store, task_id: str, who: str, text: str, mentions: tuple[str, ...]) -> None:
