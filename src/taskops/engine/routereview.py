@@ -73,10 +73,16 @@ def _pick(store: Store, author: str) -> str:
     mine = _dev(author)
     when = now() - PRESENCE_WINDOW
     here = store.presence.devs(since=when, in_session=True)
-    candidates = [dev for dev in here if dev and dev != mine]
-    if not candidates:
+    if not here:
+        # NOBODY carries a session — so the signal itself is not arriving on this board, and
+        # falling back to whoever is merely present beats routing to no one. The moment ANY
+        # dev has a session the signal works, and "no other in-session dev" is a fact rather
+        # than a gap: do not fall back then. That distinction is the whole rule. Without it a
+        # team that never overlaps — one works at night, the other in the morning — routed
+        # every single review to the manager who had planned the cards from a terminal and
+        # gone, which is exactly the asynchronous case this has to serve.
         here = store.presence.devs(since=when)
-        candidates = [dev for dev in here if dev and dev != mine]
+    candidates = [dev for dev in here if dev and dev != mine]
     if not candidates:
         return ""
     load = _review_load(store)

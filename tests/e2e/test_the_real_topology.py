@@ -259,3 +259,57 @@ def test_a_push_the_remote_refuses_is_not_a_landing(team: Team) -> None:
 
     assert not done.ok, "merged locally is not landed — the shared trunk never saw it"
     assert "uno.txt" not in team.files_in_trunk()
+
+
+def test_a_team_that_is_never_online_at_the_same_time(team: Team) -> None:
+    """One developer works at night and the other in the morning — they never overlap.
+
+    The case the whole routing design could have quietly broken, because routing picks among
+    the developers who are CONNECTED and here there is never more than one. What has to happen
+    instead is nothing clever: the handover routes to nobody, the card stays open to whoever
+    shows up, and the next session to open finds it in its own sweep. No message is waiting,
+    no poll is running, nobody is notified — and the work still moves.
+
+    Sessions are closed by letting presence expire, which is what a closed laptop looks like to
+    a board: the row stops being fresh and the dev stops counting as here.
+    """
+    from taskops.engine.routereview import PRESENCE_WINDOW
+    from taskops.usecases.session import checkout
+
+    context_state(team.uno, "decision", "reviewer: peer — nadie cierra la suya", actor="dev:mgr")
+    card = a_card(team, "El nocturno")
+
+    opening(team.uno, session="la-noche", actor="dev:uno")          # 23:40, uno alone
+    worked(team.uno, card, "El nocturno", actor="agent:uno/w1", file="uno.txt")
+    handed = update(team.uno, card, status="review", comment="lo dejo listo",
+                    actor="agent:uno/w1")
+    assert handed["routed_to"] == "", "nobody else is here — routing to somebody would bury it"
+    checkout(team.uno, summary="me voy a dormir", session="la-noche", actor="dev:uno")
+
+    _asleep(team, PRESENCE_WINDOW + 60)                              # the night passes
+
+    opening(team.dos, session="la-mañana", actor="dev:dos")          # 09:00, dos alone
+    waiting = attention(team.dos, actor="dev:dos")["waiting"]
+    assert card in {item["task"]["id"] for item in waiting}, (
+        "the morning session has to FIND it — nothing was pushed and nobody is polling")
+    assert [item["move"] for item in waiting if item["task"]["id"] == card] == ["verify"]
+
+    claimed = next_task(team.dos, task=card, actor="dev:dos")["claim"]
+    assert claimed is not None, "an unrouted review is open to whoever arrives"
+    update(team.dos, card, status="done", comment="revisada de mañana", actor="dev:dos",
+           evidence="el criterio: verificado")
+
+    assert "uno.txt" in team.files_in_trunk(), "and it lands, with its author asleep"
+
+
+def _asleep(team: Team, seconds: float) -> None:
+    """Age every presence row, on the SERVER — the only store that decides who is here."""
+    from taskops.storage import Store
+    from taskops.usecases import locate
+
+    with Store(locate(team.uno)) as _cache:
+        del _cache
+    server = team.origin.parent / "servidor" / BOARD
+    with Store(server) as store:
+        store.db.execute("UPDATE presence SET last_seen = last_seen - ?", (seconds,))
+        store.db.commit()
