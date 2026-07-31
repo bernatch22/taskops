@@ -7,7 +7,9 @@ them: absent-vs-stated, agent-vs-dev, named-card-vs-pool, and recorded-vs-silent
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+from typing import Any
 
 from taskops._clock import now
 from taskops.storage import Store
@@ -99,3 +101,48 @@ def test_a_second_agent_on_the_same_card_gets_its_own_marker(root: Path) -> None
     with Store(root) as store:
         markers = store.events.of_task(task, kinds=("inferred",))
     assert {m["actor"] for m in markers} == {"agent:ana/api", "agent:ana/ui"}
+
+
+def test_the_account_beats_git_because_an_agent_can_rewrite_git(tmp_path: Path,
+                                                                monkeypatch: Any) -> None:
+    """git config used to come straight after `$TASKOPS_ACTOR`, and an agent rewrote
+    `user.email` on a lab checkout — because that repository's own CLAUDE.md told it which git
+    identity to use — so a whole developer silently became somebody else mid-run. Two clones
+    drifting to the same name would deadlock `reviewer: peer`: the only actor allowed to close
+    would be the author. `$USER` is not something an agent edits in passing."""
+    from taskops.engine.identity import resolve
+
+    monkeypatch.delenv("TASKOPS_ACTOR", raising=False)
+    monkeypatch.delenv("GITHUB_USER", raising=False)
+    monkeypatch.setenv("USER", "berna")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "config", "user.email", "somebody-else@example.com"],
+                   cwd=tmp_path, check=True)
+
+    assert resolve(tmp_path)["id"] == "dev:berna"
+
+
+def test_an_explicit_actor_still_wins_over_the_account(tmp_path: Path,
+                                                       monkeypatch: Any) -> None:
+    """The one place this differs from how it was asked for, and the reason is the lab itself:
+    two sessions on one machine SHARE a `$USER`. If the account won, `dev:uno` and `dev:dos`
+    would be the same person and peer review would have nobody to hand a card to."""
+    from taskops.engine.identity import resolve
+
+    monkeypatch.setenv("USER", "berna")
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:dos")
+
+    assert resolve(tmp_path)["id"] == "dev:dos"
+
+
+def test_an_account_name_git_would_refuse_is_normalised_not_dropped(tmp_path: Path,
+                                                                    monkeypatch: Any) -> None:
+    """`$USER` can hold a dot, a space, a domain slash. Refusing those would fall back to git —
+    the source this ordering exists to demote — so it is filed under the closest legal name."""
+    from taskops.engine.identity import resolve
+
+    monkeypatch.delenv("TASKOPS_ACTOR", raising=False)
+    monkeypatch.delenv("GITHUB_USER", raising=False)
+    monkeypatch.setenv("USER", "CORP\\Ana Diaz")
+
+    assert resolve(tmp_path)["id"] == "dev:corp-ana-diaz"

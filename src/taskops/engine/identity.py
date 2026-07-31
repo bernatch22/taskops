@@ -5,12 +5,22 @@ actors called `agent:claude/agent`. So the resolution order goes from most expli
 to most inferable, and every step is something a human configured on purpose:
 
 1. what the caller passed (a fleet launcher naming its workers)
-2. `$TASKOPS_ACTOR` (the plugin exports it per session)
-3. the git identity, turned into `dev:<local-part>`
+2. `$TASKOPS_ACTOR` (exported per session — the only way to be two devs on one machine)
+3. `$GITHUB_USER`, then `$USER` — the account, which is who you are on this box
+4. the git identity, turned into `dev:<local-part>`
 
-The last one is why a developer who never configures anything still gets attributed
-work rather than an `unknown`. It is also why `git config user.email` being wrong
-shows up here: the actor on the board is the identity the commits will carry.
+**git moved to LAST, and that is the fix.** It used to come straight after `$TASKOPS_ACTOR`,
+and an agent rewrote `git config user.email` on a lab checkout — because the repository's own
+CLAUDE.md told it which git identity to use — so an entire developer silently became somebody
+else mid-run. Two clones drifting to the same name would deadlock `reviewer: peer`: the only
+actor allowed to close a card would be its author. `$USER` is not something an agent edits in
+passing, so it belongs above a file that is fair game.
+
+`$TASKOPS_ACTOR` stays ABOVE `$USER` rather than below it, which is the one place this differs
+from how it was asked for. Two sessions on one machine share a `$USER`; if the account won,
+`dev:uno` and `dev:dos` would both resolve to the same person and peer review would have
+nobody to hand a card to. The explicit value is the only thing that can tell them apart, so it
+has to be able to.
 """
 
 from __future__ import annotations
@@ -50,11 +60,30 @@ def parse(actor_id: str) -> Actor:
 
 
 def resolve(root: Path, asked: str = "") -> Actor:
-    """The caller's identity: what it said, else the environment, else git."""
+    """The caller's identity, most explicit source first. See this module's header."""
     for candidate in (asked, os.environ.get(ENV_ACTOR, "")):
         if candidate.strip():
             return parse(candidate)
+    for variable in ACCOUNT_VARS:
+        if account := _clean(os.environ.get(variable, "")):
+            return parse(f"dev:{account}")
     return parse(_from_git(root))
+
+
+ACCOUNT_VARS = ("GITHUB_USER", "USER", "LOGNAME")
+"""The account this session runs as, in preference order. `GITHUB_USER` first because a team
+that sets it means it — it is the name their PRs and their board should agree on."""
+
+
+def _clean(value: str) -> str:
+    """An account name reduced to what `parse` accepts, or "" if nothing survives.
+
+    Names are not rejected, they are NORMALISED: `$USER` can hold a dot, a space, a domain
+    slash. Refusing those would drop a real identity back to git — the source this reordering
+    exists to demote — so it is filed under the closest legal name instead.
+    """
+    kept = "".join(c if (c.isalnum() or c in "-_.") else "-" for c in value.strip())
+    return kept.strip("-").lower()
 
 
 def _from_git(root: Path) -> str:
