@@ -18,6 +18,7 @@ from .._errors import BadRequest
 from ..contracts import Task, UpdateResult
 from ..engine import record, unblock
 from ..storage import Store
+from ._freeing_news import announce_unblocked
 from ._project import caller, heartbeat, project
 from ._routing import routed, update_remotely, whoami
 from ._transition import move
@@ -56,9 +57,12 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
             task = move(store, task, who, status, comment, no_code,
                          evidence=evidence, no_evidence=no_evidence)
         freed = unblock(store)
-        answer = UpdateResult(task=store.tasks.need(task_id),
-                              unblocked=[store.tasks.need(i) for i in freed],
-                              notified=list(mentions))
+        opened = [store.tasks.need(i) for i in freed]
+        # The news reaches the people it is about. Without this the state is right and nobody
+        # knows: a freed card sits pickable and invisible until somebody's next turn asks.
+        told = announce_unblocked(store, opened, who)
+        answer = UpdateResult(task=store.tasks.need(task_id), unblocked=opened,
+                              notified=[*mentions, *told])
     # OUTSIDE the store, and only for a close: git is slow, and a merge holding the write lock
     # would block every other agent on this machine for the length of a checkout.
     return _landed(start, answer, status, who)

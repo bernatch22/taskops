@@ -262,3 +262,43 @@ def test_a_refusal_the_caller_could_fix_is_still_listed(repo: Path) -> None:
     update(repo, card, status="review", comment="no commit anywhere", actor=WORKER)
 
     assert card in {i["task"]["id"] for i in attention(repo, actor=DEV)["waiting"]}
+
+
+def test_closing_a_card_tells_whoever_was_waiting_on_it(repo: Path) -> None:
+    """The gap a question found: when one developer closes B and card C becomes ready, the
+    STATE is right instantly — `unblock` runs in the same write, in the store everybody reads —
+    and NOBODY is told. C sits pickable and invisible until somebody's next turn asks.
+
+    The information existed and was thrown away: the close already computes which cards it
+    freed and hands them to its own caller, which is the one session that does not need it.
+    """
+    from taskops.usecases import inbox, plan
+
+    created = plan(repo, [{"title": "first", "spec": "s"},
+                          {"title": "second", "spec": "s", "after": 0}],
+                   actor="dev:ana")["created"]
+    blocker, waiting = created[0]["id"], created[1]["id"]
+    next_task(repo, task=blocker, actor="agent:berna/w1")
+
+    done = update(repo, blocker, status="done", no_code=True, comment="shipped",
+                  actor="dev:berna")
+
+    assert [t["id"] for t in done["unblocked"]] == [waiting]
+    assert "dev:ana" in done["notified"], "the person who planned it is told"
+    said = " ".join(str(m["body"].get("text", "")) for m in inbox(repo, actor="dev:ana")["messages"])
+    assert waiting in said and "is ready" in said
+
+
+def test_nobody_is_told_about_their_own_close(repo: Path) -> None:
+    """Telling somebody about a consequence of their own call is noise — they already got it
+    in the reply. An inbox that fills with echoes is an inbox people stop opening."""
+    created = plan(repo, [{"title": "first", "spec": "s"},
+                          {"title": "second", "spec": "s", "after": 0}],
+                   actor="dev:berna")["created"]
+    next_task(repo, task=created[0]["id"], actor="agent:berna/w1")
+
+    done = update(repo, created[0]["id"], status="done", no_code=True, comment="mine",
+                  actor="dev:berna")
+
+    assert done["unblocked"], "it did unblock something"
+    assert done["notified"] == [], "and told nobody, because the only candidate was the closer"
