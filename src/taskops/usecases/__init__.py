@@ -52,11 +52,12 @@ from .setup import InitReport, init
 from .status import EXPIRING, IDLE_DAYS, status
 from .sweep import LIMIT, sweep
 from .sync import rebuild, sync
+from .teamnow import team_now
 from .update import update
 
 __all__ = [
     # the five MCP tools
-    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "attention", "join", "standup", "fleet", "activity",
+    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "attention", "team_now", "join", "standup", "fleet", "activity",
     "day", "period", "Selector",
     "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path",
     "report_index", "recover", "Recovered",

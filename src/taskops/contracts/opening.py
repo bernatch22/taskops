@@ -18,6 +18,7 @@ from .attention import Waiting
 from .context import ContextSlice
 from .event import Event
 from .lease import Lease
+from .team import Team
 
 __all__ = ["Opening"]
 
@@ -41,3 +42,8 @@ class Opening(TypedDict):
     """Cards this actor still holds — a resumed session, or leases that outlived a crash."""
 
     messages: list[Event]
+
+    team: Team
+    """Who else is connected, and what they are holding. The one thing here that is not about
+    this session: without it two sessions on one board each behave as though they were alone,
+    which is how a card got implemented twice and a review got started by two devs at once."""

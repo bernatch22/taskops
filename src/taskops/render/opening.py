@@ -33,6 +33,7 @@ def render_opening(view: dict[str, Any]) -> str:
     """`Opening` -> the injection. Never empty: the role is worth stating on a quiet board."""
     lines = [f"taskops — {ROLE}", f"You are `{view['actor']}` in this project.", ""]
     lines += ["## The project", render_context(view["context"]), ""]
+    lines += _team(view.get("team") or {})
     lines += _waiting(view["waiting"])
     if view["held"]:
         lines += ["", f"You still hold {len(view['held'])} card(s) from a previous session: "
@@ -41,6 +42,36 @@ def render_opening(view: dict[str, Any]) -> str:
     if view["messages"]:
         lines += ["", f"{len(view['messages'])} message(s) waiting — `taskops_ask` reads them."]
     return "\n".join(lines)
+
+
+def _team(team: dict[str, Any]) -> list[str]:
+    """Who else is here, and what they have their hands on — before the work list, on purpose.
+
+    A session that reads "what is waiting" first starts choosing; a session that reads who else
+    is connected first chooses differently. That ordering is the whole value: the collisions
+    this brief exists to stop (one card implemented twice, one review started by two devs) all
+    happened between sessions that could each see the board perfectly and each other not at all.
+
+    Silent when nobody else is connected. A heading over an empty list would say "you are alone"
+    every time somebody works alone, which is most of the time, on every session.
+    """
+    others = team.get("others") or []
+    if not others:
+        return []
+    lines = ["## Who else is on this board right now"]
+    for mate in others:
+        held = mate.get("holding") or []
+        # The titles, not just the ids: "tk-4f21a0" tells a reader nothing about whether their
+        # next card overlaps with it, which is the only question this paragraph is answering.
+        doing = "; ".join(f"{card} {truncate(title, 40)}" for card, title in held) if held \
+            else "free — nothing claimed"
+        lines.append(f"  {mate['dev']} ({_ago(float(mate.get('idle', 0)))}): {doing}")
+    lines.append("Do not dispatch onto what they are holding, and do not review what is theirs.")
+    return [*lines, ""]
+
+
+def _ago(idle: float) -> str:
+    return "active now" if idle < 90 else f"quiet {int(idle // 60)}m"
 
 
 def _waiting(waiting: list[dict[str, Any]]) -> list[str]:

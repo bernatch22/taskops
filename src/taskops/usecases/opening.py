@@ -18,6 +18,7 @@ from ..contracts.opening import Opening
 from .attention import attention
 from .context import show
 from .session import brief
+from .teamnow import team_now
 
 __all__ = ["opening"]
 
@@ -26,6 +27,9 @@ def opening(start: Path | str, *, session: str = "", actor: str = "") -> Opening
     """The opening screen. Reads only — a session that starts by writing is a session that
     has already decided something on nobody's behalf."""
     held = brief(start, session=session, actor=actor)
+    mates = team_now(start, actor=held.actor)
+    # `actor=` and not a bare sweep: without it the opening lists every review on the board,
+    # including the ones routed to somebody else and the ones this dev is forbidden to close.
     return Opening(actor=held.actor, session=session, context=show(start),
-                   waiting=attention(start)["waiting"], held=held.held,
-                   messages=held.messages)
+                   waiting=attention(start, actor=held.actor)["waiting"], held=held.held,
+                   messages=held.messages, team=mates)
