@@ -27,7 +27,9 @@ the verb, and the two orderings differ — `verify` leads because finishing beat
 
 def render_attention(view: Attention) -> str:
     if view["quiet"]:
-        return "nothing is waiting on a decision — every open card is being worked on."
+        return ("nothing is waiting on a decision — every open card is being worked on.\n"
+                "To be woken when that changes: run `taskops attention --wait` in the "
+                "background and keep working; when it returns, sweep again.")
     lines: list[str] = []
     for move in MOVES:
         group = [item for item in view["waiting"] if item["move"] == move]

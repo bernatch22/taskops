@@ -174,6 +174,23 @@ Two more hooks close the loop, and neither is advice:
   cards your session finished and left unverified. It never blocks on work nobody started: a
   ready card is not this turn's debt.
 
+## When there is nothing to do and others are mid-flight
+
+Do not end the turn and do not invent a poller. Run, in the background:
+
+```
+taskops attention --wait
+```
+
+It blocks until the board wants a decision from you, prints it, and exits — keep working (or
+wait on it) and sweep when it returns. A session once wrote itself a bash loop to get exactly
+this; the verb exists so the next one does not have to be clever.
+
+Push instead of poll: with a remote, the CHANNEL connects to the server's live feed and drops
+your own echoes, so only what OTHER people did interrupts you. It needs the experimental flag
+(`claude --dangerously-load-development-channels server:taskops-channel`) and the entry in
+`.mcp.json` (`TASKOPS_CHANNEL=1 taskops init`). `--wait` needs nothing and works today.
+
 ## If you are an ORCHESTRATOR: start every turn with `attention`
 
 ```

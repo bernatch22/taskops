@@ -63,6 +63,19 @@ export const NEVER: ReadonlySet<string> = new Set(['activity'])
 
 /** A frame, or `null` if it was not JSON we understand. A channel that throws on a
  *  malformed frame drops the socket for the rest of the session. */
+/**
+ * The person behind an actor id: `agent:ana/w1` and `dev:ana` are one person.
+ *
+ * This is what makes the remote channel QUIET. Connected to the server's feed, a session
+ * receives everything — including the echo of every move its own agents just made, which on a
+ * measured afternoon was five of every six events. Dropping events whose dev is our own turns
+ * the feed into what a channel was always supposed to be: the things OTHER people did.
+ */
+export function devOf(actor: string): string {
+  const matched = /^(?:dev|agent):([^/]+)/.exec(actor.trim())
+  return matched ? matched[1] : ''
+}
+
 export function parseFrame(raw: string): Frame | null {
   try {
     const value: unknown = JSON.parse(raw)
@@ -197,13 +210,14 @@ export function wantsCard(event: BoardEvent, kind: Kind): boolean {
  *
  * `human` and any `dev:` id are a PERSON — the same test `engine/_review.py` makes when it
  * refuses `done` from every agent, stated here so the message and the enforcement cannot
- * disagree. Anything else non-empty names a specialist (bare, as `usecases/reviewer.py`
- * validates it against the registry, or a full `agent:<dev>/<name>` id). "" is the project
- * default, which is a real answer and not a missing one.
+ * disagree. `peer` is a POLICY about who may close, not a name anybody can spawn: routing it
+ * as a specialist produced the line `Spawn a \`peer\` sub-agent`, which names an agent that
+ * does not exist — so it routes as the default (the stock verifier), exactly like "". Anything
+ * else non-empty names a real specialist.
  */
 export function reviewRoute(reviewer: string): 'human' | 'agent' | 'default' {
   const who = reviewer.trim()
-  if (!who) return 'default'
+  if (!who || who === 'peer') return 'default'
   if (who === 'human' || who.startsWith('dev:')) return 'human'
   return 'agent'
 }

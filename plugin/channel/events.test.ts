@@ -462,3 +462,28 @@ test('a review with no reviewer still names who does it', () => {
   expect(line).toContain('taskops-verifier')
   expect(line).toContain('send it back with findings')
 })
+
+import { devOf } from './events.ts'
+
+test('devOf: an agent and its developer are one person', () => {
+  expect(devOf('agent:ana/w1')).toBe('ana')
+  expect(devOf('dev:ana')).toBe('ana')
+  expect(devOf('agent:ana/verifier-x')).toBe('ana')
+})
+
+test('devOf: anything unparseable is nobody, never a crash', () => {
+  expect(devOf('')).toBe('')
+  expect(devOf('taskops')).toBe('')
+  expect(devOf('agent:')).toBe('')
+})
+
+import { reviewRoute } from './events.ts'
+
+test('peer is a policy, not a spawnable name', () => {
+  // `Spawn a \`peer\` sub-agent` reached a live session. There is no such agent — a policy in
+  // a spawn instruction is the fifth instance this week of an instruction naming something
+  // that does not exist, and every previous one cost a run.
+  expect(reviewRoute('peer')).toBe('default')
+  expect(reviewRoute('human')).toBe('human')
+  expect(reviewRoute('db-migrator')).toBe('agent')
+})

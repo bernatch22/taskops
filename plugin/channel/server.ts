@@ -35,6 +35,7 @@ import {
 import {
   changeOf,
   describe,
+  devOf,
   parseFrame,
   parseKinds,
   readCard,
@@ -48,11 +49,36 @@ import {
 const PORT = Number(process.env.TASKOPS_UI_PORT ?? 2140)
 const HOST = '127.0.0.1'
 const REPO = process.env.TASKOPS_REPO ?? process.cwd()
-const TOKEN = process.env.TASKOPS_API_TOKEN ?? ''
 const BIN = process.env.TASKOPS_BIN ?? 'taskops'
 const KINDS = parseKinds(process.env.TASKOPS_CHANNEL_EVENTS)
 
-const BASE = `http://${HOST}:${PORT}`
+/**
+ * REMOTE MODE — the shape this channel was always reaching for.
+ *
+ * With a remote, the board lives on a server and the interesting events are the ones OTHER
+ * machines cause: the other developer's worker handing a card over, their verifier closing
+ * one, a recovery freeing work at 3am. So the channel connects to the SERVER's live feed
+ * (`remote.json` already carries the address and the bearer), spawns nothing, owns no port,
+ * and drops every event caused by this machine's own dev — measured once at five echoes per
+ * one piece of news. Local mode (spawn `taskops ui`, tail it) survives for boards with no
+ * remote, where the only writers ARE local.
+ */
+function readRemote(repo: string): { url: string; token: string } | null {
+  try {
+    const parsed = JSON.parse(
+      require('fs').readFileSync(`${repo}/.taskops/remote.json`, 'utf-8'))
+    if (typeof parsed?.url === 'string' && parsed.url) {
+      return { url: parsed.url.replace(/\/+$/, ''), token: String(parsed.token ?? '') }
+    }
+  } catch { /* no remote: local mode */ }
+  return null
+}
+
+const REMOTE = readRemote(REPO)
+const MY_DEV = devOf(process.env.TASKOPS_ACTOR ?? '')
+const TOKEN = REMOTE?.token ?? process.env.TASKOPS_API_TOKEN ?? ''
+
+const BASE = REMOTE ? REMOTE.url : `http://${HOST}:${PORT}`
 const auth: Record<string, string> = TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}
 
 function log(message: string): void {
@@ -297,7 +323,8 @@ async function cardOf(task: string): Promise<ReviewCard | null> {
 }
 
 function tail(): void {
-  const url = `ws://${HOST}:${PORT}/api/live` + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : '')
+  const wsBase = REMOTE ? REMOTE.url.replace(/^http/, 'ws') : `ws://${HOST}:${PORT}`
+  const url = `${wsBase}/api/live` + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : '')
   let socket: WebSocket
   try {
     socket = new WebSocket(url)
@@ -309,6 +336,7 @@ function tail(): void {
   socket.addEventListener('message', event => {
     const change = changeOf(parseFrame(String(event.data)))
     if (!change) return
+    if (REMOTE && MY_DEV && devOf(change.actor) === MY_DEV) return    // my own echo
     const kind = selects(KINDS, change)
     if (!kind) return
     void (async () => {
@@ -329,5 +357,10 @@ function tail(): void {
   })
 }
 
-await ensureUi()
+if (REMOTE) {
+  log(`remote mode: following ${BASE} as ${MY_DEV || 'an unfiltered reader'}`)
+  process.stderr.write(`\n  taskops board → ${BASE}\n\n`)
+} else {
+  await ensureUi()
+}
 tail()
