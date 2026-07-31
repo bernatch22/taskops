@@ -77,6 +77,10 @@ function readRemote(repo: string): { url: string; token: string } | null {
 
 const REMOTE = readRemote(REPO)
 const MY_DEV = devOf(process.env.TASKOPS_ACTOR ?? '')
+
+/** This session's full actor id, or '' when nothing told us. It signs everything we post: an
+ *  unsigned message is filed under whoever the server happens to resolve to. */
+const ME = (process.env.TASKOPS_ACTOR ?? '').trim()
 const TOKEN = REMOTE?.token ?? process.env.TASKOPS_API_TOKEN ?? ''
 
 const BASE = REMOTE ? REMOTE.url : `http://${HOST}:${PORT}`
@@ -160,8 +164,16 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         // was last mentioned would file a conversation under work it is not about. The board's
         // sidebar is where that reply belongs, and it is the only place the asker is looking.
         const mentions = Array.isArray(args.mentions) ? args.mentions.map(String) : []
+        // `/api/update` and not `/api/comment` when we know who we are. `comment` RESOLVES the
+        // actor on the server — right for a browser, which could otherwise post as somebody
+        // else's agent — and wrong for this channel, which runs as one authenticated developer.
+        // Watched on a live board: a reply written by uno's session was recorded as `dev:berna`,
+        // the identity the server resolves to, and on a `reviewer: peer` board the author of a
+        // message is not decoration, it decides who may close what.
         const [route, body] = card
-          ? ['/api/comment', { task: card, text, mentions }]
+          ? ME
+            ? ['/api/update', { task: card, actor: ME, comment: text, mentions }]
+            : ['/api/comment', { task: card, text, mentions }]
           : ['/api/chat', { text, source: 'session' }]
         const response = await fetch(`${BASE}${route}`, {
           method: 'POST',

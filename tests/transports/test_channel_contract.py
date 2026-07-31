@@ -281,7 +281,7 @@ def test_the_channel_reaches_only_the_routes_asserted_above() -> None:
     source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
     used = set(re.findall(r"/api/([a-z]+)", source))
     assert used == {"config", "comment", "chat", "conversation", "board", "live", "task",
-                    "sync"}
+                    "sync", "update"}
 
 
 def test_the_chat_route_answers_the_shape_reply_posts(route: Any) -> None:
@@ -333,3 +333,21 @@ def test_the_channel_catches_up_from_the_cursor_it_already_reads_by() -> None:
     assert "/api/sync?after=" in source
     assert "STARTED" in source, "the first catch-up is bounded to this session's lifetime"
     assert source.count("forwards(KINDS") == 2, "catch-up and live frames share ONE filter"
+
+
+def test_a_reply_is_signed_by_the_developer_who_wrote_it() -> None:
+    """`/api/comment` RESOLVES the actor server-side and the channel must not use it alone.
+
+    That resolution is right for a browser — one that could name its own actor could post as
+    somebody else's agent, and the thread is a permanent record. It is wrong for this channel,
+    which runs as one authenticated developer and knows exactly who that is.
+
+    Watched on a live board: a reply written by `uno`'s session was recorded as `dev:berna`,
+    the identity the server happens to resolve to. On a `reviewer: peer` board the author of a
+    message is not decoration — it decides who is allowed to close what — so an unsigned reply
+    is a permanent lie about who said it. `/api/update` takes an `actor` and is the door the
+    agent API already uses; `comment` stays as the fallback for a channel with no identity.
+    """
+    source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
+    assert "'/api/update', { task: card, actor: ME" in source
+    assert "TASKOPS_ACTOR" in source, "the identity comes from the environment, never a guess"
