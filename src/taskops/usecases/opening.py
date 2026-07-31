@@ -27,7 +27,10 @@ def opening(start: Path | str, *, session: str = "", actor: str = "") -> Opening
     """The opening screen. Reads only — a session that starts by writing is a session that
     has already decided something on nobody's behalf."""
     held = brief(start, session=session, actor=actor)
-    mates = team_now(start, actor=held.actor)
+    # Carries the session, and that is what makes this dev routable at all: presence lives
+    # where the routing runs (the server, with a remote), and this is the only call in the
+    # opening that both knows the session id and gets there.
+    mates = team_now(start, actor=held.actor, session=session)
     # `actor=` and not a bare sweep: without it the opening lists every review on the board,
     # including the ones routed to somebody else and the ones this dev is forbidden to close.
     return Opening(actor=held.actor, session=session, context=show(start),

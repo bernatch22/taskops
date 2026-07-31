@@ -113,6 +113,15 @@ def render_update(result: UpdateResult) -> str:
                           for t in result["unblocked"]])]
     if result["notified"]:
         parts += ["", f"Notified: {', '.join(result['notified'])}"]
+    if result["task"]["status"] == "review" and not result.get("routed_to"):
+        # The orphan case, said out loud. A handover that routed to nobody looked EXACTLY like
+        # a handover that worked — same status, same silence — and a card sat in review that
+        # no message anywhere mentioned. "Nobody is here" is a fact the author can act on:
+        # keep the session open, or tell a person.
+        parts += ["", "Nobody else is connected, so this review was routed to NOBODY. It stays "
+                      "open to whoever shows up and it is in every eligible dev's sweep — but "
+                      "until somebody opens a session, it is waiting on no one. Do not close "
+                      "it yourself; say so if that matters."]
     if result.get("routed_to"):
         # Said to the AUTHOR, and said as a prohibition. "Routed to dos" alone reads as
         # bookkeeping; a session that has just watched its own worker finish needs the

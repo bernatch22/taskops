@@ -59,9 +59,24 @@ def route_review(store: Store, task: Task, author: str) -> str:
 
 
 def _pick(store: Store, author: str) -> str:
+    """The reviewer, preferring developers with a session open and never insisting on one.
+
+    Both halves were paid for. Routing to anybody merely *present* sent a review to a manager
+    who had created the cards from a terminal and gone; requiring a session sent three reviews
+    to NOBODY, because the session id was not reaching the store that routes — and a card
+    routed to nobody is an orphan in review that no message ever mentions.
+
+    So the session narrows the field when the signal is there, and is ignored when it is not.
+    A ghost reviewer is a card that waits and then expires; no reviewer at all is a card that
+    nothing will ever say out loud, which is strictly the worse failure.
+    """
     mine = _dev(author)
-    here = store.presence.devs(since=now() - PRESENCE_WINDOW, in_session=True)
+    when = now() - PRESENCE_WINDOW
+    here = store.presence.devs(since=when, in_session=True)
     candidates = [dev for dev in here if dev and dev != mine]
+    if not candidates:
+        here = store.presence.devs(since=when)
+        candidates = [dev for dev in here if dev and dev != mine]
     if not candidates:
         return ""
     load = _review_load(store)

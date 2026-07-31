@@ -20,11 +20,21 @@ from ._routing import read_remote_first, whoami
 __all__ = ["team_now"]
 
 
-def team_now(start: Path | str, *, actor: str = "") -> Team:
-    """The team brief. Reads, and heartbeats — asking who is here says that I am."""
-    if (answer := read_remote_first(start, "team", {"actor": whoami(start, actor)})) is not None:
+def team_now(start: Path | str, *, actor: str = "", session: str = "") -> Team:
+    """The team brief. Reads, and heartbeats — asking who is here says that I am.
+
+    The `session` is the load-bearing argument and it is easy to miss why. Presence is written
+    on the server, because with a remote every call routes there; the ONE call that knows a
+    session id is the SessionStart read, which is LOCAL. So the id never crossed, every row on
+    the server had an empty session, no developer was ever a routing candidate, and three
+    handovers in a row were routed to nobody — one of them sat orphaned in review. Shipped and
+    caught in a live run. This is the crossing.
+    """
+    if (answer := read_remote_first(start, "team",
+                                    {"actor": whoami(start, actor),
+                                     "session": session})) is not None:
         return cast("Team", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
-        heartbeat(store, who)
+        heartbeat(store, who, session=session)
         return assemble(store, who)

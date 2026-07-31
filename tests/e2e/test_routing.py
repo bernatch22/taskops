@@ -182,6 +182,8 @@ def test_a_dev_who_only_ran_a_command_is_never_routed_to(repo: Path) -> None:
     A manager created the cards from a terminal and left. Four minutes later a card entered
     review and was routed to them — present by every measure the store had, and never coming
     back. `dev:mgr` here does exactly that: it plans, and it never opens a session.
+
+    A session BEATS a passing call; it is not a requirement. See the test below for why.
     """
     here(repo, "dev:uno", "dev:dos")
     plan(repo, [{"title": "x", "spec": "s"}], actor="dev:mgr")      # a passing call, no session
@@ -189,6 +191,25 @@ def test_a_dev_who_only_ran_a_command_is_never_routed_to(repo: Path) -> None:
 
     assert card in offered_to(repo, "dev:dos"), "the routing must land on the session that is up"
     assert card not in offered_to(repo, "dev:mgr")
+
+
+def test_with_no_session_anywhere_it_still_routes_to_somebody(repo: Path) -> None:
+    """The regression that made the fix worse than the bug, caught in a live run.
+
+    Requiring a session made the session signal load-bearing, and it was not arriving: it is
+    written by the SessionStart read, which is local, while presence lives where the routing
+    runs. Every row had an empty session, no developer was ever a candidate, three handovers
+    in a row were routed to NOBODY, and one card sat orphaned in review with nothing said
+    about it anywhere.
+
+    A ghost reviewer waits and then expires. No reviewer at all is a card nothing ever
+    mentions — strictly worse, so the session narrows the field only when it exists.
+    """
+    plan(repo, [{"title": "x", "spec": "s"}], actor="dev:dos")     # present, no session
+    card, owner = handed_over_to(repo)
+
+    assert owner == "dev:dos", "somebody has to be told, even with no session signal at all"
+    assert card in offered_to(repo, "dev:dos")
 
 
 def test_a_stranger_cannot_CLOSE_a_review_routed_to_somebody_else(repo: Path) -> None:
@@ -254,3 +275,21 @@ def _tasks(repo: Path) -> list[dict[str, object]]:
     from taskops.storage import Store
     with Store(repo) as store:
         return [dict(task) for task in store.tasks.all()]
+
+
+def test_a_handover_that_reached_nobody_says_so(repo: Path) -> None:
+    """The orphan, made visible.
+
+    A handover routed to nobody looked exactly like one that worked — same status, same
+    silence — so a card sat in review that no message anywhere mentioned. The author is the
+    one person positioned to notice, and the return value is the message they will read.
+    """
+    from taskops.render.results import render_update
+
+    card = plan(repo, [{"title": "solo", "spec": "s", "acceptance": CRITERIA}],
+                actor="dev:uno")["created"][0]["id"]
+    next_task(repo, task=card, actor="agent:uno/w1")
+    result = update(repo, card, status="review", comment="a solas", actor="agent:uno/w1")
+
+    assert result["routed_to"] == ""
+    assert "routed to NOBODY" in render_update(result)
