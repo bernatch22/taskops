@@ -1,6 +1,7 @@
 import { describe as group, expect, test } from 'bun:test'
 
 import {
+  DEFAULT_KINDS,
   changeOf,
   classify,
   describe,
@@ -92,9 +93,13 @@ group('what is worth interrupting for', () => {
 })
 
 group('the selector', () => {
-  test('the default is the curated set', () => {
-    expect(parseKinds(undefined)).toEqual(['mention', 'assignment', 'status', 'recovery'])
-    expect(parseKinds('')).toEqual(['mention', 'assignment', 'status', 'recovery'])
+  test('the default is the curated set, and it is the ADDRESSED half of it', () => {
+    expect(parseKinds(undefined)).toEqual([...DEFAULT_KINDS])
+    expect(parseKinds('')).toEqual([...DEFAULT_KINDS])
+    // Stated as a rule rather than a list: what crosses by default is what named somebody.
+    // A status change is derivable from state — `taskops attention` reaches it whenever a
+    // session looks — and forwarding it is what made two devs review one card.
+    expect([...DEFAULT_KINDS]).toEqual(['mention', 'assignment'])
   })
 
   test('a narrower csv narrows it', () => {
@@ -103,7 +108,7 @@ group('the selector', () => {
 
   test('a typo drops the name rather than the channel', () => {
     expect(parseKinds('mention,mentions,nonsense')).toEqual(['mention'])
-    expect(parseKinds('nonsense')).toEqual(['mention', 'assignment', 'status', 'recovery'])
+    expect(parseKinds('nonsense')).toEqual([...DEFAULT_KINDS])
   })
 
   test('selects honours the configured set', () => {
@@ -486,4 +491,72 @@ test('peer is a policy, not a spawnable name', () => {
   expect(reviewRoute('peer')).toBe('default')
   expect(reviewRoute('human')).toBe('human')
   expect(reviewRoute('db-migrator')).toBe('agent')
+})
+
+// ---------------------------------------------------------------- the inbound decision
+
+import { DEFAULT_KINDS as ADDRESSED, audience, forwards } from './events.ts'
+
+/** One event, from `who`, with an id of its own — the two axes every test here varies. */
+function from(who: string, kind: string, body: Record<string, unknown>, id = 'ev1'): BoardEvent {
+  return { id, task: 'tk-90bd23', actor: who, kind, body, ts: 1 }
+}
+
+const mention = (to: string[], id = 'ev1') =>
+  from('agent:uno/w1', 'message', { text: 'your turn', mentions: to }, id)
+
+group('who an event is for', () => {
+  test('mentions and @handles resolve to DEVS, because a dev is one person', () => {
+    // `dev:ana` and `agent:ana/verifier` are the same human with two hands. Comparing raw
+    // ids would route a card to a dev and then refuse the very agent they review through.
+    expect(audience(mention(['agent:ana/verifier', 'dev:ana']))).toEqual(['ana'])
+    expect(audience(from('dev:uno', 'comment', { text: 'ping @dev:ana and @agent:leo/w2' })))
+      .toEqual(['ana', 'leo'])
+  })
+
+  test('an event that named nobody has no audience', () => {
+    expect(audience(from('dev:uno', 'status', { to: 'review' }))).toEqual([])
+  })
+})
+
+group('what actually crosses into a session', () => {
+  test('my own dev is an echo, never news', () => {
+    // Measured at five of every six events on a live afternoon: a session being told what its
+    // own agents just did, one second after the return value said the same thing.
+    expect(forwards(ADDRESSED, mention(['dev:ana']), 'uno', new Set())).toBeNull()
+  })
+
+  test('a mention of somebody else is somebody else’s work', () => {
+    expect(forwards(ADDRESSED, mention(['dev:ana']), 'leo', new Set())).toBeNull()
+    expect(forwards(ADDRESSED, mention(['dev:ana']), 'ana', new Set())).toBe('mention')
+  })
+
+  test('the same event never arrives twice', () => {
+    // `/api/live` ends itself every five minutes by design and this client reconnects, so a
+    // replayed id is ordinary traffic — and a line delivered twice reads as two things.
+    const seen = new Set<string>()
+    expect(forwards(ADDRESSED, mention(['dev:ana']), 'ana', seen)).toBe('mention')
+    expect(forwards(ADDRESSED, mention(['dev:ana']), 'ana', seen)).toBeNull()
+    expect(forwards(ADDRESSED, mention(['dev:ana'], 'ev2'), 'ana', seen)).toBe('mention')
+  })
+
+  test('a card entering review is silent — routing turns it into ONE directed message', () => {
+    // The whole night this design came from: this line crossed to every connected session,
+    // so two free developers reviewed the same card and one of them worked for nothing.
+    const review = from('agent:uno/w1', 'status', { from: 'claimed', to: 'review' })
+    expect(forwards(ADDRESSED, review, 'ana', new Set())).toBeNull()
+    // What the reviewer gets instead: the routed mention, addressed to exactly them.
+    expect(forwards(ADDRESSED, mention(['dev:ana']), 'ana', new Set())).toBe('mention')
+  })
+
+  test('the sidebar names nobody and is addressed at whoever is listening', () => {
+    expect(forwards(ADDRESSED, from('dev:berna', 'chat', { text: 'where are we' }), 'ana',
+                    new Set())).toBe('mention')
+  })
+
+  test('an unknown dev reads everything rather than nothing', () => {
+    // A session with no TASKOPS_ACTOR cannot say what is addressed to it. Silence would look
+    // exactly like a working filter, which is the failure mode that hides for a week.
+    expect(forwards(ADDRESSED, mention(['dev:ana']), '', new Set())).toBe('mention')
+  })
 })

@@ -38,9 +38,22 @@ export type Frame =
 export const KINDS = ['mention', 'assignment', 'status', 'recovery'] as const
 export type Kind = (typeof KINDS)[number]
 
-/** The curated default: all four. The set is small because the whole point is that it
- *  is small — a channel that relays everything trains its reader to ignore it. */
-export const DEFAULT_KINDS: readonly Kind[] = KINDS
+/**
+ * The default is the two categories that are ADDRESSED AT SOMEBODY: a mention and an
+ * assignment. `status` and `recovery` remain selectable and stay off.
+ *
+ * They were on, and the night that proved they should not be is worth the paragraph. A card
+ * entering review crossed to every connected session as news, so two free developers both
+ * started reviewing it and one of them worked for nothing; meanwhile the author's own session
+ * received the echo of every move its agents had just made — measured at five of every six
+ * events — and a feed at that ratio is one nobody reads.
+ *
+ * The fix is not a better status line. It is that a status change is DERIVABLE FROM STATE:
+ * `taskops attention` reaches the same conclusion whenever a session looks, which is the whole
+ * argument of `engine/attention.py`. What a sweep cannot derive is that somebody chose YOU —
+ * a routed review, a mention, an assignment — and that is precisely what still crosses.
+ */
+export const DEFAULT_KINDS: readonly Kind[] = ['mention', 'assignment']
 
 /**
  * Status transitions worth an interruption.
@@ -173,6 +186,49 @@ export function parseKinds(csv: string | undefined): Kind[] {
 export function selects(kinds: readonly Kind[], event: BoardEvent): Kind | null {
   const kind = classify(event)
   return kind && kinds.includes(kind) ? kind : null
+}
+
+/**
+ * The devs an event is FOR. Empty means "nobody in particular", which is not the same as
+ * "everybody" — see `forwards`, where the difference decides whether anything crosses.
+ */
+export function audience(event: BoardEvent): string[] {
+  const named = event.kind === 'handoff'
+    ? [String(event.body.assigned_to ?? '')]
+    : [...strings(event.body, 'mentions'),
+       ...(String(event.body.text ?? '').match(/(?<=^|\s)@[\w:/-]+/g) ?? [])
+         .map(handle => handle.slice(1))]
+  return [...new Set(named.map(devOf).filter(Boolean))]
+}
+
+/**
+ * The whole inbound decision, and the ONLY function `server.ts` should ask.
+ *
+ * Three refusals, in the order they cost least:
+ *
+ * 1. **My own dev.** `dev:ana` and `agent:ana/w1` are one person, so a session hearing about
+ *    what its own agents just did is hearing an echo of its own return values.
+ * 2. **Already delivered.** `/api/live` bounds itself every five minutes and this client
+ *    reconnects, so a replayed id is normal traffic — and a notification delivered twice is
+ *    read as two things happening.
+ * 3. **Not addressed to me.** An event that names an audience and leaves me out of it is
+ *    somebody else's work. A `chat` line names nobody and is addressed at whoever is listening
+ *    by construction — that is what the board's sidebar IS — so it crosses.
+ *
+ * `seen` is mutated deliberately: the caller owns the memory, so a test can hand in a fresh
+ * Set and a reconnect cannot forget what it already said.
+ */
+export function forwards(
+  kinds: readonly Kind[], event: BoardEvent, myDev: string, seen: Set<string>,
+): Kind | null {
+  if (myDev && devOf(event.actor) === myDev) return null
+  const kind = selects(kinds, event)
+  if (!kind) return null
+  const to = audience(event)
+  if (myDev && to.length && !to.includes(myDev)) return null
+  if (event.id && seen.has(event.id)) return null
+  if (event.id) seen.add(event.id)
+  return kind
 }
 
 // ---------------------------------------------------------------- the review branch

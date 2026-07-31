@@ -87,29 +87,48 @@ So: *does the web server start with the plugin?* With the channel, yes.
 | `TASKOPS_UI_PORT`         | `2140`           | the board's port — the same default as `taskops ui` |
 | `TASKOPS_REPO`            | the cwd          | which repository the spawned UI serves              |
 | `TASKOPS_API_TOKEN`       | none             | sent as `Bearer` on writes and `?token=` on the feed |
-| `TASKOPS_CHANNEL_EVENTS`  | all four         | csv of `mention,assignment,status,recovery`         |
+| `TASKOPS_CHANNEL_EVENTS`  | `mention,assignment` | csv of `mention,assignment,status,recovery` — the last two are the firehose, off by default |
 | `TASKOPS_BIN`             | `taskops`        | how to invoke the CLI (a venv path, say)            |
 
 ## What crosses, and what never does
 
-The filter is the point of this thing. A channel that relays everything trains you to ignore
-it, so the default set is small and stated in a person's terms, not the log's:
+**Only what somebody addressed at YOU.** Three refusals, in `forwards`:
+
+1. **your own dev** — `dev:ana` and `agent:ana/w1` are one person, so a session hearing what
+   its own agents just did is hearing an echo of its own return values. Measured on a live
+   afternoon: five of every six events;
+2. **an id already delivered** — the feed ends itself every five minutes by design and this
+   client reconnects, so a replayed event is ordinary traffic and a line said twice reads as
+   two things happening;
+3. **an audience you are not in** — an event that names people and does not name you is
+   somebody else's work. Naming nobody (the board's chat sidebar) still crosses: that is what
+   the sidebar IS.
+
+A status change crosses **nothing** by default, and that is the correction, not an oversight.
+A card entering review used to be news for everybody connected, so two free developers both
+started reviewing it and one of them worked for nothing. It is now an assignment: the server
+picks one connected dev (`engine/routereview.py`) and that dev gets one directed message. Every
+other status move is *derivable from state* — `taskops attention` reaches the same conclusion
+whenever a session looks — and forwarding a derivable fact is what makes a feed unreadable.
+
+The categories, stated in a person's terms rather than the log's:
 
 | category     | the board event                                          |
 | ------------ | -------------------------------------------------------- |
 | `mention`    | a comment that names somebody (`message` with `mentions`, or an `@handle` in a plain comment) |
 | `assignment` | `handoff` — a card became yours                           |
-| `status`     | a move to **review**, **blocked** or **done**             |
-| `recovery`   | `released` with `recovered_from` — a dead worker's card came back |
+| `status`     | a move to **review**, **blocked** or **done** — OFF by default; opt in for a firehose |
+| `recovery`   | `released` with `recovered_from` — a dead worker's card came back. OFF by default; the sweep reports it |
 
 **Never, at any setting:** `activity` (the per-keystroke heartbeat), narration deltas, socket
 keepalives, `claimed`/`in_progress` moves, commits, and every kind this channel has not been
 taught. An unknown kind stays quiet rather than defaulting to loud — a newer taskops writing a
 new kind will not start shouting at an older channel.
 
-Narrow it with `TASKOPS_CHANNEL_EVENTS=mention,recovery`. An unknown name in that list is
-dropped rather than fatal, and an empty result falls back to the curated set: a typo must not
-take the channel down or silence it.
+Widen or narrow it with `TASKOPS_CHANNEL_EVENTS=mention,recovery`. An unknown name in that
+list is dropped rather than fatal, and an empty result falls back to the curated set: a typo
+must not take the channel down or silence it. The audience and duplicate rules apply at every
+setting — turning `status` on makes the channel louder, never repetitive.
 
 ## A line that ROUTES
 
@@ -120,7 +139,9 @@ was an instruction. Two lines therefore carry one:
 
 * **an assignment** names the specialist to spawn and the `actor=` it must pass on *every*
   `taskops_*` call;
-* **a move into `review`** reads the card's `reviewer` field and says what to do about it.
+* **a move into `review`**, when somebody has opted `status` back on, reads the card's
+  `reviewer` field and says what to do about it. In the default set that move does not cross at
+  all — the routed mention carries the same instruction, to one person.
 
 The reviewer is a field on the CARD, not on the event, so a review — and only a review — costs
 one `GET /api/task`. Three answers:

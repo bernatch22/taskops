@@ -36,11 +36,11 @@ import {
   changeOf,
   describe,
   devOf,
+  forwards,
   parseFrame,
   parseKinds,
   readCard,
   sanitize,
-  selects,
   summarize,
   wantsCard,
   type ReviewCard,
@@ -98,8 +98,11 @@ const mcp = new Server(
     },
     instructions:
       'Board events arrive as <channel source="taskops" card="tk-..." event_kind="..." actor="...">.'
-      + ' They are things a person or another agent did on the shared board: a mention, an assignment,'
-      + ' a move to review/blocked/done, or a recovered card.'
+      + ' Every one of them is ADDRESSED AT YOU by somebody else: a mention, a review routed to'
+      + ' your dev, a card assigned to one of your agents. Nothing else crosses — no echoes of'
+      + ' your own moves, nothing twice, and no status changes, because those are derivable and'
+      + ' `taskops attention` is where you read them. So an event here is never FYI: it is work'
+      + ' chosen for you, and if you do not act on it nobody else will.'
       + ' YOU ARE THE ORCHESTRATOR, NOT THE WORKER. When a card is assigned to `agent:<dev>/<name>`'
       + ' and `<name>` is a specialist this project registered (an ordinary Claude Code subagent'
       + ' in `.claude/agents/`), DELEGATE: spawn a sub-agent of THAT type with the card id'
@@ -322,6 +325,10 @@ async function cardOf(task: string): Promise<ReviewCard | null> {
   }
 }
 
+/** Every event id already delivered, so a reconnect cannot say the same thing twice.
+ *  Session-lived, like the session it speaks into — there is nothing to bound. */
+const delivered = new Set<string>()
+
 function tail(): void {
   const wsBase = REMOTE ? REMOTE.url.replace(/^http/, 'ws') : `ws://${HOST}:${PORT}`
   const url = `${wsBase}/api/live` + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : '')
@@ -336,8 +343,10 @@ function tail(): void {
   socket.addEventListener('message', event => {
     const change = changeOf(parseFrame(String(event.data)))
     if (!change) return
-    if (REMOTE && MY_DEV && devOf(change.actor) === MY_DEV) return    // my own echo
-    const kind = selects(KINDS, change)
+    // Echo, duplicate and not-addressed-to-me all refused in one place — see `forwards`. The
+    // echo check used to be here and to apply only in remote mode; a local board with two
+    // clones has exactly the same echoes, and one of them is what a session's own agent did.
+    const kind = forwards(KINDS, change, MY_DEV, delivered)
     if (!kind) return
     void (async () => {
       const card = wantsCard(change, kind) ? await cardOf(change.task) : null
