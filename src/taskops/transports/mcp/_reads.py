@@ -72,7 +72,7 @@ def report_(args: dict[str, Any]) -> str:
     kind = arg.optional(args, "kind") or "board"
     where = arg.repo(args)
     if kind == "attention":
-        return render_attention(attention(where))
+        return render_attention(attention(where, actor=arg.optional(args, "actor")))
     if kind == "standup":
         return render_standup(standup(where, since=arg.optional(args, "since") or "24h",
                                       actor=arg.optional(args, "actor")))

@@ -77,7 +77,7 @@ VERBS: dict[str, Verb] = {
     "ask": lambda root, a: uc.ask(root, str(a.get("task", "")), actor=str(a.get("actor", ""))),
     "search": lambda root, a: uc.search(root, str(a.get("query", "")),
                                      limit=int(a.get("limit", 20) or 20)),
-    "attention": lambda root, _a: uc.attention(root),
+    "attention": lambda root, a: uc.attention(root, actor=str(a.get("actor", ""))),
     "board": lambda root, _a: uc.board(root),
     "standup": lambda root, a: uc.standup(root, since=str(a.get("since", "")) or "24h",
                                        actor=str(a.get("actor", ""))),

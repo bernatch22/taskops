@@ -19,16 +19,26 @@ from .._clock import now
 from ..contracts import Task
 from ..contracts.attention import MOVES, Waiting
 from ..storage import Store
+from ._peer import reviewer_is_a_peer
+from ._peerfacts import facts_of
 
 __all__ = ["waiting_on"]
 
 
-def waiting_on(store: Store, *, at: float | None = None) -> list[Waiting]:
-    """Every card that needs a decision, best move first. Reads only; decides nothing."""
+def waiting_on(store: Store, *, at: float | None = None, actor: str = "") -> list[Waiting]:
+    """Every card that needs a decision, best move first. Reads only; decides nothing.
+
+    `actor` narrows VERIFY to the reviews this caller could actually close. Without it the
+    sweep told a developer to verify eleven cards their own agents had written, on a board
+    whose `reviewer: peer` decision forbids exactly that — six refused calls before the model
+    worked out that the rule is per TEAM, not per session. Advice that the engine will refuse
+    is worse than no advice: it costs calls and teaches the reader to distrust the list.
+    """
     when = now() if at is None else at
     held = {lease["task"] for lease in store.leases.live(when)}
     found = [item for task in store.tasks.all()
-             if (item := _move(store, task, held)) is not None]
+             if (item := _move(store, task, held)) is not None
+             and not _refused(store, item, actor)]
     # Priority ASCENDING, like `scheduler.score` — 0 is urgent here and 3 is "whenever", so a
     # descending sort recommends the least urgent work first. It did, from the day this was
     # written until a priority-0 card landed on a live board and sorted below eight priority-2
@@ -60,6 +70,18 @@ def _move(store: Store, task: Task, held: set[str]) -> Waiting | None:
     if not task["spec"].strip():
         return _at(task, "specless", "ready with no spec — a worker can only guess at it")
     return _at(task, "dispatch", "ready, unassigned, and nothing depends on it first")
+
+
+def _refused(store: Store, item: Waiting, actor: str) -> bool:
+    """Would the close guard refuse this caller outright? Then it is not their move.
+
+    Only VERIFY, and only for a reason that cannot change by trying: `reviewer: peer` on work
+    this actor's own dev produced. Everything else a caller might fail at — no commit, missing
+    evidence, an open child — is fixable BY the caller, so listing it is the point.
+    """
+    if not actor or item["move"] != "verify":
+        return False
+    return bool(reviewer_is_a_peer(facts_of(store, item["task"], actor)))
 
 
 def _declared(store: Store, task: Task, held: set[str]) -> Waiting | None:

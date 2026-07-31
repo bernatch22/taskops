@@ -15,8 +15,11 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
     parser = sub.add_parser("attention", help="the cards waiting on a decision, and the "
                                               "move each one needs")
     add_target(parser)
+    parser.add_argument("--actor", default="",
+                        help="who is asking — a review this actor could never close is not "
+                             "listed for them")
     parser.set_defaults(run=run)
 
 
 def run(args: argparse.Namespace) -> str:
-    return render_attention(sweep_board(repo_of(args)))
+    return render_attention(sweep_board(repo_of(args), actor=str(args.actor)))

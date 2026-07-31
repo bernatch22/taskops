@@ -230,3 +230,35 @@ def test_the_verifier_brief_tells_it_to_claim() -> None:
     assert "taskops_next task=<id>" in brief, "it has to be told to take the lease"
     assert "mcp__taskops__taskops_next" in brief, "and given the tool to do it"
     assert "do not claim the card" not in brief.lower()
+
+
+def test_a_review_this_actor_could_never_close_is_not_offered_to_them(repo: Path) -> None:
+    """Watched in the second live run. The sweep told a developer to verify eleven cards their
+    own agents had written, on a board whose `reviewer: peer` decision forbids exactly that —
+    and the session spent six refused calls before working out that the rule is per TEAM, not
+    per session, and said so in its own summary.
+
+    Advice the engine will refuse is worse than no advice: it costs calls and it teaches the
+    reader to stop trusting the list.
+    """
+    from taskops.usecases import context_state
+
+    context_state(repo, "decision", "reviewer: peer — the other developer reviews", actor=DEV)
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": ["WHEN x SHALL y"]}],
+                actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor="agent:berna/w1")
+    update(repo, card, status="review", comment="over to you", actor="agent:berna/w1")
+
+    assert card not in {i["task"]["id"] for i in attention(repo, actor="dev:berna")["waiting"]}
+    assert card in {i["task"]["id"] for i in attention(repo, actor="dev:ana")["waiting"]}
+
+
+def test_a_refusal_the_caller_could_fix_is_still_listed(repo: Path) -> None:
+    """The line is drawn at "cannot change by trying". A missing commit, missing evidence, an
+    open child — every one of those is fixable BY the caller, so listing them is the point.
+    Only a structural refusal is worth hiding."""
+    card = a_card(repo)
+    next_task(repo, task=card, actor=WORKER)
+    update(repo, card, status="review", comment="no commit anywhere", actor=WORKER)
+
+    assert card in {i["task"]["id"] for i in attention(repo, actor=DEV)["waiting"]}

@@ -20,13 +20,13 @@ from typing import cast
 from ..contracts.attention import Attention
 from ..engine import unblock
 from ..engine.attention import waiting_on
-from ._project import project
-from ._routing import read_remote_first
+from ._project import caller, project
+from ._routing import read_remote_first, whoami
 
 __all__ = ["attention"]
 
 
-def attention(start: Path | str) -> Attention:
+def attention(start: Path | str, *, actor: str = "") -> Attention:
     """The cards that need a decision. Read-only on the BOARD; it does sync first.
 
     With a remote, the answer comes from the SERVER — the one store every claim, plan and
@@ -34,9 +34,11 @@ def attention(start: Path | str) -> Attention:
     this machine's cache with a warning, which is the read-side deal everywhere: writes refuse
     to fork the truth, reads refuse to go blind.
     """
-    if (answer := read_remote_first(start, "attention", {})) is not None:
+    if (answer := read_remote_first(start, "attention",
+                                    {"actor": whoami(start, actor)})) is not None:
         return cast("Attention", answer)
     with project(start) as store:
+        who = caller(store, actor)["id"]
         unblock(store)
-        waiting = waiting_on(store)
+        waiting = waiting_on(store, actor=who)
         return Attention(repo=str(store.root), waiting=waiting, quiet=not waiting)
