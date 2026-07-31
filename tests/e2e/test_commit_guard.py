@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from taskops.transports.mcp.dispatch import call_tool
-from taskops.usecases import ask, init, next_task, plan
+from taskops.usecases import ask, init, next_task, plan, update
 
 AGENT = "agent:berna/one"
 
@@ -377,3 +377,80 @@ def test_publish_all_is_the_repair_for_work_stranded_on_one_machine(tmp_path: Pa
                             capture_output=True, text=True, check=True).stdout
     assert "tk/tk-a/one" in remote and "main" not in remote
     assert publish_all(repo) == ["tk/tk-a/one", "tk/tk-b/two"], "idempotent: a no-op push"
+
+
+def _landing_repo(tmp_path: Path) -> tuple[Path, str]:
+    """A repo with a card whose branch carries one commit — ready to land."""
+    origin = tmp_path / "origin"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    repo = tmp_path / "clone"
+    git_init(repo)
+    subprocess.run(["git", "remote", "add", "origin", str(repo.parent / "origin")],
+                   cwd=repo, check=True)
+    init(repo)
+    # The log is committed ON THE TRUNK first, which is what a real project does — and has to.
+    # A `.taskops/events.jsonl` that exists only on a card branch is deleted the moment anybody
+    # switches away from it, and the next call cannot find the project at all.
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "chore: taskops")
+    git(repo, "push", "-q", "origin", "main")
+    card = plan(repo, [{"title": "work", "spec": "x"}], actor="dev:berna")["created"][0]["id"]
+    claimed = next_task(repo, task=card, actor="agent:berna/w1")["claim"]
+    git(repo, "switch", "-c", claimed["branch"])
+    (repo / "work.py").write_text("x = 1\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", f"feat: x\n\nTask: {card}")
+    git(repo, "switch", "main")
+    return repo, card
+
+
+def test_approving_a_card_lands_it_on_the_trunk(tmp_path: Path) -> None:
+    """The hole the lab made impossible to ignore: 118 cards closed, 133 worktrees, and `main`
+    still on the seed commit. `done` meant two things — "I finished" and "this is in the trunk"
+    — and only the first was ever true. Approval is the trigger, because a card reaching `done`
+    was read by somebody who is not its author, which is exactly when a merge is justified."""
+    repo, card = _landing_repo(tmp_path)
+
+    update(repo, card, status="review", comment="over", actor="agent:berna/w1")
+    update(repo, card, status="done", comment="checked", actor="dev:ana")
+
+    assert (repo / "work.py").exists(), "the trunk has the work"
+    merged = subprocess.run(["git", "log", "--oneline", "main"], cwd=repo,
+                            capture_output=True, text=True, check=True).stdout
+    assert "feat: x" in merged
+
+
+def test_a_conflict_closes_the_card_and_reports_it_as_unlanded(tmp_path: Path) -> None:
+    """A conflict is WORK, not a failure. Refusing the close would strand finished work behind
+    a git problem nobody is looking at — so the card closes, the outcome is recorded, and the
+    sweep reports it under LAND for a `taskops-fixer` to resolve."""
+    from taskops.usecases import attention
+
+    repo, card = _landing_repo(tmp_path)
+    (repo / "work.py").write_text("x = 999\n", encoding="utf-8")   # the trunk moves, and clashes
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "trunk changed the same file")
+
+    update(repo, card, status="review", comment="over", actor="agent:berna/w1")
+    update(repo, card, status="done", comment="checked", actor="dev:ana")
+
+    assert ask(repo, card)["task"]["status"] == "done", "the work IS done"
+    waiting = {i["task"]["id"]: i for i in attention(repo)["waiting"]}
+    assert waiting[card]["move"] == "land"
+    assert "taskops-fixer" in waiting[card]["why"]
+    assert (repo / "work.py").read_text(encoding="utf-8") == "x = 999\n", "trunk left untouched"
+
+
+def test_a_board_that_predates_landing_is_not_filled_with_history(tmp_path: Path) -> None:
+    """Silent for every card closed before landing existed. No `landed` event at all means this
+    board predates the feature, and filling a sweep with history helps nobody."""
+    from taskops.usecases import attention
+
+    init(tmp_path, install_git_hooks=False)
+    card = plan(tmp_path, [{"title": "old", "spec": "x"}],
+                actor="dev:berna")["created"][0]["id"]
+    next_task(tmp_path, task=card, actor="agent:berna/w1")
+    update(tmp_path, card, status="review", comment="over", actor="agent:berna/w1")
+    update(tmp_path, card, status="done", no_code=True, comment="no code", actor="dev:ana")
+
+    assert card not in {i["task"]["id"] for i in attention(tmp_path)["waiting"]}

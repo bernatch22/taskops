@@ -17,14 +17,16 @@ from .task import Task
 
 __all__ = ["Move", "Waiting", "Attention", "MOVES"]
 
-Move = Literal["verify", "resume", "dispatch", "specless", "stalled"]
+Move = Literal["land", "verify", "resume", "dispatch", "specless", "stalled"]
 
-MOVES: tuple[Move, ...] = ("verify", "resume", "dispatch", "specless", "stalled")
+MOVES: tuple[Move, ...] = ("land", "verify", "resume", "dispatch", "specless", "stalled")
 """In the order an orchestrator should act on them, and that order is a claim.
 
-Finishing beats starting: a card in `review` is minutes from `done` and closing it may unblock
-three others, while a `dispatch` adds a fourth thing in flight. `specless` and `stalled` come
-last because neither is the orchestrator's to fix — they are the two that need a person.
+`land` leads because it is the only group about work that is FINISHED and still invisible: a
+board reported a hundred and eighteen cards done with the trunk on its seed commit, which is
+the one thing a board exists not to do. Then finishing beats starting — closing a review may
+unblock three cards, while a dispatch adds a fourth thing in flight. `specless` and `stalled`
+come last because neither is the orchestrator's to fix; they need a person.
 """
 
 

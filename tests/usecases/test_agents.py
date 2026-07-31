@@ -135,7 +135,8 @@ def test_the_stock_specialists_route_nothing_by_label(project: Path) -> None:
     """`init` now writes taskops-worker and taskops-verifier into every project, so "no
     registry" no longer exists — this pins what replaced it: the stock pair carries no
     labels, so label routing still resolves to nothing until a project defines its own."""
-    assert {a["name"] for a in specialists(project)} == {"taskops-verifier", "taskops-worker"}
+    assert {a["name"] for a in specialists(project)} == {
+        "taskops-verifier", "taskops-worker", "taskops-fixer"}
     assert agent_for(project, ["etl"]) == ""
 
 

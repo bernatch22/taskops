@@ -54,7 +54,7 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
     assert listed == {"init", "join", "setup", "ui", "serve", "tasks", "attention", "context", "status",
-                      "report", "schedule", "recover", "sync", "login", "open", "publish", "remote",
+                      "report", "schedule", "recover", "sync", "login", "open", "publish", "land", "remote",
                       "push", "pull"}
 
 

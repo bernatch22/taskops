@@ -39,10 +39,11 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
     if not (status or comment or blocked_on):
         raise BadRequest("nothing to do — pass a `status`, a `comment`, or `blocked_on`")
     if (remote := routed(start, local)) is not None:
-        return update_remotely(start, remote, {
+        answer = update_remotely(start, remote, {
             "task": task_id, "actor": whoami(start, actor), "status": status,
             "comment": comment, "mentions": list(mentions), "blocked_on": blocked_on,
             "no_code": no_code, "evidence": evidence, "no_evidence": no_evidence})
+        return _landed(start, answer, status, whoami(start, actor))
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
@@ -55,9 +56,43 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
             task = move(store, task, who, status, comment, no_code,
                          evidence=evidence, no_evidence=no_evidence)
         freed = unblock(store)
-        return UpdateResult(task=store.tasks.need(task_id),
-                            unblocked=[store.tasks.need(i) for i in freed],
-                            notified=list(mentions))
+        answer = UpdateResult(task=store.tasks.need(task_id),
+                              unblocked=[store.tasks.need(i) for i in freed],
+                              notified=list(mentions))
+    # OUTSIDE the store, and only for a close: git is slow, and a merge holding the write lock
+    # would block every other agent on this machine for the length of a checkout.
+    return _landed(start, answer, status, who)
+
+
+def _landed(start: Path | str, answer: UpdateResult, status: str, who: str) -> UpdateResult:
+    """A card that just reached `done` gets its branch merged into the trunk, here.
+
+    Approval IS the trigger: the card was read by somebody who is not its author, which is
+    exactly when a merge is justified — so nobody has to remember, and no message has to
+    arrive. It runs on the CLIENT because the server has state and no checkout.
+
+    A failure never reaches the caller as an exception. The work IS done; refusing the close
+    over a git conflict would strand a finished card behind a problem nobody is looking at.
+    The outcome is recorded on the card instead, and `attention` reports what did not land.
+    """
+    if status != "done":
+        return answer
+    from ..engine import branch_for
+    from ._project import locate
+    from .land import land
+
+    with project(start) as store:
+        if not store.events.of_task(answer["task"]["id"], kinds=("commit",)):
+            # Nothing to land, and saying so would be noise: a `no_code` close, a research
+            # card, a decision — real work that never produced a branch. Reporting those as
+            # "not in the trunk" would fill the sweep with cards nobody can act on.
+            return answer
+    root = locate(start)
+    done = land(root, branch_for(answer["task"]))
+    with project(start) as store:
+        record(store, task=answer["task"]["id"], actor=who, kind="landed",
+               body={"ok": done.ok, "why": done.why, "trunk": done.trunk, "sha": done.sha})
+    return answer
 
 
 def _say(store: Store, task_id: str, who: str, text: str, mentions: tuple[str, ...]) -> None:

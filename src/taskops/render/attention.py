@@ -12,6 +12,8 @@ from ..contracts.attention import MOVES, Attention, Waiting
 __all__ = ["render_attention", "HEADINGS"]
 
 HEADINGS: dict[str, str] = {
+    "land": "LAND — done and NOT in the trunk. Spawn `taskops-fixer` on each; it resolves "
+            "the conflict and merges. `taskops land <id>` retries once it is clean",
     "verify": "VERIFY — hand each to the verifier; a close here may unblock others",
     "resume": "RESUME — spawn the worker each is assigned to, or release the card",
     "dispatch": "DISPATCH — `taskops_dispatch tasks=…`, then spawn one worker per brief",

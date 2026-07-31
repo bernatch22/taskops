@@ -54,8 +54,10 @@ def _move(store: Store, task: Task, held: set[str]) -> Waiting | None:
     a card and reporting owns the next move on it, whatever the board would otherwise say. That
     is the check keeping a sweep from handing a live card to a second worker.
     """
-    if task["status"] in ("done", "cancelled"):
+    if task["status"] == "cancelled":
         return None
+    if task["status"] == "done":
+        return _unlanded(store, task)
     if (declared := _declared(store, task, held)) is not None:
         return declared
     if task["id"] in held:
@@ -82,6 +84,25 @@ def _refused(store: Store, item: Waiting, actor: str) -> bool:
     if not actor or item["move"] != "verify":
         return False
     return bool(reviewer_is_a_peer(facts_of(store, item["task"], actor)))
+
+
+def _unlanded(store: Store, task: Task) -> Waiting | None:
+    """A closed card whose branch never reached the trunk.
+
+    The ONLY reason a `done` card appears in a sweep, and it earned its place: a board once
+    reported a hundred and eighteen cards done with the trunk still on its seed commit, and a
+    hundred and thirty-three branches nobody had merged. `done` used to mean two things — "I
+    finished" and "this is in the trunk" — and only the first was ever true.
+
+    Silent for a card that never carried code (`no_code`, or a card whose landing succeeded),
+    and silent for every card closed before landing existed: no `landed` event at all means
+    this board predates the feature, and filling a sweep with history helps nobody.
+    """
+    events = store.events.of_task(task["id"], kinds=("landed",))
+    if not events or events[-1]["body"].get("ok"):
+        return None
+    why = str(events[-1]["body"].get("why") or "it did not merge")
+    return _at(task, "land", f"closed but not in the trunk — {why}")
 
 
 def _declared(store: Store, task: Task, held: set[str]) -> Waiting | None:

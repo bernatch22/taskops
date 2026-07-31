@@ -70,6 +70,7 @@ EventKind = Literal[
     "edited",  # a field of the card itself changed: title, spec or priority
     "acceptance",  # what a card promises: its EARS criteria, restated whole
     "context",  # a standing fact about the PROJECT: an objective, invariant or decision
+    "landed",   # a done card's branch was merged into the trunk, or could not be
     "inferred",  # taskops attributed a call to the card's assignee, the caller named nobody
     "chat",  # a line said to the open session from the board's sidebar, about no card
 ]
