@@ -79,7 +79,12 @@ CREATE TABLE IF NOT EXISTS delivered (
 CREATE TABLE IF NOT EXISTS presence (
     actor TEXT PRIMARY KEY,
     dev TEXT NOT NULL DEFAULT '',
-    last_seen REAL NOT NULL
+    last_seen REAL NOT NULL,
+    -- The session this actor was last seen inside, '' for a call that came from no session.
+    -- It is what separates a developer who is HERE from one who ran a command and left: a
+    -- board was once routed to a manager who had created the cards from a terminal minutes
+    -- earlier, and the card waited on somebody who was never going to answer.
+    session TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_presence_seen ON presence(last_seen);
 

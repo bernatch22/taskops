@@ -77,6 +77,7 @@ def _apply(start: Path | str, task_id: str, actor: str, status: str, comment: st
             _say(store, task_id, who, comment, mentions)
         if blocked_on:
             _block_on(store, task, who, blocked_on)
+        routed = ""
         if status:
             task = move(store, task, who, status, comment, no_code,
                          evidence=evidence, no_evidence=no_evidence)
@@ -84,13 +85,13 @@ def _apply(start: Path | str, task_id: str, actor: str, status: str, comment: st
                 # The server picks the reviewer HERE, inside the same locked transaction the
                 # handover happened in. A review is an assignment, not news: one dev gets it,
                 # one directed message goes out, and nobody else hears anything.
-                route_review(store, task, who)
+                routed = route_review(store, task, who)
         opened = [store.tasks.need(i) for i in unblock(store)]
         # The news reaches the people it is about: a freed card would otherwise sit pickable
         # and invisible until somebody's next turn happens to ask.
         told = announce_unblocked(store, opened, who)
         return UpdateResult(task=store.tasks.need(task_id), unblocked=opened,
-                            notified=[*mentions, *told]), who
+                            notified=[*mentions, *told], routed_to=routed), who
 
 
 def _say(store: Store, task_id: str, who: str, text: str, mentions: tuple[str, ...]) -> None:

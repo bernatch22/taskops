@@ -124,11 +124,14 @@ def _reviews_pending(payload: dict[str, Any]) -> dict[str, Any]:
     than a stale board.
     """
     try:
+        from ...usecases._routing import whoami
         from ...usecases.pending import unverified, verify_text
         from ...usecases.unfinished import should_block
 
         where = cwd(payload)
-        rows = unverified(where)
+        # WHOSE reviews. A session is blocked until it acts on this list, so a card in it that
+        # belongs to another dev is not a nudge, it is an order to do refused work.
+        rows = unverified(where, actor=whoami(where, ""))
         if not rows or not should_block(where, session_of(payload), "unverified-reviews"):
             return {}
         return {"decision": "block", "reason": verify_text(rows, closing=True)}

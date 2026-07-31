@@ -19,6 +19,7 @@ import pytest
 from taskops.render.opening import render_opening
 from taskops.usecases import init, next_task, plan, team_now, update
 from taskops.usecases.opening import opening
+from taskops.usecases.session import brief
 
 
 @pytest.fixture
@@ -30,6 +31,12 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def here(repo: Path, *devs: str) -> None:
+    """Open a session for each dev — presence means a session, not a passing call."""
+    for dev in devs:
+        brief(repo, actor=dev, session=f"s-{dev}")
+
+
 def two_cards(repo: Path) -> list[str]:
     made = plan(repo, [{"title": "El parser de fechas", "spec": "s"},
                        {"title": "El endpoint de export", "spec": "s"}], actor="dev:uno")
@@ -38,6 +45,7 @@ def two_cards(repo: Path) -> list[str]:
 
 def test_a_dev_is_told_who_else_is_here_and_what_they_hold(repo: Path) -> None:
     first, second = two_cards(repo)
+    here(repo, "dev:uno", "dev:dos")
     next_task(repo, task=first, actor="agent:uno/w1")
     next_task(repo, task=second, actor="agent:dos/w1")
 
@@ -64,7 +72,7 @@ def test_a_dev_who_stopped_calling_stops_being_listed(repo: Path) -> None:
     from taskops.storage import Store
 
     two_cards(repo)
-    team_now(repo, actor="dev:dos")
+    here(repo, "dev:dos")
     assert [mate["dev"] for mate in team_now(repo, actor="dev:uno")["others"]] == ["dos"]
 
     with Store(repo) as store:
@@ -78,6 +86,7 @@ def test_the_opening_says_it_before_it_says_what_is_waiting(repo: Path) -> None:
     """The ordering IS the argument: a session that reads the work list first starts choosing,
     and a session that reads who else is here first chooses differently."""
     first, second = two_cards(repo)
+    here(repo, "dev:uno", "dev:dos")
     next_task(repo, task=first, actor="agent:uno/w1")
     next_task(repo, task=second, actor="agent:dos/w1")
 
@@ -100,8 +109,7 @@ def test_the_opening_hides_a_review_routed_to_somebody_else(repo: Path) -> None:
     from taskops.usecases import context_state
 
     context_state(repo, "decision", "reviewer: peer — nos revisamos", actor="dev:uno")
-    for dev in ("dev:uno", "dev:dos"):
-        team_now(repo, actor=dev)
+    here(repo, "dev:uno", "dev:dos")
     card, _ = two_cards(repo)
     next_task(repo, task=card, actor="agent:uno/w1")
     update(repo, card, status="review", comment="listo", actor="agent:uno/w1")

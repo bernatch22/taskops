@@ -20,17 +20,33 @@ class PresenceTable:
     def __init__(self, db: sqlite3.Connection) -> None:
         self.db = db
 
-    def beat(self, actor: str, dev: str, when: float) -> None:
-        self.db.execute(
-            "INSERT INTO presence (actor, dev, last_seen) VALUES (?, ?, ?) "
-            "ON CONFLICT(actor) DO UPDATE SET last_seen = excluded.last_seen, "
-            "dev = excluded.dev",
-            (actor, dev, when))
+    def beat(self, actor: str, dev: str, when: float, session: str = "") -> None:
+        """Record a signal. The session is STICKY: an empty one never erases a known one.
 
-    def devs(self, *, since: float) -> dict[str, float]:
-        """dev -> the freshest signal from ANY of that dev's actors, newest first."""
+        Every call heartbeats, and most of them carry no session — an MCP tool call, a git
+        hook, a poll. If those overwrote the field, a developer would stop being reachable one
+        second after their session opened, which is the opposite of what it records.
+        """
+        self.db.execute(
+            "INSERT INTO presence (actor, dev, last_seen, session) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(actor) DO UPDATE SET last_seen = excluded.last_seen, "
+            "dev = excluded.dev, "
+            "session = CASE WHEN excluded.session != '' THEN excluded.session "
+            "               ELSE presence.session END",
+            (actor, dev, when, session))
+
+    def devs(self, *, since: float, in_session: bool = False) -> dict[str, float]:
+        """dev -> the freshest signal from ANY of that dev's actors, newest first.
+
+        `in_session` narrows it to developers who have a SESSION open — somebody who can be
+        given work. Without that distinction a board routed a review to the manager who had
+        created its cards from a terminal four minutes earlier: present by every measure the
+        store had, and never coming back. A dev counts as in-session when any of their actors
+        carries a session id, which is how a session and the sub-agents it spawns stay one
+        person: the agents call with no session of their own, and the dev row carries it.
+        """
         rows = self.db.execute(
-            "SELECT dev, MAX(last_seen) AS seen FROM presence "
+            "SELECT dev, MAX(last_seen) AS seen, MAX(session != '') AS live FROM presence "
             "WHERE last_seen >= ? AND dev != '' GROUP BY dev ORDER BY seen DESC",
             (since,)).fetchall()
-        return {row["dev"]: row["seen"] for row in rows}
+        return {row["dev"]: row["seen"] for row in rows if row["live"] or not in_session}

@@ -272,10 +272,16 @@ def test_the_channel_defaults_to_the_port_the_ui_defaults_to() -> None:
 
 def test_the_channel_reaches_only_the_routes_asserted_above() -> None:
     """A cheap inventory: every taskops path the TS names is one this file pins. If somebody
-    adds a third endpoint to the channel, this fails until the contract test covers it."""
+    adds a third endpoint to the channel, this fails until the contract test covers it.
+
+    `sync` joined the list when the channel learned to catch up. It is the board's own
+    pagination, and the channel is now one more replica reading by cursor — which is why the
+    fix needed no endpoint of its own.
+    """
     source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
     used = set(re.findall(r"/api/([a-z]+)", source))
-    assert used == {"config", "comment", "chat", "conversation", "board", "live", "task"}
+    assert used == {"config", "comment", "chat", "conversation", "board", "live", "task",
+                    "sync"}
 
 
 def test_the_chat_route_answers_the_shape_reply_posts(route: Any) -> None:
@@ -308,3 +314,22 @@ def test_the_channel_declares_no_permission_relay() -> None:
         if "claude/channel/permission" in line:
             assert line.strip().startswith(("//", "*", "/*")), \
                 "the relay may only be named in a comment, never declared"
+
+
+def test_the_channel_catches_up_from_the_cursor_it_already_reads_by() -> None:
+    """The gap a live run left, and the shape of its fix.
+
+    A session opened and fifteen seconds later a teammate's worker handed a card over; the
+    review was routed to that session and it received NOTHING all run, because the websocket
+    was still coming up and a live feed has no memory. So the channel now asks `/api/sync`
+    the moment the socket opens — the same cursor pagination every replica uses.
+
+    Pinned here because both halves are easy to get wrong and I got one wrong by hand: the
+    first catch-up must be BOUNDED to this process's lifetime (replaying the whole log would
+    hand a fresh session other people's finished decisions), and it must go through the same
+    filter as a live frame, so an event that arrives twice is delivered once.
+    """
+    source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
+    assert "/api/sync?after=" in source
+    assert "STARTED" in source, "the first catch-up is bounded to this session's lifetime"
+    assert source.count("forwards(KINDS") == 2, "catch-up and live frames share ONE filter"

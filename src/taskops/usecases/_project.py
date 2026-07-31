@@ -94,12 +94,13 @@ def _mark_once(store: Store, task_id: str, actor: str) -> None:
     record(store, task=task_id, actor=actor, kind="inferred", body={"from": "assignee"})
 
 
-def heartbeat(store: Store, actor: str, *, at: float | None = None) -> None:
-    _presence_beat(store, actor, at)
+def heartbeat(store: Store, actor: str, *, at: float | None = None,
+              session: str = "") -> None:
+    _presence_beat(store, actor, at, session)
     _heartbeat_leases(store, actor, at=at)
 
 
-def _presence_beat(store: Store, actor: str, at: float | None) -> None:
+def _presence_beat(store: Store, actor: str, at: float | None, session: str = "") -> None:
     """Presence rides the heartbeat: every server call says "this dev is here".
 
     Never fatal and never fancy — a presence row is a hint for routing and the team brief,
@@ -108,7 +109,7 @@ def _presence_beat(store: Store, actor: str, at: float | None) -> None:
     try:
         from ..engine.identity import parse
 
-        store.presence.beat(actor, parse(actor)["dev"], now() if at is None else at)
+        store.presence.beat(actor, parse(actor)["dev"], now() if at is None else at, session)
     except Exception:  # noqa: BLE001 — a hint, not a fact anybody depends on
         pass
 

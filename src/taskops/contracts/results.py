@@ -71,6 +71,15 @@ class UpdateResult(TypedDict):
     notified: list[str]
     """Actors whose inbox this reached — the mentions, resolved."""
 
+    routed_to: str
+    """The dev this handover's review was routed to, or "".
+
+    It rides the RETURN VALUE because that is the one message the author is guaranteed to
+    read. Watched live: a session whose two workers handed cards over spawned a verifier for
+    each of them a minute later — nothing had told it not to, and silence reads as "nobody
+    took this, so I will". Both verifiers were refused at the close. The channel deliberately
+    says nothing to the author (that would be the echo), so the author's own call has to."""
+
 
 class EditResult(TypedDict):
     """The card after a rewrite, and which fields actually moved.

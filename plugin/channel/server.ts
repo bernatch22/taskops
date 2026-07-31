@@ -43,6 +43,7 @@ import {
   sanitize,
   summarize,
   wantsCard,
+  type Frame,
   type ReviewCard,
 } from './events.ts'
 
@@ -329,6 +330,60 @@ async function cardOf(task: string): Promise<ReviewCard | null> {
  *  Session-lived, like the session it speaks into — there is nothing to bound. */
 const delivered = new Set<string>()
 
+/** How far this channel has read the board's log. Advanced by every catch-up. */
+let cursor = 0
+
+/** When this process — and therefore this session — began, in board time (seconds).
+ *  A couple of seconds of slack, because the board's clock is not this machine's. */
+const STARTED = Date.now() / 1000 - 5
+
+/**
+ * Deliver anything written while we were not listening.
+ *
+ * The failure this fixes was watched on a live board: a session opened, and fifteen seconds
+ * later a teammate's worker handed a card over and the review was routed to it. The websocket
+ * was still coming up, and a live feed has no memory — so that session received NOTHING all
+ * run, and only its own sweep saved the card. A notification channel that silently drops the
+ * one event you were waiting for is worse than one that is obviously off.
+ *
+ * `/api/sync?after=` is the board's own pagination, already authenticated and already the
+ * cursor every replica reads by. Everything goes through `forwards` exactly like a live frame,
+ * so an event that arrives twice — caught up AND pushed — is delivered once: the dedupe is not
+ * an extra rule here, it is the same rule.
+ *
+ * The FIRST connect delivers only what happened since THIS PROCESS started — which is when
+ * the session started, because this channel is the session's own MCP server, born with it and
+ * dead with it. That bound is the whole judgement: replaying the full log would hand a fresh
+ * session a backlog of decisions other people already made, and taking only the cursor (the
+ * first version of this, caught by running it) would leave the fifteen-second hole exactly
+ * where it was. Since-I-existed is the honest answer to "what did I miss".
+ */
+async function catchUp(): Promise<void> {
+  const floor = cursor === 0 ? STARTED : 0
+  try {
+    const response = await fetch(`${BASE}/api/sync?after=${cursor}&limit=200`, {
+      headers: auth,
+      signal: AbortSignal.timeout(4000),
+    })
+    if (!response.ok) return
+    const page = await response.json() as { events?: unknown[]; max_seq?: number }
+    cursor = Number(page.max_seq ?? cursor)
+    for (const raw of page.events ?? []) {
+      const change = changeOf({ type: 'change', event: raw } as Frame)
+      if (!change || change.ts < floor) continue
+      const kind = forwards(KINDS, change, MY_DEV, delivered)
+      if (!kind) continue
+      const card = wantsCard(change, kind) ? await cardOf(change.task) : null
+      void mcp.notification({
+        method: 'notifications/claude/channel',
+        params: describe(change, kind, card),
+      })
+    }
+  } catch {
+    // Never fatal: a catch-up that fails leaves the live feed exactly as it was.
+  }
+}
+
 function tail(): void {
   const wsBase = REMOTE ? REMOTE.url.replace(/^http/, 'ws') : `ws://${HOST}:${PORT}`
   const url = `${wsBase}/api/live` + (TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : '')
@@ -339,7 +394,12 @@ function tail(): void {
     setTimeout(tail, 2000)
     return
   }
-  socket.addEventListener('open', () => log(`following ${url} for [${KINDS.join(', ')}]`))
+  socket.addEventListener('open', () => {
+    log(`following ${url} for [${KINDS.join(', ')}]`)
+    // AFTER the socket is up, never before: catching up first would leave a gap between the
+    // page and the first frame — exactly the hole this closes, moved earlier in time.
+    void catchUp()
+  })
   socket.addEventListener('message', event => {
     const change = changeOf(parseFrame(String(event.data)))
     if (!change) return

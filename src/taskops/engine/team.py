@@ -29,7 +29,8 @@ def team(store: Store, actor: str, *, at: float | None = None) -> Team:
     mine = _dev(actor)
     held = _held_by_dev(store, when)
     mates = [Mate(dev=dev, idle=round(when - seen, 1), holding=held.get(dev, []))
-             for dev, seen in store.presence.devs(since=when - PRESENCE_WINDOW).items()
+             for dev, seen in store.presence.devs(since=when - PRESENCE_WINDOW,
+                                                 in_session=True).items()
              if dev != mine]
     mates.sort(key=lambda mate: (-len(mate["holding"]), mate["idle"], mate["dev"]))
     return Team(me=mine, others=mates)

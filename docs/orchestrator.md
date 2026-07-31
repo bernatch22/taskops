@@ -265,3 +265,67 @@ behaved as though they were alone — which is how a card got implemented twice.
 joins two facts the store already kept and nobody had joined: who is connected, and what their
 live leases hold. It is injected before the work list, because a session that reads what is
 waiting first has already started choosing.
+
+### §8b — cuatro fallas que sólo aparecieron corriéndolo
+
+La primera corrida real de §8 con dos developers encontró cuatro cosas que ningún test tenía.
+Vale anotar la forma de las cuatro: **tres eran un guard puesto en la puerta que nadie usa**.
+
+```
+LO QUE FALLÓ                              CÓMO QUEDA
+
+1. el autor se auto-verifica
+   worker de uno entrega ──▶ silencio     worker entrega ──▶ el RETORNO de su
+   uno: "nadie la agarró, la agarro yo"                       propia llamada dice
+   lanza 2 verifiers ──▶ rechazados         "routed to dev:dos — NO la verifiques"
+   (el silencio se lee como permiso)      el hook Stop pregunta con actor:
+                                            nunca nombra una carta ajena
+
+2. ruteo a un fantasma
+   presencia = "alguien llamó a la API"   presencia = "hay una SESIÓN abierta"
+   berna crea las cards por CLI y se va     el id de sesión entra en SessionStart
+   ──▶ la review se rutea a berna           y es pegajoso: los sub-agentes no lo
+   ──▶ espera a quien no vuelve             traen y no lo borran
+                                          ──▶ un CLI de paso nunca es candidato
+
+3. el cierre no miraba el ruteo
+   ┌── claim ──┐        ┌── close ──┐     ┌── claim ──┐        ┌── close ──┐
+   │  con lock │        │  ABIERTO  │     │  con lock │        │  con lock │
+   └───────────┘        └───────────┘     └───────────┘        └───────────┘
+   dos cerró una carta ruteada a berna,   refuse_routed_close es la PRIMERA
+   review ──▶ done, sin reclamarla         regla de closing(); expira con el ruteo
+
+4. el feed no tenía memoria
+   sesión arranca ─┐                      sesión arranca ─┐
+   evento a los 15s│ websocket            evento a los 15s│ websocket
+   sesión conecta ─┘ ──▶ PERDIDO           sesión conecta ─┘ ──▶ catchUp()
+   (dos no recibió NINGÚN evento)           GET /api/sync?after= desde que este
+                                            proceso existe, por el mismo filtro
+                                            ──▶ llega una vez, nunca dos
+```
+
+El flujo completo, como queda:
+
+```
+        dev:uno (sesión)                 SERVIDOR                dev:dos (sesión)
+             │                              │                          │
+  SessionStart ──── presencia+sesión ──────▶│◀───── presencia+sesión ───┘
+             │                              │
+  worker w1 entrega                         │
+      update(status=review) ───────────────▶│ ¿reviewer: peer?
+             │                              │   candidatos = devs CON SESIÓN
+             │                              │   − el autor − más cargado
+             │                              │   elige dev:dos, asigna la carta
+             │◀─── "routed to dev:dos,      │───▶ 1 mensaje dirigido ─────────▶│
+             │      NO la verifiques"       │                                  │
+             │                              │            con canal: llega push │
+  su barrida: no la ve                      │            sin canal: attention  │
+  su hook Stop: no la nombra                │              --wait despierta    │
+             │                              │                                  │
+             │                              │◀──── close: sólo dev:dos ────────┤
+             │                              │      (cualquier otro, refusado)  │
+             │◀───── se destraba lo que dependía ──────────────────────────────┘
+```
+
+Y la regla que las cuatro comparten, que ya estaba escrita en el CLAUDE.md de este repo y
+volvió a cobrarse un día: **una instrucción no es un mecanismo**. El silencio tampoco.

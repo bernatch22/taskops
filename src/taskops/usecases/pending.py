@@ -27,13 +27,20 @@ is an agent type that does not exist."""
 __all__ = ["unverified", "verify_text"]
 
 
-def unverified(start: Path | str) -> list[dict[str, Any]]:
-    """Every card sitting in `review` with nobody verifying it.
+def unverified(start: Path | str, *, actor: str = "") -> list[dict[str, Any]]:
+    """Every card sitting in `review` that THIS actor could actually pick up.
 
     Derived from `attention` rather than queried again, so there is one definition of "waiting
     for a verifier" and a board that disagrees with the sweep is impossible by construction.
+
+    The `actor` is the whole correctness of the message. Without it this asked the board-wide
+    question and the answer was pasted into one developer's turn: a Stop hook can then name a
+    card routed to somebody else, and a session that is BLOCKED until it acts will act — it
+    spawns a verifier, the verifier is refused at the close, and two agents are spent on a
+    review that was never this dev's. Advice the engine will refuse is worse than no advice.
     """
-    return [item for item in attention(start)["waiting"] if item["move"] == "verify"]
+    return [item for item in attention(start, actor=actor)["waiting"]
+            if item["move"] == "verify"]
 
 
 def _agent_for(reviewer: str) -> str:

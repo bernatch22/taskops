@@ -53,7 +53,10 @@ def brief(start: Path | str, *, session: str = "", actor: str = "") -> Brief:
     """
     with project(start) as store:
         who = caller(store, actor)["id"]
-        heartbeat(store, who)
+        # The ONE call that carries a session id, and therefore the only one that can say this
+        # dev is here rather than passing through. Everything downstream — routing, the team
+        # brief — reads that distinction.
+        heartbeat(store, who, session=session)
         held = store.leases.of_actor(who, now())
         if session:
             _adopt(store, held, session)

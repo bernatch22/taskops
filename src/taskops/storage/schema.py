@@ -34,6 +34,7 @@ constraint would reject exactly the events that make the project converge.
 _LATE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("tasks", "assignee TEXT NOT NULL DEFAULT ''"),
     ("tasks", "reviewer TEXT NOT NULL DEFAULT ''"),
+    ("presence", "session TEXT NOT NULL DEFAULT ''"),
 )
 """Columns added after a table shipped, applied with ALTER on every open so a database written by an
 older taskops keeps working with no migration step anyone has to remember.

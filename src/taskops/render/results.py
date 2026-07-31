@@ -113,4 +113,12 @@ def render_update(result: UpdateResult) -> str:
                           for t in result["unblocked"]])]
     if result["notified"]:
         parts += ["", f"Notified: {', '.join(result['notified'])}"]
+    if result.get("routed_to"):
+        # Said to the AUTHOR, and said as a prohibition. "Routed to dos" alone reads as
+        # bookkeeping; a session that has just watched its own worker finish needs the
+        # sentence that stops it spawning a verifier out of reflex.
+        parts += ["", f"This review was routed to {result['routed_to']} — it is in their "
+                      f"sweep and in nobody else's. Do NOT verify it and do not spawn a "
+                      f"verifier for it: `reviewer: peer` is per DEVELOPER, so another agent "
+                      f"of yours would be refused at the close. Your part is done."]
     return "\n".join(parts)

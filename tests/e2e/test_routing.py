@@ -19,8 +19,10 @@ from pathlib import Path
 
 import pytest
 
+from taskops._errors import GuardFailed
 from taskops.engine.routereview import ROUTE_TTL
 from taskops.usecases import attention, context_state, init, next_task, plan, update
+from taskops.usecases.session import brief
 
 CRITERIA = ["WHEN a review is routed THE SYSTEM SHALL offer it to exactly one developer"]
 
@@ -36,10 +38,15 @@ def repo(tmp_path: Path) -> Path:
 
 
 def here(repo: Path, *devs: str) -> None:
-    """Make these developers present. A read is a heartbeat, which is the whole point: nothing
-    has to announce itself, and a dev who stopped calling stops being routed to."""
+    """Open a SESSION for each of these developers — which is what "connected" means.
+
+    It used to be any read, and that is the hole a live board fell into: the manager who had
+    created the cards from a terminal four minutes earlier counted as present, so a review was
+    routed to somebody who was never coming back. A session announces itself once (the
+    SessionStart read carries the id) and every later call keeps it alive.
+    """
     for dev in devs:
-        attention(repo, actor=dev)
+        brief(repo, actor=dev, session=f"s-{dev}")
 
 
 def handed_over(repo: Path, title: str = "t", *, by: str = "agent:uno/w1") -> str:
@@ -48,6 +55,20 @@ def handed_over(repo: Path, title: str = "t", *, by: str = "agent:uno/w1") -> st
     next_task(repo, task=card, actor=by)
     update(repo, card, status="review", comment="over to you", actor=by)
     return str(card)
+
+
+def handed_over_to(repo: Path) -> tuple[str, str]:
+    """A card in review, and the dev the SERVER chose for it — never a guess.
+
+    Which dev wins is a real decision (load, then freshness, then name), so a test that
+    hard-codes the answer is testing its own arithmetic. Asking the call is also the honest
+    shape: this is exactly what the author is told.
+    """
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA}],
+                actor="dev:uno")["created"][0]["id"]
+    next_task(repo, task=card, actor="agent:uno/w1")
+    result = update(repo, card, status="review", comment="over to you", actor="agent:uno/w1")
+    return card, str(result["routed_to"])
 
 
 def offered_to(repo: Path, dev: str) -> set[str]:
@@ -151,3 +172,85 @@ def test_the_author_is_not_woken_by_its_own_handover(repo: Path) -> None:
     handed_over(repo)
 
     assert attention(repo, actor="dev:uno")["quiet"], "no echo, and nothing to decide"
+
+
+# ------------------------------------------------------ what the first live run got wrong
+
+def test_a_dev_who_only_ran_a_command_is_never_routed_to(repo: Path) -> None:
+    """The ghost reviewer, watched on a live board.
+
+    A manager created the cards from a terminal and left. Four minutes later a card entered
+    review and was routed to them — present by every measure the store had, and never coming
+    back. `dev:mgr` here does exactly that: it plans, and it never opens a session.
+    """
+    here(repo, "dev:uno", "dev:dos")
+    plan(repo, [{"title": "x", "spec": "s"}], actor="dev:mgr")      # a passing call, no session
+    card = handed_over(repo)
+
+    assert card in offered_to(repo, "dev:dos"), "the routing must land on the session that is up"
+    assert card not in offered_to(repo, "dev:mgr")
+
+
+def test_a_stranger_cannot_CLOSE_a_review_routed_to_somebody_else(repo: Path) -> None:
+    """The door the first version left unlocked.
+
+    Routing guarded the claim and not the close, so on a live board a card routed to one
+    developer went straight from `review` to `done` signed by a second — no claim at all,
+    because a `dev:` actor passes every other closing rule by design.
+    """
+    here(repo, "dev:uno", "dev:dos", "dev:tres")
+    card, owner = handed_over_to(repo)
+    stranger = "dev:tres" if owner != "dev:tres" else "dev:dos"
+
+    with pytest.raises(GuardFailed) as refused:
+        update(repo, card, status="done", comment="yo la cierro", actor=stranger,
+               no_code=True, evidence="the criterion: checked")
+    assert "routed" in str(refused.value)
+
+
+def test_the_dev_it_was_routed_to_still_closes_it(repo: Path) -> None:
+    """The other half, and the one that would make the guard a bug if it failed."""
+    here(repo, "dev:uno", "dev:dos")
+    card, owner = handed_over_to(repo)
+
+    update(repo, card, status="done", comment="revisada", actor=owner,
+           no_code=True, evidence="the criterion: checked by hand")
+    assert next(t for t in _tasks(repo) if t["id"] == card)["status"] == "done"
+
+
+def test_the_author_is_TOLD_the_review_left_and_is_not_theirs(repo: Path) -> None:
+    """Silence was the design, and the author filled it.
+
+    A session whose two workers handed cards over spawned a verifier for each of them a minute
+    later — nothing had told it not to, both were refused at the close, and two agents were
+    spent. The channel must stay silent towards the author (that is the echo), so the author's
+    OWN call is what has to say it.
+    """
+    from taskops.render.results import render_update
+
+    here(repo, "dev:uno", "dev:dos")
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA}],
+                actor="dev:uno")["created"][0]["id"]
+    next_task(repo, task=card, actor="agent:uno/w1")
+    result = update(repo, card, status="review", comment="over to you", actor="agent:uno/w1")
+
+    assert result["routed_to"] == "dev:dos"
+    said = render_update(result)
+    assert "do not spawn a verifier" in said.lower(), "a prohibition, not bookkeeping"
+
+
+def test_the_stop_hook_never_names_a_card_routed_to_another_dev(repo: Path) -> None:
+    """What the hook says IS an order: a session is blocked until it acts on that list."""
+    from taskops.usecases.pending import unverified
+
+    here(repo, "dev:uno", "dev:dos")
+    card = handed_over(repo)
+
+    assert card not in {row["task"]["id"] for row in unverified(repo, actor="dev:uno")}
+    assert card in {row["task"]["id"] for row in unverified(repo, actor="dev:dos")}
+
+
+def _tasks(repo: Path) -> list[dict[str, object]]:
+    from taskops.storage import Store
+    with Store(repo) as store:
+        return [dict(task) for task in store.tasks.all()]
