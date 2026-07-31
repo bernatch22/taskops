@@ -293,3 +293,36 @@ def test_a_handover_that_reached_nobody_says_so(repo: Path) -> None:
 
     assert result["routed_to"] == ""
     assert "routed to NOBODY" in render_update(result)
+
+
+def test_the_routed_reviewer_claiming_LEAVES_the_card_in_review(repo: Path) -> None:
+    """Routing writes the reviewer into `assignee`, and that broke a heuristic beside it.
+
+    A claim on a review card asks one question: is this the worker coming BACK for findings
+    (then the card is theirs again, `claimed`) or somebody saying "I am checking this" (then it
+    must STAY in review, because every closing rule is written against a card in one)? The
+    answer used to be `assignee == who` — true for a dispatched worker, and now also true for
+    the dev the review was routed to. So the reviewer's own claim pulled the card out of
+    review, and it closed from `claimed`, skipping the handoff guard and the routing guard.
+    Four cards in one live run.
+    """
+    here(repo, "dev:uno", "dev:dos")
+    card, owner = handed_over_to(repo)
+
+    claimed = next_task(repo, task=card, actor=owner)["claim"]
+    assert claimed is not None
+    assert claimed["view"]["task"]["status"] == "review", (
+        "the reviewer is checking it, not taking it back")
+
+
+def test_the_worker_coming_back_for_findings_still_takes_the_card(repo: Path) -> None:
+    """The other side, and the flow that would break if the fix went too far: a verifier
+    rejects with findings, the worker re-claims, and the card is `claimed` again — its own,
+    with no review pending. Refusing there strands the returning worker."""
+    here(repo, "dev:uno", "dev:dos")
+    card, owner = handed_over_to(repo)
+    update(repo, card, status="ready", comment="findings: falta un caso", actor=owner)
+
+    claimed = next_task(repo, task=card, actor="agent:uno/w1")["claim"]
+    assert claimed is not None
+    assert claimed["view"]["task"]["status"] == "claimed"

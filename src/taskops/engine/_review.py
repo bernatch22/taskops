@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 from .._types import HUMAN
 from ._acceptance import evidenced
 from ._peer import reviewer_is_a_peer
-from .routereview import refuse_routed_close
+from ._routedclose import refuse_routed_close
 
 if TYPE_CHECKING:                          # pragma: no cover - typing only
     from .machine import Facts

@@ -25,19 +25,18 @@ it by hand" is telling somebody who is not there.
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from ..storage import LOG_FILE
+from ._gitland import TRUNKS
+from ._gitland import fetched as _fetched
+from ._gitland import has_board as _has_board
+from ._gitland import merged as _merged
+from ._gitland import run as _run
+from ._gitland import sha as _sha
+from ._gitland import trunk_of as _trunk
 
 __all__ = ["land", "Landing", "TRUNKS"]
-
-TRUNKS = ("main", "master")
-"""Where work lands, in preference order. A repository whose trunk is neither is not guessed
-at: this returns `no trunk` and the card is reported unlanded rather than merged somewhere
-nobody asked for."""
-
-_TIMEOUT = 60.0
 
 
 class Landing:
@@ -57,9 +56,14 @@ def land(root: Path, branch: str) -> Landing:
     """Merge `branch` into the trunk and push. Never raises; never leaves a merge half-done."""
     if not branch.startswith("tk/"):
         return Landing(ok=False, why="not a task branch")
-    if _run(root, "status", "--porcelain") not in ("", None):
-        return Landing(ok=False, why="the working tree is dirty — commit or stash, then "
-                                     "`taskops land` this card")
+    # NO blanket dirty check. There was one, and it refused every landing that has ever been
+    # attempted on a real board: `taskops join` leaves `.gitignore` modified and `.mcp.json`
+    # untracked in every clone it touches, forever, so "any change at all" meant "never".
+    #
+    # Git enforces the thing the check was reaching for, and enforces it precisely: `switch`
+    # and `merge` both refuse when they would overwrite a local modification, and say which
+    # file. Those refusals arrive through `_merge` like any other, so the guarantee is kept
+    # and the false negative is gone.
     trunk = _trunk(root)
     if not trunk:
         return Landing(ok=False, why=f"no {' or '.join(TRUNKS)} branch in this repository")
@@ -67,6 +71,11 @@ def land(root: Path, branch: str) -> Landing:
         return Landing(ok=False, trunk=trunk,
                        why=f"{LOG_FILE} is not committed on {trunk} — checking it out would "
                            f"delete this board. Commit the log on {trunk} first")
+    if not _fetched(root, branch):
+        return Landing(ok=False, trunk=trunk,
+                       why=f"{branch} is nowhere this clone can see — the author's machine "
+                           f"has not published it. `taskops publish` on their side, then "
+                           f"`taskops land` this card")
     if _merged(root, trunk, branch):
         return Landing(ok=True, why="", trunk=trunk, sha=_sha(root, trunk))
     return _merge(root, trunk, branch)
@@ -106,39 +115,3 @@ def _merge(root: Path, trunk: str, branch: str) -> Landing:
     finally:
         if was != trunk:
             _run(root, "checkout", "--quiet", was)
-
-
-def _has_board(root: Path, trunk: str) -> bool:
-    """Is the event log committed on the trunk?
-
-    The board's log is a TRACKED file, so a checkout of a trunk that lacks it deletes it — and
-    then taskops cannot find its own project. Checked before the checkout, because discovering
-    it afterwards means discovering it with the board already gone.
-    """
-    return _run(root, "cat-file", "-e", f"{trunk}:{LOG_FILE}") is not None
-
-
-def _merged(root: Path, trunk: str, branch: str) -> bool:
-    """Already in? Then landing is a no-op and reporting success is the honest answer."""
-    listed = _run(root, "branch", "--merged", trunk, "--format=%(refname:short)")
-    return listed is not None and branch in listed.splitlines()
-
-
-def _trunk(root: Path) -> str:
-    for name in TRUNKS:
-        if _run(root, "rev-parse", "--verify", "--quiet", name) is not None:
-            return name
-    return ""
-
-
-def _sha(root: Path, ref: str) -> str:
-    return (_run(root, "rev-parse", "--short", ref) or "")[:12]
-
-
-def _run(root: Path, *args: str) -> str | None:
-    try:
-        done = subprocess.run(["git", *args], cwd=root, capture_output=True,
-                              text=True, timeout=_TIMEOUT, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return done.stdout.strip() if done.returncode == 0 else None

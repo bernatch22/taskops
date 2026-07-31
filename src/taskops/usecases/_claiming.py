@@ -11,6 +11,7 @@ from .._errors import BadRequest
 from .._types import Status
 from ..contracts import Task
 from ..engine.identity import parse
+from ..engine.routereview import routed_to
 from ..storage import Store
 from ._facts import entered_review_by
 
@@ -79,5 +80,11 @@ def lands_on(store: Store, task: Task, who: str) -> Status:
     """
     if task["status"] != "review":
         return "claimed"
-    returning = task["assignee"] == who or entered_review_by(store, task["id"]) == who
+    # `assignee` answers this ONLY when it is a dispatch. Routing writes the REVIEWER there,
+    # so `assignee == who` started reading "the chosen reviewer" as "the worker coming back":
+    # the card left `review` on the reviewer's own claim, and every closing rule written
+    # against a card in review — the handoff guard, the routing guard — stopped applying to
+    # the one close they exist for. Watched on a live board, four cards closed from `claimed`.
+    returning = entered_review_by(store, task["id"]) == who or (
+        task["assignee"] == who and not routed_to(task))
     return "claimed" if returning else "review"

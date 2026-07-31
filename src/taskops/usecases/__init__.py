@@ -41,6 +41,7 @@ from .ingestbranch import ingest_branch
 from .join import join
 from .log import session_log
 from .login import is_session, login, logins, logout, session_of
+from .notelanding import note_landing
 from .plan import plan
 from .pushpull import Exchange, pull, push
 from .recover import Recovered, recover
@@ -57,7 +58,7 @@ from .update import update
 
 __all__ = [
     # the five MCP tools
-    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "attention", "team_now", "join", "standup", "fleet", "activity",
+    "plan", "capture", "next_task", "acceptance_for", "set_acceptance", "update", "edit", "ask", "search", "board", "attention", "team_now", "note_landing", "join", "standup", "fleet", "activity",
     "day", "period", "Selector",
     "dispatch", "DispatchResult", "write_report", "read_report", "digest", "report_path",
     "report_index", "recover", "Recovered",

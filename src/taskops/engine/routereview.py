@@ -34,7 +34,7 @@ from .log import record
 # ruff: noqa: I001
 
 __all__ = ["route_review", "ROUTE_TTL", "PRESENCE_WINDOW", "routed_to", "route_is_fresh",
-           "routed_elsewhere", "refuse_routed_close"]
+           "routed_elsewhere", "release_routing"]
 
 PRESENCE_WINDOW = 600.0
 """Seconds of silence before a dev stops counting as connected. Ten minutes: longer than any
@@ -94,6 +94,21 @@ def _review_load(store: Store) -> dict[str, int]:
     return out
 
 
+def release_routing(store: Store, task: Task) -> None:
+    """Drop the routing when the card stops being a review.
+
+    Routing borrows `assignee` to name the reviewer, and an assignment is what HIDES a card
+    from everybody else. So a routed review that got rejected stayed assigned to the reviewer
+    who rejected it: the worker whose findings those are could not claim its own card back,
+    and the card sat `ready`, invisible, waiting on somebody with nothing left to do.
+
+    Only a `dev:` assignee is dropped. An `agent:` one is a dispatch — that card was chosen for
+    that worker and clearing it would throw the dispatch away.
+    """
+    if task["status"] != "review" and task["assignee"].startswith("dev:"):
+        store.tasks.set_assignee(task["id"], "", when=now())
+
+
 def routed_to(task: Task) -> str:
     """The dev a review is currently routed to, or "".
 
@@ -118,30 +133,6 @@ def routed_elsewhere(task: Task, actor: str) -> bool:
     """
     owner = routed_to(task)
     return bool(owner) and route_is_fresh(task) and owner != _dev(actor)
-
-
-def refuse_routed_close(task: Task, actor: str) -> str | None:
-    """A routed review is CLOSED by the dev it went to, and by nobody else while it holds.
-
-    The hole this fills was watched on a live board and is embarrassing the way real bugs are:
-    routing guarded the CLAIM and left the CLOSE open, so the one door that decides anything
-    had no lock on it. A card routed to one developer was closed by a second, with no claim at
-    all — straight from `review` to `done` — because a `dev:` actor passes every other closing
-    rule by design (a person reading the diff IS the review).
-
-    It answers FIRST among the closing rules, because it is the most specific thing anybody can
-    say: "somebody else is already on this" beats "a peer may close this".
-
-    Stale routing does not refuse. The routing expires precisely so a card cannot die waiting on
-    a developer who closed their laptop, and a rule that outlived it would resurrect that
-    failure at the last door instead of the first.
-    """
-    if not routed_elsewhere(task, actor):
-        return None
-    return (f"{task['id']} is routed to {task['assignee']} for review — it is in their sweep "
-            f"and in nobody else's. Leave it: closing work that was chosen for somebody else "
-            f"is how two people review one card and one of them wastes the afternoon. If they "
-            f"are gone the routing expires on its own and the card opens to everybody.")
 
 
 def _dev(actor: str) -> str:

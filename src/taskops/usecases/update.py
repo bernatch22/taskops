@@ -18,7 +18,7 @@ from .._errors import BadRequest
 from .._types import PEER
 from ..contracts import Task, UpdateResult
 from ..engine import record, unblock
-from ..engine.routereview import route_review
+from ..engine.routereview import release_routing, route_review
 from ..storage import Store
 from ._freeing_news import announce_unblocked
 from ._landing import landed
@@ -50,6 +50,13 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
         return landed(start, answer, status, whoami(start, actor))
     answer, who = _apply(start, task_id, actor, status, comment, mentions, blocked_on,
                          no_code, evidence, no_evidence)
+    if local:
+        # `local` is the SERVER's flag, and the server has state and no checkout. It ran the
+        # merge anyway: git failed at every step, `_run` returned None, the dirty check reads
+        # None as clean, and the card was recorded "not in the trunk — no main or master
+        # branch". Four cards in one run, and the reason named a repository that does not
+        # exist. The client's own landing is the real one; this only ever wrote a lie.
+        return answer
     # OUTSIDE the store, and only for a close: git is slow, and a merge holding the write lock
     # would block every other agent on this machine for the length of a checkout.
     return landed(start, answer, status, who)
@@ -81,6 +88,9 @@ def _apply(start: Path | str, task_id: str, actor: str, status: str, comment: st
         if status:
             task = move(store, task, who, status, comment, no_code,
                          evidence=evidence, no_evidence=no_evidence)
+            # Leaving review drops the routing FIRST: the reviewer's name is written into
+            # `assignee`, and an assignment hides a card from everybody else.
+            release_routing(store, task)
             if task["status"] == "review" and task["reviewer"] == PEER:
                 # The server picks the reviewer HERE, inside the same locked transaction the
                 # handover happened in. A review is an assignment, not news: one dev gets it,

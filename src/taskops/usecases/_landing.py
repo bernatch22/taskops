@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..contracts import UpdateResult
-from ..engine import record
 from ._project import project
 
 __all__ = ["landed"]
@@ -32,6 +31,7 @@ def landed(start: Path | str, answer: UpdateResult, status: str, who: str) -> Up
     from ..engine import branch_for
     from ._project import locate
     from .land import land
+    from .notelanding import note_landing
 
     with project(start) as store:
         if not store.events.of_task(answer["task"]["id"], kinds=("commit",)):
@@ -41,7 +41,9 @@ def landed(start: Path | str, answer: UpdateResult, status: str, who: str) -> Up
             return answer
     root = locate(start)
     done = land(root, branch_for(answer["task"]))
-    with project(start) as store:
-        record(store, task=answer["task"]["id"], actor=who, kind="landed",
-               body={"ok": done.ok, "why": done.why, "trunk": done.trunk, "sha": done.sha})
+    # Recorded through the verb, so it reaches the BOARD. Written straight into this store it
+    # reached the local cache and stopped there — on a project with a remote that is nobody's
+    # board, so a card could sit unlanded for a week with every sweep reporting nothing.
+    note_landing(start, task=answer["task"]["id"], ok=done.ok, why=done.why,
+                 trunk=done.trunk, sha=done.sha, actor=who)
     return answer

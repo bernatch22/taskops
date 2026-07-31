@@ -79,6 +79,10 @@ VERBS: dict[str, Verb] = {
     "search": lambda root, a: uc.search(root, str(a.get("query", "")),
                                      limit=int(a.get("limit", 20) or 20)),
     "attention": lambda root, a: uc.attention(root, actor=str(a.get("actor", ""))),
+    "landed": lambda root, a: uc.note_landing(
+        root, task=str(a.get("task", "")), ok=bool(a.get("ok")), why=str(a.get("why", "")),
+        trunk=str(a.get("trunk", "")), sha=str(a.get("sha", "")),
+        actor=str(a.get("actor", ""))),
     "team": lambda root, a: uc.team_now(root, actor=str(a.get("actor", "")),
                                         session=str(a.get("session", ""))),
     "board": lambda root, _a: uc.board(root),
