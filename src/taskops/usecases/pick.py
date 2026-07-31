@@ -60,6 +60,7 @@ def pick(start: Path | str, *, tasks: tuple[str, ...] = (), count: int = 0, acto
     resolved: the server cannot read a remote machine's git config.
     """
     with project(start) as store:
+        store.claiming()      # choose-then-assign is read-decide-write; same law as `claim`
         who = caller(store, actor)
         heartbeat(store, who["id"])
         unblock(store)

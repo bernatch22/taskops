@@ -45,7 +45,28 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
             "comment": comment, "mentions": list(mentions), "blocked_on": blocked_on,
             "no_code": no_code, "evidence": evidence, "no_evidence": no_evidence})
         return _landed(start, answer, status, whoami(start, actor))
+    answer, who = _apply(start, task_id, actor, status, comment, mentions, blocked_on,
+                         no_code, evidence, no_evidence)
+    # OUTSIDE the store, and only for a close: git is slow, and a merge holding the write lock
+    # would block every other agent on this machine for the length of a checkout.
+    return _landed(start, answer, status, who)
+
+
+def _apply(start: Path | str, task_id: str, actor: str, status: str, comment: str,
+           mentions: tuple[str, ...], blocked_on: str, no_code: bool, evidence: str,
+           no_evidence: str) -> tuple[UpdateResult, str]:
+    """One transaction, and the write lock comes FIRST — the law `claim` has lived under
+    since a near-identical race, applied to the only other verb that writes.
+
+    Read-decide-write under a DEFERRED transaction lets two callers pass the guard against
+    the same stale row. Live: a verifier rejected a card `review → ready` with findings, and
+    seventeen seconds later a second verifier closed the SAME card `review → done` — its
+    guard was still judging the snapshot from before the rejection, and a card rejected for
+    breaking an invariant ended up done. With the lock first, the second caller blocks,
+    rereads, and the state machine refuses it: no new guard, just guards that see the present.
+    """
     with project(start) as store:
+        store.claiming()
         who = caller(store, actor)["id"]
         heartbeat(store, who)
         task = store.tasks.need(task_id)
@@ -56,16 +77,12 @@ def update(start: Path | str, task_id: str, *, actor: str = "", status: str = ""
         if status:
             task = move(store, task, who, status, comment, no_code,
                          evidence=evidence, no_evidence=no_evidence)
-        freed = unblock(store)
-        opened = [store.tasks.need(i) for i in freed]
-        # The news reaches the people it is about. Without this the state is right and nobody
-        # knows: a freed card sits pickable and invisible until somebody's next turn asks.
+        opened = [store.tasks.need(i) for i in unblock(store)]
+        # The news reaches the people it is about: a freed card would otherwise sit pickable
+        # and invisible until somebody's next turn happens to ask.
         told = announce_unblocked(store, opened, who)
-        answer = UpdateResult(task=store.tasks.need(task_id), unblocked=opened,
-                              notified=[*mentions, *told])
-    # OUTSIDE the store, and only for a close: git is slow, and a merge holding the write lock
-    # would block every other agent on this machine for the length of a checkout.
-    return _landed(start, answer, status, who)
+        return UpdateResult(task=store.tasks.need(task_id), unblocked=opened,
+                            notified=[*mentions, *told]), who
 
 
 def _landed(start: Path | str, answer: UpdateResult, status: str, who: str) -> UpdateResult:

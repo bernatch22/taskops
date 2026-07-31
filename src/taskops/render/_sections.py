@@ -15,9 +15,21 @@ __all__ = ["thread_section", "commits_section"]
 def thread_section(thread: list[Event]) -> list[str]:
     if not thread:
         return []
-    lines = [f"**{e['actor']}** ({ago(e['ts'])}): {e['body'].get('text', '')}"
-             for e in thread]
+    lines = [f"**{e['actor']}** ({ago(e['ts'])}): {_said(e)}" for e in thread]
     return ["### Thread", "", "\n\n".join(lines), ""]
+
+
+def _said(event: Event) -> str:
+    """What this entry SAYS, by what its kind carries.
+
+    Every kind used to be read through `body["text"]`, and a `handoff` carries no text — it
+    carries `assigned_to`. So a card's thread opened with `**agent:uno/w2** (19m ago):` and
+    nothing after the colon, which a reader on a live board took for a duplicated, half-lost
+    message. Nothing was lost: a real fact was being rendered as an empty sentence.
+    """
+    if event["kind"] == "handoff":
+        return f"→ assigned to {event['body'].get('assigned_to', 'somebody')}"
+    return str(event["body"].get("text", "")) or "(nothing recorded)"
 
 
 def commits_section(view: TaskView) -> list[str]:

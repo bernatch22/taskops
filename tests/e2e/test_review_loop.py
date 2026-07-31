@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from taskops._errors import GuardFailed
-from taskops.usecases import init, next_task, plan, update
+from taskops.usecases import ask, init, next_task, plan, update
 
 WORKER = "agent:berna/one"
 VERIFIER = "agent:berna/verifier"
@@ -189,3 +189,44 @@ def test_a_verifier_that_went_quiet_can_be_taken_over(repo: Path) -> None:
 
     update(repo, card, status="done", no_code=True, comment="took it over",
            evidence="ran it", actor="agent:berna/v2")
+
+
+def test_a_rejection_and_a_close_racing_leave_exactly_one_outcome(repo: Path) -> None:
+    """The live failure, reproduced: verifier v2 rejected a card `review → ready` with
+    findings, and seventeen seconds later verifier v1 closed the SAME card `review → done` —
+    its guard was still judging the snapshot it had read before the rejection landed, because
+    `update` took the write lock only at the write. A card rejected for breaking an invariant
+    ended up done, and both events sat in the log claiming to come `from: review`.
+
+    Not a new guard: the same BEGIN-IMMEDIATE law `claim` has lived under since its own race,
+    applied to the only other verb that writes. Whoever loses the lock rereads the present and
+    the state machine refuses them.
+    """
+    import threading
+
+    card = a_card(repo, criteria=CRITERIA)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+
+    outcomes: dict[str, object] = {}
+    gate = threading.Barrier(2)
+
+    def racer(name: str, status: str, actor: str) -> None:
+        gate.wait()
+        try:
+            update(repo, card, status=status, comment=f"{name} says",
+                   no_code=True, evidence="ran it", actor=actor)
+            outcomes[name] = "landed"
+        except Exception as refused:  # noqa: BLE001 — the refusal IS the assertion
+            outcomes[name] = type(refused).__name__
+
+    threads = [threading.Thread(target=racer, args=("reject", "ready", "agent:berna/v2")),
+               threading.Thread(target=racer, args=("close", "done", "agent:berna/v1"))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert list(outcomes.values()).count("landed") == 1, \
+        f"exactly one racer may land, got {outcomes}"
+    final = ask(repo, card)["task"]["status"]
+    assert (final == "ready") == (outcomes["reject"] == "landed"), outcomes
