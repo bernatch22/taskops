@@ -187,10 +187,17 @@ It blocks until the board wants a decision from you, prints it, and exits — ke
 wait on it) and sweep when it returns. A session once wrote itself a bash loop to get exactly
 this; the verb exists so the next one does not have to be clever.
 
-Push instead of poll: with a remote, the CHANNEL connects to the server's live feed and drops
-your own echoes, so only what OTHER people did interrupts you. It needs the experimental flag
+It wakes on MESSAGES too, and that matters more than it sounds: a review routed to you arrives
+as a message, so a loop watching only card moves would sleep through the one thing somebody
+chose you for.
+
+Push instead of poll: the CHANNEL delivers the same directed events instead of you reading
+them. It carries only what is addressed at you — never an echo of your own agents' moves, never
+the same event twice, and no status changes at all, because those are derivable and this sweep
+is where you read them. It needs the experimental flag
 (`claude --dangerously-load-development-channels server:taskops-channel`) and the entry in
-`.mcp.json` (`TASKOPS_CHANNEL=1 taskops init`). `--wait` needs nothing and works today.
+`.mcp.json` (`TASKOPS_CHANNEL=1 taskops init`). `--wait` needs nothing and works today. The two
+are the same facts, pushed or polled — you never need both.
 
 ## If you are an ORCHESTRATOR: start every turn with `attention`
 
@@ -264,6 +271,17 @@ And it writes on each card what survived: commits are safe in git, and **uncommi
 with its path**, because a killed agent writes before it commits. Read that before starting over.
 
 ## Reviewing: one verifier per card, and never your own work
+
+## A review is routed to ONE of you
+
+With `reviewer: peer` on a board where more than one developer is connected, a card entering
+review is not announced — the server picks its reviewer and assigns the card to that dev: never
+the author, then whoever is carrying the fewest reviews, then whoever signalled most recently.
+It appears in THEIR sweep and in nobody else's, and any of their agents may claim it. If nobody
+acts on it, the routing expires after half an hour and the card opens to everybody eligible
+again — a nudge with a deadline, not a lock.
+
+So if a review is in your sweep, it is yours: nobody else was told about it.
 
 Claiming a card that is in `review` is how you say **"I am checking this"**. It takes the lease
 and LEAVES the card in review, so it stops appearing in everybody else's sweep — one real card

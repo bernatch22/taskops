@@ -22,6 +22,7 @@ from ..engine import unblock
 from ..engine.attention import waiting_on
 from ._project import caller, heartbeat, project
 from ._routing import read_remote_first, whoami
+from .view import inbox_for
 
 __all__ = ["attention"]
 
@@ -42,4 +43,6 @@ def attention(start: Path | str, *, actor: str = "") -> Attention:
         heartbeat(store, who)      # a --wait poll IS presence: this dev is here, watching
         unblock(store)
         waiting = waiting_on(store, actor=who)
-        return Attention(repo=str(store.root), waiting=waiting, quiet=not waiting)
+        mail = len(inbox_for(store, who, mark=False)["messages"])
+        return Attention(repo=str(store.root), waiting=waiting, mail=mail,
+                         quiet=not waiting and not mail)

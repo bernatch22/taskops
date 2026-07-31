@@ -45,10 +45,15 @@ def _until_something(repo: object, actor: str, view: object, *, every: float) ->
 
     Polling and not push, deliberately. The channel exists for push and stays optional; this
     works today, over the same read the session already trusts, with no flags and no policy.
+
+    It waits on `quiet` rather than on `waiting`, and that is the whole of the no-channel
+    story. A routed review reaches its reviewer as a MESSAGE, so a loop watching only card
+    moves would sleep through the one event somebody chose this session for — which is exactly
+    the class of thing the channel delivers when it is running.
     """
     import time
 
-    while not view["waiting"]:      # type: ignore[index]
+    while view["quiet"]:      # type: ignore[index]
         time.sleep(every)
         view = sweep_board(repo, actor=actor)      # type: ignore[arg-type]
     return view

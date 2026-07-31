@@ -125,3 +125,29 @@ def test_a_routing_nobody_acted_on_expires_and_the_card_opens_again(repo: Path) 
 
     assert card in offered_to(repo, "dev:tres"), "an expired routing must reopen the card"
     assert next_task(repo, task=card, actor="agent:tres/verifier")["claim"] is not None
+
+
+def test_the_reviewer_can_be_woken_without_a_channel_at_all(repo: Path) -> None:
+    """The deployment with NO channel, which is the one that has to work anyway.
+
+    A routed review reaches its reviewer as a MESSAGE, and the sweep is what a poll reads. If
+    `quiet` ignored mail, `attention --wait` would sleep straight through the one event
+    somebody chose this session for — the exact class of thing the channel delivers when it is
+    running. Both paths carry the same fact; only the transport differs.
+    """
+    here(repo, "dev:uno", "dev:dos")
+    card = handed_over(repo)
+
+    woken = attention(repo, actor="dev:dos")
+    assert woken["mail"] >= 1, "the routed review has to reach its reviewer as a message"
+    assert not woken["quiet"], "a poll blocks on `quiet`; mail must break it"
+    assert card in {item["task"]["id"] for item in woken["waiting"]}
+
+
+def test_the_author_is_not_woken_by_its_own_handover(repo: Path) -> None:
+    """The other half of the same rule, and the one that made the old channel unreadable: a
+    session hearing about what its own agents just did is hearing its own return value."""
+    here(repo, "dev:uno", "dev:dos")
+    handed_over(repo)
+
+    assert attention(repo, actor="dev:uno")["quiet"], "no echo, and nothing to decide"

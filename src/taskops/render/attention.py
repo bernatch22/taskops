@@ -30,7 +30,7 @@ def render_attention(view: Attention) -> str:
         return ("nothing is waiting on a decision — every open card is being worked on.\n"
                 "To be woken when that changes: run `taskops attention --wait` in the "
                 "background and keep working; when it returns, sweep again.")
-    lines: list[str] = []
+    lines: list[str] = _mail(view.get("mail", 0))
     for move in MOVES:
         group = [item for item in view["waiting"] if item["move"] == move]
         if not group:
@@ -38,6 +38,19 @@ def render_attention(view: Attention) -> str:
         lines += ["", f"{HEADINGS[move]}  ({len(group)})"]
         lines += [_row(item) for item in group]
     return "\n".join(lines).strip("\n")
+
+
+def _mail(mail: int) -> list[str]:
+    """Messages addressed to this actor, FIRST — above every card group.
+
+    Somebody chose you for this: a routed review, a question, a mention. Everything below it in
+    the sweep is derived from state and will still be there next time; a message is the only
+    line that exists because a person or another agent decided you specifically should see it.
+    """
+    if not mail:
+        return []
+    return [f"ADDRESSED TO YOU — {mail} message(s). `taskops ask` reads them, and they are the "
+            f"only lines here nobody else is also being shown"]
 
 
 def _row(item: Waiting) -> str:

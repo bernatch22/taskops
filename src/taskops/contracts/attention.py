@@ -43,6 +43,15 @@ class Waiting(TypedDict):
 class Attention(TypedDict):
     repo: str
     waiting: list[Waiting]
+
+    mail: int
+    """Messages addressed to this actor and not yet delivered to it.
+
+    Here rather than left to the inbox because of the deployment with NO channel, which is the
+    one this verb was written for: a routed review reaches its dev as a directed message, and a
+    sweep that reported only card moves would leave the one thing somebody chose FOR you as the
+    one thing polling could not see. Counted, never consumed — delivery is a fact about the
+    agent having read something, and only the agent's own read may assert it."""
     quiet: bool
     """True when nothing is waiting. Named rather than left to `not waiting`, because an empty
     board and a board whose every card is in flight are the same list and different situations,

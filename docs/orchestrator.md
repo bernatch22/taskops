@@ -197,3 +197,71 @@ deleted.
 4. **Nothing else moves.** Every guard in §3 predates the channel and is what actually keeps
    the board honest. The channel's removal deletes notifications, and notifications were the
    part that lied by interruption.
+
+---
+
+## 8. The follow-up: routing, presence, and what "no echoes" cost
+
+§7 said cut the channel from the default path, and that held. What it did not anticipate is that
+turning the channel back ON for a two-developer board reproduced every failure this note was
+written about — in a new shape. Three nights of live runs, and the same three symptoms each time:
+
+- a card entering `review` was announced to **everybody connected**, so two free developers
+  started reviewing it and one of them worked for nothing;
+- the author's session received the **echo** of every move its own agents had just made —
+  measured at five of every six events, one second after the return value said the same thing;
+- with both of those in the feed, nothing in it was worth reading, which is where a channel dies.
+
+The diagnosis is one sentence, and it is the same one §5 reached by a different road: **eligible
+is not assigned**. Broadcasting to everyone who *may* act is not a notification, it is a race.
+
+### What changed
+
+```
+BEFORE                                    AFTER
+
+card → review                             card → review
+  │                                         │
+  ├─ channel → dev uno  (the author!)       ├─ server picks ONE connected dev
+  ├─ channel → dev dos                      │    not the author · fewest reviews
+  ├─ channel → dev tres                     │    freshest signal · alphabetical
+  │                                         │
+  └─ sweep lists it for ALL of them         ├─ card assigned to dev:dos
+                                            ├─ ONE message, mentions=[dev:dos]
+  two start · one wastes an afternoon       └─ sweep lists it for dos ONLY
+                                                 (until ROUTE_TTL expires it)
+```
+
+Three mechanisms, none of them an instruction:
+
+1. **Presence rides the heartbeat.** Every call says "this dev is here", so nothing has to
+   announce itself and a dev who stopped calling stops being routed to (`storage/_presence.py`).
+2. **Routing is a WRITE** (`engine/routereview.py`). Deterministic, so two clones asking who
+   should review X can never disagree, and it EXPIRES — a routing nobody acted on must not
+   become a dead story.
+3. **The channel carries only what is addressed at you** (`plugin/channel/events.ts`,
+   `forwards`): not my own dev, not an id already delivered, not an audience I am not in. Status
+   moves left the default set entirely — they are derivable from state, and forwarding a
+   derivable fact is what makes a feed nobody reads.
+
+### Both transports carry the same fact
+
+This is the part worth keeping. A routed review reaches its reviewer as a **message**, and a
+message is visible to both paths:
+
+| with the channel | without it |
+|---|---|
+| the directed event is pushed into the session | `taskops attention --wait` blocks on `quiet`, and mail breaks `quiet` |
+
+So the no-channel deployment is not a degraded mode with its own rules — it is the same event
+read instead of pushed. `Attention.mail` counts messages without consuming them (delivery is a
+fact about the agent having read something), which is what let the poll wake on the one class of
+event a sweep over card state cannot see.
+
+### And the brief that stops the collision before it starts
+
+Everything a session was handed described its OWN state, so two sessions on one board each
+behaved as though they were alone — which is how a card got implemented twice. `engine/team.py`
+joins two facts the store already kept and nobody had joined: who is connected, and what their
+live leases hold. It is injected before the work list, because a session that reads what is
+waiting first has already started choosing.
