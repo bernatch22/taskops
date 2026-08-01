@@ -1,6 +1,8 @@
 # taskops
 
-**The shared task board for Claude Code agents.** Persistent tasks with a dependency graph, atomic claims that survive a crashed agent, every commit bound to the work that motivated it, daily reports written by AI from a log that cannot lie — and a team mode where agents on different machines can never grab the same card.
+**The shared task board for Claude Code agents.** Persistent tasks with a dependency graph, atomic claims that survive a crashed agent, every commit bound to the work that motivated it, and daily reports written by AI from a log that cannot lie.
+
+Put two developers on it and it stops being a list: a finished card is **routed to one** reviewer rather than announced to everybody, a session opens knowing who else is working and on what, and approving somebody's work is what merges it into the trunk. It runs the same whether your team is online together or twelve hours apart — see [Coordination](#coordination-how-a-card-finds-its-person).
 
 Zero runtime dependencies. One SQLite file per repository, one committed event log. A server is optional.
 
@@ -61,11 +63,13 @@ taskops ui        # the live board → http://127.0.0.1:2140
 
 ## The CLI — for people
 
-Fifteen commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
+Twenty commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
 
 | Command | What it does |
 |---|---|
 | `taskops init` | Create `.taskops/`, install the git hooks, write the agent guide. |
+| `taskops join` | Join somebody's board from a fresh clone: init, hooks, MCP, remote and first pull, from one pasted URL. |
+| `taskops attention` | **What the board is waiting for**, grouped by the move each card needs. `--wait` blocks until that changes. |
 | `taskops status` | The `git status` of a project: what is open, who holds what, what is unwritten, what is unpushed. |
 | `taskops ui` | The live web interface: board, activity timeline, reports. |
 | `taskops open` | Open this project's board — or all your boards — in a browser, credential included. |
@@ -74,6 +78,9 @@ Fifteen commands, all of them yours. Agents never use the CLI (they have MCP), a
 | `taskops report` | Board, standup, a written dossier of a day/range/everything — and `sweep`. |
 | `taskops schedule` | Write the Claude Code scheduled task that keeps reports current. |
 | `taskops recover` | Release cards held by workers that went silent. |
+| `taskops land` | Merge a done card's branch into the trunk — the retry for one that did not land on approval. |
+| `taskops publish` | Push every `tk/` branch to origin: the repair for work stranded on one machine. |
+| `taskops setup` | Wire this project's MCP servers, and with `--channel` the opt-in board channel. |
 | `taskops sync` | Reconcile with the committed event log (the git path). |
 | `taskops serve` | Host many projects' boards on one port, one token each. |
 | `taskops login` | Sign in to a server with your GitHub account; the remote configures itself. |
@@ -289,7 +296,288 @@ Had the verifier found `test_requeue_keeps_the_thread` missing, it would have po
 naming the criterion and the command that shows it — and the card, already `done`, would have
 a comment on it that a human reads before believing the board.
 
-## Working as a team
+---
+
+## Coordination: how a card finds its person
+
+Everything above is one agent and one board. This chapter is the part that only shows up when
+there are two of you — two developers, each with a fleet of sub-agents, on two machines.
+
+The mistake worth naming first is the one taskops does **not** make: it does not coordinate by
+telling agents about each other. Every rule that matters lives in the board and executes there —
+who may close a card, whose review it is, what becomes ready, when a merge happens. A message is
+never how a decision travels; it is at most how somebody finds out it was made.
+
+That distinction is what makes the rest of this chapter short.
+
+### A review is an assignment, not an announcement
+
+The default is that anybody may verify anybody's work. Turn that into peer review and one
+sentence changes everything:
+
+```sh
+taskops context decision "reviewer: peer — nobody closes their own card"
+```
+
+Now `done` is refused for the developer whose agents produced the work. Which raises the
+question the design turns on: **when a card enters `review`, who is it for?**
+
+The obvious answer — tell everyone, whoever is free picks it up — is the one that fails. It was
+tried, watched, and thrown away: two developers were free, both were told, both started reading
+the same diff, and one of them spent an afternoon on work that was thrown away the instant the
+other closed the card. Being *eligible* to review something is not the same as *having* it.
+
+So the server picks one, and the choice is a **write on the card**, not a notification:
+
+```
+        a worker of uno's hands a card over
+                        │
+                        ▼
+        ┌───────────────────────────────────┐
+        │  who is actually here right now?  │   presence rides every call:
+        │  (any call in the last 10 min)    │   nobody has to announce themselves
+        └───────────────────────────────────┘
+                        │
+              ─ the author's own dev            ← never review your own team's work
+                        │
+              ─ whoever carries the most reviews already
+                        │
+              ─ whoever signalled most recently
+                        │
+              ─ alphabetical                    ← no coin flips, ever
+                        ▼
+              the card is assigned to dev:dos
+              one directed message is written
+              nobody else hears anything
+```
+
+Four consequences, and each one was a bug before it was a rule:
+
+- **The chosen developer sees it in their sweep; nobody else does.** Not sorted last — absent.
+- **Any of their agents may claim it.** Routing names a *person*, and a person reviews through
+  sub-agents; a claim from `agent:dos/verifier` on a card routed to `dev:dos` is the very
+  verifier it was sent to.
+- **Closing it is theirs too.** The routing guards the claim *and* the close, because the close
+  is the door that decides something.
+- **It expires.** After thirty minutes the card opens to every eligible developer again. A nudge
+  with a deadline, never a lock — a card must not be able to die waiting for somebody who closed
+  their laptop.
+
+And when there is genuinely nobody else, the handover says so in the return value the author is
+guaranteed to read:
+
+> Nobody else is connected, so this review was routed to NOBODY. It stays open to whoever shows
+> up and it is in every eligible dev's sweep — but until somebody opens a session, it is waiting
+> on no one.
+
+That sentence exists because silence used to look identical to success.
+
+### A session opens knowing who else is on the board
+
+Everything a session was handed used to describe its own state, so two sessions on one board each
+behaved as though they were alone. That is not a hypothesis: it is how one card got implemented
+twice.
+
+So the first screen of every session carries the other people, **before** it carries the work:
+
+```
+## Who else is on this board right now
+  dos (active now): tk-b9a926 El endpoint de export
+  ana (quiet 4m):   free — nothing claimed
+Do not dispatch onto what they are holding, and do not review what is theirs.
+
+## Waiting on a decision (this is where you start)
+VERIFY — hand each to the verifier; a close here may unblock others
+  tk-e9ad5d  El parser de fechas
+```
+
+The ordering is the argument. A session that reads the work list first has already started
+choosing.
+
+It is silent when you are alone, which is most of the time. A paragraph that always says the
+same thing is one nobody reads.
+
+---
+
+## Being told, and finding out
+
+Here is the only real fork in the road, and it is narrower than it looks: **both modes run the
+same board, the same routing, the same guards.** What differs is *when a session learns that
+something is waiting for it* — and the answer changes what kind of team the tool is good at.
+
+The rule underneath both is one line:
+
+> **A fact the board can re-derive belongs to the sweep. A fact somebody chose for you belongs
+> to the channel.**
+
+A card moved to `review`, a card that became ready, a lease that lapsed — every session that
+looks reaches the same conclusion, so pushing those is noise with a timestamp. But *"this review
+is yours"* is a decision somebody made about you, and it cannot be recovered by looking harder.
+Routing is what turns a review from the first kind into the second. Without it, there would be
+nothing worth pushing at all.
+
+### The sweep — the board as the meeting point
+
+One read answers "what does the board need from me", grouped by the verb you would use:
+
+```sh
+taskops attention              # or taskops_report kind=attention, from a session
+```
+
+```
+VERIFY — hand each to the verifier; a close here may unblock others  (1)
+  tk-e9ead7  El parser de fechas    in review since it was handed over; peer has not closed it
+
+DISPATCH — taskops_dispatch tasks=…, then spawn one worker per brief  (2)
+  tk-3620bd  El cuerpo de una nota  ready, unassigned, and nothing depends on it first
+```
+
+It is **read-only**, and that is the line between it and `recover`: a sweep that fixed what it
+found would be a second dispatcher running on a timer. It reports; the orchestrator decides.
+
+It also refuses to list work it knows you cannot do. A review routed to somebody else is not in
+your sweep, and neither is one your own agents produced on a peer-review board — advice the
+engine will refuse costs calls and teaches the reader to distrust the list.
+
+When there is nothing to do and other people's workers are mid-flight, you do not end the turn
+and you do not invent a poller:
+
+```sh
+taskops attention --wait       # blocks until the board wants a decision, prints it, exits
+```
+
+Run it in the background, keep working, sweep again when it returns. It wakes on **messages**
+too, which matters more than it sounds: a routed review arrives as a message, so a loop watching
+only card moves would sleep straight through the one event chosen for you.
+
+**This is the whole mechanism.** Nothing below is required for a team to work.
+
+### The channel — the board as an interruption
+
+With the channel loaded, the same directed facts arrive **mid-turn**, without being asked:
+
+```sh
+claude --dangerously-load-development-channels server:taskops-channel
+```
+
+```
+<channel source="taskops" card="tk-45a3ca" event_kind="mention" actor="agent:dos/w1">
+agent:dos/w1 mentioned dev:uno on tk-45a3ca: tk-45a3ca espera tu revisión: "El comando notas".
+Claim it first (taskops_next task=tk-45a3ca) — that is what keeps a second reviewer out.
+</channel>
+```
+
+Three refusals decide what crosses, in the order they cost least:
+
+1. **Your own dev.** `dev:ana` and `agent:ana/w1` are one person, so a session hearing what its
+   own agents just did is hearing an echo of its own return values. Measured on a live
+   afternoon: five of every six events.
+2. **An id already delivered.** The live feed bounds itself every five minutes by design and this
+   client reconnects, so a replayed event is ordinary traffic — and a line said twice reads as
+   two things happening.
+3. **An audience you are not in.** An event that names people and does not name you is somebody
+   else's work.
+
+Status changes are **not** in the default set, and that is the correction rather than an
+oversight. They are derivable; `attention` is where you read them.
+
+The feed also catches up on connect — bounded to the life of the session — because a session that
+opened fifteen seconds before a teammate handed a card over used to miss that event permanently,
+and a channel that silently drops the one thing you were waiting for is worse than one that is
+obviously off.
+
+A measured run of four cards between two developers, end to end:
+
+```
+uno: 1 event   (the review routed to it)
+dos: 1 event   (uno's reply on that card)
+```
+
+Two events. Not two hundred.
+
+### What each mode is actually good at
+
+They are not tiers. They fit different teams, and the same repository can switch by starting a
+session differently.
+
+**Working at the same time.** The channel closes the gap between a handover and its review: a
+card handed over at 14:32 is being verified at 14:32, and a session that would otherwise be
+idle acts instead. The team behaves like one process — dispatch, review, land, unblock, dispatch
+again — with nobody watching a board.
+
+**Working at different times.** One developer at night, another in the morning, and they never
+overlap. Routing finds nobody to choose, says so, and the card stays open. The next session to
+open finds it in its own sweep. Nothing was pushed, nobody was polling, and the work still moved:
+
+```
+23:40   uno, alone
+        worker commits, hands the card over
+        routed to NOBODY — and the return value says exactly that
+        session closes
+
+        · · · · · · · · · the night passes · · · · · · · · ·
+        (presence lapses; the board now knows nobody is here)
+
+09:00   dos opens a session
+        the opening screen carries the sweep:
+            VERIFY  tk-9634ca  in review since it was handed over
+        claims it, verifies it, closes it
+        → the merge reaches the trunk, with the author asleep
+```
+
+There is nothing degraded about that path. The card was not a notification anybody missed; it is
+a fact stored on the board, and the board was still there in the morning. **The channel removes
+the wait, not the coordination** — which is why a team that never overlaps loses nothing by not
+running it, and why a server-side scheduled session, where nothing is listening because nothing
+is open, works the same way.
+
+**A useful default:** start with the sweep. Add the channel when you notice sessions sitting idle
+with the answer already on the board. That is the only symptom it treats.
+
+---
+
+## The work reaches the trunk
+
+A card closing used to mean two different things — "I finished" and "this is in the trunk" — and
+only the first was ever true. One board reported a hundred and eighteen cards done with `main`
+still on its seed commit.
+
+**Approval is the trigger.** A card reaching `done` has been read by somebody who is not its
+author; that is exactly when a merge is justified, and hanging it there means nobody has to
+remember:
+
+```
+   dos closes uno's card                        (peer review: the closer is never the author)
+        │
+        ├─ fetch the branch                     ← the closer's clone has never seen it
+        ├─ catch the trunk up from the remote   ← somebody may have landed a minute ago
+        ├─ merge --no-ff                        ← the card's work stays findable as a unit
+        └─ push, and CHECK that it landed       ← a refused push is not a landing
+                │
+                ├── ok ──▶ the trunk everybody pulls has it
+                │
+                └── conflict ──▶ the card still closes, and the board records why.
+                                 `attention` lists it under LAND, where a `taskops-fixer`
+                                 sub-agent resolves it. A conflict is two approved pieces of
+                                 work disagreeing about the same lines — that is a task, not
+                                 a failure, and telling a person to "resolve it by hand" is
+                                 telling somebody who is not there.
+```
+
+Two of those steps exist because they were missing. Landing is concurrent by construction — two
+developers approving each other's cards is the *normal* case — so each of them merges into their
+own copy of the trunk. Without the catch-up the second one merged onto a trunk hours old; without
+the push check `land` reported success while the shared trunk had never seen the work. "Done
+means an agent said so" is the one thing this system exists to prevent, and landing had quietly
+reinvented it.
+
+The merge runs on a **client**, never the server: git lives on a developer's machine, and a
+server has state and no checkout. The *fact* of it is recorded on the board, because that is
+where `attention` reads and where the other developer looks.
+
+---
+
+## Sharing a board: git, or a server
 
 ### Through git — no server at all
 
@@ -391,12 +679,14 @@ The UI ships inside the wheel as a committed bundle — `pip install taskops-cli
 
 | | |
 |---|---|
+| [docs/orchestrator.md](docs/orchestrator.md) | Why the sweep replaced a notification feed, what routing fixed, and the four failures that only appeared with two real sessions running. |
 | [docs/remote-developers.md](docs/remote-developers.md) | The guide to hand a new teammate: getting in, the daily rhythm, what their agents do. |
 | [docs/agents.md](docs/agents.md) | Specialists a project defines, orchestration, sub-tasks and worktrees, who invokes whom. |
 | [docs/reports.md](docs/reports.md) | Why the record matters, the narration, and the sweep that writes itself. |
 | [docs/context.md](docs/context.md) | Objectives, invariants and decisions — and the slice each card receives. |
 | [docs/exchange.md](docs/exchange.md) | The wire contract between a client and a server. |
 | [docs/production.md](docs/production.md) | The plan for agents that run where the board lives — runner, sandbox → staging → prod. |
+| [plugin/channel/README.md](plugin/channel/README.md) | The channel: what crosses, what never does, and how to load it. |
 
 ## Architecture, briefly
 

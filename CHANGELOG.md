@@ -1,6 +1,92 @@
 # Changelog
 
-## Unreleased — cada card nombra a su REVIEWER cuando se crea
+## 0.3.0 — un equipo, no una fila: la review se rutea a UNA persona y el trabajo llega al trunk
+
+0.2.0 hizo que dos agentes no pudieran agarrar la misma card. Esta versión hace que dos
+**personas** con sus flotas puedan trabajar sin pisarse ni esperarse — incluso en husos
+distintos, sin coincidir nunca — y que lo que cierran termine donde alguien lo busca.
+
+Casi todo lo de acá salió de correr el sistema con dos clones y un servidor de verdad, no de
+leer el código. Las causas están escritas donde vivían, porque todas vivían en el mismo lugar:
+la costura entre dos máquinas.
+
+### Una review es una ASIGNACIÓN, no una noticia
+
+- **El servidor elige al revisor** (`engine/routereview.py`). Cuando una card entra a `review`
+  en un board con `reviewer: peer`, el servidor elige UN developer conectado — nunca el autor,
+  después el que menos reviews carga, después el de señal más fresca, después alfabético — le
+  asigna la card y le manda UN mensaje dirigido. Determinista, así dos clones que preguntan
+  "quién revisa X" no pueden discrepar. Antes se anunciaba a todos: dos devs libres empezaban
+  la misma review y uno trabajaba al pedo.
+- **La presencia viaja en el heartbeat** (`storage/_presence.py`). Cada llamada dice "este dev
+  está acá", así nadie tiene que anunciarse y el que deja de llamar deja de recibir ruteo. Un
+  dev cuenta como presente cuando alguno de sus actores carga un **id de sesión** — la
+  distinción que separa a quien está trabajando de quien corrió un comando y se fue.
+- **El ruteo EXPIRA** a la media hora. Es un empujón con fecha, no un candado: una card ruteada
+  a alguien que cerró la laptop se reabre sola en vez de morir esperándolo.
+- **Y el cierre lo respeta.** Guardaba el claim y dejaba el close abierto — la única puerta que
+  decide algo. Un dev cerró una card ruteada a otro sin reclamarla siquiera.
+
+### Una sesión abre sabiendo quién más está en el board
+
+- **El brief de equipo** (`engine/team.py`): quién está conectado y qué card tiene en la mano,
+  inyectado ANTES de la lista de trabajo. Junta dos hechos que el store ya tenía y nadie había
+  cruzado. Agrupado por DEV, porque una persona y sus agentes son una sola.
+- Va antes de "qué está esperando" a propósito: una sesión que lee primero el trabajo pendiente
+  ya empezó a elegir.
+
+### Dos maneras de enterarse, un solo hecho
+
+- **`taskops attention --wait`** bloquea hasta que el board te necesita, y despierta también
+  por MENSAJES: una review ruteada llega como mensaje, así que un loop que solo mirara cambios
+  de estado dormiría justo el evento que alguien eligió para vos.
+- **El canal solo lleva lo dirigido a vos**: ni ecos de tu propio dev, ni un id ya entregado, ni
+  una audiencia en la que no estás. Los cambios de estado salieron del set por defecto — son
+  derivables, y `attention` es donde se leen.
+- **El canal recupera lo que se escribió mientras arrancaba** (`/api/sync?after=`), acotado a la
+  vida del proceso. Una sesión que abría quince segundos antes de una entrega no se enteraba
+  nunca.
+- Las dos vías llevan el mismo hecho. Sin canal no hay un modo degradado con reglas propias: es
+  el mismo mensaje, leído en vez de empujado.
+
+### El trabajo llega al trunk
+
+- **Aprobar mergea** (`usecases/land.py`): una card que llega a `done` fue leída por alguien que
+  no es su autor, que es exactamente cuándo un merge está justificado. Un board había reportado
+  118 cards cerradas con `main` en el commit semilla.
+- **El trunk se pone al día antes de mergear y el push se verifica después.** Aterrizar es
+  concurrente por construcción; sin esto el segundo mergeaba contra un trunk viejo, el push se
+  rechazaba y `land` reportaba éxito igual.
+- **La rama se trae del remoto**: el que cierra no es el autor, así que su clon nunca la vio.
+- **Un conflicto es TRABAJO**, no un fallo: la card cierra igual y el resultado queda en el
+  board, donde `attention` lo reporta bajo `LAND` para que un `taskops-fixer` lo resuelva.
+- **El servidor nunca mergea.** Tiene estado y no tiene checkout: corría git, fallaba en cada
+  paso, y registraba "no main or master branch in this repository" nombrando un repo que no
+  existe.
+
+### Reparaciones que costaron una corrida cada una
+
+- `taskops join` reescribía `.gitignore` en cada corrida, así que **todo clon quedaba sucio para
+  siempre** y `git switch` rechazaba: ninguna card de ningún clon podía llegar al trunk. Ahora
+  responde git (`check-ignore`), y solo cuenta un `.gitignore` DENTRO del repo — un ignore
+  global personal no puede hacer que se saltee la regla que guarda un token.
+- **Una respuesta por el canal quedaba firmada por otro developer.** `/api/comment` resuelve el
+  actor en el servidor, que es correcto para un browser y falso para un canal autenticado. En un
+  board con `reviewer: peer` el autor de un mensaje decide quién puede cerrar qué.
+- El claim del revisor **sacaba la card de review**, salteando todas las reglas de cierre
+  escritas contra una card en review.
+- La asignación del ruteo no se soltaba al salir de review, así que una card rebotada quedaba
+  invisible para el worker que tenía que arreglarla.
+
+### Cómo se prueba esto
+
+`tests/e2e/test_the_real_topology.py` — un servidor HTTP de verdad en un puerto de verdad, un
+origin **bare**, dos clones que corrieron `taskops join`, y una card caminada de plan a trunk.
+Doce bugs en tres días y ninguno era de lógica: todos vivían entre dos máquinas, y toda la suite
+corría un repo, un proceso, un store. Se le devolvieron ocho mutaciones de bugs reales y caza
+las ocho — dos de ellas encontraron agujeros en el arnés mismo antes de eso.
+
+### cada card nombra a su REVIEWER cuando se crea
 
 Quién puede CERRAR una card dejó de ser una regla global y pasó a ser un dato de la card,
 elegido al crearla. Un label es pista de ruteo y cualquiera lo edita para buscar; esto es
@@ -23,7 +109,7 @@ política, así que es un campo (`reviewer`) y no un label.
   pasaba). Reviewer agente → la regla de hoy. Sin reviewer → exactamente como antes, con test
   de regresión.
 
-## Unreleased — agentes especialistas por proyecto: el board rutea, la sesión invoca
+### agentes especialistas por proyecto: el board rutea, la sesión invoca
 
 Un proyecto tiene agentes que solo tienen sentido ahí (el que toca los collectors, el que toca
 la UI), y hasta ahora no había dónde declararlos: el plugin trae tres genéricos y punto.
@@ -72,7 +158,7 @@ está muerto al nacer.
   edita el primero. En el panel: picker con el registro + la gente vista en el board, y el chip
   del assignee en la card.
 
-## Unreleased — `taskops login`: entrás con tu GitHub y el remote se configura solo
+### `taskops login`: entrás con tu GitHub y el remote se configura solo
 
 El paso flojo de armar un equipo no era técnico: *"y le emitís un token a cada developer"*.
 Alguien mintea un secreto, lo manda por chat, y lo rota a mano cuando una persona se va — o
@@ -108,7 +194,7 @@ GitHub a los que apuntan los proyectos del server. Entonces que pregunte GitHub,
 - `_wireclient` se partió: `_wirereply.py` se lleva las tres funciones que leen la respuesta
   (no saben que hay una red, así que se testean desde un literal) y el cliente entró de nuevo
   en el presupuesto de líneas con las rutas de auth adentro.
-## Unreleased — el server sabe quién sos por GitHub: nadie más reparte tokens a mano
+### el server sabe quién sos por GitHub: nadie más reparte tokens a mano
 
 Un token por proyecto escala para MÁQUINAS y no para personas: sumar a alguien era mandarle un
 secreto por un canal cualquiera, y sacarlo era re-mintear para todos. Ahora un proyecto se ata a
@@ -149,7 +235,7 @@ su repo de GitHub y **el push access ES el acceso al board** — jp corre `tasko
   limit o un token suspendido mucho más seguido que un permiso, así que sale con las palabras
   textuales de GitHub en vez de convertirse en un "no tenés acceso a nada" que confunde.
 
-## Unreleased — claims atómicos en remoto: dos agentes en dos máquinas no agarran la misma card
+### claims atómicos en remoto: dos agentes en dos máquinas no agarran la misma card
 
 El miedo central, textual: *"mi miedo es que se pisen agentes en remoto"*. Con push/pull los
 boards CONVERGEN, pero el claim seguía siendo local: entre dos syncs, dos agentes en dos
@@ -202,7 +288,7 @@ server, y la carrera pasa a ser la que el engine ya gana.
 - **Fuera de scope a propósito**: `plan`, `dispatch` y `ask` siguen locales — `ask` lee un board
   que ya converge por `pull`, y planear en remoto es raro y puede esperar.
 
-## Unreleased — la mitad server del sync remoto: eventos por HTTP, y reportes que no se pisan
+### la mitad server del sync remoto: eventos por HTTP, y reportes que no se pisan
 
 - **Cuatro endpoints nuevos, `transports/http/exchange.py`** — la API de intercambio entre dos
   instalaciones de taskops, documentada en `docs/exchange.md` porque el cliente la codea desde
