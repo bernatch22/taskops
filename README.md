@@ -213,19 +213,147 @@ A dependency that lives only in a comment is one the scheduler will walk somebod
 
 ---
 
-## The three agents the plugin ships
+## The plugin: agents, and the wiring that makes rules unavoidable
 
-Installing the plugin gives you three sub-agents. They are DATA — a markdown file each in
-`plugin/agents/`, with their name, description, tool list and model in the frontmatter — so a
-project can add its own without touching any Python.
+The Python package is the board. The **plugin** is what makes a Claude Code session behave like
+a member of a team that has one — and it is three separable things:
 
-| Agent | Tools it has | What it does |
+```
+   plugin/agents/*.md        WHO does the work        →  sub-agents you spawn
+   Claude Code hooks         WHEN the board speaks    →  5 events, 5 different readers
+   git hooks                 WHAT binds work to a card →  5 hooks, in .git/hooks
+```
+
+The reason there are three and not one paragraph of instructions is the lesson this project
+paid for most often, and it is worth stating before any of the detail:
+
+> **An instruction is not a mechanism.** Anything a model must remember across a long session
+> belongs in the message that needs it, or in a guard that refuses. Prompts dissolve.
+
+Every hook below exists because the same thing had been written in a prompt first, and a real
+session had forgotten it by turn forty.
+
+### The agents — three files, and one role that is not a file
+
+Installing the plugin gives you three sub-agents. They are **data**: a markdown file each, with
+name, description, tool list and model in the frontmatter, so a project can add its own without
+touching any Python.
+
+| | Tools it has | What it does |
 |---|---|---|
-| your orchestrator | context, board, plan, dispatch — **no Edit, no Write** | Reads the context, the board and the last week of dossiers; creates the cards that serve the current objective with EARS acceptance criteria; names the card blocking everything else; hands work out. It plans and delegates, never implements. |
+| **your session** — the orchestrator | context, board, plan, dispatch — **no Edit, no Write** | Reads the context and the board, creates the cards that serve the objective with EARS criteria, hands work out, decides what moves. It plans and delegates, never implements. |
 | `taskops-worker` | claim, ask, update, and the full edit surface | One card: claim → branch → work → commit → close **with evidence** for each criterion. Hands the card back with notes rather than sitting on it. |
-| `taskops-verifier` | ask, update, Read, Bash — **no Write** | The adversary, on a cheap model. Reads the acceptance criteria and the diff and tries to demonstrate `done` is false. |
+| `taskops-verifier` | ask, claim, update, Read, Bash — **no Write** | The adversary, on a cheap model. Reads the criteria and the diff and tries to demonstrate `done` is false. Claims the card first, which is what stops a second verifier starting. |
+| `taskops-fixer` | ask, update, Read, Bash | One merge conflict, resolved and landed. Spawned from what `attention` reports under `LAND`. It never reopens the card or rewrites what the card was for. |
 
-### …and the specialists a project registers for itself
+The orchestrator is the only one with no file, because it is not a sub-agent: **it is the
+session you are typing into.** That is not a naming choice, it is enforced by an event —
+`SessionStart` fires for the main conversation and never for a sub-agent, so a session reading
+its own opening screen has proof of which one it is. It is told so in the first line it reads,
+before you type anything:
+
+> You are the ORCHESTRATOR of this board. You do not implement: you dispatch `taskops-worker`
+> sub-agents for the work and `taskops-verifier` sub-agents for the reviews, and you decide what
+> moves. A card you work yourself is a card nobody is keeping the plan for.
+
+That sentence used to end with *"Run `taskops_next` to claim one"* — and two live sessions read
+it, became workers, did the work themselves and left both cards dead in `review` with nobody
+left to verify anything. The first thing a session reads decides what it becomes.
+
+### The Claude Code hooks — five events, five different readers
+
+The rule that governs all of them, learned the expensive way:
+
+> **A hook speaks to whoever its event delivers to, and no further.** Before writing an
+> instruction into one, name the reader and check it can do the thing.
+
+`SubagentStop` injects into the **sub-agent that stopped** — a worker, with no ability to spawn
+anything. An ask for a verifier placed there had a worker spend four turns explaining that it
+lacks the tool.
+
+| Hook | Who reads it | What it does |
+|---|---|---|
+| `SessionStart` | the main conversation, only | The opening screen: your role, the project's standing objective and decisions, **who else is on the board and what they hold**, and what is waiting on a decision. Also materialises the project's specialists into `.claude/agents/`. |
+| `PreToolUse` | the agent about to act | Sees a `git commit` before it runs and refuses one no lease covers — with a sentence that says how to get a card, not just "no". |
+| `PostToolUse` | the agent that just acted | Delivers the inbox. A session cannot be pushed to mid-turn, so a message addressed to an agent arrives on its **very next tool call** — seconds, for a working agent. |
+| `Stop` | the main conversation | Refuses to end a turn on a review this session opened and nobody picked up, and on cards it left unfinished. Twice, then it lets you go: an agent that has read the message twice will not act on a third copy, and a trapped session is worse than a stale board. |
+| `SubagentStop` | the sub-agent that stopped | Only what that reader can act on: its own unfinished card. Nothing about spawning, because it cannot. |
+
+Two of those are the *only* reason the loop closes without anybody watching it. `SessionStart`
+is what makes a session know it is the orchestrator; `Stop` is what keeps a finished card from
+sitting in `review` for a week because the session that produced it ended politely.
+
+### The git hooks — five, and each one covers a path the others cannot see
+
+`taskops init` writes them into `.git/hooks`. They are never tracked, which is why re-running
+`init` is how you repair a fresh clone.
+
+| Hook | What it does |
+|---|---|
+| `pre-commit` | Refuses an **agent's** commit that no lease covers. A human is warned and passes — the asymmetry is deliberate. |
+| `prepare-commit-msg` | Writes the `Task: tk-4f2a9c` trailer onto the commits it allowed. The only hook git hands the message file to; the agent never writes the trailer and never sees an error about it. |
+| `post-commit` | Binds the commit to the card — including commits the PreToolUse guard never saw: a human's terminal commit, a `--no-verify`, a rebase landing on a task branch. |
+| `post-checkout` | Records the branch on the lease, so the board shows where an agent is working without asking it to report that. |
+| `post-merge` | Imports what a `git pull` just brought in — the moment another developer's events become visible. |
+
+They are also the answer to *"what if the agent is not Claude Code?"* The PreToolUse guard sees a
+Bash tool call and nothing else, so a script, a rebase or another harness was unguarded. The git
+hooks sit under all of them, because git is the one thing every path goes through.
+
+**All of them fail open.** A coordination tool that blocks your commit because its database was
+locked has broken the thing it exists to support.
+
+### How the three compose
+
+One card, from a plan to the trunk, with each mechanism named as it fires:
+
+```
+  SessionStart ─▶ "you are the orchestrator" + who else is here + what is waiting
+        │
+        │  the session plans, then dispatches: a worktree and a brief per card
+        ▼
+  spawns taskops-worker ──▶ claims the card (a LEASE; it renews on every call)
+        │                        │
+        │                   pre-commit: is this agent holding a card?  ── no ──▶ refused
+        │                        │ yes
+        │                   prepare-commit-msg: the Task: trailer is written for it
+        │                   post-commit: the commit is bound to the card, branch published
+        │                        │
+        │                   update status=review
+        │                        │
+        │                   the SERVER routes it to one other developer, and the
+        │                   worker's own return value tells its session:
+        │                   "routed to dev:dos — do NOT verify it yourself"
+        ▼
+  SubagentStop ─▶ speaks to the WORKER: anything of yours still open?
+        │
+  Stop ────────▶ speaks to the SESSION: a review you opened is unverified. Spawn a
+                 verifier for it — and never names a card routed to somebody else.
+                                   │
+                                   ▼
+                      the other developer's session:
+                      SessionStart or the channel delivers the routed review
+                                   │
+                      spawns taskops-verifier ──▶ claims it (card STAYS in review,
+                                   │              which is what stops a second one)
+                                   │              runs the tests, reads the diff
+                                   ▼
+                              closes it with evidence per criterion
+                                   │
+                        approval merges the branch into the trunk
+                                   │
+                          conflict? ──▶ attention reports it under LAND
+                                        ──▶ spawn taskops-fixer
+                                   │
+                        whatever was blocked becomes ready, for everyone
+```
+
+Read it once more looking only at what is **enforced** rather than asked for: the lease, the
+refused commit, the written trailer, the routing, the claim that keeps a second verifier out,
+the evidence `done` demands, the merge on approval. Nothing in that column depends on an agent
+remembering anything.
+
+### Specialists a project registers for itself
 
 Drop a markdown file in **`.taskops/agents/`** and it travels through git with the project.
 Same format as the plugin's, plus two optional keys taskops understands and Claude Code does
