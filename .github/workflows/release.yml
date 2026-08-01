@@ -1,0 +1,89 @@
+name: Release
+
+# Publishes to PyPI via Trusted Publishing (OIDC — no long-lived token, which is
+# the point: the tokens on a developer's machine belong to whichever account
+# minted them, and one wrong `.pypirc` publishes under the wrong name or not at
+# all). The trusted publisher is configured on pypi.org for bernatch22/taskops
+# with the `pypi` environment. Pushing a version tag publishes automatically;
+# `skip-existing` makes re-runs idempotent.
+#
+# The publish job is GATED: it needs the full CI suite (lint, the OS/runtime
+# matrix, the channel's filter and the committed UI bundle) to pass on the
+# tagged commit, and the tag to agree with the packaged version.
+#
+# Structure follows the PyPA guide: build and publish are separate jobs handing
+# artifacts between them, publish does NOTHING but publish, and `id-token:
+# write` is scoped to that job alone. The gates live in `ci.yml` and are called
+# from here — trusted publishing cannot run from inside a reusable workflow, so
+# the reusable part is the tests and the publish stays in this top-level file.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  # The tag is the release contract. A tag that disagrees with __version__
+  # publishes an artifact whose name lies about its contents — cheap to check,
+  # impossible to undo, because PyPI versions are permanent.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag matches __version__
+        run: |
+          # _version.py, NOT __init__.py: the init only IMPORTS the name.
+          pkg=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/taskops/_version.py)
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            echo "tag=$tag  package=$pkg"
+            [ "$tag" = "$pkg" ] || {
+              echo "::error::tag v$tag disagrees with __version__ $pkg"; exit 1; }
+          else
+            echo "ref $GITHUB_REF_NAME is not a tag — version guard not applicable"
+          fi
+
+      # The plugin ships alongside the wheel and a test pins the two versions
+      # together; checked here as well, because a plugin that claims another
+      # version is a user installing two halves that disagree.
+      - name: the plugin declares the same version
+        run: |
+          pkg=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/taskops/_version.py)
+          plug=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' plugin/.claude-plugin/plugin.json | head -1)
+          echo "package=$pkg  plugin=$plug"
+          [ "$pkg" = "$plug" ] || {
+            echo "::error::plugin.json says $plug, the package says $pkg"; exit 1; }
+
+  # lint + the full OS x python matrix + channel + bundle, on THIS commit
+  gates:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build && python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: [guard, gates, build]
+    # Tag-only publishing (PyPA's recommendation): a workflow_dispatch on a
+    # branch runs every gate but cannot push a release.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true   # a version already on PyPI is a no-op, not a failure

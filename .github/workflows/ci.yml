@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Callable so `release.yml` runs these EXACT gates against the tagged commit
+  # before publishing — one definition, two entry points. A tag push does not
+  # trigger the `push: branches` above (a tag is not a branch), so without this
+  # the release path would have no lint or test gate at all.
+  workflow_call:
+
+jobs:
+  # Both gates, always — CLAUDE.md lists them together for a reason: running
+  # only pytest is how a lint failure ships.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e . ruff pytest
+      - run: ruff check .
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # The suite drives real git repositories, real subprocesses and a real
+      # HTTP server on a real port. It needs an identity or every commit it
+      # makes fails, and CI runners have none configured.
+      - name: git identity for the repositories the suite creates
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "taskops CI"
+          git config --global init.defaultBranch main
+      - run: pip install -e . pytest
+      - run: python -m pytest -q
+
+  # The channel is TypeScript and opt-in, so it has no Python gate. Its filter
+  # is the one decision that must not regress silently: everything it forwards
+  # reaches a person mid-turn.
+  channel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --cwd plugin/channel
+      - run: bun test --cwd plugin/channel
+
+  # The board's bundle is COMMITTED, so `pip install taskops-cli` serves the UI
+  # with no Node toolchain anywhere. This job is the other half of that deal:
+  # it rebuilds from ui/ and fails if the result differs from what was
+  # committed. Without it the committed bundle silently goes stale, which is
+  # the one real cost of checking build output into a repository.
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci --prefix ui || npm install --prefix ui
+      - run: npm run --prefix ui build
+      - name: the committed bundle must match its source
+        run: |
+          git diff --stat --exit-code src/taskops/transports/http/ui \
+            || { echo "::error::the UI bundle is stale — run: cd ui && npm run build"; exit 1; }
