@@ -230,3 +230,38 @@ def test_a_rejection_and_a_close_racing_leave_exactly_one_outcome(repo: Path) ->
         f"exactly one racer may land, got {outcomes}"
     final = ask(repo, card)["task"]["status"]
     assert (final == "ready") == (outcomes["reject"] == "landed"), outcomes
+
+
+def test_a_card_reserved_for_one_person_is_not_closed_by_another(repo: Path) -> None:
+    """`reviewer: dev:berna` names a PERSON, not a category — and the guard read it as one.
+
+    Found by a question rather than a run: "I work with a team but I want to review and close
+    the cards myself." That is exactly what naming yourself on a card is for, and it did not
+    work — the rule asked "is the closer a person" and stopped there, so a teammate closed a
+    card its author had reserved. `human` still means whoever shows up; a named dev means them.
+    """
+    from taskops.usecases import plan as plan_cards
+
+    card = plan_cards(repo, [{"title": "Mine to read", "spec": "x", "reviewer": "dev:berna",
+                              "acceptance": CRITERIA}], actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor=WORKER)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+
+    with pytest.raises(GuardFailed) as refused:
+        closes(repo, card, "dev:ana")
+    assert "dev:berna" in str(refused.value), "the refusal has to name who is expected"
+
+    closes(repo, card, "dev:berna")
+
+
+def test_reviewer_human_still_means_whichever_person_arrives(repo: Path) -> None:
+    """The other half, and the reason the fix is narrow: `human` is a category on purpose —
+    a card that only needs eyes must not wait for one specific pair."""
+    from taskops.usecases import plan as plan_cards
+
+    card = plan_cards(repo, [{"title": "Any human", "spec": "x", "reviewer": "human",
+                              "acceptance": CRITERIA}], actor=DEV)["created"][0]["id"]
+    next_task(repo, task=card, actor=WORKER)
+    update(repo, card, status="review", comment="over to you", actor=WORKER)
+
+    closes(repo, card, "dev:ana")

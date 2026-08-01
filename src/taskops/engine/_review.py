@@ -49,10 +49,18 @@ def _reviewer_is_a_person(facts: Facts) -> str | None:
     who = facts.reviewer
     if who != HUMAN and not who.startswith("dev:"):
         return None
-    if not facts.actor.startswith("agent:"):
-        return None
-    return (f"{facts.task['id']} names {who} as its reviewer — a person closes this one. "
-            f"Leave it in `review` and say what you did in a comment; no agent may close it.")
+    if facts.actor.startswith("agent:"):
+        return (f"{facts.task['id']} names {who} as its reviewer — a person closes this one. "
+                f"Leave it in `review` and say what you did in a comment; no agent may close it.")
+    # A NAMED person is a name, not a category. `human` means anybody human; `dev:berna` means
+    # berna, and the guard used to read both as "is the closer a person" — so a card a lead had
+    # reserved for themselves was closed by a teammate, which is the one thing naming somebody
+    # was for. Only fires when the reviewer names a dev; `human` keeps meaning whoever shows up.
+    if who != HUMAN and facts.actor != who:
+        return (f"{facts.task['id']} is {who}'s to review — they asked for this one by name. "
+                f"Leave it in `review` and say what you found in a comment; if they are gone, "
+                f"change the card's reviewer deliberately rather than closing around them.")
+    return None
 
 
 def _handed_on(facts: Facts) -> str | None:
