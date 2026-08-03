@@ -288,9 +288,13 @@ and LEAVES the card in review, so it stops appearing in everybody else's sweep �
 was verified three times in parallel before that existed. Its own worker claiming it back means
 the opposite (leaving the handoff to fix the findings) and lands on `claimed`.
 
-If the project decided `reviewer: peer`, the engine refuses a `done` from anybody on the
-AUTHOR'S dev — `dev:ana` and `agent:ana/w1` are one person with two hands. Hand it to another
+If the card says `reviewer: peer`, the engine refuses a `done` from anybody on the AUTHOR'S
+dev — `dev:ana` and `agent:ana/w1` are one person with two hands. Hand it to another
 developer's session, or to a verifier they spawn.
+
+That value is normally not typed per card: `taskops policy reviewer peer` sets what every new
+card is created with. The engine still reads the CARD, so changing the policy never rewrites
+who was allowed to close work planned last week.
 
 ## What this project has already decided
 
@@ -301,15 +305,23 @@ taskops_context                     the objective, every invariant, the decision
 taskops_context task=tk-4f2a9c      …the SLICE that applies to one card
 ```
 
-Three kinds, and they are not advice:
+Four kinds, and they are not advice:
 
-- **objective** — what the project is chasing now. If your card does not serve it, say so
-  rather than doing it well.
-- **invariant** — what must never break. Every agent receives every invariant, always; there
-  is no card whose slice leaves one out.
+- **objective** — what the project is chasing now. You get TWO: the project's, and your own
+  developer's if they set one. If your card serves neither, say so rather than doing it well.
+- **invariant** — what must never break. Every agent receives every project invariant, always;
+  there is no card whose slice leaves one out.
 - **decision** — what was already decided, and *why*. This exists so you do not re-propose a
   thing that was tried and rejected. If you think a decision is wrong, argue with it in a
   comment; do not quietly do the other thing.
+- **note** — standing, and neither a goal nor a rule. A habit, a warning, a thing worth
+  remembering. Usually your developer's own.
+
+You never see another developer's own facts, and that is deliberate: a slice grows by ONE
+whatever the size of the team, so three people each stating an objective does not make you
+read four. **You may not state one either** — an objective is what you are judged against, and
+a worker that could restate it could move its own goalposts. Say it on the card with
+`taskops_update`; the session that planned the work decides whether it becomes standing.
 
 ## The specialist you may be
 
@@ -337,17 +349,22 @@ call or a scheduled task's — never yours.
 because Y" survives after the session that learned it ended. Re-deriving that badly is the most
 expensive thing an agent does.
 
-## A team on a server: one URL each, and sync is nobody's job
+## A team on a server: two words to join, and sync is nobody's job
 
-Joining a shared board is ONE command — the URL is the one the board itself shows:
+Joining a shared board is ONE command, and it takes no argument — `.taskops/board.json` is
+committed, so the clone already carries its board's address:
 
 ```
 git clone <repo> && cd <repo>
-taskops join https://server/project?token=…
+taskops join
 ```
 
 That is init, the git hooks, the CLAUDE CODE hooks (into the project, not a plugin), the MCP wiring, the remote, and the first pull, in one. Re-running it repairs
 a clone (fresh checkouts lose their git hooks).
+
+A clone older than that file takes the URL once — `taskops join https://server/project` — and
+writes it for everybody after. Making the board in the first place is `taskops board create`,
+from the repository, with nobody logging into the server.
 
 After that, **the server IS the board** — there is no sync because there is nothing to
 synchronise. Every verb that writes (plan, claim, close, assign, context) executes in the

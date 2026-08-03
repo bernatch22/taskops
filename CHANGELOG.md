@@ -1,5 +1,510 @@
 # Changelog
 
+## 0.4.0 — el board sin GitHub, la barra de abajo, y el tablero local que se levanta solo
+
+### Perfil de dev, y el modal que estaba roto
+
+Donde estaba el botón del chat hay ahora **mini avatares** — dos letras, anillo lime si tienen
+lease vivo — y un click abre el perfil de esa persona: sus números, su objetivo, sus decisiones
+técnicas, sus invariantes, y las últimas cards que tocó. La fila no cuesta ningún request: sale
+de lo que el board ya cargó. El perfil hace **un** fetch, al abrirse.
+
+`agent:ana/w1` **es ana**: el mismo pliegue que hace el engine para `reviewer: peer`. Sin eso un
+board con un solo dev mostraría cinco caras.
+
+**Y el modal se veía transparente y descuadrado, y no era el CSS.** El perfil se monta dentro del
+header, el header tiene `backdrop-filter: blur(12px)`, y un ancestro con `backdrop-filter` **se
+vuelve el bloque contenedor de sus descendientes `position: fixed`** — así que `inset: 0` cubría
+40 píxeles de header en vez del viewport, con el panel apretado adentro como flex item. Arreglado
+donde no puede volver a pasar: los dos modales van por un `Overlay` que hace **portal a
+`document.body`**, así la posición de un overlay no depende de dónde viva el botón que lo abre.
+
+De paso, una sola implementación de las tres cosas que un overlay hace mal: Escape, click en el
+backdrop que cierra, y click adentro que **no**.
+
+### El drawer de una card quedaba debajo del modal
+
+`z-index: 40` contra los 50 del modal, y una card se abre rutinariamente **desde** uno — el
+perfil lista las cards que tocó esa persona. Llegaba detrás del scrim: invisible hasta cerrar
+justo lo que habías clickeado. Ahora va en 60, y Escape es del **de arriba**: el drawer aprendió
+a cerrarse con Escape (antes no lo hacía en absoluto) y el `Overlay` se abstiene mientras haya
+un drawer abierto.
+
+### `plan` ahora pregunta quién revisa
+
+No hay default de proyecto para el reviewer y no lo hubo nunca: sin policy, una card sale
+nombrando a nadie. Eso está bien para el primer día — un dev solo, nadie más en el board, y una
+regla que rechazara todo cierre haría la herramienta inusable — y está mal como estado
+permanente, porque el único guard que queda es el más débil de los tres: **un agente no puede
+cerrar el review que él mismo abrió**. Un segundo agente del mismo dev sí puede, y el dev también.
+
+Así que el resultado de `plan` lo dice, una vez por lote, con los ids adelante y las cuatro
+formas de decidirlo. En el **valor de retorno** y no en una guía: una instrucción no es un
+mecanismo, y lo que un modelo tiene que accionar va en el mensaje que lo necesita. Calla cuando
+todas las cards ya lo dicen — un párrafo que aparece siempre es un párrafo que nadie lee.
+
+### Se fue el chat del board, y con él la última cosa dirigida a nadie
+
+El sidebar (`⌘K`) alcanzaba «la sesión que esté corriendo el canal», y la sesión contestaba con un
+`reply` sin card. Las dos mitades asumen que hay **exactamente una** sesión escuchando — y en un
+board compartido pueden ser cinco, cada una en su máquina con su propio canal conectado. Una
+pregunta dirigida a quien esté mirando no tiene audiencia contestable, y una respuesta dirigida a
+nadie no tiene destino.
+
+Eliminado de las dos puntas, porque dejar la mitad era dejar endpoints sin cliente: el sidebar,
+`/api/chat`, `/api/conversation`, `usecases.chat`, el kind `chat` (y su exención en
+`LOCAL_ONLY_KINDS`), la rama sin card de `reply`, y el corte de conversación al arrancar. `reply`
+ahora **exige `card`**.
+
+Lo que quedó es más simple de describir: **todo lo que llega a una sesión está DIRIGIDO** — una
+mención, un review ruteado a un dev, una card asignada a uno de sus agentes. Que es lo que hace
+verdadera la promesa del canal: si no actuás sobre un evento, nadie lo hace.
+
+Una pieza tuvo que mudarse. El botón «asignar a un especialista» de la UI publicaba un pedido de
+dispatch **en el chat**; ahora es un comentario **en la card, con el destinatario mencionado** —
+dirigido, entregado en su próximo tool call, y archivado bajo el trabajo del que habla en vez de
+al lado. Se fue también la tira de herramientas, que era parte del sidebar; los eventos
+`activity` se siguen escribiendo y el board vivo los sigue leyendo como el «doing» de cada card.
+
+### `in_progress` seguía vivo en la UI, y no existe
+
+El engine tiene **siete** estados: `in_progress` se eliminó hace tiempo (`engine.replay` lo
+reescribe a `claimed` para logs viejos) y `TaskPanel.tsx` ya lo decía. Los restos estaban en
+`contracts.ts`, `bits.tsx` y el CSS — o sea una columna que nunca podía tener cards. Fuera. La
+columna `claimed` ahora se llama **«In progress»**, que es lo que significa para quien mira el
+board, y ya no hay ambigüedad porque no hay segunda columna con ese nombre.
+
+### Un proyecto local ahora tiene tablero, y se levanta solo
+
+`taskops open` en un proyecto sin remoto se negaba y te mandaba a `taskops ui` — un comando que
+**bloquea**, en la terminal que estabas usando para otra cosa. Ahora lo levanta él.
+
+- `taskops ui` **anota dónde quedó escuchando** (`.taskops/ui.json`, gitignored) después del
+  bind y nunca antes: una nota escrita sobre la intención anuncia un puerto que un error de bind
+  está por dejar muerto. El puerto lo elige el SO (`--port 0`), así dos proyectos abiertos a la
+  vez no colisionan — fijarlo en 2140 hacía que el segundo fallara dentro de un hijo detached,
+  o sea con una URL que no responde y ningún error a la vista.
+- El hook de `SessionStart` lo ofrece: si el proyecto es local, levanta el tablero antes de
+  armar el saludo, así **la primera línea siempre tiene a dónde hacer click** — local o remoto.
+  Detached como el sweep, mudo ante cualquier falla, y `TASKOPS_NO_UI=1` lo apaga.
+- Una nota vieja es peor que ninguna, porque apunta el navegador a un puerto que ahora puede ser
+  de otro programa. Se verifica dos veces: el pid vivo (barato) **y** que el puerto conteste —
+  un pid que el kernel reasignó pasa el primer chequeo.
+
+### La lista de boards del server, legible
+
+Era un `<ul>` monoespaciado de nombres. Ahora cada fila dice el repo de GitHub detrás si lo hay
+y **cuándo se movió por última vez** — que es la pregunta que uno le hace a una lista de boards.
+Sigue sin build step y sin dependencias, porque esta es la página que tiene que contestar
+justamente cuando algo está roto. El `updated` sale del mtime del log: un `stat` por board, así
+la portada cuesta lo mismo con nueve cards que con novecientas, y sigue andando cuando el sqlite
+de un board es lo que se rompió. Un contador de cards abiertas costaría abrir cada base.
+
+### Un board sin GitHub no aparecía en la lista de nadie
+
+Las sesiones se acuñan desde GitHub, así que un board sin repo detrás no podía salir en ningún
+`/api/projects`: lo creabas desde tu laptop y la portada del server no lo listaba. `board create`
+sin GitHub ahora devuelve **también una sesión**, sobre ese board y nada más — exactamente la
+forma que redimir un invite ya producía. El `login` ahí es una ETIQUETA, no una identidad: nada
+la verifica y nada depende de ella, la autorización son el token y la lista de proyectos.
+
+### `board create` exigía GitHub, y el remoto nunca lo necesitó
+
+El flujo de tres comandos — `remote add <server>`, `board create <name>`, `board invite <who>` —
+**fallaba en el primero**. Cuatro fallas, y ninguna la encontró la suite: todos los tests de esta
+superficie llamaban a `create_hosted` directo, así que ninguno pasaba por el parser, por el
+default de `--repo`, ni por el comando que corre cuando todavía no hay board.
+
+- **`board create` sin GitHub se negaba.** Un checkout sin origin, un repo en un GitLab, un
+  directorio que no está en git: todos chocaban con "pass `--github owner/repo`" en el primer
+  comando, contra un server que nunca necesitó GitHub para tener un board. Ahora `github` vacío
+  es *el otro tipo de board*: el server lo provisiona y **devuelve su token**, que es lo único
+  que podía devolver — la ruta con GitHub puede acuñar una sesión porque GitHub ya dijo quién
+  sos, y esta no. Con eso `board invite` sigue funcionando sin tocar nada: el derecho a invitar
+  es el derecho a escribir, y lee ese mismo `remote.json`.
+- **`remote add <server>` pelado se negaba** pidiendo un token. Un servidor sin path no nombra
+  ningún board, así que no hay a qué autenticarse ni con qué. Ahora lo anota y dice qué sigue.
+- **`board create test` ignoraba el nombre.** El posicional caía en `who`, que solo lee
+  `invite`, y el board terminaba llamándose como el directorio.
+- **Y el nombre por defecto salía vacío**: `--repo` default es `.`, y `Path(".").name` es la
+  cadena vacía, así que se negaba con ``cannot make a board name out of `` `` hablando de un
+  directorio con nombre perfectamente bueno.
+
+Quién puede crear en la ruta sin GitHub es una pregunta de despliegue y la contesta el server:
+`taskops serve --no-create` cierra la puerta, y en esa ruta **ese flag es todo el control de
+acceso** — no hay chequeo de GitHub detrás. Hay un test que lo fija, porque un flag que cerrara
+una puerta y no la otra se leería como cerrado estando abierto.
+
+### La barra de abajo: `taskops statusline`
+
+Claude Code deja configurar la fila que pinta encima de sus propios badges del footer. Ahora
+taskops la escribe, y `taskops init` la cablea sola en `.claude/settings.local.json` — sin tocar
+un `statusLine` que ya tuvieras puesto.
+
+```
+-- INSERT --  ·  ◐ tk-92c0aa el parser de fechas  ·  4 to hand out, 2 to review  ·  probe (shared, cached)  ·  78% ctx
+```
+
+Tres decisiones, y las tres salen de la cadencia: esa fila se repinta con un debounce de 300 ms.
+
+- **No toca la red y no escribe.** Nada de `heartbeat`, nada de `unblock`, ningún round trip
+  HTTP. Un pedido por ráfaga de tecleo contra un board compartido, y una proyección que
+  escribiera convertiría *mirar la pantalla* en un evento del log append-only.
+- Por eso, con remoto **dice `cached`**. El claim de un compañero llega a esa fila en el próximo
+  sync, no en el instante en que lo hace, y una barra que ocultara la diferencia prometería una
+  liveness que no tiene.
+- **No puede sacar `⏵⏵ bypass permissions on`**: la status line va en su propia fila, encima de
+  los badges, no en lugar de ellos. Lo que sí hace es repetir `-- INSERT --` cuando usás vim.
+
+No renderiza vocabulario del board: `5 to hand out`, no `5 dispatch`.
+
+### La columna «Claimed» ahora dice «In progress», y hay una sola
+
+`claimed` e `in_progress` son dos estados porque el engine los necesita — uno es un lease vivo,
+el otro es un worker que además lo declaró, y `claimed → done` es legal — pero al que mira el
+board las dos columnas le contestaban la misma pregunta. La UI las **pliega en una**. No se
+pierde nada: la marca de la card sigue diciendo cuál es (`◐` tomada, `●` reportada en curso).
+
+### El saludo de apertura, reescrito por cuarta vez
+
+Las tres versiones anteriores fallaron por la misma razón y la última lo dejó explícito:
+`5 card(s) need dispatch` es jerga. `dispatch`, `specless`, `stalled` y `land` son estados del
+scheduler; la línea ahora los traduce a inglés que se entiende sin manual, abre nombrando lo que
+está corriendo, y **dice si el board es compartido o solo de esta máquina** — porque "5 listas
+para repartir" significa otra cosa en un board que ve el equipo.
+
+### Un id impreso quedaba cortado y no servía para pegar
+
+Un id de taskops es `tk-` más seis hex: nueve caracteres. Los dos renderers nuevos lo cortaban
+en ocho, o sea imprimían un handle que no resuelve a nada. Entero en los dos.
+
+### `--mine` borraba el objetivo del equipo, en silencio
+
+Encontrado corriéndolo, y dos veces seguidas. `--mine` archiva un hecho bajo el que llama, y
+resolvía mal el id: primero al literal `"me"`, después al nombre pelado `berna`. Ninguno de los
+dos parsea, así que `dev_of` contestaba `""` — o sea **el hecho se guardaba como del PROYECTO**.
+Y como un objetivo lo supersede el más nuevo con el mismo dueño, decir "mi objetivo es X"
+**borraba el norte del equipo de la rebanada de todos**. Sin error, sin aviso.
+
+Dos arreglos, porque el primero solo habría dejado la trampa armada:
+
+- `--mine` resuelve el id COMPLETO (`dev:berna`), vía el mismo `whoami` que usa todo lo demás.
+- **`state` refuta un `owner` que no puede parsear.** Un typo no puede poder borrar el norte:
+  `me`, `berna`, `dev:` y `agent:nope` se rechazan nombrando la forma correcta.
+
+### Una sesión abría y la persona no veía nada
+
+El hook de `SessionStart` emitía `additionalContext`, que Claude Code envuelve en un system
+reminder que **el humano nunca ve** — y el stdout plano de un hook de SessionStart también está
+oculto. Así que abrías una sesión, el agente recibía el board entero, y vos no tenías forma de
+saber que taskops había corrido, mucho menos que tres cards te estaban esperando.
+
+`systemMessage` es el único campo que llega a la terminal. Ahora se emite una línea:
+
+    taskops · ◎ que el importador ande · ◎ el parser, sin regex · 2 waiting · https://…/probe/
+
+**Una línea, y se gana el lugar en todas las sesiones para siempre.** Lleva el OBJETIVO — el del
+proyecto y el tuyo —, qué te está esperando, y la URL del board cuando hay servidor, sin el
+token: esto se imprime en un scrollback y en lo próximo que compartas pantalla.
+
+El objetivo lo había dejado afuera, con el argumento de que el modelo lo tiene y quien lo
+escribió se acuerda. La primera corrida mató ese argumento: abrís un proyecto que no tocás hace
+una semana y no te acordás — que es la misma razón por la que la barra de contexto de la UI está
+siempre a la vista y no detrás de una pestaña.
+
+Callada cuando no hay nada: un board vacío lo dice una vez — que es la diferencia entre "no hay
+nada que hacer" y "el hook no corrió", indistinguibles en una pantalla vacía — y un repo sin
+board no imprime nada.
+
+El test vive en el hook y no sólo en el renderer: una línea correcta y no enganchada es una
+línea que nadie ve, y los tests del renderer pasan igual.
+
+### Contexto de PROYECTO y contexto de DEV — una regla, dos dimensiones
+
+Un hecho tenía una sola forma de acotarse: `--labels` / `--files`, o sea por TEMA. Ahora tiene
+dos, y la segunda es por PERSONA:
+
+    labels/files  →  una decisión sobre la base no llega a una card del parser
+    owner         →  un hecho que alguien enunció para sí llega a sus sesiones y a nadie más
+
+Una sola regla para los cuatro sorts: **con dueño llega a ese dev, sin dueño llega a todos.**
+
+- **Un objetivo por dueño**, no uno global. "El equipo va al importador" y "yo esta semana estoy
+  en el parser" son dos frases verdaderas al mismo tiempo, y con un solo lugar la segunda pisaba
+  a la primera — decir en qué estabas borraba la razón por la que alguien lo estaba haciendo.
+- **La rebanada trae LAS DOS**: `objective` es el norte del proyecto y `yours` el de quien tiene
+  la card. No una en lugar de la otra.
+- **Y crece en UNO, no en la cantidad de devs.** Ésa es la propiedad que hace que esto no se
+  degrade: con tres developers, cada worker sigue leyendo dos objetivos. Es la razón de que
+  `owner` sea un FILTRO y no una etiqueta — pasando de ~150-200 instrucciones permanentes la
+  obediencia se cae, así que una página que crece con el equipo empeora a todos los agentes cada
+  vez que entra alguien.
+- **Un cuarto sort, `note`**: lo permanente que no es ni objetivo ni regla — una costumbre, una
+  advertencia. Normalmente propio, que es para lo que existe.
+- **`--mine`** archiva bajo el que llama, para que nadie tipee su propio id. Y `context show`
+  sigue siendo la VISTA GENERAL — muestra los objetivos de todos, porque "quién está en qué" es
+  exactamente la pregunta de alguien decidiendo a quién darle una card. `--mine` la vuelve tu
+  página.
+- Un agente lee lo de su dev: `agent:ana/w1` recibe lo de `dev:ana` — un agente y su developer
+  son una persona con dos manos, la misma comparación que hace `reviewer: peer`.
+
+**Y había dos renderers del slice.** El CLI tenía el suyo además de `render.render_context`, y
+las copias derivaron en cuanto una creció: la del paquete aprendió a mostrar el objetivo de cada
+dev y la del CLI no, así que la misma rebanada se leía distinto según por qué puerta entrabas.
+Queda uno.
+
+### El contexto se escribe por MCP, y la cerca se mudó a donde aguanta
+
+`taskops_context` era sólo lectura, con este argumento: *"un worker que pudiera reformular un
+objetivo podría reescribir las reglas contra las que se lo juzga"*. El argumento es correcto y
+**el mecanismo no protegía nada**: un worker tiene `Bash`, así que `taskops context objective …`
+siempre estuvo a una llamada. Lo único que lograba era ponerle fricción al caso legítimo — el
+orquestador, el único que tiene algo que hacer seteando un objetivo, tenía que shellear.
+
+Dado vuelta:
+
+- **La mitad de escritura está en el MCP**: `state` + `text` (+ `labels` para el alcance de una
+  decisión) y `retire`. Cuatro campos y no siete — `--horizon`, `--owner` y `--files` siguen
+  siendo del CLI, porque cada campo acá le cuesta contexto a todos los agentes conectados en
+  cada llamada.
+- **La cerca está en el use case**, que `Bash` no puede rodear: un actor `agent:` es refutado,
+  uno `dev:` no. Es exactamente la línea entre un worker y la sesión que planificó su trabajo,
+  y es la que layer 0 ya dibuja — *"guards that demand a justification accept one from a dev and
+  reject it from an agent"*. Vive en `engine.identity.a_person`, porque es una regla sobre un
+  actor id y nada más.
+- **`actor` entró al schema de la tool**, y sin eso la cerca no podría dispararse nunca: un
+  llamador que no puede nombrarse resuelve desde git config y llega como el developer.
+
+El test que pineaba lo viejo se fue con la regla vieja, reemplazado por dos: que la tool anuncia
+la escritura, y que un `agent:` es refutado — que es **más fuerte**, porque cubre también la vía
+por `Bash`, que es la que un agente habría tomado.
+
+Y de paso: dos docstrings de `context.py` estaban DESPUÉS del `return`, así que no eran
+docstrings sino expresiones muertas. `show` e `history` no tenían documentación.
+
+### La narración del sweep se quedaba en el laptop
+
+`report sweep --push` existía y **ningún disparador lo pasaba** — ni el hook de `SessionStart`
+ni la tarea agendada. Y el flag era `store_true`, así que un flag que nadie pasó llegaba como
+`False`. En un board que vive en un servidor eso significa que cada narración desatendida se
+escribía en la máquina de alguien y se quedaba ahí: nadie más la veía, y la pestaña Reports del
+propio board nunca la tenía — que es exactamente lo único que el sweep existe para producir.
+
+Ahora `push` es **`None` por defecto y significa "sí, si el proyecto tiene remote"**. Un
+proyecto local no manda nada (no tiene a dónde, y `push` refutaría), y `--no-push` sigue siendo
+la forma de decir que no. Los flags del sweep se mudaron a `_sweep.py`, donde vive el comando,
+en vez de estar al lado de seis que son de los dossiers.
+
+Los reportes son ARCHIVOS, no eventos, así que son lo único que un board remoto todavía manda
+por `push` — junto con la migración de una vez.
+
+### `taskops board invite`: una puerta por persona, para un board sin GitHub
+
+Un board sin repo de GitHub tenía una sola forma de entrar: el token del proyecto. Un string
+compartido, anónimo, y rotarlo deja afuera a todos. Ahora el dueño acuña un código por persona:
+
+```
+$ taskops board invite ana
+  send them this — it works ONCE, and expires in 7 days:
+      taskops join https://…/probe?invite=4596964247820…
+```
+
+Ana corre **esa línea y ya está trabajando** — `join` inicializa, instala los git hooks, cablea
+el MCP, canjea el invite por una sesión y llena el board. Reusa `join` a propósito: un verbo
+nuevo para canjear serían dos pasos, y el segundo es el que la gente olvida — un código gastado
+y ningún board.
+
+Cuatro propiedades, cada una cierra una fuga distinta:
+
+- **un solo uso** — un código que sirve dos veces sirve para siempre, porque está en un chat;
+- **expira** a la semana, el mismo número que la sesión, porque dos ventanas son dos cosas que
+  razonar y nadie sabe cuál lo mordió;
+- **nombra a la persona**, así el board registra `dev:ana` y no "alguien que tenía el link" —
+  que es la razón entera de no compartir el token;
+- **se guarda hasheado**: un `invites.json` filtrado es una lista de nombres, no un juego de
+  llaves. El código existe en un solo lugar, el mensaje que mandó el dueño.
+
+Y un código desconocido y uno vencido dan **la misma respuesta**: distinguirlos dice si un
+string adivinado alguna vez existió, que es lo único que un adivinador aprende.
+
+Quién puede invitar sale gratis: la ruta cuelga del mount del board, así que el `Policy` que ya
+existe la protege — el derecho a invitar es el derecho a escribir, y ésa es la credencial que ya
+está en `remote.json`. Un board **ligado a un repo** no necesita nada de esto: el push access ya
+es la invitación, y se revoca cuando se revoca el repo.
+
+### Un rechazo llegaba en blanco, y el worker adivinaba
+
+`taskops tasks reject` exige `-m` desde que existe, y su propio docstring dice por qué: *"una
+rechazada sin hallazgos es una card devuelta sin nada sobre qué actuar: el worker lee «no
+alcanza», adivina, y la card da dos vueltas al pedo"*.
+
+**Esa regla vivía en argparse.** Valía para una persona en una terminal y no para el verifier,
+que es un agente llamando `taskops_update status=ready` por MCP — donde el comentario nunca fue
+obligatorio. Reproducido: por CLI el comentario queda en el thread; por MCP la card vuelve al
+worker con cero findings y el motor la acepta.
+
+El guard se mudó a `engine/machine.py`, que es la única casa de la máquina de estados: `review →
+ready` ahora refuta sin texto (y un espacio en blanco no cuenta), en los tres transports. Las
+otras flechas a `ready` — `claimed → ready`, `blocked → ready` — siguen sin guard a propósito:
+ésas son *me rindo*, y rendirse nunca debe ser más difícil que abandonar.
+
+`Facts` recibe `comment` como campo propio en vez de reusar `justification`. Hoy son el mismo
+string en todos los call sites, y siguen siendo dos parámetros: uno es "el razonamiento que
+gana un cierre `no_code`", el otro "los hallazgos que un rechazo debe llevar". Pasar uno por el
+otro se lee como coincidencia, y el día que alguno crezca una regla propia, la coincidencia es
+lo que nadie notaría.
+
+### `parent: 0` se descartaba en silencio, y con eso no había checklists
+
+`after` acepta el índice de una entrada anterior del mismo `plan` — está documentado, porque un
+modelo con una dependencia escribe `after: 0` casi tan seguido como `after: [0]`. **`parent` no,
+y no protestaba**: `field.optional` devuelve `None` para cualquier cosa que no sea string, así
+que un `0` desaparecía y la llamada contestaba `# planned 3 task(s)` sobre un árbol que no
+existía. Mismo `plan`, dos campos, dos convenciones, y la que no seguía la convención se callaba.
+
+Ésa es la forma cara de estar mal: el board se lee decomposado, la épica no tiene hijos que
+contar, y cierra sobre trabajo que nadie hizo.
+
+- **`parent` acepta índice o id**, igual que `after`. Los ids se **acuñan antes del primer
+  insert** — es lo único que lo hace posible: el parent viaja en el evento `created`, y arreglarlo
+  en una segunda pasada dejaría el log describiendo un árbol que el board no tiene.
+- **Un árbol de tres niveles entra en UNA llamada.** La profundidad no está caseada en ningún
+  lado; sale de resolver contra ids que ya existen.
+- **Todo error se refuta, nada se descarta**: índice fuera de rango, id que nadie conoce,
+  `parent: true` (que por `True == 1` habría adoptado la primera card), y una card que es su
+  propio padre — una épica que se contiene a sí misma no cierra nunca, porque siempre es su
+  propio subtask abierto.
+- `_after.py` es `_refs.py`: el resolvedor es uno solo para los dos campos, que es lo que hace
+  imposible reinventar una segunda convención.
+
+### Un hijo no sabía de qué era parte
+
+La otra dirección del árbol no existía. El padre lista a sus hijos desde siempre; **el hijo no
+nombraba a nadie** — ni en su card, ni en el brief que escribe `dispatch`, que tampoco menciona
+la épica. Un worker adentro de un plan de tres niveles no podía enterarse de para qué era la
+cosa que estaba construyendo, y un spec leído sin eso es cómo un subtask se resuelve
+correctamente para el problema equivocado.
+
+`TaskView` trae `epic` **resuelto**, no un id: `task.parent` siempre viajó en el payload y es un
+hex, que no es algo que nadie pueda leer. Se renderiza primero, arriba de `Waiting on`, en la
+card y en la UI.
+
+### `taskops-lead`: el nivel del medio, para que una épica la terminen otros
+
+Ni el worker ni el verifier podían despachar ni spawnear, así que "una card con checklist" no
+tenía a quién dársele entera. Hay un cuarto especialista:
+
+```
+tu sesión ──▶ taskops-lead   (la épica)
+                ├──▶ taskops-worker   (subtask 1)
+                ├──▶ taskops-worker   (subtask 2)
+                └──▶ taskops-worker   (subtask 3)
+```
+
+**El árbol es de tres niveles y no puede ser más profundo**, y eso es una propiedad de las listas
+de tools y no una regla que alguien tenga que recordar: el worker no tiene con qué spawnear. El
+lead **no tiene `Edit` ni `Write`**, por la misma razón que el orquestador no los tiene: un agente
+que puede despachar e implementar termina implementando, y el plan deja de mantenerse justo
+cuando el trabajo se pone interesante. El motor lo respalda — una épica no llega a `done` con un
+hijo abierto.
+
+### `taskops board create`: empezar un board sin entrar nunca al servidor
+
+Arrancar un board de equipo pedía `ssh` a la caja, `taskops serve init`, copiar un token
+minteado de la salida y pegarlo en un chat. Los cuatro pasos son hábitos que nadie quiere:
+**nadie hace `ssh github.com` para crear un repo**, y un link con un secreto adentro es un
+secreto en el scrollback de todos.
+
+- **`taskops board create`** (comando 22, con `list · view · access`) lee el checkout donde
+  estás parado en vez de interrogarte: el repo sale de `origin`, el nombre del repo, el
+  servidor de tu login. Crea, linkea, configura el remote, te deja con sesión y migra lo que el
+  proyecto ya tenía local — una llamada.
+- **La autorización es la misma pregunta que ya hace el login, un paso antes**: *podés crear un
+  board para un repo al que ya podés pushear*. No se concede nada que GitHub no hubiera
+  concedido primero, y el board queda atado al nacer a algo que demostrablemente controlás.
+  El orden importa y hay test: se le pregunta a GitHub **antes** de escribir, así un rechazo no
+  deja ni directorio, ni store, ni token minteado.
+- **`taskops serve --no-create`** cierra el registro remoto, y `--readonly` ya lo cierra: un
+  servidor que rechaza toda escritura no tiene por qué mintear un directorio.
+- **`.taskops/board.json`**, commiteado y sin secreto: la dirección del board viaja con el
+  clon, así que **`taskops join` no lleva URL**. Es el `.git/config` del board — la credencial
+  es una sesión en el home, y el token de máquina sigue en `remote.json`, que el bloque de
+  gitignore guarda por nombre. Hay un test de que ese archivo no quede ignorado, porque el
+  mecanismo entero descansa en que el bloque liste rutas y no `.taskops/*`.
+- **`taskops board access`** responde quién puede entrar imprimiendo los comandos de `gh`.
+  **No existe `board access add` y es a propósito**: una lista de usuarios acá sería una copia
+  de los colaboradores del repo, y la copia es justo lo que queda vieja el día que alguien
+  pierde el acceso.
+- `serve init` sigue, para un board **sin** repo de GitHub y para CI. Dejó de ser la puerta de
+  entrada, y su salida ahora sugiere linkearlo en vez de terminar en un `?token=`.
+
+**Y el link viaja en `/api/projects`**, porque el cliente no puede saberlo: vive en el
+servidor, y un board se liga rutinariamente a un repo que **no** es el `origin` del checkout —
+que es exactamente cómo un proyecto alojado fuera de GitHub consigue una lista de accesos de
+verdad (un repo vacío que existe sólo para ser el ACL). Leyéndolo del remote local,
+`taskops board access` contestaba "not linked to a GitHub repository" sobre un board que sí lo
+estaba: en una pregunta sobre quién puede entrar, la peor respuesta equivocada posible.
+
+**Tres bugs que encontraron los tests nuevos, no yo:**
+
+- `join` sin token decidía "¿puedo pullear?" y "¿necesita login?" mirando sólo el token, así que
+  un compañero **ya logueado** era mandado a loguearse justo después de haber entrado — y su
+  cache quedaba vacía porque el primer pull se salteaba. Lo caza el arnés de topología real.
+- El rechazo de `join` sin sesión venía de `add_remote`, cuya frase está escrita para alguien
+  configurando un remote a mano: decía "run `taskops login <server-url>`" sin nombrar cuál, y
+  la adivinanza obvia — la URL del board recién tipeada — es exactamente la que login rechaza.
+
+`NAME` y `TOKEN_FILE` bajaron a `contracts/hosting.py`, y provisionar un board es
+`usecases/provision.py`: vivía en un comando del CLI, y un servidor no puede llamar a eso.
+
+### El default del reviewer se muda: de prosa a una policy validada
+
+0.3.0 puso el default del proyecto adentro de una decisión de contexto
+(`taskops context decision "reviewer: taskops-verifier"`). Era el lugar equivocado, y la razón
+no es de gusto: **una decisión es prosa para que el modelo la pondere, así que no puede refutar
+nada.** Un especialista mal escrito no matcheaba, degradaba a "nadie nombrado", y todas las
+cards salían sin reviewer — en silencio, indistinguible de nunca haberlo dicho. Y la primera
+vez que alguien siguió la regla de este proyecto de que cada decisión lleve su porqué, escribió
+`reviewer: peer — nadie firma lo suyo` y apagó la feature entera, porque la cola se leía como
+el nombre.
+
+- **`taskops policy` es el verbo nuevo** (comando 21). `policy reviewer peer` setea,
+  `policy reviewer` lee, `policy reviewer none` apaga, `policy show` lista todo. El valor pasa
+  por el MISMO validador que el campo de la card, así que un typo se refuta al escribir,
+  nombrando los especialistas que el proyecto sí tiene.
+- **Es un evento** (`kind: policy`, bajo el centinela `project`), no un archivo de config: viaja
+  por `git pull`, tiene id de contenido, guarda su historia, y sobrevive a `rm db.sqlite`. Un
+  ajuste que viva sólo en el cache es un ajuste sobre el que dos clones discrepan — hay un test
+  de costura que lo camina por el log y un cache reconstruido.
+- **`context decision "reviewer: …"` ahora se REFUTA**, nombrando el verbo nuevo. Simplemente
+  dejar de leerlo habría sido el mismo silencio otra vez: la frase seguiría grabándose,
+  renderizándose y sin hacer nada.
+- **Se sigue leyendo al CREAR y estampando en la card.** El guard lee la card, nunca la policy,
+  así que cambiarla hoy no reescribe quién podía cerrar lo planificado la semana pasada, ni
+  arrastra de vuelta a una card que dijo `--reviewer none`.
+- `transports/http/_verbs.py` se partió en la LISTA y sus adaptadores (`_verbargs.py`): estaba
+  en el presupuesto de módulo y no entraba un verbo más. Una tabla a la que no se le puede
+  agregar una fila dejó de describir la superficie.
+
+### Un verbo que devolvía una lista se perdía entero en el cable
+
+Lo encontró el test de costura del punto anterior, no la suite: `policy_show` funcionaba en un
+store y volvía vacío entre dos clones. La causa no estaba en la policy.
+
+`_wirereply.decode` devuelve `{}` para cualquier JSON que **no sea un objeto** — a propósito, un
+nginx adelante contesta 502 en HTML y el lector quiere el status, no un traceback del parser. El
+costo es que un verbo que contesta un ARRAY pelado se decodifica a nada, sin error en ningún
+lado. Tres lo hacían:
+
+- **`search`**: en cualquier board con remote, buscar devolvía cero tasks. Silencioso.
+- **`context_history`**: `taskops context log` vacío contra un board remoto.
+- **`policy_show`**: recién nacido y ya roto.
+
+Los tres van envueltos en un objeto (`{"tasks": …}`, `{"facts": …}`, `{"policies": …}`) y el
+cliente los desenvuelve. La regla está escrita en `_verbs.py` y **pinada**: un test recorre los
+verbos de lectura por la puerta real y falla si alguno contesta un array. Las tres instancias
+pasaban toda la suite porque todos los tests corrían un store.
+
 ## 0.3.0 — un equipo, no una fila: la review se rutea a UNA persona y el trabajo llega al trunk
 
 0.2.0 hizo que dos agentes no pudieran agarrar la misma card. Esta versión hace que dos

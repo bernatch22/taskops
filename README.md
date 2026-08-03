@@ -35,11 +35,21 @@ pip install taskops-cli            # the command, the import and the MCP module
                                    # are all `taskops` — only the PyPI name differs
 
 cd your-repo
-taskops init                       # creates .taskops/, installs the git hooks
-claude mcp add taskops -- python3 -m taskops.transports.mcp
+taskops init                       # everything below, in one command
 ```
 
-For the Claude Code hooks and the `/taskops:*` skills, install the plugin from `plugin/`. `taskops init` is safe to re-run — re-running is how you repair a fresh clone, since `.git/hooks` is never tracked.
+`init` writes `.taskops/`, the gitignore block, the git hooks, `.mcp.json` and
+`.claude/settings.local.json` — so the MCP server, the five Claude Code hooks and the status
+line are wired without you typing any of them. **Do not add the MCP server by hand.** The entry
+`init` writes names an ABSOLUTE interpreter, and a `claude mcp add … python3 …` typed into a
+shell records whatever `python3` means in *that* shell — which is not what a GUI-launched
+session resolves, and the failure is an MCP server that silently does not start.
+
+Every file it touches is merged, never overwritten: a hook, an MCP server or a `statusLine` you
+configured yourself is left exactly as you wrote it. `taskops init` is safe to re-run — and
+re-running is how you repair a fresh clone, since `.git/hooks` is never tracked.
+
+For the `/taskops:*` skills and the agent definitions, install the plugin from `plugin/`.
 
 ## Quickstart
 
@@ -63,64 +73,239 @@ taskops ui        # the live board → http://127.0.0.1:2140
 
 ## The CLI — for people
 
-Twenty commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
+Twenty-three commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
 
-| Command | What it does |
+Grouped by what they are FOR, which is the only grouping that helps: the board, the standing
+facts, git, and the server. Every command and every subcommand is here.
+
+**The board — what you read and change**
+
+| | |
 |---|---|
-| `taskops init` | Create `.taskops/`, install the git hooks, write the agent guide. |
-| `taskops join` | Join somebody's board from a fresh clone: init, hooks, MCP, remote and first pull, from one pasted URL. |
-| `taskops attention` | **What the board is waiting for**, grouped by the move each card needs. `--wait` blocks until that changes. |
-| `taskops status` | The `git status` of a project: what is open, who holds what, what is unwritten, what is unpushed. |
-| `taskops ui` | The live web interface: board, activity timeline, reports. |
-| `taskops open` | Open this project's board — or all your boards — in a browser, credential included. |
-| `taskops tasks` | List, read, create, edit and close tasks. |
-| `taskops context` | The standing facts: the objective, the invariants, the decisions. |
-| `taskops report` | Board, standup, a written dossier of a day/range/everything — and `sweep`. |
-| `taskops schedule` | Write the Claude Code scheduled task that keeps reports current. |
-| `taskops recover` | Release cards held by workers that went silent. |
-| `taskops land` | Merge a done card's branch into the trunk — the retry for one that did not land on approval. |
-| `taskops publish` | Push every `tk/` branch to origin: the repair for work stranded on one machine. |
-| `taskops setup` | Wire this project's MCP servers, and with `--channel` the opt-in board channel. |
-| `taskops sync` | Reconcile with the committed event log (the git path). |
-| `taskops serve` | Host many projects' boards on one port, one token each. |
-| `taskops login` | Sign in to a server with your GitHub account; the remote configures itself. |
-| `taskops remote` | Point this project at a server. |
-| `taskops push` / `pull` | Exchange events and reports with the server. |
+| `taskops attention [--wait] [--every N]` | **What the board is waiting for**, grouped by the move each card needs. The one read worth making every turn. `--wait` blocks until that changes. |
+| `taskops status [--fetch] [--idle-days N]` | The `git status` of a project, in one screen: what is open, who holds what, what is unwritten, what is unpushed. |
+| `taskops statusline` | The row Claude Code paints at the bottom of a session. Not for typing — `taskops init` wires it into `.claude/settings.local.json`, and it prints what you are holding, what the board wants, and whether that is the truth or a cache. |
+| `taskops tasks …` | `list · show · add · plan · edit · done · release · reject · cancel · log · search`. `edit` takes `--title --spec --priority --reviewer --acceptance` — the last one semicolon-separated, because an EARS line is a sentence with commas in it. |
+| `taskops recover [--force] [--grace S]` | Release cards held by workers that went silent. |
+| `taskops ui [--port] [--host] [--token] [--readonly]` | The live web interface: board, activity, reports, and the standing context. Records where it bound in `.taskops/ui.json`, so anything else can find it. |
+| `taskops open [--projects] [--print]` | This board — or all of yours — in a browser, credential included. In a project with **no** server it starts a local `ui` and opens that: the question is the same either way. |
+| `taskops report …` | `board · standup · day · range · all · fleet · sweep` |
+| `taskops schedule {install\|status}` | The Claude Code scheduled task that keeps reports current. |
+
+**What the project has already decided**
+
+| | |
+|---|---|
+| `taskops context …` | `show · objective · invariant · decision · log · retire` — **prose a worker weighs** |
+| `taskops policy {show\|reviewer} [value]` | **Values the engine obeys**, validated when written |
+
+**Setting up, and the team**
+
+| | |
+|---|---|
+| `taskops init [--no-hooks]` | The whole wiring: `.taskops/`, the gitignore block, the git hooks, `.mcp.json`, `.claude/settings.local.json` (five hooks + the status line) and the four specialists in `.claude/agents/`. Merges, never overwrites. Safe to re-run — that is how you repair a fresh clone. |
+| `taskops join [<url>]` | Join this repo's board: init, hooks, MCP, remote and first pull. **No URL needed** — the clone carries it. |
+| `taskops board …` | `create · list · view · access · invite` |
+| `taskops login <url> [--logout] [--show]` | Sign in to a server with your GitHub account. |
+| `taskops setup [--channel] [--print] [--remove]` | Wire this project's MCP servers. `init` already does it; this is the repair. |
+
+**Git — the CODE, never the board**
+
+| | |
+|---|---|
+| `taskops publish` | Push every `tk/` branch to origin, so a reviewer can see the diff. |
+| `taskops land <task>` | Merge a done card's branch into the trunk. |
+| `taskops sync` | The board **through git**, for a project with no server: import, replay, unblock, export. |
+
+**The server**
+
+| | |
+|---|---|
+| `taskops serve [--host] [--port] [--readonly] [--no-create] [--rate-limit]` | Many boards on one port. |
+| `taskops serve init <name>` · `serve link <name> --github owner/repo` | A board made ON the box — for one with no GitHub repository behind it. |
+| `taskops remote [add <url> [--token t] \| remove]` | The server this project syncs with. `board create` and `join` set it for you. |
+| `taskops push [--force]` · `taskops pull` | The report FILES, and a pre-remote board's history. **Not** how a remote board syncs. |
+
+> **With a server the two never collide, and it is not luck.** A clone accepts a relayed event
+> already marked exported, so `sync` has nothing to send and `.taskops/events.jsonl` stops
+> growing the moment a remote is configured — measured with two clones working and both running
+> `sync`: the server reached 4 events, both local logs stayed at 1, and `git status` was clean
+> in both. The file freezes as the pre-remote history and git has nothing left to merge.
+>
+> **The board never travels through GitHub.** Two channels that never touch: git carries the
+> CODE (`publish`, `land`), and the board lives either in `.taskops/events.jsonl` — committed,
+> the no-server path, which is what `sync` reconciles — or on a server, where every write goes
+> as it happens and there is nothing to send. See [What synchronises when](#what-synchronises-when--and-why-you-cannot-collide).
 
 
 ### Working with tasks
 
 ```sh
-taskops tasks                                  # open tasks; a finished project lists its closed ones
-taskops tasks show tk-4f2a9c                   # one card in full: spec, thread, commits, dependencies
+taskops tasks                                  # open tasks  (`taskops tasks list` spelled out)
+taskops tasks --all --status review            # closed ones too, or one column
+taskops tasks show tk-4f2a9c                   # one card in full: what it is PART OF, its spec,
+                                               #   subtasks, what it blocks, the thread, the commits
+taskops tasks log tk-4f2a9c [--limit 50]       # the agent's own conversation while working it
+taskops tasks search "refresh"
+
 taskops tasks add "Fix the timeout" --spec "DONE = the retry test passes" --files api/client.py
 taskops tasks add "Rename the column" --reviewer human   # a person closes this one; no agent may
-taskops tasks edit tk-4f2a9c --priority 0      # title, spec, priority and reviewer stay correctable
-taskops tasks done tk-4f2a9c -m "landed; expiry is a column, not a job"
-taskops tasks release tk-4f2a9c -m "out of depth — the parser needs someone who knows the grammar"
-taskops tasks search "refresh"
+taskops tasks add "Ship the parser" --after tk-4f2a9c --priority 0 --label core
+taskops tasks edit tk-4f2a9c --priority 0 --spec "…" --title "…" --reviewer peer
 ```
 
-`tasks done` goes through the same guard an agent faces: no commit bound, no close.
+A whole tree in ONE call — `parent` is what a card is PART OF, `after` is what must finish
+first, and both take an existing id **or the 0-based index of an earlier entry in the same
+list**:
+
+```sh
+taskops tasks plan - <<'JSON'
+[{"title": "EPIC: the importer", "spec": "a CSV goes in, every row is stored",
+  "acceptance": ["WHEN a 3-row CSV is imported THE SYSTEM SHALL store 3 rows"]},
+ {"title": "the reader",    "spec": "read in chunks",        "parent": 0, "files": "src/read.py"},
+ {"title": "open the file", "spec": "encoding is explicit",  "parent": 1},
+ {"title": "iterate lazily","spec": "yield per line",        "parent": 1},
+ {"title": "the validator", "spec": "refuse a short row",    "parent": 0, "after": [1]}]
+JSON
+```
+
+An epic cannot reach `done` while a child of it is open — that refusal is what makes a
+checklist mean something.
+
+**Closing is yours.** A card in `ready` cannot go straight to `done`: the agent claims it,
+works it and leaves it in `review`, and you decide.
+
+```sh
+taskops tasks done    tk-4f2a9c -m "landed; expiry is a column, not a job"
+taskops tasks done    tk-4f2a9c --no-code -m "a decision, not a diff" --evidence "criterion 1: …"
+taskops tasks reject  tk-4f2a9c -m "FAILS: the empty case raises — pytest -k empty"
+taskops tasks release tk-4f2a9c -m "out of depth — the parser needs someone who knows the grammar"
+taskops tasks cancel  tk-4f2a9c -m "superseded by tk-8b31d0"
+```
+
+`tasks done` goes through the same guard an agent faces: no commit bound, no close. And
+`reject` demands its findings — a card bounced with nothing to act on goes round twice.
+
+### What this project has already decided
+
+Two things, and the split is the point: a **decision** is prose a worker weighs, a **policy** is
+a value the engine obeys and refuses to be wrong about.
+
+```sh
+taskops context objective "ship the importer" --horizon 2026-08-20
+taskops context invariant "no dependencies outside the stdlib"
+taskops context decision  "sqlite, not postgres — one file, zero setup" --labels db --files src/db.py
+
+taskops context objective "the parser, no regex" --mine --horizon 2026-08-08   # YOURS
+taskops context note      "I run pytest -x, not the whole suite" --mine
+
+taskops context                       # what is in force  (`taskops context show` spelled out)
+taskops context --mine                # …your page, rather than the overview
+taskops context log                   # …and what we used to believe, retired ones marked `~`
+taskops context retire 0829cfb9       # withdraw one. The eight characters `show` prints are enough
+taskops context --task tk-4f2a9c      # the SLICE that card's worker receives
+```
+
+**Scope has two dimensions, and one rule each.** `--labels` / `--files` narrow by SUBJECT;
+`--owner` (or `--mine`) narrows by PERSON: a fact somebody stated for themselves reaches their
+sessions and nobody else's.
+
+| | how many | who receives it |
+|---|---|---|
+| `objective` | **one per owner** — the project's, and one each | the project's, plus your own |
+| `invariant` | as many as you like | **everybody, always** — it carries no subject scope on purpose |
+| `decision` | as many as you like | cards sharing its `--labels` / `--files` |
+| `note` | as many as you like | standing, and neither a goal nor a rule. Usually somebody's own |
+
+So a team of three reads this, and a worker reads two of those objectives — never four:
+
+```
+$ taskops context show                      ← the overview: who is on what
+
+# objective
+· 57682fb0  ship the importer                     by 2026-08-20
+  ana:   · 761f604b  the parser, no regex          by 2026-08-08
+  juan:  · c8731030  the migration to sqlite       by 2026-08-12
+  mirna: · b285aa48  the reports, narrated
+
+# invariants
+· e443c559  no dependencies outside the stdlib
+```
+
+```
+                                            ← what ana's worker is INJECTED with
+# objective
+· 57682fb0  ship the importer                     by 2026-08-20
+# yours (ana)
+· 761f604b  the parser, no regex                  by 2026-08-08
+# invariants
+· e443c559  no dependencies outside the stdlib
+# decisions
+· c9d1fffe  the parser goes without regex  [parser]
+```
+
+**A slice grows by ONE, whatever the size of the team**, and that is why `owner` is a filter
+rather than a label: past ~150-200 standing instructions compliance decays, so a page that grew
+with the team would make every agent slightly worse each time somebody joined. Juan does not see
+ana's objective, ana's note, or the `[db]` decision.
+
+```sh
+taskops policy reviewer peer          # what every NEW card is created with
+taskops policy reviewer               # read it
+taskops policy reviewer none          # turn it off
+taskops policy show
+```
+
+> Working alone, do **not** set `reviewer peer`: the only person allowed to close is the author,
+> so every card deadlocks. It is for a team.
 
 ### Reports
 
 Every report is a **projection of the event log** — generated, so it cannot be out of date and cannot flatter anyone.
 
 ```sh
-taskops report                      # the board
+taskops report                      # the board  (`taskops report board` spelled out)
+taskops report board
+taskops report fleet                # every worker: what it holds, how fresh its lease is
 taskops report standup --since 24h  # what changed, per actor, and what needs a human
 taskops report day                  # one calendar day in full: what closed, with every
                                     #   commit's diff size, what opened, the whole conversation
 taskops report range --last 7d      # a week, grouped by day
+taskops report range --from 2026-07-01 --to 2026-07-31
 taskops report all                  # the entire project, from the first event
+taskops report sweep [--limit N] [--push]   # narrate every ENDED day that has none yet
+taskops report day --write --force  # persist the dossier without calling a model
 ```
+
+`sweep` **pushes on its own when the project has a remote**, which is the only way an
+unattended narration reaches anybody: neither trigger passes a flag, so a hosted board used to
+get its prose written to somebody's laptop and left there. `--no-push` writes and sends nothing.
 
 Add `--digest` and Claude reads the dossier and writes the narration — what was asked versus what was delivered, card by card, decisions, surprises, and what is still owed. It streams into your terminal as it is written, uses your existing Claude Code login (never an API key), and lands in `.taskops/reports/<label>.md`, committed like source. The facts are written before the model is called, so a failed narration never costs the record.
 
 ```sh
 taskops report day --digest         # yesterday, explained
 taskops report all --digest         # the whole project, as a document you read instead of the git log
+```
+
+### The board on a server
+
+```sh
+taskops board create                       # infers name + repo from `origin`; --server the first time
+taskops board create --github you/acl-repo --name probe    # code elsewhere, access list on GitHub
+taskops board list
+taskops board view --web
+taskops board access                       # who can get in, and the `gh` lines that change it
+taskops board invite ana                   # a one-use code, for a board with no GitHub behind it
+taskops board invite --withdraw ana
+
+taskops join                               # the teammate: no URL, the clone carries it
+taskops join "https://server/probe?invite=…"
+taskops login https://boards.example.com
+
+taskops remote                             # what this project syncs with, and how far
+taskops remote add https://server/probe --token <t>     # by hand; `board create` does it for you
+taskops remote remove                      # forget the server AND its credential
 ```
 
 ### Running a fleet
@@ -147,7 +332,7 @@ Nine tools. The `inputSchema` of each is generated from its typed contract, so a
 | `taskops_update` | Progress, a comment, a close, a handoff — and `mentions`, which is how agents message each other. |
 | `taskops_ask` | One task in full, or free-text search across titles, specs and comments. |
 | `taskops_capture` | ONE card for work nobody planned — created *and* claimed, so a refused commit is one call from allowed. |
-| `taskops_context` | The project's standing objective, invariants and settled decisions — or the slice of them that applies to ONE card. |
+| `taskops_context` | The standing objective, invariants and decisions — the whole project's, or the slice that applies to ONE card. The session that plans can also **state** one (`state` + `text`) or `retire` one; a worker is refused, because those are what it is judged against. |
 | `taskops_plan` | A whole decomposition in one call: tasks, tree, dependencies. |
 | `taskops_dispatch` | Prepare worker briefs — assign cards, create worktrees. The caller spawns its own sub-agents. |
 | `taskops_recover` | Hand back the cards of workers that died. |
@@ -181,7 +366,7 @@ taskops_next
   **agent:ana/api-1** on tk-8b31d0 (3m ago): careful with token.py
 
   ### ⚠ Also touching these files
-  - tk-8b31d0 (in_progress, agent:ana/api-1) — Issue tokens
+  - tk-8b31d0 (claimed, agent:ana/api-1) — Issue tokens
   _Message them before editing shared files, not after the merge._
 ```
 
@@ -233,18 +418,35 @@ paid for most often, and it is worth stating before any of the detail:
 Every hook below exists because the same thing had been written in a prompt first, and a real
 session had forgotten it by turn forty.
 
-### The agents — three files, and one role that is not a file
+### The agents — four files, and one role that is not a file
 
-Installing the plugin gives you three sub-agents. They are **data**: a markdown file each, with
+Installing the plugin gives you four sub-agents. They are **data**: a markdown file each, with
 name, description, tool list and model in the frontmatter, so a project can add its own without
 touching any Python.
 
 | | Tools it has | What it does |
 |---|---|---|
 | **your session** — the orchestrator | context, board, plan, dispatch — **no Edit, no Write** | Reads the context and the board, creates the cards that serve the objective with EARS criteria, hands work out, decides what moves. It plans and delegates, never implements. |
+| `taskops-lead` | ask, claim, update, **dispatch**, spawn — **no Edit, no Write** | One EPIC: dispatches its subtasks a worker each, spawns them, reads the board for what came back, hands the epic over when the children are done. |
 | `taskops-worker` | claim, ask, update, and the full edit surface | One card: claim → branch → work → commit → close **with evidence** for each criterion. Hands the card back with notes rather than sitting on it. |
 | `taskops-verifier` | ask, claim, update, Read, Bash — **no Write** | The adversary, on a cheap model. Reads the criteria and the diff and tries to demonstrate `done` is false. Claims the card first, which is what stops a second verifier starting. |
 | `taskops-fixer` | ask, update, Read, Bash | One merge conflict, resolved and landed. Spawned from what `attention` reports under `LAND`. It never reopens the card or rewrites what the card was for. |
+
+**The tree is three deep and cannot go deeper**, and that is a property of the tool lists above
+rather than a rule anybody has to keep: your session spawns a `taskops-lead`, the lead spawns
+`taskops-worker`s, and a worker has nothing to spawn with. A card whose shape is a CHECKLIST —
+subtasks under subtasks — is planned in one `taskops_plan` call and worked exactly that way:
+
+```
+your session ──▶ taskops-lead   (the epic)
+                   ├──▶ taskops-worker   (subtask 1)
+                   ├──▶ taskops-worker   (subtask 2)
+                   └──▶ taskops-worker   (subtask 3)
+```
+
+The lead has no `Edit` for the same reason the orchestrator does not: an agent that can both
+dispatch and implement eventually implements, and the plan stops being kept the moment the work
+gets interesting. The engine backs it up — an epic cannot reach `done` while a child is open.
 
 The orchestrator is the only one with no file, because it is not a sub-agent: **it is the
 session you are typing into.** That is not a naming choice, it is enforced by an event —
@@ -273,7 +475,8 @@ lacks the tool.
 
 | Hook | Who reads it | What it does |
 |---|---|---|
-| `SessionStart` | the main conversation, only | The opening screen: your role, the project's standing objective and decisions, **who else is on the board and what they hold**, and what is waiting on a decision. Also materialises the project's specialists into `.claude/agents/`. |
+| `SessionStart` | the main conversation, only | The opening screen: your role, the project's standing objective and decisions, **who else is on the board and what they hold**, and what is waiting on a decision. It also sets two things in motion without blocking: the daily sweep, and — for a project with no server — a local board, so the first line has an address to click. |
+| `SessionStart` | **and the person at the keyboard** | One coloured sentence in plain English — the only thing taskops ever prints to a terminal. See below. |
 | `PreToolUse` | the agent about to act | Sees a `git commit` before it runs and refuses one no lease covers — with a sentence that says how to get a card, not just "no". |
 | `PostToolUse` | the agent that just acted | Delivers the inbox. A session cannot be pushed to mid-turn, so a message addressed to an agent arrives on its **very next tool call** — seconds, for a working agent. |
 | `Stop` | the main conversation | Refuses to end a turn on a review this session opened and nobody picked up, and on cards it left unfinished. Twice, then it lets you go: an agent that has read the message twice will not act on a third copy, and a trapped session is worse than a stale board. |
@@ -282,6 +485,47 @@ lacks the tool.
 Two of those are the *only* reason the loop closes without anybody watching it. `SessionStart`
 is what makes a session know it is the orchestrator; `Stop` is what keeps a finished card from
 sitting in `review` for a week because the session that produced it ended politely.
+
+### The two things a PERSON sees
+
+Every field above goes to the model. `additionalContext` is wrapped in a system reminder the
+human never sees, and a hook's plain stdout is hidden too — so for a long time a session opened,
+the agent silently received the whole board, and the person watching could not tell taskops had
+run at all. Two surfaces fix that, and both are written for somebody who does not know the
+vocabulary:
+
+**The opening sentence** — `systemMessage`, the one hook field that reaches a terminal:
+
+```
+taskops is tracking this project with your team — the team is working towards ship the importer
+(by 08-20), and you are on the date parser. Right now: 5 ready to hand to an agent and 2 waiting
+for somebody to review. Since yesterday, you moved tk-ff2f62 to review and ana picked up tk-0a84e1.
+Board: https://taskops.example.com/probe/
+```
+
+One line, coloured, and it never grows with the board: people are capped at two and cards are
+counted per meaning, so forty cards and nine developers cost what three do. It says
+`on this machine only` when there is no server, because "5 ready to hand out" means something
+different on a board only you can see.
+
+**The status line** — the row above Claude Code's own footer badges, repainted on every update:
+
+```
+-- INSERT --  ·  ◐ tk-92c0aa the date parser  ·  4 to hand out, 2 to review  ·  probe (shared, cached)  ·  78% ctx
+```
+
+`taskops init` writes it into `.claude/settings.local.json`, and leaves a `statusLine` you
+already configured completely alone. Three things worth knowing about it:
+
+- It **never touches the network and never writes.** Claude Code re-runs a status line on a
+  300 ms debounce; an HTTP call on that cadence would be a request per keystroke-burst, and a
+  projection that wrote would make merely looking at the screen an event on an append-only log.
+- Because of that, on a shared board it says **`cached`**. Your teammate's claim lands in that
+  row on the next sync, not the instant they make it, and a bar that hid the difference would
+  promise a liveness it does not have.
+- It **cannot remove** `⏵⏵ bypass permissions on`. Claude Code renders a status line in its own
+  row *above* the built-in footer badges. What it can do is repeat `-- INSERT --`, which it does
+  when you use vim bindings — so the eye that goes looking for the mode finds the board too.
 
 ### The git hooks — five, and each one covers a path the others cannot see
 
@@ -441,11 +685,18 @@ That distinction is what makes the rest of this chapter short.
 ### A review is an assignment, not an announcement
 
 The default is that anybody may verify anybody's work. Turn that into peer review and one
-sentence changes everything:
+command changes everything:
 
 ```sh
-taskops context decision "reviewer: peer — nobody closes their own card"
+taskops policy reviewer peer
 ```
+
+A **policy**, not a context decision, and the difference is the point: a decision is prose for
+a model to weigh, so it cannot refuse anything. This was one for a while, parsed out of the
+text, and a misspelt specialist matched nothing, degraded to "nobody named", and left every
+card unreviewed — silently, and indistinguishable from never having stated it. A policy is a
+value the engine acts on, so it goes through the same validator the card's own field does and a
+typo is refused at the door. It is read when a card is CREATED and written onto the card.
 
 Now `done` is refused for the developer whose agents produced the work. Which raises the
 question the design turns on: **when a card enters `review`, who is it for?**
@@ -713,25 +964,155 @@ where `attention` reads and where the other developer looks.
 
 ### Through a server — when claims must be atomic across machines
 
+Somebody runs the server once, and after that **nobody logs into it again**:
+
 ```sh
-# somewhere reachable
-taskops serve init myproject --root ~/taskops-server    # prints the project token once
 taskops serve --root ~/taskops-server --host 0.0.0.0
-
-# each developer
-taskops remote add https://boards.example.com/myproject --token <token>
-taskops push        # send your events up, take theirs down
-taskops pull
 ```
 
-**Or nobody hands out tokens at all.** If the server was started with GitHub auth, a new
-teammate signs in with the account they already have and the remote configures itself:
+Everything else happens from a laptop, and there are **two ways in, neither of which needs you
+to ssh anywhere**. Which one you want depends on a single question: *is this project on GitHub?*
+
+| | with GitHub | without |
+|---|---|---|
+| you type | `taskops board create` | `taskops remote add <server>` then `taskops board create <name>` |
+| who may create it | anyone who can push to the repo | anyone who can reach the server (`--no-create` shuts it) |
+| what comes back | a **session** — GitHub already said who you are | the board's **token**, into `.taskops/remote.json` |
+| how a teammate joins | `taskops join` — push access IS the invitation | `taskops board invite ana` → one code, one person |
+| revoking | remove them from the repo; effective next login | withdraw the code, or rotate the token |
+
+Neither is the fallback. A GitHub-linked board gets an access list that revokes itself, which is
+worth having; a tokenless board is what a project on a GitLab, a checkout with no origin, or a
+directory that is not in git at all actually needs, and that is most of them.
+
+#### Without GitHub — three commands
 
 ```sh
-taskops login https://boards.example.com     # takes your token from `gh auth token`
-taskops remote add https://boards.example.com/myproject    # no --token: it uses the session
-taskops push
+taskops remote add https://boards.example.com
+taskops board create test
+taskops board invite ana
 ```
+
+The first names the server and asks for nothing: there is no board yet, so there is nothing to
+authenticate to and no credential to do it with. The second creates it and writes the minted
+token into `.taskops/remote.json` — gitignored, `0600`, never printed twice. The third cuts a
+one-person, one-use code that expires in seven days:
+
+```
+invited ana to https://boards.example.com/test
+
+  send them this — it works ONCE, and expires in 7 days:
+      taskops join https://boards.example.com/test?invite=<code>
+```
+
+#### With GitHub
+
+Making a board is `gh repo create`'s shape — it reads the checkout you are standing in rather
+than interviewing you about it:
+
+```sh
+cd your-repo
+taskops board create --server https://boards.example.com
+```
+
+```
+created https://boards.example.com/your-repo
+  linked to you/your-repo — push access to that repo is the invitation
+  signed in as you
+  remote configured, 24 event(s) migrated
+
+  commit .taskops/board.json so your team needs no URL:
+    git add .taskops/board.json && git commit -m 'the board lives here'
+
+  then they run, in their own clone:
+    taskops join
+```
+
+The name came from `origin`, the repository it binds to came from `origin`, the session came
+back with it, and whatever the project had already recorded locally went up. **`--server` is
+needed only for the first board**: after that this machine is signed in and it is the default.
+
+The authorisation is the same question the login asks, one step earlier — *you may create a
+board for a repository you can already push to*. Nothing is granted that GitHub had not granted
+first, and the board is bound at birth to something you demonstrably control. A server that
+should not accept this starts with `--no-create`, and a `--readonly` one refuses it already.
+
+And the teammate, in a fresh clone of the same repository:
+
+```sh
+taskops join
+```
+
+No URL, no token, nothing pasted from a chat. `.taskops/board.json` is committed — it holds the
+address and nothing else, which is why it can be — so the clone already knows where its board
+is, exactly as `git clone` already knows its remote. If they are not signed in yet, the refusal
+names the one command that fixes it rather than answering `401`.
+
+### Invite somebody: `taskops board invite`
+
+For a board with **no GitHub repository behind it**, the owner mints a per-person code:
+
+```sh
+taskops board invite ana
+```
+
+```
+invited ana to https://boards.example.com/probe
+
+  send them this — it works ONCE, and expires in 7 days:
+      taskops join https://boards.example.com/probe?invite=45969642478202d5d60e0053cfb4
+
+  the board will record them as `dev:ana`. The code is stored only as a digest and
+  is never printed twice; inviting them again replaces it.
+```
+
+Ana runs that one line and is working: `join` inits the store, installs the git hooks, wires the
+MCP, redeems the invite into a session and fills the board. `taskops board invite --withdraw ana`
+takes a code back before it is spent.
+
+Four properties, each closing a way this shape leaks: **single use** (a code that works twice is
+a code that works forever, because it is in a chat log), **it expires** on the session's own
+week, **it names the invitee** so the board records `dev:ana` rather than "somebody with the
+link", and it is **stored hashed** — a leaked `invites.json` is a list of names, not a set of
+working keys.
+
+A board that IS linked to a repository does not need this: push access already is the
+invitation, and it revokes when the repository does.
+
+### The project is not on GitHub, and you still want a GitHub access list
+
+Self-hosted git, GitLab, a bare repo on a box, no remote at all — the code does not have to be
+on GitHub for the *board* to get GitHub's access model. Bind it to a repository you control that
+exists only to be the access list:
+
+```sh
+gh repo create you/proyecto-x-board --private       # empty; nobody ever pushes code to it
+cd proyecto-x                                       # origin is gitlab, or nothing
+taskops board create --server https://boards.example.com \
+                     --github you/proyecto-x-board --name proyecto-x
+```
+
+```
+created https://boards.example.com/proyecto-x
+  linked to you/proyecto-x-board — push access to that repo is the invitation
+```
+
+The code stays wherever it lives; the empty repository is the **ACL**. Adding somebody is
+`gh repo collaborator add them --permission push -R you/proyecto-x-board`, removing them is the
+mirror of it, and you get named people, real revocation and no string to pass around — none of
+which the token gives you. `taskops board access` reads the link from the server, so it answers
+correctly even though this checkout's `origin` is not GitHub.
+
+<details><summary>The token path, when even that is too much</summary>
+
+```sh
+taskops serve init myproject --root ~/taskops-server    # on the box; prints the token once
+taskops remote add https://boards.example.com/myproject --token <token>
+```
+
+Still the right answer for CI, and for a project that does not live on GitHub. It is no longer
+how a team starts.
+</details>
 
 `login` trades a GitHub token for a **session** — stored in `~/.taskops/sessions.json` at `0600`,
 outside every repository, scoped to that one server, expiring on its own in seven days. The
@@ -744,14 +1125,19 @@ Reports sync under a rule that refuses to destroy work: the narration is the one
 
 The token is the trust boundary for a MACHINE. It is minted by the server, stored at `0600`, covered by the ignore rules so it cannot reach git, and never printed twice.
 
-For PEOPLE there is no token to hand out. Link the project to its GitHub repository and the repository's push access becomes the board's:
+For PEOPLE there is no token to hand out, and no user list either. **The GitHub repository's push access IS the board's access**, which `board create` binds at birth (`taskops serve link` rebinds one that predates it).
+
+So granting somebody the board is not a taskops command at all:
 
 ```sh
-taskops serve link myproject --github owner/repo --root ~/taskops-server   # on the server
-taskops login https://boards.example.com                                   # each person
+gh repo collaborator add ana --permission push -R you/your-repo   # grant
+gh repo collaborator remove ana -R you/your-repo                  # revoke
+taskops board access                                              # what the rule is, and those two lines
 ```
 
-The server holds no GitHub credentials. The client sends the token `gh auth token` prints, the server asks GitHub with *that* token whether the account may push to the linked repo, and **discards it** — so GitHub is the collaborator list and is never copied here. What survives is a session, good for a week, that opens exactly the boards that answered yes. Contract in `docs/exchange.md`; the guide to hand a new teammate is [docs/remote-developers.md](docs/remote-developers.md).
+There is deliberately no `board access add`. A user list here would be a copy of the repository's collaborators, and a copy is exactly what goes stale the day somebody's access is revoked. `admin`, `maintain` and `write` get in; `triage` and `read` do not — the check is GitHub's own `permissions.push`.
+
+The server holds no GitHub credentials. The client sends the token `gh auth token` prints, the server asks GitHub with *that* token who it is (`/user`) and whether it may push to the linked repo, and **discards it** — the request carries no username, so there is nothing to forge. What survives is a session, good for a week, that opens exactly the boards that answered yes. One consequence worth knowing: revoking on GitHub closes the door on their **next login**, not their next request, so a lapsed member keeps access for up to seven days. Contract in `docs/exchange.md`; the guide to hand a new teammate is [docs/remote-developers.md](docs/remote-developers.md).
 
 Opening a locked board in a **browser** does not need the token in the URL: the board answers a navigation without a credential with an access screen — paste the credential once, it is kept in `localStorage`, and every later visit goes straight in. The screen names nothing about what it is locking. A `curl` or a `fetch` still gets the plain `401` JSON it can read, and a local `taskops ui` with no token never shows a screen at all.
 
@@ -765,18 +1151,18 @@ taskops open --print      # just the URL, for a terminal with no browser
 
 ### What synchronises when — and why you cannot collide
 
-Not everything travels at the same moment, and the split is deliberate: **the writes that could collide go over the wire immediately; the ones that cannot are batched.**
+Nothing travels later, and that is the whole design: **there is one store, and every write happens in it.**
 
 | | when | why |
 |---|---|---|
-| **claim** (`next`) and **close** (`update`) | **instantly, in the server's database** | two machines claiming one card must resolve *now*; there is no local copy to disagree with |
-| new cards, edits, comments | on the next `push` | a new card has an id nobody else can mint, so two people planning at once produce a union, never a conflict |
-| everyone else's work | on `push` (which also pulls) or `pull` | events are facts about the past; importing one twice is a no-op |
-| reports and narrations | on `push`/`pull`, newest stamp wins | equal-but-different is a `409`, never a silent overwrite |
+| **every write** — claims, closes, new cards, edits, comments, context, policy | **instantly, in the server's database** | two machines writing about one card must resolve *now*; there is no local copy left to disagree with |
+| everyone else's work | **on your very next call, whatever it is** | every routed call ends in a pull, so working is syncing |
+| what you read | **live from the server**, degrading to your cache with a warning on stderr | refusing to write offline keeps one truth; refusing to *read* offline would make the server a single point of failure for looking at your own board |
+| report **files** | on `push`/`pull`, newest stamp wins | they are files, not events; equal-but-different is a `409`, never a silent overwrite |
 
 A claim is a single `INSERT` on one primary key. That is the whole collision story: exactly one machine wins, the loser is told the card is taken and asks for the next one. **If the server is unreachable, a claim fails loudly** — it never quietly falls back to a local claim, because that fallback is precisely the collision the server exists to prevent.
 
-So the rhythm is: `taskops pull` when you sit down, `taskops push` when you stand up (or whenever you want your cards visible), and *nothing in between* — the part that had to be atomic already was.
+**So there is no rhythm to keep, and no push in it.** This section used to say new cards travelled on the next `push`; that was true before every verb moved behind `/api/rpc`, and it is not any more. Two things are left for `push`, and neither is the board: the **report files**, and the **one-time migration** of a project that already had local history before it had a remote.
 
 ---
 
@@ -791,15 +1177,47 @@ taskops schedule status      # what is on disk, and what is still missing
 
 **Honest limitation: we write the prompt, not the schedule.** Claude Code keeps a scheduled task's time, folder and model inside the app, so `schedule install` writes the file and then prints the one sentence to say to Claude — *"create a daily scheduled task at 00:05 named taskops-sweep that runs /taskops:sweep in \<this folder\>"*. Until you say it, nothing is scheduled. If Claude Code is not on this machine the command refuses instead of creating a config directory nothing will read.
 
-The **backup trigger needs no setup at all**: the plugin's `SessionStart` hook fires the sweep detached, so opening a session in the morning is what gets yesterday written up. It is bounded on purpose — at most one sweep per project per day (a stamp under `.taskops/`), nothing at all for a project with no history and no remote, silent on every failure, and `TASKOPS_NO_SWEEP=1` turns it off. It never delays a session: the child is spawned in its own process group and the hook returns in microseconds.
+The **backup trigger needs no setup at all**: the plugin's `SessionStart` hook fires the sweep detached, so opening a session in the morning is what gets yesterday written up. It is bounded on purpose — at most one sweep per project per day (a stamp under `.taskops/`), nothing at all for a project with no history and no remote, silent on every failure, and `TASKOPS_NO_SWEEP=1` turns it off (its sibling `TASKOPS_NO_UI=1` does the same for the local board). It never delays a session: the child is spawned in its own process group and the hook returns in microseconds.
 
 ## The web interface
 
 `taskops ui` serves a live board over the same contracts everything else uses. No polling from the browser — a WebSocket (with SSE fallback) pushes every change, and the green dot ticks on each event.
 
-- **Board** — kanban that moves by itself. Click a card for the spec, the thread, the dependency graph, the commits with their files, and a reply box that reaches agents' inboxes.
+**You never have to start it.** `taskops open` opens this project's board whichever kind of project it is: with a server, the address the team shares; without one, it starts a local `ui` and opens that. It used to refuse a project with no remote and name `taskops ui` instead — a command that *blocks*, in the terminal you were using for something else.
+
+```sh
+taskops open              # the board, either kind, credential included
+taskops open --print      # the URL instead, for a terminal with no browser
+taskops open --projects   # the server's page: every board you can reach
+```
+
+The `SessionStart` hook does the same thing for you, so the first line of a session always has somewhere to click — local or remote. Three details, each of which was a bug first:
+
+- the port comes from the OS (`--port 0`), so two projects open at once do not collide. Pinned at 2140, the second one failed inside a detached child: a URL that never answers and no error anywhere.
+- `taskops ui` writes where it bound to `.taskops/ui.json` (gitignored) **after** the bind, never before — a note written on intent advertises a port a bind error is about to leave dead.
+- a stale note is worse than none, so it is verified twice: the pid is alive **and** the port answers. A pid the kernel has since reused passes the first check on its own, and following it points a browser at whatever program now owns that port.
+
+`TASKOPS_NO_UI=1` turns the offer off — it stops taskops *starting* a board, never looking for one you started yourself.
+
+- **The standing context** — a strip under the header, on **every** screen, carrying the objective. It is the one thing here that is not about a moment, so it is not filed behind a tab: an objective behind a click is an objective nobody reads twice. It updates itself — write an invariant in your terminal and it appears without a reload.
+
+  Click it and the rest opens in a **modal with three tabs**, because there are three different questions and one scroll made you do the filtering:
+
+  | tab | answers |
+  |---|---|
+  | **Project** | what this project has decided — the objective, the invariants, the decisions, the notes |
+  | **Who is on what** | one block per developer: their own objective, and the facts they stated for themselves |
+  | **Policies** | what the ENGINE obeys — validated values, not prose, which is how a policy once ended up hidden inside a decision |
+
+  It replaced an inline expansion, and both halves of that were wrong once a real project used it: it pushed the board down — reference material shoving the work off the screen — and it laid facts out as one-line rows in a three-column grid. **An agent can state a paragraph**, and does; a fact is now a block whose text keeps the full width, wraps, and preserves its line breaks, with the scope and the id underneath. The modal is bounded and its body scrolls, so forty decisions do not produce a dialog taller than the screen.
+
+- **Board** — kanban that moves by itself. Click a card for what it is **part of**, its spec, its **subtasks**, the thread, the dependency graph, the commits with their files, and a reply box that reaches agents' inboxes. The `claimed` column is headed **"In progress"**, because that is what it means to somebody looking at the board — a person took the card and is on it. "Claimed" is the engine's word for the lease underneath, and a column heading is not the place to teach it.
 - **Activity** — the event log as a history: a filterable timeline, and a roll-up per actor ranked by tasks touched rather than noise made.
-- **Reports** — the daily dossiers, rendered. Generate a narration from the browser and **watch it being written**, streamed over the same socket.
+- **Reports** — the daily dossiers, rendered. Generate a narration from the browser and **watch it being written**, streamed over the same socket. Only where a `claude` is: a narration is a subprocess of the CLI somebody is logged into, so a board served from a box without one says so rather than failing on a socket nobody is watching.
+
+There is deliberately **no chat panel**. There was one, reaching "whichever session is running the channel" — which assumes exactly one is, and a shared board can have five, each on its own machine. A message about a card goes in that card's thread, on the card, where it is addressed and still findable in three weeks.
+
+**A server's front page** is a separate, deliberately tiny surface: visit the hostname and, once you are signed in, it lists every board that session opens — each with the repository behind it when there is one, and when it last moved. It lists **nothing** without a session, because naming the boards would hand every visitor the enumeration that the per-project bare 404 exists to deny. It has no bundle and no build step on purpose: this is the page that must still answer when something else is broken, so "when did this move" is the log's mtime — one `stat` per board — and not a query into a cache that might be the broken thing.
 
 The UI ships inside the wheel as a committed bundle — `pip install taskops-cli` serves the board with no Node toolchain anywhere.
 
@@ -807,6 +1225,7 @@ The UI ships inside the wheel as a committed bundle — `pip install taskops-cli
 
 | | |
 |---|---|
+| [docs/workflows.md](docs/workflows.md) | **Every flow, end to end**: starting a board, planning, the claim→review→close loop, landing, sharing, invites, the context, reports, and the two surfaces a person sees. The map — `USAGE.md` is the tutorial. |
 | [docs/orchestrator.md](docs/orchestrator.md) | Why the sweep replaced a notification feed, what routing fixed, and the four failures that only appeared with two real sessions running. |
 | [docs/remote-developers.md](docs/remote-developers.md) | The guide to hand a new teammate: getting in, the daily rhythm, what their agents do. |
 | [docs/agents.md](docs/agents.md) | Specialists a project defines, orchestration, sub-tasks and worktrees, who invokes whom. |

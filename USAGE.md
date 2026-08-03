@@ -26,7 +26,7 @@ Check it:
 ```
 
 ```
-0.2.0
+0.3.0
 ```
 
 **Put it on your PATH** so you can type `taskops` from any repository:
@@ -357,9 +357,12 @@ the same cards inside one sqlite.
 
 The code stays in git. What centralises is the **board**.
 
+Boards are normally made from a laptop with `taskops board create` (Part 4a) and nobody logs
+into this box at all. `serve init` is the other path, for a board with **no GitHub repository
+behind it** — a private experiment, or CI:
+
 ```sh
 taskops serve init axion --root ~/taskops-server
-taskops serve init otro  --root ~/taskops-server
 ```
 
 ```
@@ -368,17 +371,22 @@ token (shown ONCE, kept in /home/you/taskops-server/axion/token):
 
     d5bad97814a5e3211832f59c09a6b98b
 
+link it to a repository so your team needs no token at all:
+    taskops serve link axion --github <owner>/<repo>
+
 open the board at  http://<host>/axion/?token=d5bad97814a5e3211832f59c09a6b98b
 ```
 
 The token is minted by the box, written `0600`, and **printed exactly once** — re-running
 `serve init` says the project already exists and does not reprint it. Nothing can recover it; a
 lost token is re-minted by deleting the file and running `serve init` again. It never goes into
-git and never into a log.
+git and never into a log. A board that IS on GitHub should be linked instead: then access is
+push access to the repository and there is no string to hand anybody.
 
 ```sh
 taskops serve --root ~/taskops-server            # loopback
 taskops serve --root ~/taskops-server --host 0.0.0.0 --port 2160
+taskops serve --root ~/taskops-server --host 0.0.0.0 --no-create   # boards only from this box
 ```
 
 ```
@@ -501,33 +509,46 @@ anything.
 
 ### 4a — With a server
 
-One person runs `taskops ui` somewhere both machines can reach, and issues each developer a
-token. Then, on every machine:
+One person runs the server somewhere both machines can reach — and that is the last time
+anybody logs into it:
 
 ```sh
-taskops init
-taskops remote add https://taskops.example.com --token <your-token>
-taskops push
+taskops serve --root ~/taskops-server --host 0.0.0.0
 ```
 
-That is the whole setup — and if the server has GitHub auth turned on, it is even shorter:
-see **Entrar con GitHub** just below. From then on:
+Everything after that happens from a laptop. You, in the repository:
 
 ```sh
-# you, after an afternoon of work
-taskops push
+taskops board create --server https://taskops.example.com
 ```
+
+```
+created https://taskops.example.com/your-repo
+  linked to you/your-repo — push access to that repo is the invitation
+  signed in as you
+  remote configured, 24 event(s) migrated
+
+  commit .taskops/board.json so your team needs no URL:
+    git add .taskops/board.json && git commit -m 'the board lives here'
+```
+
+Do commit that file. It holds the board's ADDRESS and nothing else — the credential is a
+session in your home directory — and it is what makes the next step two words. Them, in their
+own clone of the same repository:
 
 ```sh
-# them, whenever they want to be current
-taskops pull
-taskops report board
+taskops join
 ```
 
-**`push` pulls too**, which git does not do and here it should: the round trip is one more
-request against a server you have just proved you can reach, and the alternative is two
-developers whose boards diverged this morning, each convinced they are current. `push` prints
-what moved in both directions.
+```
+joined https://taskops.example.com/your-repo
+  git hooks: post-commit, post-checkout, post-merge, pre-commit, prepare-commit-msg
+you are on the board — `taskops attention` says what it is waiting on
+```
+
+No URL, no token, nothing pasted from a chat. **`--server` is only needed for the first board**
+— after that the machine is signed in and it is the default. And there is no step after this:
+see the note at the end of Part 4a about `push` and `pull`, which a normal day never runs.
 
 **Agents on two machines cannot claim the same card.** This is the reason to run a server at
 all. Once a project has a remote, `taskops_next` and `taskops_update` — and `taskops claim`,
@@ -692,8 +713,9 @@ If the log ever looks wrong, the cache is disposable:
 rm .taskops/db.sqlite && taskops sync      # rebuilt from the log
 ```
 
-> This path converges at `git pull` speed. For seconds instead of pull-cycles, run a server and
-> use `taskops push`/`pull` — Part 4a.
+> This path converges at `git pull` speed. For a board that is never behind, run a server — and
+> then there is nothing to run at all, because every write goes there and every read comes from
+> there. Part 4a.
 
 ---
 
@@ -726,25 +748,55 @@ task, and a passer-by should not be able to post as an agent.
 
 ---
 
+## Where to go next
+
+This walked one story from nothing. [docs/workflows.md](docs/workflows.md) is the other shape of
+the same material — nine flows, each readable on its own, so you can open the one you are in
+rather than reading a tutorial to find it.
+
 ## Reference
 
 ### Commands
 
-`taskops --help` lists **twelve**, and twelve is all there is. What a person does:
+`taskops --help` lists **twenty-two**, and twenty-two is all there is. What a person does:
 
 ```
 taskops init [--no-hooks]                  create .taskops/, install the git hooks
+taskops board create [--server U] [--github owner/repo] [--name N]
+                                           make this repo's board on a server, from here
+taskops board [list|view [--web]|access]   yours, this one, and who can reach it
+taskops join [<url>]                       join this repo's board — no URL: the clone carries it
+taskops setup [--channel]                  wire this project's MCP servers
+
 taskops tasks …                            the task list (below)
-taskops report [board|standup|fleet] [--since 24h]
-taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
+taskops attention [--wait] [--every N]     what the board is waiting for, and the move each needs
+taskops status                             the git-status of a project, in one screen
 taskops recover [--apply]                  release cards held by silent workers
-taskops sync                               reconcile with the committed log
-taskops run [--yes] [--use-api-key]        run ready cards with headless Claude workers
+
+taskops context [show|objective|invariant|decision|log|retire]   prose a worker weighs
+taskops policy [show|reviewer] [<value>]   settings the ENGINE obeys, validated when written
+
+taskops report [board|standup|day|range|all|fleet|sweep] [--since 24h] [--digest]
+taskops schedule                           the Claude Code scheduled task for the reports
+taskops ui [--port 2140] [--host] [--token] [--readonly] [--rate-limit]
+taskops open                               this board — or all of yours — in a browser
+
+taskops sync                               reconcile with the committed log (the git path)
+taskops publish                            push every tk/ branch — the repair for stranded work
+taskops land <task>                        merge a done card's branch into the trunk
+
+taskops serve [--root] [--port] [--readonly] [--no-create]   many boards on one port
+taskops serve init <name> · serve link <name> --github owner/repo   the no-GitHub path
 taskops login <url> [--logout] [--show]    sign in with GitHub; the session serves every checkout
 taskops remote [add <url> [--token <t>] | remove]  the server this project syncs with
-taskops push [--force]                     send this board up, then take theirs
-taskops pull                               take the server's events and reports
+taskops push [--force]                     the report files, and a pre-remote board's history
+taskops pull                               the same, inbound
 ```
+
+**`push` and `pull` are not how a remote board syncs.** Every write executes in the server's
+store and every read comes from it, so nothing waits to be sent. What is left for these two is
+the report FILES — which are files, not events — and the one-time migration of a project that
+already had local history before it got a remote.
 
 `login` is the only one that touches nothing under `.taskops/` — a session belongs to the
 PERSON on this machine, so it lives in the home directory and serves every checkout at once,
@@ -795,7 +847,8 @@ who signs off:
 --reviewer human           a person reads the diff; NO agent may close it, whatever it committed
 --reviewer dev:ana         the same, and the refusal names Ana
 --reviewer taskops-verifier   a registered specialist closes it — spawn that one
-(omitted)                  the project's default, then today's rule: anyone but the agent
+--reviewer none            explicitly nobody, even where the project sets a default
+(omitted)                  the project's policy, then today's rule: anyone but the agent
                            that asked for the review
 ```
 
@@ -804,19 +857,31 @@ naming the ones it knows — a typo would otherwise be a card nothing can ever c
 nothing on the board saying why. `dev:<name>` and `agent:<dev>/<name>` are left free-form:
 they address people and ad-hoc workers who were never going to be in a registry.
 
-**The default is a project decision, so it is stated as one** rather than hardcoded:
+**The default is a project setting, and it has its own verb** rather than being hardcoded:
 
 ```sh
-taskops context decision "reviewer: taskops-verifier"
+taskops policy reviewer taskops-verifier   # what every new card is created with
+taskops policy reviewer                    # what is it set to
+taskops policy reviewer none               # turn it off
+taskops policy show                        # every setting in force
 ```
 
-It is read when a card is CREATED and written onto the card, so changing the decision today
-never rewrites who was allowed to close work planned last week. A card that names nobody, on a
-project that stated nothing, behaves exactly as every card did before this existed.
+It is read when a card is CREATED and written onto the card, so changing the policy today never
+rewrites who was allowed to close work planned last week. A card that names nobody, on a project
+that set nothing, behaves exactly as every card did before this existed.
+
+**It used to be a `context decision` and that was the bug.** The value was parsed out of free
+prose, and prose cannot refuse anything: `reviewer: tsetr` matched no specialist, degraded to
+"nobody named", and every card came out unreviewed in silence. Worse, the first person to follow
+this project's own rule that a decision should carry its reason wrote `reviewer: peer — nobody
+closes their own card` and turned the whole feature off, because the tail was read as the name.
+A policy is validated by the same function the card's field is, so neither can happen; and
+`context decision "reviewer: …"` is now REFUSED, naming this verb, because quietly ignoring it
+would be the same silence one more time.
 
 ### The thirteen commands that are gone
 
-`--help` once listed seven of twenty. The other thirteen were registered and hidden, which
+`--help` once listed seven of the twenty there were then. The other thirteen were hidden, which
 reads the same from the outside as absent and is not the same thing: they were still doors
 into the binary a person types, and both git and Claude Code came in through them.
 
@@ -837,10 +902,10 @@ reconciling by hand is a thing a person legitimately does.
 ### Statuses
 
 ```
-backlog ──▶ ready ──▶ claimed ──▶ in_progress ──▶ review ──▶ done
-              ▲          │            │              │
-              └──────────┴── released ┘              │
-                         └──── blocked ──────────────┘
+backlog ──▶ ready ──▶ claimed ──▶ review ──▶ done
+              ▲          │           │
+              └── released ┘         │
+              └──── blocked ─────────┘
 ```
 
 `done` is terminal. Reopening would make the log say a task finished twice; the honest record of
@@ -857,6 +922,9 @@ the task the easier move, and an abandoned task loses everything you learned.
 | `TASKOPS_ACTOR` | Who you are: `agent:<dev>/<name>` or `dev:<name>`. Otherwise resolved from git. |
 | `TASKOPS_SESSION` | The Claude Code session id. The plugin sets it. |
 | `TASKOPS_API_TOKEN` | Default `--token` for `taskops ui`. |
+| `TASKOPS_NO_UI=1` | Stops `SessionStart` starting a local board for a project with no server. It disables STARTING one, never looking for one you started yourself. |
+| `TASKOPS_NO_SWEEP=1` | Stops `SessionStart` launching the daily report sweep. |
+| `TASKOPS_CHANNEL=1` | Writes the board channel into `.mcp.json` on the next `init`. Off by default — see `plugin/channel/README.md`. |
 
 ### When something looks wrong
 
@@ -869,6 +937,8 @@ the task the easier move, and an abandoned task loses everything you learned.
 | `taskops guard`: *invalid choice* | The wiring left the CLI. It is `python3 -m taskops.transports.hooks commit`, and normally nothing types it by hand. |
 | The board says `ui not built` | You are on a checkout with no bundle: `cd ui && npm install && npm run build`. |
 | A card is stuck in `claimed` | The agent died. Wait for the lease (≤15 min), or `taskops tasks release <id> -m "…"`. |
+| The status line at the bottom is blank | You are not in a taskops project, which is deliberate: `taskops statusline` prints nothing rather than "no board here" in every repository you open. |
+| A board created without GitHub is not in your list | It is, if you created it from this machine — `board create` hands back a session over that board. Somebody else needs an invite: `taskops board invite <name>`. |
 
 ### Changing the UI
 

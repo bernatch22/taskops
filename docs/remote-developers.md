@@ -14,6 +14,12 @@ Nobody hands out tokens. The board is linked to a GitHub repository, and **push 
 repository is the invitation** — the server asks GitHub, with your own token, whether you may push,
 and never stores it.
 
+So there is nothing to be granted here: if you can push to the repository, you are on the board.
+Somebody who cannot is added the way they would be added to the code —
+`gh repo collaborator add <them> --permission push -R owner/repo` — and `taskops board access`
+prints that line rather than offering a command of its own, because a user list kept here would
+be a copy of the repository's and copies go stale the day access is revoked.
+
 ```sh
 pip install taskops-cli                        # the command is `taskops`
 taskops login https://boards.example.com       # takes your token from `gh auth token`
@@ -25,13 +31,24 @@ signed in to https://boards.example.com as your-github-login
     payments   taskops remote add https://boards.example.com/payments
 ```
 
-Then, in your checkout of the project:
+Then, in your clone of the project:
 
 ```sh
-taskops remote add https://boards.example.com/payments   # no --token: it uses your session
-taskops pull                                             # the whole board materialises locally
-taskops open                                             # …and it opens in your browser
+taskops join        # no URL: the repository carries its board's address
+taskops open        # …and it opens in your browser
 ```
+
+```
+joined https://boards.example.com/payments
+  git hooks: post-commit, post-checkout, post-merge, pre-commit, prepare-commit-msg
+you are on the board — `taskops attention` says what it is waiting on
+```
+
+That is the whole of it: `join` inits the store, wires the git hooks and the MCP, configures the
+remote from your session and fills the board. The address comes from `.taskops/board.json`,
+which is committed and holds nothing but a URL — the same way `git clone` already knows its
+remote. If your clone predates that file, paste the link once (`taskops join <url>`) and it is
+written for everybody after you.
 
 Your session lives in `~/.taskops/sessions.json` at `0600`, outside every repository, and lasts a
 week. When it lapses you get a sentence telling you to run `login` again, not a mystery 401.
@@ -50,14 +67,15 @@ and the `/taskops:*` skills.
 ## 2 · The loop, per day
 
 ```sh
-taskops pull        # when you sit down: everyone else's work arrives
 taskops status      # where the project stands, in one screen
 # …work…
-taskops push        # when you stand up: yours goes up, theirs comes down
 ```
 
-That is the whole rhythm, and **nothing in between is needed** — because the writes that could
-collide never waited for a push in the first place. See §4.
+**That is the whole rhythm, and there is no push in it.** Every write executes in the server's
+store and every read comes from it, so your board is never behind and nobody is waiting for you
+to send anything. `push` and `pull` still exist for the two things no call carries — the report
+files, and a project's local history the first time it gets a remote — but a normal day never
+needs either. See §4.
 
 `taskops status` is the one read worth making before you start:
 
@@ -125,14 +143,21 @@ keeps two agents from overwriting each other's bytes.
 
 ## 4 · Why you cannot collide with another developer
 
-Not everything travels at the same moment, and the split is the design:
+Because nothing waits to travel. There is one store and every write happens in it:
 
 | | when it travels | why that is safe |
 |---|---|---|
-| **claim** and **close** | **immediately, in the server's database** | the only writes that can collide, resolved on the spot |
-| new cards, edits, comments | on the next `push` | ids are content-hashed — two people planning at once produce a union, never a conflict |
-| everyone else's work | on `push` / `pull` | events are facts about the past; importing one twice is a no-op |
-| reports and narrations | on `push` / `pull` | newest stamp wins; equal-but-different is a `409`, never a silent overwrite |
+| **every write** — claims, closes, new cards, edits, comments, context, policy | **immediately, in the server's database** | the writes that could collide are resolved on the spot instead of merged afterwards |
+| everyone else's work | **on your very next call, whatever it is** | every routed call ends in a pull, so working IS syncing |
+| what you read | **live from the server**, degrading to your cache with a warning on stderr | refusing to WRITE offline keeps one truth; refusing to READ offline would make the server a single point of failure for looking at your own board |
+| report **files** (`.taskops/reports/*.md`) | on `push` / `pull` | they are files and not events — newest stamp wins, and equal-but-different is a `409`, never a silent overwrite |
+
+**So there is no board to push.** This table used to say new cards travelled on the next `push`,
+and that was true before every verb moved behind `/api/rpc`. It is not any more: `plan`, `edit`,
+`assign`, `acceptance`, `pick`, `recover`, `context` and `policy` all execute in the server's
+store, and `next` and `update` always did. Two things are left for `push`, and neither is the
+board: the **report files**, and the **one-time migration** of a project that already had local
+history before it had a remote.
 
 A claim is a single `INSERT` on one primary key. Exactly one machine wins; the loser is told the
 card is taken and asks for the next one.

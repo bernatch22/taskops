@@ -162,6 +162,11 @@ up to date, once because it claimed through an agent id when the failure took th
   `~` a project, because `~/.taskops/sessions.json` is where login lives.
 - **Never `python3 -m taskops…` from outside.** Console scripts (`taskops`, `taskops-hook`)
   carry their own interpreter; a bare `python3` is whatever pyenv answers.
+- **An rpc verb answers with a JSON object, never a bare array.** `_wirereply.decode` returns
+  `{}` for anything that is not an object, so a verb returning a list decodes to nothing with no
+  error anywhere. Three did it at once — `search` found zero tasks on every board with a remote,
+  `context_history` was empty, `policy_show` was born broken — and all three passed the whole
+  suite, because every test but one runs a single store.
 - **Verify the argument order before writing the test.** More than one "bug" here was a
   hand-made literal that did not match the type it was standing in for.
 

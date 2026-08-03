@@ -194,19 +194,29 @@ because a rule with no honest exit gets bypassed by lying.
 One thing nothing can stop: `git commit --no-verify` skips every git hook — and `post-commit` too,
 so the commit is not merely unattributed, it is unseen. That is stated rather than papered over.
 
-## 7 · The chat sidebar, and the activity strip
+## 7 · What happened to the chat sidebar
 
-The board's chat (`⌘/Ctrl+K`) reaches whichever session is running the channel, and the session
-answers with the `reply` tool. Underneath the conversation the sidebar draws a **tool strip**: one
-dim line per tool call the agent makes, fed by the `activity` events the `PostToolUse` hook writes
-through `usecases.track`. Those events are local-only — they never reach the committed log and the
-channel refuses to forward them into a session — so the strip is the only place they are read.
+**It is gone, and the reason is the shape of a shared board.** The sidebar reached "whichever
+session is running the channel" and the session answered with a cardless `reply`. Both halves of
+that assume there is exactly ONE session listening — and the moment a board is shared there can be
+five, each on its own machine, each with its own channel connected. A question addressed at
+whoever is watching has no answerable audience, and an answer addressed at nobody has no
+answerable destination.
 
-**The strip is empty unless the project you are watching installs the hook.** The plugin's own
-`hooks.json` covers any project that loads the taskops plugin; a project that does not (a bare
-checkout, a scratch repo) emits nothing, and the sidebar will show a conversation with no visible
-work behind it. The fix is project-level hooks — a Claude Code feature, `.claude/settings.json` in
-the repo being worked on, committed alongside it:
+Nothing was lost that was addressed. **Everything that reaches a session now names its
+recipient**: a mention, a review routed to a dev, a card assigned to one of their agents — which
+is what makes the channel's own promise true, that if you do not act on an event nobody will. A
+message about a card goes in that card's thread, where it is still findable in three weeks;
+`reply` requires the `card`, and the board's UI has a reply box on every card.
+
+The **activity strip** went with it. It drew one dim line per tool call from the `activity` events
+the `PostToolUse` hook writes through `usecases.track`. Those events are still written and still
+local-only — they never reach the committed log — and the live board still reads them as what each
+worker is "doing" on its card. What is gone is the panel that showed them as a conversation.
+
+If you want per-project hooks anyway — a bare checkout or a scratch repo that does not load the
+plugin emits no activity at all — that is a Claude Code feature, `.claude/settings.json` in the
+repo being worked on, committed alongside it:
 
 ```json
 {
