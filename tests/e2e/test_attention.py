@@ -305,3 +305,45 @@ def test_nobody_is_told_about_their_own_close(repo: Path) -> None:
 
     assert done["unblocked"], "it did unblock something"
     assert done["notified"] == [], "and told nobody, because the only candidate was the closer"
+
+
+def test_the_confirm_group_RENDERS_a_chapter_in_review(repo: Path) -> None:
+    """The whole sweep is rendered, not just derived — and this group crashed the render.
+
+    `render/attention.py` read `chapter['text']`, a field the milestone contract stopped having
+    when the model split into `title` + `goal`. A chapter in `review` is the NORMAL state before a
+    person closes it, so every session that opened `attention` after reporting one got a
+    `KeyError` instead of the board. Nothing caught it because every other test leaves its
+    chapter `in_force`, and the field only exists on the path that prints one waiting.
+    """
+    from taskops.render.attention import render_attention
+    from taskops.usecases.milestone import hand_over, listing
+
+    chapter = listing(repo)["milestones"][0]
+    hand_over(repo, chapter["id"], note="terminé el capítulo", actor=WORKER)
+
+    printed = render_attention(attention(repo, actor=DEV))
+
+    assert "CONFIRM" in printed
+    assert chapter["title"][:52] in printed, "the chapter is named by its TITLE"
+    assert "terminé el capítulo" in printed, "and the report a person has to judge is quoted"
+
+
+def test_the_two_active_chapters_refusal_NAMES_them(repo: Path) -> None:
+    """The refusal is the mechanism, so it has to survive being reached.
+
+    `_planinto` listed the candidates with `m['text']` — the same dead field — so a board with a
+    second chapter open answered a `plan` with a traceback instead of the two ids it was written
+    to print. One active chapter is the only shape the rest of the suite builds, which is exactly
+    why this direction went unchecked.
+    """
+    from taskops._errors import BadRequest
+    from taskops.usecases.milestone import open_chapter
+
+    second = open_chapter(repo, "el segundo capítulo", goal="lo otro", actor=DEV)
+
+    with pytest.raises(BadRequest) as refusal:
+        plan(repo, [{"title": "t", "spec": "s"}], actor=DEV)
+
+    assert "el segundo capítulo" in str(refusal.value), "it names the chapters to choose from"
+    assert second["id"][:8] in str(refusal.value), "with the eight characters that pick one"
