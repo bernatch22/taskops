@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.5 — el modal de un capitulo se puede leer
+
+Dos cosas que aparecieron en cuanto un capitulo tuvo un goal de verdad.
+
+**No scrolleaba.** `.ctx-modal` es flex column con `max-height: 100%` y el unico hijo que scrolleaba
+era `.ms-body`; el goal vivia AFUERA de el, sin limite de shrink, asi que crecia y empujaba el panel
+mas alla del viewport y el progreso y los hechos del capitulo quedaban en ningun lado. No era una
+propiedad faltante, era la estructura: ahora hay UNA region que scrollea por modal y el header queda
+fijo. No un overflow en el goal — dos scrollers anidados es peor que uno.
+
+**Las rules del proyecto se repetian en cada card.** Nueve reglas identicas arriba del spec de las
+sesenta y tres, asi que lo primero que un lector veia al abrir cualquiera era el mismo muro y el
+brief empezaba abajo de la pantalla. Una regla del proyecto vale para toda card por definicion:
+repetirla no agrega nada. Quedan como UNA linea que dice cuantas son y donde estan — saber que
+existen es lo que evita re-litigarlas, y saberlo no requiere leerlas de nuevo. El slice sigue
+llevandolas: al worker se le inyectan, y es otro lector.
+
 ## 0.5.4 — el goal de un capitulo se lee
 
 Salia como un muro de veinte lineas: `<p>{goal}</p>`, y HTML colapsa los saltos de linea, asi que la
