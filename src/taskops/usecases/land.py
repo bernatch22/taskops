@@ -28,38 +28,31 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..storage import LOG_FILE
-from ._gitland import TRUNKS
+from ._gitland import TRUNKS, Landing
 from ._gitland import catch_trunk_up as _catch_trunk_up
 from ._gitland import fetched as _fetched
 from ._gitland import has_board as _has_board
 from ._gitland import merged as _merged
-from ._gitland import pushed as _pushed
 from ._gitland import run as _run
 from ._gitland import sha as _sha
 from ._gitland import trunk_of as _trunk
+from ._published import already_shared as _shared
+from ._published import published as _publish
 from ._whichbranch import actual as _actual
 
 __all__ = ["land", "Landing", "TRUNKS"]
 
 
-class Landing:
-    """What happened, in a shape the board can record and a person can act on."""
-
-    def __init__(self, *, ok: bool, why: str, trunk: str = "", sha: str = "") -> None:
-        self.ok = ok
-        self.why = why
-        """Empty on success; otherwise the reason IN THE IMPERATIVE where one exists — a
-        conflict a person has to resolve is not the same as a repository with no remote."""
-
-        self.trunk = trunk
-        self.sha = sha
-
-
-def land(root: Path, branch: str, *, shas: tuple[str, ...] = ()) -> Landing:
+def land(root: Path, branch: str, *, shas: tuple[str, ...] = (), push: bool = True) -> Landing:
     """Merge the card's branch into the trunk and push. Never raises; never half-merges.
 
     `branch` is a GUESS — the name `branch_for` computes — and `shas` are the card's commits, which
-    are not. When the guess is not here, the commits say which branch is: see `_actual`.
+    are not. When the guess is not here, the commits say which branch is: see `_whichbranch`.
+
+    `push=False` merges and stops, and it does NOT report the card landed — see `_merge`. It exists
+    because landing is the step that most wants a green suite BEFORE anything is published, and with
+    the push welded in that was impossible: a worker told "do not push until the tests pass" landed
+    three cards and all three went to origin inside the merge.
     """
     if not branch.startswith("tk/"):
         return Landing(ok=False, why="not a task branch")
@@ -87,19 +80,10 @@ def land(root: Path, branch: str, *, shas: tuple[str, ...] = ()) -> Landing:
     # here it was answered against a LOCAL trunk and returned `ok` without pushing anything:
     # a card reported as landed whose work the shared trunk had never seen. Merged-into-my-copy
     # is not landed. Landed is "the trunk everybody pulls has it".
-    return _merge(root, trunk, branch)
+    return _merge(root, trunk, branch, push=push)
 
 
-def _shared(root: Path, trunk: str) -> Landing:
-    """A trunk that already contains the branch — landed only once the remote has it too."""
-    if not _pushed(root, trunk):
-        return Landing(ok=False, trunk=trunk, sha=_sha(root, trunk),
-                       why=f"already merged into {trunk} here, but the remote refused it — "
-                           f"`taskops land` this card again")
-    return Landing(ok=True, why="", trunk=trunk, sha=_sha(root, trunk))
-
-
-def _merge(root: Path, trunk: str, branch: str) -> Landing:
+def _merge(root: Path, trunk: str, branch: str, *, push: bool = True) -> Landing:
     """Check out the trunk, merge, push, and go back where you were.
 
     Two ways of doing this were tried and both were worse, which is why it looks this plain.
@@ -133,16 +117,7 @@ def _merge(root: Path, trunk: str, branch: str) -> Landing:
             return Landing(ok=False, trunk=trunk,
                            why=f"{branch} conflicts with {trunk} — spawn a `taskops-worker` "
                                f"sub-agent for this card; it resolves and merges")
-        sha = _sha(root, "HEAD")
-        if not _pushed(root, trunk):
-            # The merge happened HERE and nowhere else, so saying `ok` would put a card in a
-            # trunk nobody else can see. Reported as unlanded, which is what it is; `attention`
-            # lists it under LAND and a second `taskops land` now catches the trunk up first.
-            return Landing(ok=False, trunk=trunk, sha=sha,
-                           why=f"merged locally but {trunk} was refused by the remote — "
-                               f"somebody landed while this ran. `taskops land` this card "
-                               f"again; it picks their work up first")
-        return Landing(ok=True, why="", trunk=trunk, sha=sha)
+        return _publish(root, trunk, _sha(root, "HEAD"), push=push)
     finally:
         if was != trunk:
             _run(root, "checkout", "--quiet", was)

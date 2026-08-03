@@ -18,7 +18,7 @@ from .land import Landing, land
 __all__ = ["land_task"]
 
 
-def land_task(start: Path | str, task_id: str) -> tuple[str, Landing]:
+def land_task(start: Path | str, task_id: str, *, push: bool = True) -> tuple[str, Landing]:
     """The card, and what happened when its branch met the trunk.
 
     The card's COMMITS travel with the guessed name, because this is the retry — the path a person
@@ -28,4 +28,4 @@ def land_task(start: Path | str, task_id: str) -> tuple[str, Landing]:
     view = ask(start, task_id)
     card = view["task"]
     shas = tuple(commit["sha"] for commit in view["commits"] if commit["sha"])
-    return card["id"], land(locate(start), branch_for(card), shas=shas)
+    return card["id"], land(locate(start), branch_for(card), shas=shas, push=push)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ..storage import LOG_FILE
 
-__all__ = ["carrying", "catch_trunk_up", "fetched", "has_board", "merged", "pushed", "run", "sha",
+__all__ = ["Landing", "carrying", "catch_trunk_up", "fetched", "has_board", "merged", "pushed", "run", "sha",
            "trunk_of", "TRUNKS", "TIMEOUT"]
 
 TRUNKS = ("main", "master")
@@ -92,6 +92,19 @@ def has_board(root: Path, trunk: str) -> bool:
     if run(root, "ls-files", "--error-unmatch", LOG_FILE) is None:
         return True
     return run(root, "cat-file", "-e", f"{trunk}:{LOG_FILE}") is not None
+
+
+class Landing:
+    """What happened, in a shape the board can record and a person can act on."""
+
+    def __init__(self, *, ok: bool, why: str, trunk: str = "", sha: str = "") -> None:
+        self.ok = ok
+        self.why = why
+        """Empty on success; otherwise the reason IN THE IMPERATIVE where one exists — a
+        conflict a person has to resolve is not the same as a repository with no remote."""
+
+        self.trunk = trunk
+        self.sha = sha
 
 
 def carrying(root: Path, shas: list[str]) -> list[str]:

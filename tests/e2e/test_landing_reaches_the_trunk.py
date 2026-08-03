@@ -290,3 +290,38 @@ def test_several_branches_carrying_one_card_are_REFUSED_and_not_guessed(repo: Pa
 
     assert not refused.ok
     assert f"{named}-copia" in refused.why and f"{named}-otra" in refused.why
+
+
+def test_no_push_merges_and_does_NOT_report_the_card_landed(repo: Path) -> None:
+    """The flag exists because landing is the step that most wants a green suite before anything is
+    published: a worker told "do not push until the tests pass" landed three cards and all three went
+    to origin inside the merge.
+
+    And it deliberately does not report success. This module's whole position is that
+    merged-into-my-copy is not landed, so the card stays in the sweep with the missing half named —
+    reporting `ok` would close the loop on work nobody else can see.
+    """
+    from taskops.engine import branch_for
+
+    card = a_card_with_a_commit(repo)
+    named = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+
+    done = land(repo, named, push=False)
+
+    assert not done.ok, "not published, so not landed"
+    assert "NOT pushed" in done.why and "taskops land" in done.why
+    assert "hecho.txt" in git(repo, "ls-tree", "--name-only", "main"), "but the merge DID happen"
+
+
+def test_the_default_still_pushes_so_nothing_changes_for_anybody(repo: Path) -> None:
+    """The other direction, and the one a flag like this breaks by accident: `land` with no argument
+    behaves exactly as it did. A repository with no remote has nowhere to push, which `pushed`
+    already answers True for, so this is the local case end to end."""
+    from taskops.engine import branch_for
+
+    card = a_card_with_a_commit(repo)
+    named = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+
+    done = land(repo, named)
+
+    assert done.ok, done.why
