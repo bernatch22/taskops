@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.10 — los minutos de una fila son los de SU tanda, y una card es una fila
+
+Visto en pantalla: una tanda `06:43 PM → 06:54 PM` con tres cards, y una marcando **32m**. Once
+minutos de span y treinta y dos en una fila adentro.
+
+La fila mostraba el total de la card en TODO el periodo, no lo que esa tanda le dedico. Ahora una
+tanda lleva sus propios minutos por card, atribuidos dentro de la corrida — y como ningun hueco dentro
+de una tanda supera el cap, las filas **particionan** el span exacto: 6 + 2 + 3 = 11. La suma es
+chequeable contra el encabezado, que es como se encontro. El total del periodo sigue estando, en el
+tooltip.
+
+**Y los duplicados:** una card trabajada en seis tandas distintas producia seis filas de aspecto
+identico — seis respuestas a una pregunta que tiene una. Ahora solo una tanda con VARIAS cards conserva
+sus filas, porque ahi el reclamo es sobre la tanda; una card trabajada sola se pliega a una fila con su
+total del periodo, y una que ya aparece en un grupo no se repite abajo.
+
 ## 0.5.9 — los minutos de una card cierran con el span de su tanda, y el periodo se elige
 
 **La aritmetica estaba mal y se vio en pantalla.** Cada card sumaba los huecos entre SUS PROPIOS
