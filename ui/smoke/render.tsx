@@ -97,6 +97,15 @@ console.log("the milestone dashboard");
 const dash = renderToStaticMarkup(
   <MilestoneModal chapter={first} context={context} board={board} onClose={() => {}} />);
 check("the goal is drawn whole", dash.includes(first.goal.slice(0, 60)));
+/* A goal arrives in PARAGRAPHS, and a `<p>` collapsed every newline in it — a real one came out as
+ * twenty unbroken lines. It goes through the same reader the reports use, so its own shape survives:
+ * two paragraphs and a list must draw more than one block. */
+const shaped = { ...first, goal: "Primero, la maquina.\n\nDespues el menu:\n\n- #120 espera veredicto\n- #121 es el ultimo slot" };
+const shapedDash = renderToStaticMarkup(
+  <MilestoneModal chapter={shaped} context={context} board={board} onClose={() => {}} />);
+check("a goal with paragraphs and a list is not one wall of text",
+      (shapedDash.match(/class="md-p"/g) ?? []).length >= 2 && shapedDash.includes("<li>"),
+      shapedDash.slice(shapedDash.indexOf("ms-goal"), shapedDash.indexOf("ms-goal") + 320));
 check("its own facts are under it",
       context.rules.filter((f) => f.milestone === first.id).every((f) => dash.includes(f.text)));
 check("a fact of the OTHER chapter is not",
