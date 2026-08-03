@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.7 — el tiempo viaja con la card, y se ve que se trabajo A LA VEZ
+
+**El tiempo es de la card.** Vivia solo en el roll-up de una ventana de 14 dias, asi que el numero de
+una card cambiaba segun cuan atras estuviera mirando alguien un perfil. Ahora `Card` y `TaskView` lo
+traen los dos, folded de los eventos de esa card, con UNA query para todo el tablero — el mismo trato
+que `count_by_task` hace. Sumado POR ACTOR y despues agregado: una card que dos agentes trabajaron en
+la misma hora fue atendida dos veces, y restar eventos consecutivos de la CARD las fundiria en una.
+
+**Las tandas simultaneas.** Una tanda es una corrida maximal de eventos de un actor sin ningun hueco
+mayor al cap — cortada por el MISMO cap con el que se capa el tiempo, porque es el mismo reclamo hecho
+dos veces: pasado el cap, alguien se fue. Las cards distintas dentro de una tanda estuvieron abiertas
+**a la vez**, alternando entre ellas en una sentada; no "el mismo dia", que agrupa por calendario y no
+dice nada sobre si alguien tenia dos cosas abiertas. Por ACTOR y nunca por dev: dos agentes de una
+persona en paralelo son dos tandas, porque no comparten atencion.
+
+**Todas las cards, y el total.** El panel cortaba en seis sin decirlo. Ahora pagina de a ocho, el
+"mas" no pide nada porque los eventos ya estan cargados, y el corte es por tanda y la cuenta en cards
+— media tanda no es un reclamo mas chico, es uno equivocado. El total del dev va arriba, rotulado *at
+least* como cada fila: es una suma de pisos, asi que es un piso.
+
+**Y los dos paneles se leen.** El del proyecto habia perdido su scroll en 0.5.5 (el overflow se movio
+a un contenedor que el no tiene, y sus nueve rules se salian por abajo), se titulaba con la ruta del
+board en la caja de otro, y sus rules eran una masa. Header fijo, una region que scrollea, el titulo
+dice lo que el panel es, y un fact se lee como un item.
+
 ## 0.5.6 — cuanto tiempo se le dedico a una card
 
 El perfil de una persona decia 10 cards / 15 commits / 2 closed y nada sobre tiempo, teniendo cada
