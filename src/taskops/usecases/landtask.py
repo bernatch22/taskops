@@ -2,7 +2,7 @@
 
 Split from `land` on its budget, and the seam is real: that module is git and knows nothing
 about cards; this one turns a card id into the branch git needs. Closing already lands once —
-this exists for the case that matters, which is after a `taskops-fixer` resolved a conflict and
+this exists for the case that matters, which is after a worker resolved a conflict and
 somebody has to say "now".
 """
 

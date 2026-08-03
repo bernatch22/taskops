@@ -282,7 +282,21 @@ def test_init_writes_the_specialists_where_claude_code_reads_them(tmp_path: Path
     agents = tmp_path / ".claude" / "agents"
     assert (agents / "taskops-worker.md").is_file()
     verifier = (agents / "taskops-verifier.md").read_text(encoding="utf-8")
-    assert "model: sonnet" in verifier, "the constraint that makes verification fast"
+    # `opus`, y este assert decia `sonnet` con el mensaje "the constraint that makes
+    # verification fast". Era cierto MIENTRAS el worker tambien estaba clavado en sonnet: los
+    # dos al mismo nivel, y el barato alcanzaba. El worker ahora NO fija modelo — hereda el de
+    # la sesion, porque quien despacha la card es el unico que leyo la spec — asi que un
+    # verifier clavado abajo queda estructuralmente mas debil que lo que audita, y un
+    # verificador mas facil de convencer que el worker es un sello de goma con pasos extra.
+    #
+    # Lo que se fija es la ASIMETRIA, que es la politica entera, no el nombre del modelo.
+    assert "model: opus" in verifier, "the verifier may never be weaker than the worker"
+    # El FRONTMATTER, no el archivo: el cuerpo del worker explica en prosa por que no fija
+    # modelo, asi que buscar la cadena en todo el texto encuentra la explicacion y no el campo.
+    worker = (agents / "taskops-worker.md").read_text(encoding="utf-8")
+    front = worker.split("---")[1]
+    assert "model:" not in front, (
+        "the worker inherits: pinning one would overpay for a typo or underpay a state machine")
     assert ".claude/agents/taskops-*.md" in (tmp_path / ".gitignore").read_text(
         encoding="utf-8"), "generated like GUIDE.md, ignored like GUIDE.md"
 

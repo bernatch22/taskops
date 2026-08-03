@@ -17,7 +17,7 @@ repository acts.
 
 **A conflict is WORK, not a failure.** The card closes either way — refusing over a merge would
 strand finished work behind a git problem — and the outcome is recorded so `attention` can report
-it under LAND. From there it is a job for a `taskops-fixer` sub-agent, which is the honest shape:
+it under LAND. From there it is a job for a `taskops-worker` sub-agent, which is the honest shape:
 a conflict is two approved pieces of work disagreeing about the same lines, and deciding how they
 fit is exactly the kind of small bounded task this system dispatches. Telling a person to "resolve
 it by hand" is telling somebody who is not there.
@@ -126,7 +126,7 @@ def _merge(root: Path, trunk: str, branch: str) -> Landing:
         if _run(root, "merge", "--no-ff", "--no-edit", branch) is None:
             _run(root, "merge", "--abort")
             return Landing(ok=False, trunk=trunk,
-                           why=f"{branch} conflicts with {trunk} — spawn a `taskops-fixer` "
+                           why=f"{branch} conflicts with {trunk} — spawn a `taskops-worker` "
                                f"sub-agent for this card; it resolves and merges")
         sha = _sha(root, "HEAD")
         if not _pushed(root, trunk):

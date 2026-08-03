@@ -140,8 +140,11 @@ def test_the_stock_specialists_route_nothing_by_label(project: Path) -> None:
     hand somewhere, so one appearing or disappearing is a thing to notice rather than a number
     to update.
     """
-    assert {a["name"] for a in specialists(project)} == {
-        "taskops-verifier", "taskops-worker", "taskops-fixer", "taskops-lead"}
+    # DOS, y eran cuatro. `taskops-lead` era el orquestador con otro nombre — mismas tools menos
+    # `Edit`, mismo trabajo, un nivel abajo — y `taskops-fixer` un worker cuya card resulta ser un
+    # conflicto de merge. Dos roles que en realidad son uno, descritos dos veces, son dos lugares
+    # para que la misma regla se desincronice.
+    assert {a["name"] for a in specialists(project)} == {"taskops-verifier", "taskops-worker"}
     assert agent_for(project, ["etl"]) == ""
 
 

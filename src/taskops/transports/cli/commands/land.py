@@ -1,7 +1,7 @@
 """`taskops land` — merge a finished card's branch into the trunk.
 
 Closing already tries this; the verb exists for the retry, which is the case that matters: a
-conflict was resolved by hand or by a `taskops-fixer`, and somebody has to say "now".
+conflict was resolved by hand or by a worker, and somebody has to say "now".
 """
 
 from __future__ import annotations

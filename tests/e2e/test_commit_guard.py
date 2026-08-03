@@ -437,7 +437,13 @@ def test_a_conflict_closes_the_card_and_reports_it_as_unlanded(tmp_path: Path) -
     assert ask(repo, card)["task"]["status"] == "done", "the work IS done"
     waiting = {i["task"]["id"]: i for i in attention(repo)["waiting"]}
     assert waiting[card]["move"] == "land"
-    assert "taskops-fixer" in waiting[card]["why"]
+    # `taskops-worker`, y antes decia `taskops-fixer`. Ese especialista ya no existe: un
+    # conflicto es una card cuyo trabajo resulta ser un merge, con el mismo loop y los mismos
+    # guards, asi que tenia un archivo para un prompt mas angosto. Lo que este assert protege
+    # no es el NOMBRE, es que la frase nombre un agente que se puede spawnear — dejarlo
+    # apuntando al viejo seria un `Agent type not found` justo cuando alguien tiene un
+    # conflicto sin resolver, que es el peor momento posible.
+    assert "taskops-worker" in waiting[card]["why"]
     assert (repo / "work.py").read_text(encoding="utf-8") == "x = 999\n", "trunk left untouched"
 
 
