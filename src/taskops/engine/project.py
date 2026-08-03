@@ -15,6 +15,7 @@ from .._clock import now
 from .._types import CLOSED_STATUSES, OPEN_STATUSES, STATUSES, WORKING_STATUSES
 from ..contracts import Board, Card, Column
 from ..storage import Store
+from ..storage.belonging import chapter_of, sole
 
 __all__ = ["board", "counts"]
 
@@ -29,6 +30,11 @@ def board(store: Store) -> Board:
     tasks = store.tasks.all()
     commits = store.events.count_by_task("commit")
     live = {lease["task"]: lease for lease in store.leases.live(now())}
+    # A card written before this board had chapters resolves to its only one — see
+    # `storage.belonging.sole`. Done HERE and not at ingest because the card is older than the
+    # chapter, so the column cannot be right at the moment it lands.
+    only = sole(store)
+    tasks = [{**task, "milestone": chapter_of(task, only)} for task in tasks]   # type: ignore[misc]
     cards = [Card(task=task, lease=live.get(task["id"]),
                   blocked_by=len(store.deps.open_blockers_of(task["id"])),
                   blocks=len(store.deps.dependents_of(task["id"])),

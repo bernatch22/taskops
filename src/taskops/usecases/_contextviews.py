@@ -24,6 +24,7 @@ from ..contracts.context import Fact
 from ..contracts.slice import Chapters, ContextSlice
 from ..engine import identity
 from ..storage import Store
+from ..storage.belonging import chapter_of, sole
 from ..storage.context import facts
 from ..storage.milestone import active, planned
 from ._contextslice import for_task, in_force
@@ -65,8 +66,11 @@ def chapters(store: Store) -> Chapters:
     "3 of 9 done" and "3 of 9 done, 1 withdrawn" are two sentences and only one of them is a lie.
     """
     counts: dict[str, dict[str, int]] = {}
+    only = sole(store)
     for task in store.tasks.all():
-        into = counts.setdefault(task["milestone"], {})
+        # Legacy cards count in the board's only chapter rather than in a bucket beside it: the
+        # answer is determined, so carrying it as an exception was the model contradicting itself.
+        into = counts.setdefault(chapter_of(task, only), {})
         into[task["status"]] = into.get(task["status"], 0) + 1
         into["total"] = into.get("total", 0) + 1
     return Chapters(active=active(store), planned=planned(store), counts=counts)
@@ -111,7 +115,11 @@ def context_for(start: Path | str, task_id: str) -> ContextSlice:
         return cast("ContextSlice", answer)
     with project(start) as store:
         task: Task = store.tasks.need(task_id)
-        return for_task(facts(store), task, chapters(store),
+        # Resolved here and not in the slice, which is pure: a card written before this board had
+        # chapters otherwise reads a slice with no chapter in it — no goal, no rules — while the
+        # board draws it inside one. The worker would be handed the emptier of two answers.
+        whose: Task = {**task, "milestone": chapter_of(task, sole(store))}
+        return for_task(facts(store), whose, chapters(store),
                         entered_review_by=entered_review_by(store, task_id))
 
 
