@@ -36,9 +36,9 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def a_card(repo: Path, *, criteria: list[str] | None = None) -> str:
+def a_card(repo: Path, *, criteria: list[str] | None = None, reviewer: str = "") -> str:
     """One planned card, claimed by WORKER — the state every test here starts from."""
-    plan(repo, [{"title": "Ship it", "spec": "x",
+    plan(repo, [{"title": "Ship it", "spec": "x", "reviewer": reviewer,
                  "acceptance": criteria if criteria is not None else CRITERIA}], actor=DEV)
     claimed = next_task(repo, actor=WORKER, session="s-1")["claim"]
     if claimed is None:
@@ -116,11 +116,8 @@ def test_peer_review_refuses_the_author_s_own_developer(repo: Path) -> None:
     `dev:dev2` closing what `agent:dev2/w1` handed over is two different strings and passes —
     while being, in every sense that matters, the author closing their own work. It happened to
     two real cards, WHILE independent verifiers were still running on them."""
-    from taskops.usecases import context_state
-
-    context_state(repo, "decision", "reviewer: peer", actor=DEV)
-    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA}],
-                actor=DEV)["created"][0]["id"]
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA,
+                        "reviewer": "peer"}], actor=DEV)["created"][0]["id"]
     next_task(repo, task=card, actor="agent:berna/w1")
     update(repo, card, status="review", comment="over to you", actor="agent:berna/w1")
 

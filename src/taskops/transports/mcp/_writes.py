@@ -89,4 +89,3 @@ def recover_(args: dict[str, Any]) -> str:
                                   force=arg.flag(args, "force"),
                                   grace=float(asked) or HEARTBEAT_GRACE))
 
-

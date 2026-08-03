@@ -16,7 +16,7 @@ import pytest
 
 import taskops.usecases.dossier as dossier
 from taskops._clock import now
-from taskops._errors import AlreadyNarrating, BadRequest, NarrationFailed
+from taskops._errors import AlreadyNarrating, BadRequest, NarrationFailed, Unreachable
 from taskops._ids import event_id
 from taskops.contracts import Event
 from taskops.engine.day import date_of, shift, window
@@ -213,3 +213,121 @@ def test_nothing_to_narrate_never_touches_the_wire(
 
     monkeypatch.setattr(module, "push_remote", refuse)
     assert sweep(root, push=True)["pushed"] == 0
+
+
+# ---- and it has to LEAVE the machine
+
+
+def _hosted(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """A remote configured, and a `push` that records rather than dials."""
+    sent: list[str] = []
+    swap = type("Swap", (), {"uploaded": ["a-day"], "downloaded": []})()
+    # `sys.modules[...]`, because both `taskops.usecases.sweep` and the attribute of that name
+    # on the package resolve to the exported FUNCTION, which shadows the module it lives in.
+    sweeping = sys.modules["taskops.usecases.sweep"]
+    monkeypatch.setattr(sweeping, "read_remote",
+                        lambda _root: {"url": "https://boards.example.com/probe"})
+    monkeypatch.setattr(sweeping, "push_remote",
+                        lambda root, **_kw: (sent.append(str(root)),
+                                             type("Done", (), {"reports": swap})())[1])
+    return sent
+
+
+def test_the_sweep_pushes_when_the_project_has_a_remote(
+        root: Path, narrate: Counter, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The hole this default closes, and it was in the TRIGGERS rather than in the sweep.
+
+    Neither one passes `--push` — not the `SessionStart` hook, not the scheduled task — and the
+    flag was `store_true`, so a flag nobody passed arrived as `False`. On a board that lives on
+    a server, every unattended narration was therefore written to somebody's laptop and stayed
+    there: nobody else saw it and the board's own Reports tab never had it, which is the entire
+    thing the sweep exists to produce.
+    """
+    sent = _hosted(monkeypatch)
+    log(root, yesterday())
+
+    assert sweep(root)["narrated"] == [yesterday()]
+    assert sent, "a hosted board's narration has to leave the laptop"
+    del narrate
+
+
+def test_a_project_with_no_remote_pushes_nothing(root: Path, narrate: Counter,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default is "yes IF there is a remote", not "yes". A local project has nowhere to
+    send to, and `push` refuses without one — which would turn every unattended sweep on every
+    local project into an error."""
+    monkeypatch.setattr(sys.modules["taskops.usecases.sweep"], "push_remote",
+                        lambda *_a, **_k: pytest.fail("there is nothing to push to"))
+    log(root, yesterday())
+
+    assert sweep(root)["pushed"] == 0
+    del narrate
+
+
+def test_no_push_is_still_obeyed_on_a_hosted_board(root: Path, narrate: Counter,
+                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """A default is not a decision taken away: `--no-push` writes the prose and sends nothing."""
+    _hosted(monkeypatch)
+    monkeypatch.setattr(sys.modules["taskops.usecases.sweep"], "push_remote",
+                        lambda *_a, **_k: pytest.fail("--no-push said no"))
+    log(root, yesterday())
+
+    assert sweep(root, push=False)["pushed"] == 0
+    del narrate
+
+
+def test_every_path_that_writes_prose_delivers_it(root: Path, narrate: Counter,
+                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """The sweep was fixed and the other two were not, which is worse than none of them being.
+
+    A narration is the ONE part of a report nothing can regenerate — the dossier rebuilds from
+    the log any time, the prose was written once by a model somebody paid for. So `report day
+    --digest` and the UI's Generate button leaving it on a laptop, while the unattended sweep
+    sent it, meant the same board had some days everybody could read and some nobody could,
+    with nothing on screen saying which.
+    """
+    import taskops.usecases.narration as narrating
+
+    sent: list[str] = []
+    monkeypatch.setattr(sys.modules["taskops.usecases.pushpull"], "push",
+                        lambda r, **_k: sent.append(str(r)))
+    monkeypatch.setattr(sys.modules["taskops.usecases.remote"], "read_remote",
+                        lambda _r: {"url": "https://boards.example.com/probe"})
+
+    narrating._deliver(root, "origin", "2026-08-01")
+
+    assert sent == [str(root)], "a hosted board's prose has to leave the machine that wrote it"
+    del narrate
+
+
+def test_a_local_project_delivers_nothing(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`push` refuses without a remote, so "always send" would turn every local narration into
+    an error at the exact moment the prose was finished."""
+    import taskops.usecases.narration as narrating
+
+    monkeypatch.setattr(sys.modules["taskops.usecases.pushpull"], "push",
+                        lambda *_a, **_k: pytest.fail("there is nowhere to send it"))
+    narrating._deliver(root, "origin", "2026-08-01")
+
+
+def test_an_unreachable_server_never_costs_the_paragraph(
+        root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The prose is already on disk and `push` is idempotent, so a dead network means "send it
+    later", not "you lost what you paid a model to write"."""
+    import taskops.usecases.narration as narrating
+
+    monkeypatch.setattr(sys.modules["taskops.usecases.remote"], "read_remote",
+                        lambda _r: {"url": "https://boards.example.com/probe"})
+    monkeypatch.setattr(sys.modules["taskops.usecases.pushpull"], "push",
+                        lambda *_a, **_k: (_ for _ in ()).throw(Unreachable("no network")))
+
+    narrating._deliver(root, "origin", "2026-08-01")     # must not raise
+
+
+def test_a_machine_with_no_claude_says_so_before_starting_anything() -> None:
+    """The Generate button on a hosted board started a thread that failed two seconds later on
+    a socket the person may not have been watching — with a sentence about a missing binary, on
+    a machine they never chose to run anything on. Asked up front now, and answered as a 503."""
+    import taskops.usecases.narration as narrating
+
+    assert narrating.narratable_here() == "", "this machine has claude"

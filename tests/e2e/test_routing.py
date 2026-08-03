@@ -21,7 +21,7 @@ import pytest
 
 from taskops._errors import GuardFailed
 from taskops.engine.routereview import ROUTE_TTL
-from taskops.usecases import attention, context_state, init, next_task, plan, update
+from taskops.usecases import attention, init, next_task, plan, update
 from taskops.usecases.session import brief
 
 CRITERIA = ["WHEN a review is routed THE SYSTEM SHALL offer it to exactly one developer"]
@@ -33,7 +33,6 @@ def repo(tmp_path: Path) -> Path:
                  ("config", "user.name", "Berna")):
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
     init(tmp_path)
-    context_state(tmp_path, "decision", "reviewer: peer — we review each other", actor="dev:uno")
     return tmp_path
 
 
@@ -50,7 +49,7 @@ def here(repo: Path, *devs: str) -> None:
 
 
 def handed_over(repo: Path, title: str = "t", *, by: str = "agent:uno/w1") -> str:
-    card = plan(repo, [{"title": title, "spec": "s", "acceptance": CRITERIA}],
+    card = plan(repo, [{"title": title, "spec": "s", "acceptance": CRITERIA, "reviewer": "peer"}],
                 actor="dev:uno")["created"][0]["id"]
     next_task(repo, task=card, actor=by)
     update(repo, card, status="review", comment="over to you", actor=by)
@@ -64,7 +63,7 @@ def handed_over_to(repo: Path) -> tuple[str, str]:
     hard-codes the answer is testing its own arithmetic. Asking the call is also the honest
     shape: this is exactly what the author is told.
     """
-    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA}],
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA, "reviewer": "peer"}],
                 actor="dev:uno")["created"][0]["id"]
     next_task(repo, task=card, actor="agent:uno/w1")
     result = update(repo, card, status="review", comment="over to you", actor="agent:uno/w1")
@@ -250,7 +249,7 @@ def test_the_author_is_TOLD_the_review_left_and_is_not_theirs(repo: Path) -> Non
     from taskops.render.results import render_update
 
     here(repo, "dev:uno", "dev:dos")
-    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA}],
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": CRITERIA, "reviewer": "peer"}],
                 actor="dev:uno")["created"][0]["id"]
     next_task(repo, task=card, actor="agent:uno/w1")
     result = update(repo, card, status="review", comment="over to you", actor="agent:uno/w1")
@@ -286,7 +285,7 @@ def test_a_handover_that_reached_nobody_says_so(repo: Path) -> None:
     """
     from taskops.render.results import render_update
 
-    card = plan(repo, [{"title": "solo", "spec": "s", "acceptance": CRITERIA}],
+    card = plan(repo, [{"title": "solo", "spec": "s", "acceptance": CRITERIA, "reviewer": "peer"}],
                 actor="dev:uno")["created"][0]["id"]
     next_task(repo, task=card, actor="agent:uno/w1")
     result = update(repo, card, status="review", comment="a solas", actor="agent:uno/w1")

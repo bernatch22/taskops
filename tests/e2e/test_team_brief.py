@@ -106,11 +106,9 @@ def test_the_opening_hides_a_review_routed_to_somebody_else(repo: Path) -> None:
     """The sweep in the opening used to run with no actor, so it listed every review on the
     board — including the ones this dev is forbidden to close and the ones routed elsewhere.
     Advice the engine will refuse costs calls and teaches the reader to distrust the list."""
-    from taskops.usecases import context_state
-
-    context_state(repo, "decision", "reviewer: peer — nos revisamos", actor="dev:uno")
     here(repo, "dev:uno", "dev:dos")
-    card, _ = two_cards(repo)
+    card = plan(repo, [{"title": "El parser de fechas", "spec": "s", "reviewer": "peer"}],
+                actor="dev:uno")["created"][0]["id"]
     next_task(repo, task=card, actor="agent:uno/w1")
     update(repo, card, status="review", comment="listo", actor="agent:uno/w1")
 

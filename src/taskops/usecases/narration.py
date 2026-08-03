@@ -23,14 +23,14 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from .._errors import AlreadyNarrating
+from .._errors import AlreadyNarrating, TaskopsError
 from ..contracts import WireMessage
 from ..engine import WIRE
 from ..storage import resolve_root
 from ._range import Selector
 from .dossier import digest
 
-__all__ = ["start", "running"]
+__all__ = ["narratable_here", "start", "running"]
 
 _lock = threading.Lock()
 _running: set[str] = set()
@@ -63,6 +63,26 @@ def start(root: Path | str, label: str, *, force: bool = False, model: str = "")
     return label
 
 
+def narratable_here() -> str:
+    """"" when this machine can narrate, else the reason it cannot — asked BEFORE starting.
+
+    A narration is a subprocess of the `claude` the caller is logged into, so where the request
+    is SERVED decides whether it can happen at all. On a laptop it can. On a box running
+    `taskops serve` there is usually no `claude` and certainly no session, so the Generate
+    button used to start a thread that failed two seconds later on a socket the person may not
+    have been watching — and the sentence it failed with was about a missing binary, on a
+    machine they never chose to run anything on.
+    """
+    import shutil
+
+    if shutil.which("claude"):
+        return ""
+    return ("this board is served from a machine with no `claude` on it, so it cannot narrate — "
+            "a narration is a subprocess of the CLI somebody is logged into. Run "
+            "`taskops report day --digest` on your own machine: it writes the prose there and "
+            "sends it here, which is also whose subscription pays for it.")
+
+
 def running() -> frozenset[str]:
     """Which reports are being narrated. Read by tests and by anything wanting to say so."""
     with _lock:
@@ -77,6 +97,7 @@ def _run(root: Path | str, origin: str, label: str, force: bool, model: str) -> 
         digest(root, Selector(date=label), model=model, force=force,
                on_pass=lambda n, total: _say(origin, "narration.pass", label, f"{n}/{total}"),
                on_text=lambda text: _say(origin, "narration.delta", label, text))
+        _deliver(root, origin, label)
         _say(origin, "narration.done", label, "")
     except Exception as err:                     # noqa: BLE001 — the reader is the error's audience
         # Verbatim. `claude` missing or logged out is a thing the person can fix in a minute,
@@ -85,6 +106,28 @@ def _run(root: Path | str, origin: str, label: str, force: bool, model: str) -> 
     finally:
         with _lock:
             _running.discard(label)
+
+
+def _deliver(root: Path | str, origin: str, label: str) -> None:
+    """Send it, if this project has a server. A narration nobody else can read is not one.
+
+    Every path that writes prose now ends here, and they did not: the sweep pushed (once its
+    own default was fixed), `report --digest` did not, and the UI's Generate button did not —
+    so on a hosted board two of the three wrote to somebody's laptop and stopped. The narration
+    is the ONE part of a report nothing can regenerate, so where it lands is not a detail.
+
+    Never fatal. The prose is on disk and `push` is idempotent, so an unreachable server means
+    "send it later", not "you lost the paragraph you paid a model to write".
+    """
+    from .pushpull import push
+    from .remote import read_remote
+
+    if read_remote(root) is None:
+        return
+    try:
+        push(root)
+    except TaskopsError as gone:
+        _say(origin, "narration.pass", label, f"written here; not sent yet — {gone}")
 
 
 def _say(origin: str, kind: str, label: str, text: str) -> None:

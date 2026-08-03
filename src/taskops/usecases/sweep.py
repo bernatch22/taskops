@@ -36,6 +36,7 @@ from ._range import Selector, parse_date
 from ._sweepdays import pending_days
 from .dossier import digest
 from .pushpull import push as push_remote
+from .remote import read_remote
 
 __all__ = ["sweep", "LIMIT"]
 
@@ -46,7 +47,7 @@ holiday actually owes. The rest are counted into `truncated` and taken by the ne
 
 
 def sweep(start: Path | str, *, date: str = "", model: str = "", limit: int = LIMIT,
-          push: bool = False, force: bool = False) -> SweepResult:
+          push: bool | None = None, force: bool = False) -> SweepResult:
     """Narrate every ended day that still owes prose. Safe to run on any schedule, twice.
 
     `force` is the only way to redo a day, and it demands an explicit `date`: "redo whatever
@@ -60,13 +61,20 @@ def sweep(start: Path | str, *, date: str = "", model: str = "", limit: int = LI
     a lock held by a concurrent run, a report somebody narrated a second ago, one day the
     model would not answer for — and a run that aborts on the first of those leaves the other
     six days unwritten for a reason nobody will read in a cron log.
+
+    `push` DEFAULTS to "yes, if this project has a remote", and that default is the fix for a
+    real hole: neither trigger passes the flag — not the `SessionStart` hook, not the scheduled
+    task — so on a board that lives on a server every unattended narration was written to a
+    laptop and stayed there. Nobody else saw it and the board's own Reports tab never had it,
+    which is the whole thing the sweep exists to produce. A project with no remote pushes
+    nothing, so the default costs it a file read.
     """
     days = _targets(start, date, force=force)
     truncated = max(0, len(days) - limit) if limit > 0 else 0
     done = SweepResult(narrated=[], skipped=[], pushed=0, truncated=truncated)
     for day in days[:limit] if limit > 0 else days:
         _narrate(start, day, done, model=model, force=force)
-    if push and done["narrated"]:
+    if done["narrated"] and (read_remote(start) is not None if push is None else push):
         _push(start, done)
     return done
 

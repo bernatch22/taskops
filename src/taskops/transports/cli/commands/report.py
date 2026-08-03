@@ -15,10 +15,9 @@ from ....usecases import (
     standup,
     write_report,
 )
-from ....usecases.sweep import LIMIT
 from ._digest import stream_digest
 from ._shared import add_target, repo_of
-from ._sweep import run_sweep
+from ._sweep import add_sweep_flags, run_sweep
 from ._window import selector
 
 __all__ = ["register", "DOSSIERS"]
@@ -56,8 +55,7 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
                              "(uses your logged-in subscription, never an API key)")
     parser.add_argument("--model", default="",
                         help="with --digest: the model to narrate with")
-    parser.add_argument("--limit", type=int, default=LIMIT, help="sweep: days per run")
-    parser.add_argument("--push", action="store_true", help="sweep: one push at the end")
+    add_sweep_flags(parser)
     parser.set_defaults(run=run)
 
 

@@ -19,7 +19,8 @@ from taskops.engine.log import build
 from taskops.storage import Store
 from taskops.storage.context import facts
 from taskops.usecases._contextslice import for_task, in_force
-from taskops.usecases.context import context_for, history, retire, show, state
+from taskops.usecases._contextviews import context_for, history, show
+from taskops.usecases.context import retire, state
 from taskops.usecases.plan import plan
 
 NEVER = "never Co-Authored-By in a commit"
@@ -110,7 +111,10 @@ def test_the_slice_is_pure_and_survives_a_card_with_no_scope() -> None:
     """`for_task` takes facts and a task, no store — which is why a card with neither labels
     nor files can be tested from literals, and why it still gets every invariant."""
     live = [_fact("i", "invariant"), _fact("d", "decision", labels=["ui"])]
-    bare = {"labels": [], "files": []}
+    # `assignee` too: the slice now asks who holds the card, to hand them THEIR objective. A
+    # literal standing in for a Task has to carry the fields a Task has — a hand-made one that
+    # did not is a scar this repository already has.
+    bare = {"labels": [], "files": [], "assignee": ""}
     view = for_task(live, bare)                 # type: ignore[arg-type]
     assert len(view["invariants"]) == 1 and view["decisions"] == []
 
@@ -126,6 +130,116 @@ def test_an_unknown_sort_is_refused_before_anything_is_written(root: Path) -> No
     assert "objective" in str(raised.value)
 
 
-def _fact(name: str, sort: str, *, labels: list[str] | None = None) -> dict:  # type: ignore[type-arg]
+def _fact(name: str, sort: str, *, labels: list[str] | None = None, owner: str = "",
+          ts: float = 1.0) -> dict:  # type: ignore[type-arg]
     return {"id": name, "sort": sort, "text": name, "labels": labels or [], "files": [],
-            "horizon": "", "owner": "", "actor": "dev:a", "ts": 1.0, "retired": False}
+            "horizon": "", "owner": owner, "actor": "dev:a", "ts": ts, "retired": False}
+
+
+# ---- the second dimension of scope: a fact can belong to ONE developer
+
+
+def _owned(text: str, sort: str = "objective", *, owner: str = "", ts: float = 1.0) -> dict:  # type: ignore[type-arg]
+    return _fact(text, sort, owner=owner, ts=ts)
+
+
+def _card(assignee: str) -> dict:  # type: ignore[type-arg]
+    """A Task literal carrying the fields the slice reads — `assignee` among them now."""
+    return {"labels": [], "files": [], "assignee": assignee}
+
+
+def test_a_worker_reads_the_projects_objective_AND_its_own() -> None:
+    """Both, never one instead of the other. "The team is shipping the importer" and "I am on
+    the parser this week" are both true, and a worker that only read the second lost the north
+    the first one gave it — which is the thing every card is ultimately for.
+    """
+    live = [_owned("ship the importer"), _owned("the parser", owner="dev:ana")]
+
+    slice_ = for_task(live, _card("agent:ana/w1"))               # type: ignore[arg-type]
+
+    assert slice_["objective"]["text"] == "ship the importer"
+    assert slice_["yours"]["text"] == "the parser"
+
+
+def test_a_slice_grows_by_ONE_however_many_developers_there_are() -> None:
+    """THE property, and the reason `owner` is a filter and not a label. Past ~150-200 standing
+    instructions compliance decays, so a page that grew with the size of the team would make
+    every agent slightly worse every time somebody joined."""
+    live = [_owned("ship it"), *[_owned(f"{who}'s week", owner=f"dev:{who}")
+                                 for who in ("ana", "juan", "mirna")]]
+
+    slice_ = for_task(live, _card("agent:ana/w1"))               # type: ignore[arg-type]
+
+    assert slice_["objective"]["text"] == "ship it"
+    assert slice_["yours"]["text"] == "ana's week"
+    assert len(slice_["objectives"]) == 2, "the project's and mine — not four"
+
+
+def test_an_agent_reads_what_the_person_who_spawned_it_set() -> None:
+    """`agent:ana/w1` and `dev:ana` are one person with two hands — the same comparison
+    `reviewer: peer` makes, and the reason a worker inherits its developer's objective."""
+    live = [_owned("the parser", owner="dev:ana")]
+    assert for_task(live, _card("agent:ana/w3"))["yours"] is not None   # type: ignore[arg-type]
+    assert for_task(live, _card("dev:ana"))["yours"] is not None        # type: ignore[arg-type]
+
+
+def test_somebody_elses_fact_is_not_in_your_slice() -> None:
+    """Every sort, one rule: an owned fact reaches that dev and nobody else. A note ana wrote
+    for herself in juan's page is noise he cannot act on, and noise is what the slice exists
+    to keep out."""
+    live = [_owned("mine", "note", owner="dev:ana"),
+            _owned("also mine", "invariant", owner="dev:ana"),
+            _owned("everyone's", "invariant")]
+
+    juan = for_task(live, _card("agent:juan/w1"))                # type: ignore[arg-type]
+
+    assert juan["notes"] == []
+    assert [f["text"] for f in juan["invariants"]] == ["everyone's"]
+
+
+def test_the_overview_shows_everybody_because_that_is_what_it_is_for() -> None:
+    """`context show` answers "who is on what", which is the question somebody deciding who to
+    hand a card to is asking. Filtering it to the caller would remove the only answer."""
+    live = [_owned("ship it"), _owned("the parser", owner="dev:ana"),
+            _owned("the migration", owner="dev:juan")]
+
+    assert len(in_force(live)["objectives"]) == 3
+    assert in_force(live)["yours"] is None, "an overview belongs to nobody"
+
+
+def test_your_own_page_is_yours_alone() -> None:
+    live = [_owned("ship it"), _owned("the parser", owner="dev:ana"),
+            _owned("the migration", owner="dev:juan")]
+
+    mine = in_force(live, mine="ana")
+
+    assert [f["text"] for f in mine["objectives"]] == ["ship it", "the parser"]
+    assert mine["yours"]["text"] == "the parser"
+
+
+def test_one_objective_per_owner_and_the_latest_wins_within_each() -> None:
+    """A second objective supersedes the first — but only the one with the SAME owner. Stating
+    yours used to replace the project's, so telling the board what you were on erased the
+    reason anybody was doing it."""
+    live = [_owned("old north", ts=1.0), _owned("new north", ts=2.0),
+            _owned("ana old", owner="dev:ana", ts=1.0),
+            _owned("ana new", owner="dev:ana", ts=2.0)]
+
+    whole = in_force(live)
+
+    assert whole["objective"]["text"] == "new north"
+    assert [f["text"] for f in whole["objectives"]] == ["new north", "ana new"]
+
+
+def test_an_owner_nothing_can_parse_is_refused(root: Path) -> None:
+    """Found by running `--mine`, twice, and it is the worst shape a bug can take.
+
+    `dev_of` answers "" for anything it cannot read, so an unparseable owner filed the fact as
+    the PROJECT's — and an objective is superseded by the newest one with the same owner. So
+    `--mine` with a malformed id did not fail, did not warn, and ERASED the team's north from
+    every worker's slice. Twice: first the literal string "me", then the bare dev name.
+    """
+    for bad in ("me", "berna", "dev:", "agent:nope"):
+        with pytest.raises(BadRequest):
+            state(root, "objective", "mine", owner=bad)
+    assert state(root, "objective", "mine", owner="dev:ana")["owner"] == "dev:ana"

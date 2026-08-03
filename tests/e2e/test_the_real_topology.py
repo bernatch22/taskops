@@ -36,7 +36,8 @@ from taskops.transports.cli.commands._serve_init import create
 from taskops.engine import branch_for
 from taskops.usecases import next_task, plan, update
 from taskops.usecases.attention import attention
-from taskops.usecases.context import state as context_state
+from taskops.storage import Store
+from taskops.usecases import locate
 from taskops.usecases.join import join
 from taskops.usecases.opening import opening
 
@@ -53,8 +54,12 @@ def git(where: Path, *args: str) -> str:
 class Team:
     """A server, a bare origin, and two developers who joined the board from their clones."""
 
-    def __init__(self, url: str, token: str, origin: Path, uno: Path, dos: Path) -> None:
+    def __init__(self, url: str, token: str, origin: Path, uno: Path, dos: Path,
+                 home: Path) -> None:
         self.url, self.token, self.origin, self.uno, self.dos = url, token, origin, uno, dos
+        self.home = home
+        """The SERVER's root — where `.sessions.json` lives, so a test can mint the session a
+        GitHub login would have produced without needing GitHub."""
 
     def trunk(self) -> str:
         return git(self.origin, "rev-parse", "main")
@@ -79,7 +84,7 @@ def team(tmp_path: Path) -> Iterator[Team]:
 
     clones = [_joined(tmp_path / name, origin, url, token) for name in ("uno", "dos")]
     try:
-        yield Team(url, token, origin, *clones)
+        yield Team(url, token, origin, *clones, home=server_home)
     finally:
         server.shutdown()
         server.server_close()
@@ -119,7 +124,7 @@ def _identity(where: Path) -> None:
 def a_card(team: Team, title: str) -> str:
     """Planned by a MANAGER who never opens a session — the shape that produced a ghost
     reviewer once, and must never be routed to."""
-    return str(plan(team.uno, [{"title": title, "spec": "hacelo",
+    return str(plan(team.uno, [{"title": title, "spec": "hacelo", "reviewer": "peer",
                                 "acceptance": [f"WHEN {title} THE SYSTEM SHALL andar"]}],
                     actor="dev:mgr")["created"][0]["id"])
 
@@ -143,8 +148,6 @@ def test_a_card_walks_from_a_plan_to_the_shared_trunk(team: Team) -> None:
     Reading it top to bottom is the point: every line is a thing that was broken at some
     moment in the last three days, and none of them was visible from inside one repository.
     """
-    context_state(team.uno, "decision", "reviewer: peer — nadie cierra la suya", actor="dev:mgr")
-    opening(team.uno, session="s-uno", actor="dev:uno")
     opening(team.dos, session="s-dos", actor="dev:dos")
 
     card = a_card(team, "El primero")
@@ -181,8 +184,6 @@ def test_both_developers_land_at_once_without_forking_the_trunk(team: Team) -> N
     moved a minute ago. It reported success and pushed nothing, and the board said a card was
     in a trunk that had never seen it.
     """
-    context_state(team.uno, "decision", "reviewer: peer — nadie cierra la suya", actor="dev:mgr")
-    opening(team.uno, session="s-uno", actor="dev:uno")
     opening(team.dos, session="s-dos", actor="dev:dos")
 
     suyo = a_card(team, "El de uno")
@@ -207,7 +208,6 @@ def test_the_manager_who_never_opened_a_session_is_never_the_reviewer(team: Team
     """`dev:mgr` plans every card here and never opens a session. A live board routed a review
     to exactly such a manager — present by every measure the store had, four minutes gone —
     and the card waited on somebody who was not coming back."""
-    context_state(team.uno, "decision", "reviewer: peer — nadie cierra la suya", actor="dev:mgr")
     opening(team.dos, session="s-dos", actor="dev:dos")
 
     card = a_card(team, "El primero")
@@ -241,8 +241,6 @@ def test_a_push_the_remote_refuses_is_not_a_landing(team: Team) -> None:
     guard.write_text("#!/bin/sh\necho 'este remoto dice que no' >&2\nexit 1\n", encoding="utf-8")
     guard.chmod(0o755)
 
-    context_state(team.uno, "decision", "reviewer: peer — nadie cierra la suya", actor="dev:mgr")
-    opening(team.uno, session="s-uno", actor="dev:uno")
     opening(team.dos, session="s-dos", actor="dev:dos")
     card = a_card(team, "El primero")
 
@@ -276,9 +274,8 @@ def test_a_team_that_is_never_online_at_the_same_time(team: Team) -> None:
     from taskops.engine.routereview import PRESENCE_WINDOW
     from taskops.usecases.session import checkout
 
-    context_state(team.uno, "decision", "reviewer: peer — nadie cierra la suya", actor="dev:mgr")
-    card = a_card(team, "El nocturno")
 
+    card = a_card(team, "El nocturno")
     opening(team.uno, session="la-noche", actor="dev:uno")          # 23:40, uno alone
     worked(team.uno, card, "El nocturno", actor="agent:uno/w1", file="uno.txt")
     handed = update(team.uno, card, status="review", comment="lo dejo listo",
@@ -300,6 +297,73 @@ def test_a_team_that_is_never_online_at_the_same_time(team: Team) -> None:
            evidence="el criterio: verificado")
 
     assert "uno.txt" in team.files_in_trunk(), "and it lands, with its author asleep"
+
+
+def test_a_policy_set_on_one_clone_governs_a_card_planned_on_the_other(team: Team) -> None:
+    """The seam a project setting has, and the one a single-store test cannot see.
+
+    A policy is what a TEAM decided, so the machine that set it is never the only machine that
+    has to obey it. Every failure mode here is a seam: the write staying in the local cache
+    (the replica thinking it is an authority — five bugs in one day came from that), the verb
+    missing from the rpc whitelist, or the read degrading to a clone's own empty store. Each of
+    those passes a unit test of `set_policy` and leaves the other developer's cards unreviewed.
+
+    Asserted through a CARD rather than through `policy_show`, because the card is what a person
+    checks and the only thing that proves the value was actually read at creation.
+    """
+    from taskops.usecases import policy_show, set_policy
+
+    set_policy(team.uno, "reviewer", "peer", actor="dev:uno")
+
+    assert [p["value"] for p in policy_show(team.dos)] == ["peer"], (
+        "the other clone reads the board's setting, not its own cache")
+
+    card = str(plan(team.dos, [{"title": "La de dos", "spec": "hacelo"}],
+                    actor="dev:dos")["created"][0]["id"])
+    assert next_task(team.dos, task=card, actor="agent:dos/w1")["claim"] is not None
+    assert update(team.dos, card, status="review", comment="lista",
+                  actor="agent:dos/w1")["task"]["reviewer"] == "peer", (
+        "a card planned on the clone that never set it still carries the team's rule")
+
+
+def test_a_third_clone_joins_on_the_address_the_repository_carries(
+        team: Team, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`taskops join`, no URL, no token — the two words a teammate should have to type.
+
+    Against a real server because the offline tests cannot see the half that matters: the
+    pointer is committed by whoever joined first, travels through the ORIGIN to a clone that
+    was never told anything, and the join it enables has to end on a FILLED board. A join that
+    wired the remote and skipped the first pull passes every single-store test and leaves the
+    third developer looking at an empty column — which is what it did until this test ran.
+
+    The session is MINTED rather than logged in for: this board is linked to no repository, so
+    a real login has nothing to grant. What is minted is byte-for-byte what one would produce,
+    on both sides — the server's `.sessions.json` and this machine's — which is the pair the
+    join actually reads.
+    """
+    from taskops.usecases._sessionfile import save_session
+    from taskops.usecases._sessions import mint
+
+    monkeypatch.setenv("TASKOPS_HOME", str(tmp_path / "casa"))
+    save_session(team.url, mint(team.home, "ana", [BOARD]), "ana")
+
+    card = a_card(team, "La que ya estaba")
+
+    git(team.uno, "add", "-f", ".taskops/board.json")
+    git(team.uno, "commit", "-qm", "the board lives here")
+    git(team.uno, "push", "-q", "origin", "main")
+
+    third = team.origin.parent / "tres"
+    subprocess.run(["git", "clone", "-q", str(team.origin), str(third)], check=True)
+    _identity(third)
+    assert (third / ".taskops" / "board.json").is_file(), "the clone carries the address"
+
+    done = join(third)
+
+    assert done.url == team.url, "read from the repository, not from a pasted link"
+    assert not done.needs_login, "the token rode in on the pointer's server, so it is signed in"
+    with Store(locate(third)) as store:
+        assert store.tasks.need(card)["title"] == "La que ya estaba", "and the board is FILLED"
 
 
 def _asleep(team: Team, seconds: float) -> None:

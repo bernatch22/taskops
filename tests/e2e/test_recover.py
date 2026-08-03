@@ -199,9 +199,12 @@ def test_no_dead_field_survives_in_the_field_descriptions() -> None:
     A leftover one is dead text nobody reads and nobody can reach — which is exactly what `SPAWN`
     became when the field was removed from the MCP surface, and it sat there looking authoritative.
     """
-    from taskops.contracts import _fields, tools
+    from taskops.contracts import _fields
 
-    source = Path(tools.__file__).read_text(encoding="utf-8")
+    # EVERY parameter module, not just `tools`: `ContextParams` moved out when that one filled
+    # up, and a scan of one file would have called half the context tool's descriptions dead.
+    folder = Path(_fields.__file__).parent
+    source = "".join(f.read_text(encoding="utf-8") for f in sorted(folder.glob("*.py")))
     unused = [name for name in _fields.__all__
               if name.isupper() and f"f.{name}" not in source]
     assert not unused, f"unreferenced description constants: {unused}"

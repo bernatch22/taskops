@@ -13,9 +13,25 @@ import argparse
 from pathlib import Path
 
 from ....contracts.sweep import SweepResult
-from ....usecases.sweep import sweep
+from ....usecases.sweep import LIMIT, sweep
 
-__all__ = ["run_sweep"]
+__all__ = ["add_sweep_flags", "run_sweep"]
+
+
+def add_sweep_flags(parser: argparse.ArgumentParser) -> None:
+    """The flags only `sweep` reads, registered where the command lives rather than beside six
+    that belong to the dossiers.
+
+    `--push` defaults to **None**, and that is load-bearing: the sweep pushes when the project
+    has a remote, so a flag nobody passed must not arrive as `False`. It did, and the effect was
+    that every unattended narration on a hosted board was written to somebody's laptop and
+    stayed there — the trigger never passed the flag, and `store_true` said "no" on its behalf.
+    """
+    parser.add_argument("--limit", type=int, default=LIMIT, help="sweep: days per run")
+    parser.add_argument("--push", action="store_true", default=None,
+                        help="sweep: push at the end (the default when a remote is set)")
+    parser.add_argument("--no-push", action="store_false", dest="push",
+                        help="sweep: write the narrations and send nothing")
 
 
 def run_sweep(where: Path, args: argparse.Namespace) -> str:
@@ -27,7 +43,7 @@ def run_sweep(where: Path, args: argparse.Namespace) -> str:
     """
     return _lines(sweep(where, date=str(args.date) if args.force else "",
                         model=str(args.model), limit=int(args.limit),
-                        push=bool(args.push), force=bool(args.force)))
+                        push=args.push, force=bool(args.force)))
 
 
 def _lines(done: SweepResult) -> str:

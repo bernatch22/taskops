@@ -72,13 +72,23 @@ def _collisions(view: TaskView) -> list[str]:
 
 
 def _graph(view: TaskView) -> list[str]:
-    """Both directions of the DAG, plus the subtasks.
+    """Both directions of the DAG, and both directions of the TREE.
 
     "Blocking N" is stated as a count in the heading on purpose: it is the argument for
     finishing this today rather than tomorrow, and a number reads as urgency where a
     bare list reads as trivia.
+
+    "Part of" leads, and it was missing entirely. A parent listed its children and a child named
+    nothing, so a worker inside a three-level plan could not learn what the thing it was
+    building was FOR — not from its card, not from the brief dispatch writes. It goes first
+    because it is the sentence that makes the spec make sense, and a spec read without it is
+    how a subtask gets solved correctly for the wrong problem.
     """
     out: list[str] = []
+    if view["epic"]:
+        epic = view["epic"]
+        out += [f"### Part of {epic['id']} — {truncate(epic['title'], 60)}", "",
+                f"_{truncate(epic['spec'], 200)}_" if epic["spec"] else "", ""]
     if view["blocked_by"]:
         out += ["### Waiting on", "",
                 bullet([f"{t['id']} ({t['status']}) — {truncate(t['title'], 60)}"

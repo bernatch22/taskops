@@ -39,6 +39,8 @@ def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None
                         help="refuse every write, on every project")
     parser.add_argument("--rate-limit", type=int, default=0, dest="rate_limit",
                         help="requests per minute, 0 for none")
+    parser.add_argument("--no-create", action="store_true", dest="no_create",
+                        help="refuse `taskops board create` — boards only from this box")
     parser.set_defaults(run=run)
     inner = parser.add_subparsers(dest="serve_command", metavar="<subcommand>")
     created = inner.add_parser("init", help="create a project here and mint its token")
@@ -66,10 +68,13 @@ def _root(parser: argparse.ArgumentParser, *, inherit: bool) -> None:
 def run(args: argparse.Namespace) -> str:
     """Blocks until interrupted. The banner goes to stderr, like `taskops ui`'s."""
     root = Path(str(args.root)).expanduser().resolve()
-    route = mount(root, readonly=bool(args.readonly), rate_limit=int(args.rate_limit))
+    route = mount(root, readonly=bool(args.readonly), rate_limit=int(args.rate_limit),
+                  create=not bool(getattr(args, "no_create", False)))
     server = serve_route(str(args.host), int(args.port), route)
     print(f"taskops serve → http://{args.host}:{bound_port(server)}/<project>/  ({root})"
-          + ("  [read-only]" if args.readonly else ""), file=sys.stderr)
+          + ("  [read-only]" if args.readonly else "")
+          + ("  [no remote create]" if getattr(args, "no_create", False) else ""),
+          file=sys.stderr)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

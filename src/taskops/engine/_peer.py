@@ -37,10 +37,12 @@ def reviewer_is_a_peer(facts: Facts) -> str | None:
     nobody else on the board, refusing every close would make the tool unusable for the most
     common way it is first tried. A team states it once:
 
-        taskops context decision "reviewer: peer"
+        taskops policy reviewer peer
 
     and from then on every card is created with `reviewer: peer` and needs somebody from
-    another dev to close it.
+    another dev to close it. This guard reads the CARD, never the policy — so a card planned
+    under the old policy keeps the rule it was created with, and a card that opted out with
+    `--reviewer none` is not dragged back in by a setting changed afterwards.
     """
     if facts.reviewer != PEER:
         return None

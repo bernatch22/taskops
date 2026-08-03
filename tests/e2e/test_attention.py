@@ -241,10 +241,8 @@ def test_a_review_this_actor_could_never_close_is_not_offered_to_them(repo: Path
     Advice the engine will refuse is worse than no advice: it costs calls and it teaches the
     reader to stop trusting the list.
     """
-    from taskops.usecases import context_state
 
-    context_state(repo, "decision", "reviewer: peer — the other developer reviews", actor=DEV)
-    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": ["WHEN x SHALL y"]}],
+    card = plan(repo, [{"title": "t", "spec": "s", "acceptance": ["WHEN x SHALL y"], "reviewer": "peer"}],
                 actor=DEV)["created"][0]["id"]
     next_task(repo, task=card, actor="agent:berna/w1")
     update(repo, card, status="review", comment="over to you", actor="agent:berna/w1")

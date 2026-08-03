@@ -16,7 +16,7 @@ from ..contracts import Event
 from ..contracts.context import CONTEXT_KIND, CONTEXT_TASK, SORTS, Fact, Sort
 from .store import Store
 
-__all__ = ["facts", "fact_of"]
+__all__ = ["facts", "fact_of", "matching"]
 
 
 def facts(store: Store, *, retired: bool = False) -> list[Fact]:
@@ -32,6 +32,18 @@ def facts(store: Store, *, retired: bool = False) -> list[Fact]:
     live = [f for f in found if f is not None]
     return sorted(live if retired else [f for f in live if not f["retired"]],
                   key=lambda f: (f["ts"], f["id"]))
+
+
+def matching(rows: list[Fact], prefix: str) -> list[str]:
+    """Every fact id `prefix` could name, sorted — the whole id alone when it matches one.
+
+    A PREFIX because `show` and `log` print eight characters, so the string a person can see is
+    the only one they can retype. Ambiguity is returned rather than resolved: which of two the
+    caller meant is not a question this layer may answer by picking.
+    """
+    if any(fact["id"] == prefix for fact in rows):
+        return [prefix]
+    return sorted(fact["id"] for fact in rows if fact["id"].startswith(prefix))
 
 
 def fact_of(event: Event, *, retired: bool = False) -> Fact | None:

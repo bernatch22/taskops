@@ -149,3 +149,44 @@ def test_the_handoff_is_refused_before_the_commit_check() -> None:
     with pytest.raises(GuardFailed) as caught:
         check_move(facts("review", commits=0, entered_review_by="agent:berna/one"), "done")
     assert "another's to close" in str(caught.value)
+
+
+def test_a_rejection_with_no_findings_is_refused() -> None:
+    """`review → ready` is the REJECTION, and it is the one arrow that must carry text.
+
+    The rule is not new — `tasks reject` has demanded `-m` since it existed. It lived in
+    ARGPARSE, so it held for a person on a terminal and not for the verifier, which is an agent
+    calling `taskops_update status=ready` through MCP. Every rejection an agent ever made
+    arrived blank: the worker got its card back reading "not good enough" and guessed, which is
+    how a card goes round twice for no reason.
+
+    Here rather than in the CLI because the state machine has exactly one home. A rule a
+    transport enforces is a rule the other two do not, and the one that skips it is always the
+    one doing the work.
+    """
+    with pytest.raises(GuardFailed) as refused:
+        check_move(facts("review"), "ready")
+    assert "no findings" in str(refused.value)
+    assert "a test name" in str(refused.value), "and it says what would be enough"
+
+
+def test_a_rejection_that_says_what_failed_is_allowed() -> None:
+    check_move(facts("review", comment="FAILS: the empty case raises — pytest -k empty"), "ready")
+
+
+def test_whitespace_is_not_a_finding() -> None:
+    """A space satisfies "not empty" and tells the worker exactly as much as nothing did."""
+    with pytest.raises(GuardFailed):
+        check_move(facts("review", comment="   \n  "), "ready")
+
+
+def test_handing_work_back_from_a_WORKING_status_still_needs_no_reason() -> None:
+    """The release path stays unguarded, deliberately: an agent out of depth must always be
+    able to hand work back, and a guard there makes waiting for the lease to lapse the easier
+    move — which loses the context a release comment would have carried.
+
+    Only the arrow OUT OF REVIEW is a rejection. `claimed → ready` and `blocked → ready` are
+    somebody giving up, and giving up must never be harder than abandoning.
+    """
+    check_move(facts("claimed"), "ready")
+    check_move(facts("blocked"), "ready")

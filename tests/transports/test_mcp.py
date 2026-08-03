@@ -242,11 +242,40 @@ def test_the_context_tool_answers_project_wide_and_per_card(tmp_path: Path) -> N
     assert "never break the frozen contract" in text_of(sliced), "the slice dropped an invariant"
 
 
-def test_the_context_tool_cannot_write() -> None:
-    """An agent that could restate an objective could rewrite the rules it is judged against.
-    Reading is a tool; stating a fact stays a human's call at the CLI."""
+def test_the_context_tool_carries_its_write_half() -> None:
+    """It did not, and the omission was mistaken for a rule.
+
+    "An agent cannot restate an objective" was enforced by leaving the fields off this schema —
+    which protected nothing, because a worker holds `Bash` and `taskops context objective …`
+    was always one call away. Meanwhile the ORCHESTRATOR, the one caller with any business
+    setting an objective, had to shell out for it. The fence moved to the use case, where it
+    holds for every transport; the test that this surface stays read-only is gone with it, and
+    `test_a_worker_may_not_state_a_standing_fact` below is what replaced it.
+
+    Four write fields and not seven: `--horizon`, `--owner` and `--files` stay CLI-only,
+    because every field here costs every connected agent context on every call.
+    """
     schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_context")
-    assert set(schema["properties"]) == {"repo_path", "task"}
+    assert set(schema["properties"]) == {"repo_path", "task", "actor",
+                                         "state", "text", "labels", "mine", "retire"}
+
+
+def test_a_worker_may_not_state_a_standing_fact(tmp_path: Path) -> None:
+    """THE rule, asserted where it now lives — and it is stronger than the schema ever was:
+    this refuses the `Bash` route too, which is the one an agent would actually have taken."""
+    from taskops._errors import BadRequest
+    from taskops.usecases import context_state, init
+
+    init(tmp_path, install_git_hooks=False)
+
+    with pytest.raises(BadRequest) as refused:
+        context_state(tmp_path, "objective", "ship it by Friday", actor="agent:ana/w1")
+    # `actor` is on the schema for exactly this: a caller that could not name itself would
+    # resolve from git config and arrive as the developer, and the fence would never fire.
+    assert "actor" in next(t["inputSchema"] for t in listing()
+                           if t["name"] == "taskops_context")["properties"]
+    assert "may not state an objective" in str(refused.value)
+    assert context_state(tmp_path, "objective", "ship it", actor="dev:ana")["text"] == "ship it"
 
 
 def test_update_advertises_evidence_and_its_argued_exemption() -> None:
@@ -332,3 +361,21 @@ def test_the_update_schema_declares_the_actor() -> None:
     fields = tools["taskops_update"]["inputSchema"]["properties"]
     assert "actor" in fields
     assert "evidence" in fields
+
+
+def test_the_context_tool_can_state_a_note_and_file_it_under_the_caller(tmp_path: Path) -> None:
+    """`note` is the fourth sort — standing, and neither a goal nor a rule — and `mine` is what
+    makes an owned fact typable: nobody writes their own id to say "this is mine"."""
+    from taskops.transports.mcp._context import context_
+    from taskops.usecases import init
+
+    init(tmp_path, install_git_hooks=False)
+    args = {"repo_path": str(tmp_path), "actor": "dev:ana"}
+
+    context_({**args, "state": "note", "text": "I run pytest -x", "mine": True})
+    context_({**args, "state": "objective", "text": "ship it"})
+
+    assert "I run pytest -x" in context_({**args, "mine": True}), "my page has my note"
+    assert "I run pytest -x" not in context_({"repo_path": str(tmp_path), "actor": "dev:juan",
+                                              "mine": True}), "and juan's does not"
+    assert "ship it" in context_({"repo_path": str(tmp_path), "actor": "dev:juan", "mine": True})
