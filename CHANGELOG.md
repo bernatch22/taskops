@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.11 — una lectura no pullea, y un pull sin novedades es UN request
+
+Medido en un tablero real con remoto, y hacia la herramienta inusable ahi: el `SessionStart` tardaba
+**mas de un minuto** en inyectar el prompt, y cada tool call pagaba lo mismo. Los numeros, uno por uno:
+`team_now` 12.8s · `context_show` 13.7s · `policy_show` 13.2s · `attention` 15.3s. El mismo servidor
+contesta un `curl` en 0.7-1.3s, asi que no era la red ni el server: eran doce segundos que el CLIENTE
+agregaba a cada llamada.
+
+**Un READ hacia un pull.** `_relay` pullea despues de cada llamada, y su docstring justifica eso para
+un CLAIM — "el agente tiene un lease que el server conoce y su board no". Eso es cierto de una
+**escritura**. Una lectura heredo una garantia que no necesita: su respuesta viene del server, que es
+la autoridad. Las escrituras siguen pulleando, asi que "trabajar es sincronizar" sigue siendo cierto
+de ellas. Despues: 0.73-0.88s por lectura, y el hook completo en **6.1s**.
+
+**El pull bajaba los ocho reports enteros, siempre.** `_reconcile` pedia el cuerpo ANTES de comparar
+nada, y la comparacion que hace despues necesita un **sello**, no el cuerpo: ocho round-trips por pull
+cambiara algo o no. El listado que el cliente venia pidiendo desde antes de que existiera
+(`GET /api/report/file` sin label, que su propio docstring describia como una forma aditiva pendiente)
+ahora existe, con los sellos adentro. Un pull sin novedades pasa de **11.5s a 2.2s** — y eso lo paga
+cada escritura.
+
+La asimetria es el punto: un pull pregunta "hay algo para mi" y se contesta con un sello; un push
+tambien pregunta "hay algo mio", y para eso necesita el contenido del otro lado. Un server viejo que
+no sabe contestar el listado hace que todo funcione como antes — lento es una respuesta aceptable a
+"ese server es anterior"; equivocado no.
+
 ## 0.5.10 — los minutos de una fila son los de SU tanda, y una card es una fila
 
 Visto en pantalla: una tanda `06:43 PM → 06:54 PM` con tres cards, y una marcando **32m**. Once
