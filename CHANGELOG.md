@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.6 — cuanto tiempo se le dedico a una card
+
+El perfil de una persona decia 10 cards / 15 commits / 2 closed y nada sobre tiempo, teniendo cada
+evento su actor, su card y su timestamp.
+
+**Como se mide, que es la mitad del cambio porque el numero tiene que poder defenderse:** la suma de
+los huecos entre eventos CONSECUTIVOS del mismo actor en la misma card, con cada hueco capado a 30
+minutos. Un evento y el siguiente ocho horas despues no son ocho horas de trabajo — sin capar, el
+fold reportaria una noche de sueno como esfuerzo sobre la card que quedo abierta. Capado, ese par
+aporta el cap y nada mas, asi que el total es una **cota inferior** del tiempo atendido y no una
+adivinanza sobre cuando alguien paro, que es exactamente lo que el log no registra.
+
+Y cada superficie lo dice: la fila lleva "al menos esto" en su tooltip, y si la ventana llego a su
+tope de 600 eventos el tab avisa que los totales son parciales. Una card con UN evento vale cero y no
+un piso, y en pantalla eso imprime nada — `0m` se lee como una medicion que salio vacia en vez de una
+pregunta que no se puede hacer.
+
+**El perfil pasa a dos tabs** — Work (los numeros y las cards con su tiempo) y Context (el objetivo y
+las standing calls) — porque son dos preguntas, y apiladas la segunda era algo que se scrollea de
+largo. El tab Context solo se ofrece cuando hay algo: un tab siempre vacio ensena a no clickear.
+
 ## 0.5.5 — el modal de un capitulo se puede leer
 
 Dos cosas que aparecieron en cuanto un capitulo tuvo un goal de verdad.
