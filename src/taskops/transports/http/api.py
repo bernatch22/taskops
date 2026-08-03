@@ -59,7 +59,12 @@ def get_activity(root: Path, request: Request) -> Reply:
     timeline it sits next to would be a summary of something the reader cannot see.
     """
     since = request.param("since", HISTORY_WINDOW)
-    return guarded(lambda: json_reply(activity(root, since=since)))
+    # `from`/`to` are epoch seconds and win over the window: "last month" has two ends, and where a
+    # month STARTS is the client's fact (the 1st at 00:00 wherever the reader is), not this clock's.
+    range_from = float(request.param("from", "0") or 0)
+    range_to = float(request.param("to", "0") or 0)
+    return guarded(lambda: json_reply(
+        activity(root, since=since, range_from=range_from, range_to=range_to)))
 
 
 def get_search(root: Path, request: Request) -> Reply:

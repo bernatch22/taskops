@@ -24,7 +24,8 @@ also wide enough to be tens of thousands of events, and nobody scrolls that — 
 the answer SAYS it was bounded rather than quietly showing a slice as if it were everything."""
 
 
-def activity(store: Store, *, since: float, limit: int = MAX_EVENTS) -> Activity:
+def activity(store: Store, *, since: float, until: float = 0.0,
+             limit: int = MAX_EVENTS) -> Activity:
     """The timeline, plus a roll-up per actor, from one pass over the same events.
 
     One projection and not two: a per-actor summary computed over a different window than the
@@ -35,9 +36,14 @@ def activity(store: Store, *, since: float, limit: int = MAX_EVENTS) -> Activity
     what did that agent do while it held the lease — are answerable from the log and from nothing
     else, because a task row keeps only where things landed.
     """
-    # One extra row is the whole truncation check: asking for `limit + 1` and getting it means
-    # there was more, without a second COUNT over the same window.
-    found = store.events.newest_since(since, limit=limit + 1)
+    # The whole RANGE, folded — and only the TIMELINE capped. The roll-ups (who did what, how long,
+    # what was open at once) are what a profile reads, and a total that came out short because the
+    # 601st event did not fit is a wrong number rather than a bounded one. Nobody scrolls ten
+    # thousand rows, so the list stays capped and `truncated` says the list was.
+    #
+    # This is not the "two windows" mistake the docstring above warns about: both halves are folded
+    # over exactly the same range. One of them is displayed in full and the other is not.
+    found = store.events.between(since, until)
     kept = found[-limit:] if len(found) > limit else found
     return Activity(repo=str(store.root), since=since, events=list(reversed(kept)),
                     # `CONTEXT_TASK` gets a title of its own. It is the sentinel a fact and a
@@ -48,7 +54,7 @@ def activity(store: Store, *, since: float, limit: int = MAX_EVENTS) -> Activity
                                if any(e["task"] == CONTEXT_TASK for e in kept) else {}),
                             **{task["id"]: task["title"]
                                for task in tasks_of(store, [e["task"] for e in kept])}},
-                    actors=rolls(kept), kinds=sorted({e["kind"] for e in kept}),
+                    actors=rolls(found), kinds=sorted({e["kind"] for e in kept}),
                     truncated=len(found) > limit)
 
 

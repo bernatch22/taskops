@@ -79,3 +79,14 @@ export function spell(seconds: number): string {
  * cards had nine that did not exist as far as this panel was concerned. The rest is already loaded —
  * "more" costs no request, which is why it is a count and not a fetch.
  */
+
+/* How long is long, as three buckets. A colour scale and not a gradient, because the number is a
+ * FLOOR and a smooth ramp would suggest a precision it does not have — three steps say "a while",
+ * "most of a session", "hours" and stop there. Derived from the value so no caller can label a row
+ * wrong, and the thresholds are the ones the cap makes meaningful: `GAP` is thirty minutes, so an
+ * hour is two uninterrupted stretches and three hours is a morning. */
+export function heat(seconds: number): string {
+  if (seconds >= 3 * 3600) return "heat-hot";
+  if (seconds >= 3600) return "heat-warm";
+  return "heat-cool";
+}

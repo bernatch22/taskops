@@ -13,7 +13,7 @@ from typing import cast
 
 from .._clock import now
 from ..contracts import CommitRef, Event, Inbox, Task, TaskView
-from ..engine.timespent import on_card
+from ..engine.timespent import per_card
 from ..storage import Store
 
 __all__ = ["view", "inbox_for", "THREAD_KINDS"]
@@ -42,9 +42,12 @@ def view(store: Store, task_id: str) -> TaskView:
         neighbours=_neighbours(store, task),
         thread=[e for e in history if e["kind"] in THREAD_KINDS],
         commits=[_commit(e) for e in history if e["kind"] == "commit"],
-        # From THIS card's events, which are already in hand: the same number the board
-        # folds per card, so a card cannot say two different things in two places.
-        seconds=on_card([(e["actor"], e["kind"], e["ts"]) for e in history]),
+        # The SAME fold the board runs, over the same whole log — not this card's events alone.
+        # Attribution needs each actor's full stream (a gap is credited to the card of the event
+        # that closes it, wherever the previous event was), so folding only this card's history
+        # would recreate the overlap the fold exists to prevent, and the drawer would disagree
+        # with the board about one number.
+        seconds=per_card(store.events.stamps_by_task()).get(task_id, 0.0),
         history=history)
 
 

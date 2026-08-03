@@ -1,8 +1,15 @@
 """How long an actor was ON a card, measured from the log and bounded from below.
 
 Nothing records when somebody stopped working. What the log has is WHEN each thing happened, so the
-only defensible answer is built out of the gaps between one actor's consecutive events on one card —
-and every gap is capped before it is added.
+only defensible answer is built out of the gaps between one actor's consecutive events — each gap
+capped, and each attributed to exactly ONE card: the card of the event that CLOSES it, because the
+work inside a gap is the work that produced the next event.
+
+One card per gap is what makes every number here reconcile with every other. The first version gave
+each card the gaps between its own events, and in an interleaved sitting those gaps OVERLAP:
+a(0m) → b(2m) → a(4m) → b(6m) is a six-minute sitting where `a` claimed 0→4 and `b` claimed 2→6 —
+eight minutes drawn inside a span of six, and a reader checked the sum against the span and caught
+it. Attributed, the per-card minutes of a sitting add up to exactly its span.
 
 The cap is the whole honesty of it. An event and the next one six hours later are not six hours of
 work, and a fold that added the raw gap would report a night's sleep as effort on whatever card
@@ -20,7 +27,7 @@ from ..contracts import Event
 # budget, and one more re-export would push it over for the sake of a shorter import line.
 from ..contracts.spent import Attended, Stretch
 
-__all__ = ["attended", "stretches", "on_card", "per_card", "worked", "GAP", "WORK"]
+__all__ = ["attended", "stretches", "per_card", "worked", "GAP", "WORK"]
 
 WORK: frozenset[str] = frozenset({
     "claimed", "released", "status", "comment", "commit", "branch", "blocked", "unblocked",
@@ -63,25 +70,36 @@ def attended(events: list[Event]) -> list[Attended]:
     The caller passes ONE actor's events — the split is the caller's, because `history.rolls` has
     already grouped them and grouping twice is how two answers about the same actor start to differ.
 
+    Walks the actor's WHOLE stream in time order, not each card's own events: each capped gap goes
+    to the card of the event that closes it, so the minutes of an interleaved sitting add up to its
+    span instead of overlapping (see the module docstring for the shape that caught this).
+
     Sorted by `ts` before subtracting, which is not defensive: a `git pull` merges two ends of a log,
     so events reach a clone out of order, and a fold that trusted arrival order would take a
     difference backwards and count nothing.
     """
-    per: dict[str, list[float]] = {}
-    for event in worked(events):
-        per.setdefault(event["task"], []).append(event["ts"])
-    out = [_one(task, sorted(stamps)) for task, stamps in per.items()]
+    seconds, counts = _attribute(
+        sorted(((e["ts"], e["task"]) for e in worked(events)), key=lambda pair: pair[0]))
+    out = [Attended(task=task, seconds=seconds.get(task, 0.0), events=n)
+           for task, n in counts.items()]
     return sorted(out, key=lambda a: (-a["seconds"], -a["events"], a["task"]))
 
 
-def _one(task: str, stamps: list[float]) -> Attended:
-    """A card's total. ONE event scores zero seconds, and that is the honest answer: a single event
-    is a moment, and there is no span between it and nothing. A floor here would be the invention
-    the cap exists to avoid, multiplied by every card somebody touched once."""
-    # `strict=False` because the pairing is deliberately ragged: a list zipped against itself
-    # offset by one is n-1 pairs, and the last stamp has no successor to be paired with.
-    seconds = sum(min(later - earlier, GAP) for earlier, later in zip(stamps, stamps[1:], strict=False))
-    return Attended(task=task, seconds=seconds, events=len(stamps))
+def _attribute(ordered: list[tuple[float, str]]) -> tuple[dict[str, float], dict[str, int]]:
+    """Each capped gap between consecutive stamps, credited to the LATER stamp's card — once.
+
+    The whole arithmetic of this module, in one place on purpose: the profile's per-card rows and
+    the board's per-card totals must be the same fold, or a card says two things in two places.
+    A card touched once can still accrue time here (the gap leading INTO its one event), and a
+    stream of one event accrues none: there is no gap on either side of it and nothing is invented.
+    """
+    seconds: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for (earlier, _), (later, task) in zip(ordered, ordered[1:], strict=False):
+        seconds[task] = seconds.get(task, 0.0) + min(later - earlier, GAP)
+    for _, task in ordered:
+        counts[task] = counts.get(task, 0) + 1
+    return seconds, counts
 
 
 def stretches(events: list[Event]) -> list[Stretch]:
@@ -120,33 +138,22 @@ def _sitting(run: list[Event]) -> Stretch:
     return Stretch(started=run[0]["ts"], ended=run[-1]["ts"], tasks=seen, events=len(run))
 
 
-def on_card(stamps: list[tuple[str, str, float]]) -> float:
-    """One CARD's attended time, over every actor that ever touched it. Seconds, a floor.
-
-    Summed PER ACTOR and then added, which is the whole of the arithmetic and the one thing a naive
-    version gets wrong: a card two agents worked in the same hour was attended twice, so the two
-    stretches add. Subtracting consecutive events of the CARD instead would fold them into one and
-    report half the work — the same mistake, mirrored, as billing a switch between two cards as time
-    on both.
-
-    Lives beside `attended` rather than in it because the question is the card's and not a person's:
-    this is what a card carries wherever it is drawn, so it does not depend on which window somebody
-    happens to be looking at a profile through.
-    """
-    per: dict[str, list[float]] = {}
-    for actor, kind, ts in stamps:
-        if kind in WORK:
-            per.setdefault(actor, []).append(ts)
-    return sum(_one("", sorted(times))["seconds"] for times in per.values())
-
-
 def per_card(rows: list[tuple[str, str, str, float]]) -> dict[str, float]:
     """Every card's attended time, from one flat read of the log. `(task, actor, kind, ts)` in.
 
-    The grouping is HERE and not in the query it comes from: how this number is built is one
-    decision, and a `GROUP BY` upstream would make the storage layer the second place that knows it.
+    Grouped by ACTOR and attributed along each actor's own stream — never grouped by card, which is
+    the mistake this fold exists to prevent twice over: per-card gaps overlap in an interleaved
+    sitting, and two actors' streams must add (a card two agents worked in the same hour was
+    attended twice). The grouping is HERE and not in the query it comes from: how this number is
+    built is one decision, and a `GROUP BY` upstream would make storage the second place to know it.
     """
-    per: dict[str, list[tuple[str, str, float]]] = {}
+    streams: dict[str, list[tuple[float, str]]] = {}
     for task, actor, kind, ts in rows:
-        per.setdefault(task, []).append((actor, kind, ts))
-    return {task: on_card(stamps) for task, stamps in per.items()}
+        if kind in WORK:
+            streams.setdefault(actor, []).append((ts, task))
+    out: dict[str, float] = {}
+    for stream in streams.values():
+        seconds, _ = _attribute(sorted(stream, key=lambda pair: pair[0]))
+        for task, spent in seconds.items():
+            out[task] = out.get(task, 0.0) + spent
+    return out

@@ -7,7 +7,7 @@ import { api } from "../api";
 import type {
   AgentEntry, CommitRef, ContextSlice, Event, Task, TaskView,
 } from "../contracts";
-import { Actor, MARK, Priority, ago, spell } from "./bits";
+import { Actor, MARK, Priority, ago, heat, spell } from "./bits";
 /* The fact renderer and the chip live in `facts`, not in the panel that hosts them: the same
  * fact is drawn here, in the project block, in a chapter block and on a profile, and a
  * second renderer would drift — the first thing a copy drops is the id, which is the only
@@ -67,7 +67,7 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
             * On the card itself rather than only inside somebody's profile, so it does not change
             * depending on how far back a window happens to reach. */}
           {spell(view.seconds) ? (
-            <> · <span className="card-spent"
+            <> · <span className={`card-spent ${heat(view.seconds)}`}
                        title="at least this long: the gaps between this card's events, each capped
  at 30m, summed over every actor that touched it">{spell(view.seconds)} at least</span></>
           ) : null}

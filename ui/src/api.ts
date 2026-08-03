@@ -97,6 +97,11 @@ export const api = {
    * ones that ended, not on load: a reached milestone changes never. */
   milestones: () => call<MilestoneList>("/api/milestones"),
   activity: (since: string) => call<Activity>(`/api/activity?since=${encodeURIComponent(since)}`),
+  /* A CLOSED range, in epoch seconds. Separate from `activity` because a lookback cannot express
+   * "last month" — it needs both ends — and because where a month starts is the CLIENT's fact: the
+   * 1st at 00:00 in the timezone of whoever is looking, which the server's clock cannot know. */
+  activityBetween: (from: number, to: number) =>
+    call<Activity>(`/api/activity?from=${Math.floor(from)}&to=${Math.floor(to)}`),
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
   reports: () => call<ReportEntry[]>("/api/reports"),
   report: (label: string) => call<ReportFile>(`/api/report?date=${encodeURIComponent(label)}`),

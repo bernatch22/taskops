@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { Board } from "../src/components/Board";
 import { MilestoneModal } from "../src/components/MilestoneModal";
-import { spell } from "../src/components/bits";
+import { heat, spell } from "../src/components/bits";
 import { peopleOf } from "../src/components/People";
 import { Menu, Picker } from "../src/components/Picker";
 import { ProjectModal } from "../src/components/ProjectModal";
@@ -160,6 +160,15 @@ check("the project's rules are here",
 check("and a CHAPTER's rule is not — it dies with its chapter",
       !context.rules.some((f) => proj.includes(f.text)));
 check("what the engine enforces is drawn apart", proj.includes("Engine"));
+
+
+console.log("durations");
+/* The heat is DERIVED from the value, so a row cannot be labelled wrong by a caller. Three steps and
+ * not a gradient: the number is a floor, and a smooth ramp would suggest precision it does not have. */
+check("a duration's heat comes off its own value",
+      heat(10 * 60) === "heat-cool" && heat(2 * 3600) === "heat-warm"
+      && heat(4 * 3600) === "heat-hot",
+      `${heat(600)} · ${heat(7200)} · ${heat(14400)}`);
 
 console.log(failed ? `\n${failed} failed` : "\nall good");
 process.exit(failed ? 1 : 0);
