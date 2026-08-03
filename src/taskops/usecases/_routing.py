@@ -82,7 +82,12 @@ def read_remote_first(start: Path | str, verb: str, args: dict[str, Any]) -> Any
     if remote is None:
         return None
     try:
-        return _relay(start, remote, lambda wire: wire.rpc(verb, args))
+        # NOT through `_relay`: that pulls after the call, and its reason is a WRITE's — an agent
+        # holding a lease the server knows about and the local board does not. A read has no such
+        # gap to close, because its answer came FROM the server. Measured on a real board, that
+        # inherited pull cost 12 seconds on every read: the opening makes four of them, so a session
+        # spent fifty seconds before printing a line, and every tool-call hook paid it again.
+        return Wire(remote["url"], remote["token"]).rpc(verb, args)
     except TaskopsError as err:
         import sys
         sys.stderr.write(f"taskops: could not reach {remote['url']} ({err}) — answering "

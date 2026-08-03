@@ -15,6 +15,7 @@ from typing import Any, cast
 
 from ..._errors import ReportConflict
 from ...usecases import MAX_PAGE, accept_events, pull_events, read_report_file, write_report_file
+from ...usecases.index import report_index
 from ._wire import Reply, Request, error_reply, json_reply
 from .api import guarded
 
@@ -37,11 +38,26 @@ def get_sync(root: Path, request: Request) -> Reply:
     return guarded(lambda: json_reply(pull_events(root, after=after, limit=limit)))
 
 
+def _listing(rows: list[Any]) -> dict[str, Any]:
+    """Labels and their stamps, from ONE index read. Both halves because the labels alone are what
+    the older client asks for and the stamps are what makes a sync cheap."""
+    held = [row for row in rows if row["exists"]]
+    return {"labels": [row["label"] for row in held],
+            "stamps": {row["label"]: row["max_seq"] for row in held}}
+
+
 def get_report_file(root: Path, request: Request) -> Reply:
-    """The bytes this server holds for a label, verbatim — it never regenerates one to answer."""
+    """The bytes this server holds for a label, verbatim — it never regenerates one to answer.
+
+    With NO label it answers the LISTING instead, and that half is what a sync needs: every label
+    with the seq it was generated at, and no bodies. The client's `list_reports` had been calling it
+    that way since before the shape existed, tolerating the 400 — so reconciling fell back to
+    downloading every report in full to read one number out of each. Eight round-trips on a pull
+    with nothing to bring, eleven seconds measured, and every write pays a pull.
+    """
     label = request.param("label")
     if not label:
-        return error_reply(400, "?label=<report> is required", "bad_request")
+        return guarded(lambda: json_reply(_listing(report_index(root))))
 
     def run() -> Reply:
         found = read_report_file(root, label)

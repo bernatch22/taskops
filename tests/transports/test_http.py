@@ -456,7 +456,7 @@ def test_the_index_lists_every_report_with_today_at_the_top(route: Any, project:
     """
     payload = body_of(route(get("/api/reports")))
     assert len(payload) == 1
-    assert set(payload[0]) == {"label", "path", "exists", "stale", "missing_events",
+    assert set(payload[0]) == {"label", "path", "exists", "stale", "missing_events", "max_seq",
                                "has_narration", "bytes"}
     assert payload[0]["exists"] is False and payload[0]["bytes"] == 0
 

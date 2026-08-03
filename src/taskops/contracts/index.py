@@ -30,6 +30,12 @@ class ReportEntry(TypedDict):
     """How many of the day's events landed after the report was generated. Always 0 for a label
     that is not a single day — a range has no window this can be counted against."""
 
+    max_seq: int
+    """The seq this report was generated at, parsed out of its own stamp. Here so a SYNC can decide
+    whether it needs the body: without it, reconciling meant downloading every report in full to
+    read one number out of it — eight round-trips on a pull that had nothing to bring, measured at
+    eleven seconds on a real board."""
+
     has_narration: bool
     """Whether the prose section has been written. The dossier's facts are free to regenerate;
     the narration is the part a model was paid for and a human may have edited."""
