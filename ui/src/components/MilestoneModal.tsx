@@ -14,6 +14,7 @@
 
 import type { ContextView, Fact, Milestone } from "../contracts";
 import { FactBlock, Group } from "./facts";
+import { Markdown } from "./Markdown";
 import { MARK, Progress, countOf, short, whoIsWhere } from "./Picker";
 import { Overlay } from "./Overlay";
 import type { Board } from "../contracts";
@@ -39,9 +40,19 @@ export function MilestoneModal({ chapter, context, board, onClose }: {
       {/* The GOAL, in the largest text in the modal and above everything. A chapter whose goal is
         * a line of small print is a chapter people navigate past — and it is the one field that
         * says when the work is over. Absent on a chapter nobody has written one for, which is the
-        * normal state of one just opened, so it says so and names the command. */}
+        * normal state of one just opened, so it says so and names the command.
+        *
+        * Through the SAME reader the reports use, because a goal arrives with its own shape: it is
+        * prose somebody wrote in paragraphs, often with a labelled block for what is out of scope
+        * and a list of what is in. A `<p>` collapsed every newline in it, so a real one came out as
+        * twenty unbroken lines — measured on a live board, and unreadable. A card's spec never had
+        * the problem because `TaskPanel` uses `<pre>`, so the project already knew these texts
+        * carry their own form; the goal was the one field throwing it away.
+        *
+        * Markdown and not `<pre>`: a goal is prose, not a fixed-width block, and this reader builds
+        * elements rather than pasting HTML — which is why it exists, since a model writes into it. */}
       {chapter.goal
-        ? <p className="ms-goal">{chapter.goal}</p>
+        ? <div className="ms-goal"><Markdown source={chapter.goal} /></div>
         : <p className="ms-goal ms-goal-empty">
             No goal written yet — what does <em>done</em> mean, and what is out of scope?{" "}
             <code>taskops milestone edit {chapter.id.slice(0, 8)} --goal "…"</code>
