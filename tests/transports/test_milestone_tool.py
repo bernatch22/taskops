@@ -163,9 +163,14 @@ def test_updating_the_wording_is_not_a_state_change(where: Path) -> None:
     """A chapter gets re-worded as a team learns what it is actually shipping, and that is not a
     move: nothing about who may close it changes, so nothing guards it."""
     chapter = _id(tool(repo_path=str(where), create="el import", actor="agent:berna/w1"))
-    said = tool(repo_path=str(where), update=chapter, text="que una clienta suba su CSV",
+    said = tool(repo_path=str(where), update=chapter, title="El importador",
+                goal="que una clienta suba su CSV y reciba el reporte sin pedirnos nada",
                 horizon="2026-09-01", actor="agent:berna/w1")
-    assert "que una clienta suba su CSV" in said and "by 2026-09-01" in said
+    assert "El importador" in said and "by 2026-09-01" in said
+    assert "que una clienta suba su CSV y reciba el reporte" in said, "the goal is printed too"
+    # An ABSENT field is left alone rather than blanked: writing a horizon must not erase the goal.
+    kept = tool(repo_path=str(where), update=chapter, horizon="2026-10-01", actor="dev:berna")
+    assert "El importador" in kept and "sin pedirnos nada" in kept
 
 
 def test_a_terminal_chapter_names_every_state_it_could_have_reached(where: Path) -> None:

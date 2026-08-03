@@ -27,8 +27,8 @@ __all__ = ["project_block", "chapters_block", "fact_line", "dev"]
 NO_CHAPTER = [
     "## No milestone — the board has no chapter open",
     "Every card belongs to one, so `taskops_plan` will REFUSE until there is one. Open it with",
-    '`taskops_milestone create="<what this is for>"` — a sentence a person would recognise as',
-    "finished, not a task.",
+    '`taskops_milestone create="<a short name>" goal="<what done means, and what is out of scope>"`',
+    "— the goal is a paragraph if it needs to be, and it is what every worker under it reads.",
 ]
 """Named here rather than left to a caller because a session must learn this from the OPENING and
 not from the refusal. A refusal mid-plan costs a turn and reads as a bug in the tool."""
@@ -69,7 +69,7 @@ def chapters_block(view: ContextSlice) -> list[str]:
             lines.append("")                    # several at once: one blank between chapters
         lines += _chapter(view, chapter)
     if view["planned"]:
-        lines.append("   next        " + " · ".join(p["text"] for p in view["planned"]))
+        lines.append("   next        " + " · ".join(p["title"] for p in view["planned"]))
     return [*lines, ""]
 
 
@@ -97,13 +97,17 @@ def _head(chapter: Milestone) -> str:
     person has been asked to close — and "review" in a status field is not that sentence."""
     if chapter["state"] == "review":
         said = f" — “{chapter['note']}”" if chapter["note"] else ""
-        return (f"## Milestone COMPLETED, waiting for a person — {chapter['text']}\n"
+        return (f"## Milestone COMPLETED, waiting for a person — {chapter['title']}\n"
                 f"   Reported finished{said}\n"
                 f"   → verify: `taskops milestone done {chapter['id'][:8]}`  ·  send back: "
                 f"`taskops milestone reject {chapter['id'][:8]} -m \"…\"`\n"
                 f"   Nothing new starts under it until a person closes or returns it.")
     by = f"      by {chapter['horizon']}" if chapter["horizon"] else ""
-    return f"## {MARK.get(chapter['state'], '·')} Milestone in force — {chapter['text']}{by}"
+    said = f"## {MARK.get(chapter['state'], '·')} Milestone in force — {chapter['title']}{by}"
+    # The goal on its own line, because this is the injection: a worker reads the title to know
+    # which chapter it is in and the goal to know what the work is FOR, and the second is the one
+    # that decides what it builds.
+    return f"{said}\n   {chapter['goal']}" if chapter["goal"] else said
 
 
 def fact_line(fact: Fact) -> str:

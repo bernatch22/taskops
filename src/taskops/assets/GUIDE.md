@@ -299,12 +299,19 @@ who was allowed to close work planned last week.
 ## Milestones: the chapter your card belongs to
 
 A board is not a flat pile of cards. **Every card belongs to exactly one MILESTONE** — a chapter
-with a text, a horizon, and an end. Several are active at once, which is normal: a team ships two
-things in the same fortnight.
+with a title, a goal, a horizon, and an end. Several are active at once, which is normal: a team
+ships two things in the same fortnight.
+
+A chapter has two texts and they are not interchangeable. The **title** is three or five words and
+is what every surface prints (`El importador`). The **goal** is what DONE means and what is out of
+scope, in as many words as it takes — it is what every worker under the chapter reads, so write the
+border into it: *"NO entra el envío por mail — ese es el capítulo siguiente"*.
 
 ```
 taskops_milestone                   every ACTIVE chapter, its counts, and what is planned next
 taskops_milestone milestone=<id>    ONE chapter: its facts AND ITS CARDS
+taskops_milestone create="El importador" goal="que una clienta suba su CSV y reciba el reporte…"
+taskops_milestone update=<id> goal="…"      what you omit is left alone, never blanked
 ```
 
 A chapter moves exactly like a card, and for the same reason — **whoever did the work does not get

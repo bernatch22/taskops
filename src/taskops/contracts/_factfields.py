@@ -10,7 +10,8 @@ from __future__ import annotations
 
 __all__ = ["CONTEXT_TASK", "CONTEXT_MILESTONE", "LEVEL", "STATE", "SCOPE", "RETIRE",
            "PLAN_MILESTONE",
-           "MS_READ", "MS_CREATE", "MS_HORIZON", "MS_PLANNED", "MS_START", "MS_UPDATE",
+           "MS_READ", "MS_CREATE", "MS_GOAL", "MS_TITLE", "MS_HORIZON", "MS_PLANNED",
+           "MS_START", "MS_UPDATE",
            "MS_REVIEW", "MS_DONE", "MS_REJECT", "MS_CANCEL", "MS_NOTE", "MS_CARRY", "MS_INTO"]
 
 CONTEXT_TASK = ("a task id: the slice that applies to THAT card — the project's permanent rules, "
@@ -39,13 +40,19 @@ MINE = ("file it under YOU rather than the project. A worker then reads the proj
 MS_READ = ("a milestone id: that chapter with its facts AND ITS CARDS. Omit and you get every "
            "ACTIVE chapter with its counts, plus what is planned next — which is what an "
            "orchestrator needs, because it chooses which one to plan into")
-MS_CREATE = ("open a new chapter with this text. Cards attach to a chapter and `plan` refuses "
-             "without one, so this is the first call on a fresh board")
+MS_CREATE = ("open a new chapter with this TITLE — three or five words somebody would recognise "
+             "(\"the importer\", \"invoicing\"). Cards attach to a chapter and `plan` refuses "
+             "without one, so this is the first call on a fresh board. Say what done means in `goal`")
+MS_GOAL = ("what DONE means for this chapter, and what is out of scope. Prose, as long as it needs "
+           "to be: every worker under this chapter reads it, and it is the difference between a "
+           "name and a thing anybody can tell is finished")
+MS_TITLE = "with `update`: rename it. Absent leaves the name alone rather than blanking it"
 MS_HORIZON = "when it is meant to be reached, `YYYY-MM-DD`. Advisory: nothing expires on it"
 MS_PLANNED = ("write it down WITHOUT starting it. That is the todo-list — visible, carrying no "
               "cards and no facts, so it cannot be mistaken for work in progress")
 MS_START = "a planned chapter's id: it becomes active. Several may be active at once"
-MS_UPDATE = "a chapter's id to re-word: pass `text` and/or `horizon`"
+MS_UPDATE = ("a chapter's id to re-word: pass `title`, `goal` and/or `horizon`. What you omit is "
+             "left alone, so writing a goal does not erase the name")
 MS_REVIEW = ("a chapter's id you believe is finished. It stays ACTIVE and a person verifies — "
              "nothing is archived on your word. Say what shows it in `m`")
 MS_DONE = ("verify a chapter as reached. REFUSED to an agent: `done` on a card already needs "

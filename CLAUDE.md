@@ -25,7 +25,7 @@ If you are about to edit code, one of these is true. Do the matching thing:
 | Situation | What to do |
 |---|---|
 | A card exists for it | `taskops_next task=tk-…` — claim it first |
-| There is no MILESTONE open | `taskops milestone new "<what this is for>"` — `plan` refuses without one |
+| There is no MILESTONE open | `taskops milestone new "<title>" --goal "<what done means>"` — `plan` refuses without one |
 | No card exists | `taskops_capture title=… spec=…` — creates it AND claims it in one call |
 | It is several pieces with dependencies | `taskops_plan` once, with the whole tree |
 | It is somebody else's specialty | dispatch it — do not do it yourself |

@@ -90,7 +90,7 @@ def _apply(found: dict[str, Milestone], event: Event) -> None:
     if current is None:
         return
     if op == "update":
-        for field in ("text", "horizon"):
+        for field in ("title", "goal", "horizon"):
             if field in body:                   # absent means "leave it", not "blank it"
                 current[field] = str(body[field])   # type: ignore[literal-required]
         current["updated"] = event["ts"]
@@ -104,7 +104,13 @@ def _born(event: Event, state: MilestoneState) -> Milestone:
     empty in both, because neither a creation nor a supersession is somebody verifying anything.
     """
     body = event["body"]
-    return Milestone(id=event["id"], text=str(body.get("text", "")),
+    # `text` is where a pre-0.5.0 chapter's one sentence lives, and where the LEGACY ELECTION below
+    # finds an old project objective. Mapped to `title` rather than dropped: `storage.context` drops
+    # what it cannot read and that is right for a sort, but a chapter with no name is a row nobody
+    # can identify. It reads long, which is a display problem and not a data one.
+    return Milestone(id=event["id"],
+                     title=str(body.get("title") or body.get("text", "")),
+                     goal=str(body.get("goal", "")),
                      horizon=str(body.get("horizon", "")), state=state,
                      created_by=event["actor"], created=event["ts"], updated=event["ts"],
                      closed_by="", note="")

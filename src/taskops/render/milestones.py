@@ -51,8 +51,13 @@ def render_chapter(chapter: Milestone, counts: dict[str, int], *,
     session must not start new work under it — and saying "review" without saying who has to act
     would leave a reader to infer the one thing that matters.
     """
-    head = f"{MARK.get(chapter['state'], '·')} {chapter['id'][:8]}  {chapter['text']}"
+    head = f"{MARK.get(chapter['state'], '·')} {chapter['id'][:8]}  {chapter['title']}"
     lines = [head + (f"  by {chapter['horizon']}" if chapter["horizon"] else "")]
+    # The GOAL under the title, indented, and only when there is one. A chapter is a title somebody
+    # can pick out of a list plus the outcome that says when it is over, and printing only the first
+    # is how "El importador" ends up meaning four different things to four people.
+    if chapter["goal"]:
+        lines.append(f"   {chapter['goal']}")
     if said := count_line(counts):
         lines.append(f"   {said}")
     lines += _waiting(chapter)
@@ -90,12 +95,13 @@ def render_chapters(active: list[Milestone], planned: list[Milestone],
         # Both spellings, because this one string is printed by a terminal and by an MCP reply, and
         # naming only the tool sent a person to a command that does not exist.
         return ('no milestone yet — every card belongs to one, so `plan` will refuse until one is '
-                'open.\n  a person:  taskops milestone new "<what this is for>"'
-                '\n  an agent:  taskops_milestone create="<what this is for>"')
+                'open.\n  a person:  taskops milestone new "<a short name>" '
+                '--goal "<what done means>"'
+                '\n  an agent:  taskops_milestone create="<a short name>" goal="<what done means>"')
     lines = [f"# active — {len(active)}"] if active else []
     for chapter in active:
         lines.append(render_chapter(chapter, counts.get(chapter["id"], {}), cards=[]))
     if planned:
         lines += ["", "# planned — written down, not started",
-                  *[f"○ {p['id'][:8]}  {p['text']}" for p in planned]]
+                  *[f"○ {p['id'][:8]}  {p['title']}" for p in planned]]
     return "\n".join(lines)

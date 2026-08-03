@@ -10,7 +10,7 @@ A design note, written before the code.
   Project ──has_many──▶ Rule            permanent.  Outlives every milestone.
           ──has_one───▶ Policy          a value the ENGINE obeys, validated
           ──has_many──▶ Decision        a dev may add one at project level
-          ──has_many──▶ Milestone
+          ──has_many──▶ Milestone       title · goal · horizon · state
                             │
                             ├──has_many──▶ Task (card)
                             ├──has_many──▶ Rule       ── only while this milestone is in force
@@ -18,6 +18,14 @@ A design note, written before the code.
                             ├──has_many──▶ Note
                             └──has_many──▶ DevObjective   at most one per dev
 ```
+
+**A chapter has two texts and they are not interchangeable.** The `title` is three or five words
+(`El importador`) and is what every surface prints — the board's selector, a card's badge, a log
+line. The `goal` is what DONE means and what is out of scope, in as many words as it takes, and it
+is what every worker under the chapter reads. One field was the first version of this, and it made
+every surface that had to fit a chapter in a row cut a sentence mid-word — and it left "what is out
+of scope" with nowhere to live but a `decision`, in a list of technical rulings where nobody read it
+as the point of the work.
 
 **A rule exists at both levels, and that is the whole answer to "does a rule survive?".** It
 survives if you put it on the PROJECT and it dies with the chapter if you put it on the MILESTONE
@@ -159,10 +167,11 @@ construction rather than by a flag.
 ```
   taskops_milestone                       EVERY active chapter, with counts, + planned titles
   taskops_milestone  milestone=<id>       one chapter: its facts AND ITS CARDS
-  taskops_milestone  create=…  horizon=…  an agent may.  planned=true to not start it
+  taskops_milestone  create="<title>"      an agent may.  planned=true to not start it
+                     goal=…  horizon=…
                      planned=true
   taskops_milestone  start=<id>           a planned one becomes active.  an agent may
-  taskops_milestone  update=<id> text=…
+  taskops_milestone  update=<id>           title=… goal=… horizon=… — what you omit is left alone
   taskops_milestone  review=<id> m=…      an agent reports it finished
   taskops_milestone  done=<id>            REFUSED to an agent — a person verifies
                      carry=… into=…
@@ -185,7 +194,9 @@ From a terminal there are three nouns, because a flag that can mean "mine" or "t
 the flag that once wrote a dev's objective as the project's and erased the team's north in silence:
 
 ```sh
-taskops milestone new "que una clienta suba su CSV" --horizon 2026-08-20 [--planned]
+taskops milestone new "El importador" --goal "que una clienta suba su CSV y reciba el reporte" \
+                     --horizon 2026-08-20 [--planned]
+taskops milestone edit <id> [--title …] [--goal …] [--horizon …]   # what you omit is left alone
 taskops milestone start  <id>
 taskops milestone review <id> [-m "…"]                    # an agent or a person
 taskops milestone done   <id> [--carry 1,3] [--into <id>] # a person only

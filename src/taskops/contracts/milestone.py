@@ -72,7 +72,28 @@ class Milestone(TypedDict):
     """The CREATE event's id — a content hash, so the same id on every machine. That is what
     lets a fact created on one clone attach to a milestone created on another."""
 
-    text: str
+    title: str
+    """Three or five words — what somebody calls this chapter out loud. It is what the board's
+    selector, a card's badge and every log line print, and it is short BECAUSE of that: the first
+    version had one text field carrying a whole sentence, and every surface that had to fit it in a
+    row cut it mid-word.
+
+    A pre-0.5.0 chapter has no title — `storage.milestone` maps its `text` here, which is that
+    sentence. Nothing rewrites the event: a truncated title is a display problem, a rewritten log
+    is a different board."""
+
+    goal: str
+    """What "done" means, in as many words as it takes. The OUTCOME and its border — what is in,
+    what is deliberately not, how anybody will know.
+
+    Separate from `title` because they are read in different places and at different lengths, and
+    one field could only ever be right for one of them. Separate from a `decision` because it is not
+    a call somebody made under this chapter, it is the chapter: a goal written as a decision was the
+    first version of this, and it sat in a list of technical rulings where nobody read it as the
+    point of the work.
+
+    Prose, and usually an agent's: `taskops_milestone create=… goal="…"` takes a paragraph."""
+
     horizon: str
     """When it is meant to be reached. Advisory: nothing expires on it, but a milestone whose
     horizon has passed and which nobody has closed is exactly the kind of thing `attention`

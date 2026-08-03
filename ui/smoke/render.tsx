@@ -1,0 +1,102 @@
+/* Every component that draws a chapter, rendered to a string against the real fixture.
+ *
+ * The assertions are deliberately about BEHAVIOUR and not about markup. Markup changes every time
+ * somebody improves a layout, and a test that pins class names makes the next improvement look like
+ * a regression. What must not change is: the picker names the chapter, the modals draw the goal and
+ * the chapter's own facts, and PICKING ONE CHANGES THE CARDS — which is the bug this file exists
+ * for, and the one thing `tsc` and the API payload were both happy about.
+ */
+
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { Board } from "../src/components/Board";
+import { MilestoneModal } from "../src/components/MilestoneModal";
+import { Picker } from "../src/components/Picker";
+import { ProjectModal } from "../src/components/ProjectModal";
+import type { Board as BoardData, ContextView } from "../src/contracts";
+import fixture from "./fixture.json";
+
+const context = fixture.context as unknown as ContextView;
+const board = fixture.board as unknown as BoardData;
+const chapters = [...context.active, ...context.planned];
+const [first, second] = context.active;
+
+let failed = 0;
+function check(what: string, ok: boolean, saw?: unknown): void {
+  if (ok) {
+    console.log(`  ok   ${what}`);
+    return;
+  }
+  failed += 1;
+  console.log(`  FAIL ${what}${saw === undefined ? "" : `\n       saw: ${String(saw)}`}`);
+}
+
+/* The titles on the board, in the order they were drawn. The one thing every assertion below is
+ * about, so it is read out of the markup once and by one rule. */
+function titlesOn(chapter: string): string[] {
+  const html = renderToStaticMarkup(
+    <Board board={board} hideEmpty={false} grouping="date" chapter={chapter} chapters={chapters}
+           onClear={() => {}} onGrouping={() => {}} onOpen={() => {}} />);
+  return (html.match(/class="title">[^<]+/g) ?? []).map((found) => found.slice(14));
+}
+
+const picker = (picked: string): string => renderToStaticMarkup(
+  <Picker context={context} board={board} picked={picked} onPick={() => {}}
+          onDashboard={() => {}} onProject={() => {}} />);
+
+console.log("picker");
+check("with no filter it offers every milestone", picker("").includes("All milestones"));
+check("with one picked it names THAT chapter", picker(first.id).includes(first.title));
+check("and offers its dashboard", picker(first.id).includes("pill-info"));
+check("the project panel is always reachable", picker("").includes("pill-project"));
+
+console.log("the board");
+const all = titlesOn("");
+const mine = titlesOn(first.id);
+const theirs = titlesOn(second.id);
+check("unfiltered draws every card", all.length === board.total, `${all.length} of ${board.total}`);
+/* THE assertion. Picking a chapter has to change the cards — every card drawn belongs to it, there
+ * are fewer than the whole board, and the OTHER chapter's cards are gone rather than reordered. */
+check("picking a chapter draws only its cards", mine.length > 0 && mine.length < all.length,
+      `${mine.length} of ${all.length}`);
+check("and the other chapter's are gone", !mine.some((title) => theirs.includes(title)),
+      mine.filter((title) => theirs.includes(title)).join(", "));
+check("the two chapters together are the whole board",
+      mine.length + theirs.length === all.length, `${mine.length} + ${theirs.length}`);
+/* The COLUMNS do not move. They are the board's vocabulary and a filter that changed them would be
+ * a different board — which is what the first attempt at this did. */
+const columnsIn = (chapter: string): number => (renderToStaticMarkup(
+  <Board board={board} hideEmpty={false} grouping="date" chapter={chapter} chapters={chapters}
+         onClear={() => {}} onGrouping={() => {}} onOpen={() => {}} />).match(/class="column /g) ?? []
+).length;
+check("the columns stay put", columnsIn("") === columnsIn(first.id) && columnsIn("") > 1);
+const html = renderToStaticMarkup(
+  <Board board={board} hideEmpty={false} grouping="date" chapter="" chapters={chapters}
+         onClear={() => {}} onGrouping={() => {}} onOpen={() => {}} />);
+check("unfiltered, a card says which chapter it is in", html.includes(`◆ ${first.title}`));
+check("filtered, it does not repeat the picker", !titlesOn(first.id).length
+  || !renderToStaticMarkup(
+      <Board board={board} hideEmpty={false} grouping="date" chapter={first.id} chapters={chapters}
+             onClear={() => {}} onGrouping={() => {}} onOpen={() => {}} />).includes("card-chapter"));
+
+console.log("the milestone dashboard");
+const dash = renderToStaticMarkup(
+  <MilestoneModal chapter={first} context={context} board={board} onClose={() => {}} />);
+check("the goal is drawn whole", dash.includes(first.goal.slice(0, 60)));
+check("its own facts are under it",
+      context.rules.filter((f) => f.milestone === first.id).every((f) => dash.includes(f.text)));
+check("a fact of the OTHER chapter is not",
+      !context.rules.some((f) => f.milestone === second.id && dash.includes(f.text)));
+check("no card list — the board is right underneath", !dash.includes('class="card'));
+
+console.log("the project panel");
+const proj = renderToStaticMarkup(
+  <ProjectModal context={context} repo="/tmp/px" onClose={() => {}} />);
+check("the project's rules are here",
+      context.project_rules.every((f) => proj.includes(f.text)));
+check("and a CHAPTER's rule is not — it dies with its chapter",
+      !context.rules.some((f) => proj.includes(f.text)));
+check("what the engine enforces is drawn apart", proj.includes("Engine"));
+
+console.log(failed ? `\n${failed} failed` : "\nall good");
+process.exit(failed ? 1 : 0);

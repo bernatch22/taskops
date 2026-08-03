@@ -1,0 +1,359 @@
+{
+ "context": {
+  "milestone": null,
+  "active": [
+   {
+    "id": "e00d86e8616719ca",
+    "title": "El importador",
+    "goal": "que una clienta suba su CSV y reciba el reporte sin pedirnos nada. Entra la subida, el parseo con encoding, la validacion por cabecera y el reporte en pantalla. NO entra el envio por mail ni el export a Excel — ese es el capitulo siguiente. Se mide con el CSV real de la clienta: 14k filas, latin-1.",
+    "horizon": "2026-09-01",
+    "state": "in_force",
+    "created_by": "dev:berna",
+    "created": 1785764938.561936,
+    "updated": 1785764938.561936,
+    "closed_by": "",
+    "note": ""
+   },
+   {
+    "id": "248e46753aeea52e",
+    "title": "Facturacion",
+    "goal": "que se pueda emitir una factura desde el CRM y quede en AFIP",
+    "horizon": "",
+    "state": "in_force",
+    "created_by": "dev:berna",
+    "created": 1785764938.661663,
+    "updated": 1785764938.661663,
+    "closed_by": "",
+    "note": ""
+   }
+  ],
+  "counts": {
+   "e00d86e8616719ca": {
+    "review": 1,
+    "total": 4,
+    "claimed": 1,
+    "ready": 2
+   },
+   "248e46753aeea52e": {
+    "claimed": 1,
+    "total": 2,
+    "ready": 1
+   }
+  },
+  "planned": [
+   {
+    "id": "52717f98a5072f44",
+    "title": "Export a Excel",
+    "goal": "que la clienta baje el reporte en xlsx",
+    "horizon": "",
+    "state": "planned",
+    "created_by": "dev:berna",
+    "created": 1785764938.769886,
+    "updated": 1785764938.769886,
+    "closed_by": "",
+    "note": ""
+   }
+  ],
+  "project_rules": [
+   {
+    "id": "f7e4881619d8dae8",
+    "sort": "rule",
+    "text": "cero dependencias fuera de la stdlib",
+    "labels": [],
+    "files": [],
+    "horizon": "",
+    "owner": "",
+    "milestone": "",
+    "level": "project",
+    "actor": "dev:berna",
+    "ts": 1785764938.872156,
+    "retired": false
+   }
+  ],
+  "project_decisions": [
+   {
+    "id": "54250ce6459e1ae5",
+    "sort": "decision",
+    "text": "sqlite y no postgres — un archivo, cero setup",
+    "labels": [
+     "db"
+    ],
+    "files": [],
+    "horizon": "",
+    "owner": "",
+    "milestone": "",
+    "level": "project",
+    "actor": "dev:berna",
+    "ts": 1785764938.9839768,
+    "retired": false
+   }
+  ],
+  "rules": [
+   {
+    "id": "f6352596c228785e",
+    "sort": "rule",
+    "text": "esta tanda se escribe sin async",
+    "labels": [],
+    "files": [],
+    "horizon": "",
+    "owner": "",
+    "milestone": "e00d86e8616719ca",
+    "level": "milestone",
+    "actor": "dev:berna",
+    "ts": 1785764963.6482089,
+    "retired": false
+   }
+  ],
+  "decisions": [
+   {
+    "id": "e9dfabb628e738dd",
+    "sort": "decision",
+    "text": "el CSV se lee en streaming, nunca entero en memoria",
+    "labels": [
+     "importador"
+    ],
+    "files": [],
+    "horizon": "",
+    "owner": "",
+    "milestone": "e00d86e8616719ca",
+    "level": "milestone",
+    "actor": "dev:berna",
+    "ts": 1785764963.646395,
+    "retired": false
+   }
+  ],
+  "notes": [
+   {
+    "id": "399976278199375f",
+    "sort": "note",
+    "text": "el importador tiene tres etapas: leer, validar, cargar",
+    "labels": [
+     "importador"
+    ],
+    "files": [],
+    "horizon": "",
+    "owner": "",
+    "milestone": "e00d86e8616719ca",
+    "level": "milestone",
+    "actor": "dev:berna",
+    "ts": 1785764963.65048,
+    "retired": false
+   }
+  ],
+  "yours": null,
+  "objectives": [
+   {
+    "id": "541c572d003f8022",
+    "sort": "objective",
+    "text": "terminar el parser de fechas",
+    "labels": [],
+    "files": [],
+    "horizon": "2026-08-08",
+    "owner": "dev:ana",
+    "milestone": "e00d86e8616719ca",
+    "level": "milestone",
+    "actor": "dev:ana",
+    "ts": 1785764963.653228,
+    "retired": false
+   }
+  ],
+  "policies": []
+ },
+ "board": {
+  "repo": "/private/tmp/px",
+  "columns": [
+   {
+    "status": "backlog",
+    "cards": []
+   },
+   {
+    "status": "ready",
+    "cards": [
+     {
+      "task": {
+       "id": "tk-c29551",
+       "title": "el reporte en pantalla",
+       "spec": "tabla + totales",
+       "status": "ready",
+       "priority": 2,
+       "milestone": "e00d86e8616719ca",
+       "parent": null,
+       "labels": [
+        "reportes"
+       ],
+       "files": [],
+       "created_by": "dev:ana",
+       "assignee": "",
+       "reviewer": "",
+       "created": 1785764954.135471,
+       "updated": 1785764954.135535
+      },
+      "lease": null,
+      "blocked_by": 0,
+      "blocks": 0,
+      "commits": 0
+     },
+     {
+      "task": {
+       "id": "tk-f7137c",
+       "title": "validar por cabecera",
+       "spec": "no por posicion",
+       "status": "ready",
+       "priority": 2,
+       "milestone": "e00d86e8616719ca",
+       "parent": null,
+       "labels": [
+        "importador",
+        "db"
+       ],
+       "files": [],
+       "created_by": "dev:ana",
+       "assignee": "",
+       "reviewer": "",
+       "created": 1785764954.135503,
+       "updated": 1785764954.135535
+      },
+      "lease": null,
+      "blocked_by": 0,
+      "blocks": 0,
+      "commits": 0
+     },
+     {
+      "task": {
+       "id": "tk-e63451",
+       "title": "el punto de venta",
+       "spec": "numeracion",
+       "status": "ready",
+       "priority": 2,
+       "milestone": "248e46753aeea52e",
+       "parent": null,
+       "labels": [
+        "facturacion"
+       ],
+       "files": [],
+       "created_by": "dev:juan",
+       "assignee": "",
+       "reviewer": "",
+       "created": 1785764954.1377048,
+       "updated": 1785764954.137738
+      },
+      "lease": null,
+      "blocked_by": 0,
+      "blocks": 0,
+      "commits": 0
+     }
+    ]
+   },
+   {
+    "status": "claimed",
+    "cards": [
+     {
+      "task": {
+       "id": "tk-6314a5",
+       "title": "normalizar fechas DD/MM",
+       "spec": "y las de Excel",
+       "status": "claimed",
+       "priority": 2,
+       "milestone": "e00d86e8616719ca",
+       "parent": null,
+       "labels": [
+        "importador"
+       ],
+       "files": [],
+       "created_by": "dev:ana",
+       "assignee": "",
+       "reviewer": "",
+       "created": 1785764954.135425,
+       "updated": 1785764954.329984
+      },
+      "lease": {
+       "task": "tk-6314a5",
+       "actor": "agent:ana/w2",
+       "session": "",
+       "branch": "",
+       "acquired": 1785764954.32997,
+       "expires": 1785765854.32997
+      },
+      "blocked_by": 0,
+      "blocks": 0,
+      "commits": 0
+     },
+     {
+      "task": {
+       "id": "tk-57a5f0",
+       "title": "el modelo de factura",
+       "spec": "AFIP",
+       "status": "claimed",
+       "priority": 2,
+       "milestone": "248e46753aeea52e",
+       "parent": null,
+       "labels": [
+        "facturacion"
+       ],
+       "files": [],
+       "created_by": "dev:juan",
+       "assignee": "",
+       "reviewer": "",
+       "created": 1785764954.137625,
+       "updated": 1785764954.3326778
+      },
+      "lease": {
+       "task": "tk-57a5f0",
+       "actor": "dev:juan",
+       "session": "",
+       "branch": "",
+       "acquired": 1785764954.3326652,
+       "expires": 1785765854.3326652
+      },
+      "blocked_by": 0,
+      "blocks": 0,
+      "commits": 0
+     }
+    ]
+   },
+   {
+    "status": "blocked",
+    "cards": []
+   },
+   {
+    "status": "review",
+    "cards": [
+     {
+      "task": {
+       "id": "tk-67b680",
+       "title": "leer el CSV con encoding latin-1",
+       "spec": "chardet no, cabecera fija",
+       "status": "review",
+       "priority": 2,
+       "milestone": "e00d86e8616719ca",
+       "parent": null,
+       "labels": [
+        "importador"
+       ],
+       "files": [],
+       "created_by": "dev:ana",
+       "assignee": "",
+       "reviewer": "",
+       "created": 1785764954.1352,
+       "updated": 1785764954.3342762
+      },
+      "lease": null,
+      "blocked_by": 0,
+      "blocks": 0,
+      "commits": 0
+     }
+    ]
+   },
+   {
+    "status": "done",
+    "cards": []
+   },
+   {
+    "status": "cancelled",
+    "cards": []
+   }
+  ],
+  "ready": 3,
+  "total": 6
+ }
+}

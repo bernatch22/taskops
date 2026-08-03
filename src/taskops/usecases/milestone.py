@@ -52,41 +52,55 @@ def chapter(start_at: Path | str, wanted: str) -> Milestone:
     with project(start_at) as store:
         return need(store, wanted)
 
-def open_chapter(start_at: Path | str, text: str, *, horizon: str = "", planned: bool = False,
-                 actor: str = "") -> Milestone:
+def open_chapter(start_at: Path | str, title: str, *, goal: str = "", horizon: str = "",
+                 planned: bool = False, actor: str = "") -> Milestone:
     """Create one. `planned` writes it down WITHOUT starting it.
+
+    `title` is required and `goal` is not, deliberately: a chapter nobody has named cannot be picked
+    out of a list, and one whose outcome is still being argued about is the normal state of a
+    chapter somebody just opened. `edit` fills it in later.
 
     Never refused for a chapter already running. Several active at once is the normal case — a
     team ships two things in a fortnight — and a board that refused to record the second would be
     a board disagreeing with what is happening, which is the one thing it exists not to do.
     """
-    said = text.strip()
+    said = title.strip()
     if not said:
-        raise BadRequest("a milestone needs text — a chapter with no statement states nothing")
-    body: dict[str, Any] = {"op": "create", "text": said, "horizon": horizon.strip(),
-                            "planned": bool(planned)}
+        raise BadRequest("a milestone needs a title — three or five words somebody would recognise "
+                         "(`\"El importador\"`), and `goal` for what done means")
+    body: dict[str, Any] = {"op": "create", "title": said, "goal": goal.strip(),
+                            "horizon": horizon.strip(), "planned": bool(planned)}
     if (answer := call_remote(start_at, "milestone_create",
                               {**body, "actor": whoami(start_at, actor)})) is not None:
         return as_milestone(answer)
     return written(start_at, body, actor)
 
 
-def edit(start_at: Path | str, wanted: str, *, text: str = "", horizon: str = "",
+def edit(start_at: Path | str, wanted: str, *, title: str = "", goal: str = "", horizon: str = "",
          actor: str = "") -> Milestone:
-    """Re-word one, or move its horizon. Neither is a state change, so neither is guarded."""
-    if not text.strip() and not horizon.strip():
-        raise BadRequest("nothing to edit — pass `text`, a `horizon`, or both")
+    """Re-name one, write what done means, or move its horizon. None of the three is a state change,
+    so none of them is guarded — a team learns what it is actually shipping while shipping it, and a
+    chapter that could not be re-worded would be a chapter people stop reading.
+
+    An ABSENT field is left alone rather than blanked (`storage.milestone._apply`), so writing a
+    goal does not erase a title somebody chose.
+    """
+    if not title.strip() and not goal.strip() and not horizon.strip():
+        raise BadRequest("nothing to edit — pass a `title`, a `goal`, a `horizon`, or several")
     if (answer := call_remote(start_at, "milestone_update",
-                              {"milestone": wanted, "text": text, "horizon": horizon,
-                               "actor": whoami(start_at, actor)})) is not None:
+                              {"milestone": wanted, "title": title, "goal": goal,
+                               "horizon": horizon, "actor": whoami(start_at, actor)})) is not None:
         return as_milestone(answer)
     with project(start_at) as store:
         found = need(store, wanted)
         who = caller(store, actor)["id"]
         heartbeat(store, who)
+        # Only the fields that were GIVEN. A key present and empty means "blank it", and passing
+        # all three every time would erase a title whenever somebody wrote a goal.
+        said = {name: value.strip() for name, value in
+                (("title", title), ("goal", goal), ("horizon", horizon)) if value.strip()}
         record(store, task=TASK, actor=who, kind=_KIND,
-               body={"op": "update", "milestone": found["id"], "text": text.strip(),
-                     "horizon": horizon.strip()})
+               body={"op": "update", "milestone": found["id"], **said})
         return need(store, found["id"])
 
 

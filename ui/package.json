@@ -7,7 +7,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && node build.mjs",
-    "check": "npm run build && git diff --exit-code ../src/taskops/transports/http/ui"
+    "check": "npm run build && npm run smoke && git diff --exit-code ../src/taskops/transports/http/ui",
+    "smoke": "node smoke/run.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

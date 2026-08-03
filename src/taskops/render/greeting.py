@@ -72,12 +72,26 @@ def _north(view: dict[str, Any]) -> str:
     # objective was superseded silently, a chapter is closed by a person who says it was reached.
     active = seen.get("active") or ([seen["milestone"]] if seen.get("milestone") else [])
     goal, mine = active[0] if active else None, seen.get("yours")
-    said = f"the team is working towards {BOLD}{_fact(goal, GOAL)}{OFF}" if goal else ""
+    said = f"the team is working towards {BOLD}{_chapter(goal, GOAL)}{OFF}" if goal else ""
     if len(active) > 1:
         said += f" (and {len(active) - 1} more milestone(s))"
     if mine:
         said += f"{', and ' if said else ''}you are on {_fact(mine, MINE)}"
     return f"{said}." if said else ""
+
+
+def _chapter(chapter: dict[str, Any], width: int) -> str:
+    """A milestone in one clause: its TITLE and its horizon.
+
+    Its own function and not `_fact`, because a chapter's fields are not a fact's — `title`, not
+    `text`, which is the whole reason this crashed the first time the two were treated as one shape.
+    The title and never the goal: a goal is a paragraph by design, and this is a sentence somebody
+    reads once as a session opens. The goal is what a WORKER is handed, and `ⓘ` on the board is where
+    a person reads it.
+    """
+    horizon = str(chapter.get("horizon") or "")
+    said = _short(str(chapter.get("title") or ""), width)
+    return f"{said}{f' (by {horizon[5:] or horizon})' if horizon else ''}"
 
 
 def _fact(fact: dict[str, Any], width: int) -> str:

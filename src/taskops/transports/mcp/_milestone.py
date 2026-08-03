@@ -33,13 +33,15 @@ def milestone_(args: dict[str, Any]) -> str:
     is left over is "show me".
     """
     where, who = arg.repo(args), arg.optional(args, "actor")
-    if text := arg.optional(args, "create"):
-        return _said(ms.open_chapter(where, text, horizon=arg.optional(args, "horizon"),
+    if title := arg.optional(args, "create"):
+        return _said(ms.open_chapter(where, title, goal=arg.optional(args, "goal"),
+                                     horizon=arg.optional(args, "horizon"),
                                      planned=arg.flag(args, "planned"), actor=who), where)
     if wanted := arg.optional(args, "start"):
         return _said(ms.start(where, wanted, actor=who), where)
     if wanted := arg.optional(args, "update"):
-        return _said(ms.edit(where, wanted, text=arg.optional(args, "text"),
+        return _said(ms.edit(where, wanted, title=arg.optional(args, "title"),
+                             goal=arg.optional(args, "goal"),
                              horizon=arg.optional(args, "horizon"), actor=who), where)
     if wanted := arg.optional(args, "review"):
         return _said(ms.hand_over(where, wanted, note=arg.optional(args, "m"), actor=who), where)

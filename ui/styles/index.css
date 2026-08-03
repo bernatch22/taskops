@@ -604,64 +604,167 @@ ol.md-list li { list-style: decimal; }
 .md-table th, .md-table td { padding: 5px 10px; border: 1px solid var(--line-soft); text-align: left; }
 .md-table th { color: var(--ink-dim); font-weight: 600; background: var(--bg); }
 
-/* ── the standing context ───────────────────────────────────────────────────── */
+/* ── the milestone picker ────────────────────────────────────────────────────── */
 
-/* A STRIP and not a view. It sits under the header on every screen, so it has to cost almost no
- * vertical space when shut — one line — and read as a rule rather than as content: dimmer than
- * the board, no card, no shadow. The lime edge is the only colour, because this is the thing the
- * board is FOR and the eye should be able to find it without being pulled to it. */
+/* A PILL above the columns, sized to its text. It replaced a full-width strip that carried a whole
+ * sentence, a `+1`, a date and a card count in one line — which was the app trying to BE the
+ * milestone instead of pointing at it: you could not tell what a milestone was from looking at it,
+ * it took the whole width to say one thing, and the second chapter was only reachable through a
+ * modal.
+ *
+ * It sits over the board and not in the header because it is a CONTROL OVER THE BOARD: picking a
+ * chapter filters those columns. Anything in the header is about the app. */
 
-.context {
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-raised);
+.picker {
+  position: relative;
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px var(--pad) 0;
 }
 
-.context-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 7px var(--pad);
-  border: 0;
-  border-left: 2px solid transparent;
-  background: transparent;
-  color: var(--ink-dim);
-  font: inherit;
-  text-align: left;
+.pill {
+  display: inline-flex; align-items: center; gap: 9px;
+  max-width: min(520px, 60vw);
+  padding: 6px 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font: inherit; font-size: 12.5px;
   cursor: pointer;
 }
+.pill:hover { background: var(--bg-hover); border-color: var(--ink-faint); }
+.pill-mark { color: var(--lime); flex: none; }
+/* The TITLE truncates and everything else keeps its size. The title is short by construction now —
+   that is what the field is for — so this only catches a chapter migrated from a pre-0.5.0 board,
+   whose one long sentence became its title. */
+.pill-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill-count, .pill-caret { flex: none; font-size: 11.5px; }
+/* AMBER on the pill itself when the chapter is waiting for a person. The board underneath is
+   unchanged and correct; what is not obvious without this is that nothing new should start. */
+.pill-review { border-color: color-mix(in oklab, var(--amber) 45%, transparent); }
+.pill-review .pill-mark { color: var(--amber); }
 
-.context-strip:hover { background: var(--bg-hover); }
-.context.open .context-strip { border-left-color: var(--lime); color: var(--ink); }
-
-.context-mark { color: var(--lime); flex: none; }
-
-/* The chapter's text takes the room and truncates; everything else keeps its size. A wrapped strip
- * would change the page height as the text changes, which on a live board is the layout moving
- * under somebody's cursor — and with several chapters active the text is the part that varies. */
-.context-milestone {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ink);
-}
-
-.context-horizon,
-.context-counts { flex: none; font-size: 12px; }
-.context-horizon { color: var(--amber); }
-
-/* AMBER, and it is the only chip in the app that is not lime. Lime means live, ready, fine; this
- * one means a machine cannot clear it — a chapter whose agent reported it finished, waiting on a
- * person to verify or send it back. It is the one state where a session must not start new work
- * under the milestone, so it must not read like the accent everything else uses. */
-.chip.waiting {
-  color: var(--amber);
-  border-color: color-mix(in oklab, var(--amber) 40%, transparent);
-  background: color-mix(in oklab, var(--amber) 10%, transparent);
+.pill-info, .pill-project {
   flex: none;
+  padding: 5px 9px;
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: 999px;
+  color: var(--ink-dim); font-size: 13px; line-height: 1; cursor: pointer;
 }
+.pill-info:hover, .pill-project:hover { color: var(--ink); border-color: var(--ink-faint); }
+.pill-project { color: var(--lime); }
+
+/* `3/7` plus a bar. The number is the answer and the bar is the glance — a milestone is a todo-list
+   only if "how far along" is a number, and a bar with no number beside it is a mood. */
+.progress { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.bar {
+  display: block; width: 46px; height: 4px;
+  background: var(--bg-hover); border-radius: 999px; overflow: hidden;
+}
+.fill { display: block; height: 100%; background: var(--lime); }
+.count { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+
+/* The dropdown. Absolute so it does not reflow the board, and wide enough that a title, a bar and
+   two actor names fit on one row — the whole point is seeing the state of every chapter WHILE
+   choosing, which a menu that truncated all three would not give you. */
+.menu {
+  position: absolute; top: calc(100% + 6px); left: var(--pad); z-index: 30;
+  width: min(460px, calc(100vw - 2 * var(--pad)));
+  padding: 5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  animation: ctx-in 110ms ease-out;
+}
+.menu-head {
+  padding: 8px 9px 4px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.row {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 7px 9px;
+  background: none; border: 0; border-radius: var(--r);
+  color: var(--ink); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.row:hover { background: var(--bg-hover); }
+.row.on { background: color-mix(in oklab, var(--lime) 12%, transparent); }
+.row-mark { flex: none; color: var(--lime); }
+.row-review .row-mark { color: var(--amber); }
+.row-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-count, .row-who { flex: none; font-size: 11px; }
+.row-who { font-family: var(--mono); }
+/* Its own line under the row it belongs to, because it is a sentence and not a chip: "waiting for a
+   person" is the one thing in this menu that a machine cannot clear. */
+.row-wait {
+  flex: none; width: 100%; padding-left: 22px;
+  color: var(--amber); font-size: 11px;
+}
+.row-wait { order: 9; }
+.row { flex-wrap: wrap; }
+
+/* ── the milestone dashboard ─────────────────────────────────────────────────── */
+
+/* INFO, never a card list: the board is right underneath and already draws them, filtered to this
+   chapter. What lives only here is the goal, the rules that end with the chapter, and who is
+   chasing what inside it. */
+
+.ms-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px var(--pad) 8px;
+}
+.ms-head h2 { font-size: 15px; }
+.ms-mark { color: var(--lime); flex: none; }
+.ms-review { color: var(--amber); }
+.ms-horizon { color: var(--amber); font-size: 12px; flex: none; }
+.ms-head .close {
+  margin-left: auto; padding: 2px 9px;
+  background: none; border-color: transparent; color: var(--ink-dim);
+}
+.ms-head .close:hover { color: var(--ink); }
+
+/* The GOAL, in the largest text in the modal. It is what says when the chapter is over, and a goal
+   set in small print is a goal people navigate past. */
+.ms-goal {
+  padding: 0 var(--pad) 12px;
+  font-size: 14.5px; line-height: 1.5; color: var(--ink);
+}
+.ms-goal-empty { font-size: 12.5px; color: var(--ink-dim); }
+
+.ms-facts {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  padding: 0 var(--pad) 12px;
+  font-size: 11.5px;
+}
+.ms-who { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+.ms-scopes { font-size: 11px; }
+
+/* The one block in the app that is amber end to end. A chapter reported finished is the largest
+   thing on a board that only a person can clear, and it must not read like the lime accent
+   everything else uses. */
+.ms-waiting {
+  margin: 0 var(--pad) 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--amber) 35%, transparent);
+  border-radius: var(--r);
+  background: color-mix(in oklab, var(--amber) 8%, transparent);
+}
+.ms-waiting-head { color: var(--amber); font-size: 12.5px; font-weight: 600; }
+.ms-note { margin-top: 5px; font-size: 12.5px; color: var(--ink); }
+.ms-how { margin-top: 6px; font-size: 11.5px; color: var(--ink-dim); line-height: 1.6; }
+
+.ms-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 0 var(--pad) var(--pad);
+  display: flex; flex-direction: column; gap: 18px;
+}
+
+/* A POLICY is not prose: it is a value the engine obeys and refuses to be wrong about. Lime on the
+   name, and a row of its own, so it cannot be read as one more decision somebody wrote down. */
+.ctx-fact.policy { border-left: 2px solid var(--lime); }
+
+/* The chapter a card belongs to, under its title and only when the board is NOT filtered — with a
+   chapter picked it would repeat the picker on every card. */
+.card-chapter { font-size: 11px; margin-top: 2px; }
 
 .context-scope,
 .context-id,
@@ -764,23 +867,6 @@ ol.md-list li { list-style: decimal; }
   background: none; border-color: transparent; color: var(--ink-dim);
 }
 .ctx-head .close:hover { color: var(--ink); }
-
-/* Tabs and not headings, because these are three different QUESTIONS — what has the project
- * decided, who is on what, what does the engine enforce — and one scroll made the reader do the
- * filtering. The count on each is what says whether the tab is worth the click. */
-.ctx-tabs {
-  display: flex; gap: 2px;
-  padding: 0 var(--pad);
-  border-bottom: 1px solid var(--line);
-}
-.ctx-tab {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 11px 9px;
-  background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
-  color: var(--ink-dim); font-size: 12.5px; cursor: pointer;
-}
-.ctx-tab:hover:not(:disabled) { background: none; color: var(--ink); }
-.ctx-tab.on { color: var(--ink); border-bottom-color: var(--lime); }
 
 .ctx-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;

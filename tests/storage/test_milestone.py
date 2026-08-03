@@ -57,7 +57,7 @@ def _at(store: Store, kind: str, actor: str, body: dict[str, Any]) -> str:
 def _create(store: Store, text: str, *, planned_: bool = False, horizon: str = "",
             actor: str = "agent:berna/w1") -> str:
     return _at(store, MILESTONE_KIND, actor,
-               {"op": "create", "text": text, "horizon": horizon, "planned": planned_})
+               {"op": "create", "title": text, "horizon": horizon, "planned": planned_})
 
 
 def _move(store: Store, target: str, to: str, *, actor: str = "dev:berna", m: str = "") -> str:
@@ -67,6 +67,8 @@ def _move(store: Store, target: str, to: str, *, actor: str = "dev:berna", m: st
 def _objective(store: Store, text: str, *, owner: str = "", actor: str = "dev:berna",
                level: str | None = None) -> str:
     """A context objective. `level=None` writes NO level field — which is what makes it LEGACY."""
+    # `text` and NOT `title`: this is a context FACT, whose field is `text`. The chapter's own
+    # field is `title` — the legacy election is exactly the mapping between the two.
     body: dict[str, Any] = {"sort": "objective", "text": text, "labels": [], "files": [],
                             "horizon": "", "owner": owner}
     if level is not None:
@@ -86,7 +88,7 @@ def test_a_create_event_is_the_milestone_and_its_id(store: Store) -> None:
     # belongs and nothing would complain until a renderer joined it.
     assert_shape(found, Milestone)
     assert found["id"] == made
-    assert found["text"] == "que una clienta suba su CSV"
+    assert found["title"] == "que una clienta suba su CSV"
     assert found["horizon"] == "2026-08-20"
     assert found["state"] == "in_force"
     assert found["created_by"] == "agent:berna/w1"
@@ -96,7 +98,7 @@ def test_a_create_event_is_the_milestone_and_its_id(store: Store) -> None:
 def test_planned_in_the_body_means_it_does_not_start(store: Store) -> None:
     _create(store, "que pueda facturar", planned_=True)
     assert [m["state"] for m in milestones(store)] == ["planned"]
-    assert [m["text"] for m in planned(store)] == ["que pueda facturar"]
+    assert [m["title"] for m in planned(store)] == ["que pueda facturar"]
     assert active(store) == []
 
 
@@ -104,9 +106,9 @@ def test_an_update_rewrites_only_the_fields_it_names(store: Store) -> None:
     """An absent field means "leave it", never "blank it": `edit --text` must not erase a horizon
     somebody set from the other surface."""
     made = _create(store, "el importador", horizon="2026-08-20")
-    _at(store, MILESTONE_KIND, "dev:berna", {"op": "update", "milestone": made, "text": "el CSV"})
+    _at(store, MILESTONE_KIND, "dev:berna", {"op": "update", "milestone": made, "title": "el CSV"})
     (found,) = milestones(store)
-    assert (found["text"], found["horizon"]) == ("el CSV", "2026-08-20")
+    assert (found["title"], found["horizon"]) == ("el CSV", "2026-08-20")
     assert found["updated"] > found["created"]
 
 

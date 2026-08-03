@@ -32,12 +32,13 @@ class MilestoneParams(Target, total=False):
     actor: f.Actor
 
     create: Annotated[str, g.MS_CREATE]
+    goal: Annotated[str, g.MS_GOAL]
     horizon: Annotated[str, g.MS_HORIZON]
     planned: Annotated[bool, g.MS_PLANNED]
 
     start: Annotated[str, g.MS_START]
     update: Annotated[str, g.MS_UPDATE]
-    text: Annotated[str, f.TEXT]
+    title: Annotated[str, g.MS_TITLE]
 
     review: Annotated[str, g.MS_REVIEW]
     done: Annotated[str, g.MS_DONE]

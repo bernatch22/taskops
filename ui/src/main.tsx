@@ -4,13 +4,15 @@
  * one piece of shared state, and every layer of indirection between a click and a fetch is a layer
  * somebody has to read before they can change anything. */
 
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 import type { Board as BoardData } from "./contracts";
 import { createRoot } from "react-dom/client";
 import { Activity } from "./components/Activity";
 import { Board, type Grouping } from "./components/Board";
-import { Context } from "./components/Context";
 import { Header, type View } from "./components/Header";
+import { MilestoneModal } from "./components/MilestoneModal";
+import { ALL, Picker } from "./components/Picker";
+import { ProjectModal } from "./components/ProjectModal";
 import { Reports } from "./components/Reports";
 import { TaskPanel } from "./components/TaskPanel";
 import { remembered } from "./remembered";
@@ -23,9 +25,17 @@ function App(): JSX.Element {
   const [hideEmpty, setHideEmpty] = remembered("taskops-hide-empty", false);
   const [grouping, setGrouping] = remembered<Grouping>("taskops-grouping", "date");
   const [view, setView] = remembered<View>("taskops-view", "board");
-  /* Remembered: this is reference material somebody chooses to keep pinned, not a thing they
-   * are doing right now. Left open, it stays open tomorrow. */
-  const [context, setContext] = remembered("taskops-context-open", false);
+  /* Which chapter the board is showing. A VIEW preference and remembered, like hiding empty
+   * columns: it is what somebody is working on this week, and losing it on every reload would make
+   * the whole feature something you use once. `ALL` is one click away and always visible, which is
+   * what keeps a remembered filter from being a trap. */
+  const [picked, setPicked] = remembered("taskops-milestone", ALL);
+  /* The two modals are NOT remembered, and that is the difference from the filter: a filter is a
+   * decision about what you are working on, a modal is a thing you opened to read. */
+  const [dashboard, setDashboard] = useState(false);
+  const [project, setProject] = useState(false);
+  const chapters = [...(studio.context?.active ?? []), ...(studio.context?.planned ?? [])];
+  const here = chapters.find((chapter) => chapter.id === picked) ?? null;
 
 
   return (
@@ -35,10 +45,14 @@ function App(): JSX.Element {
               hideEmpty={hideEmpty} onHideEmpty={setHideEmpty}
               onOpen={studio.openTask} />
 
-      {/* Under the header and OUTSIDE `main`, so it is on screen whichever view is chosen —
-        * which is the whole point. Filing it as a fourth tab would put the chapter in force
-        * behind a click that nobody makes twice. */}
-      <Context context={studio.context} open={context} onToggle={() => setContext(!context)} />
+      {/* Above the columns and only over the BOARD, because it is a control over what is
+        * underneath it: picking a chapter filters those columns. On the activity and report views
+        * there is nothing for it to filter, and a control that does nothing is a thing to wonder
+        * about. */}
+      {view === "board" ? (
+        <Picker context={studio.context} board={studio.board} picked={picked} onPick={setPicked}
+                onDashboard={() => setDashboard(true)} onProject={() => setProject(true)} />
+      ) : null}
 
       {studio.error ? (
         <div className="banner">
@@ -54,6 +68,7 @@ function App(): JSX.Element {
           ? <Reports readonly={studio.config?.readonly ?? false} narration={studio.narration} />
           : studio.board
             ? <Board board={studio.board} hideEmpty={hideEmpty} grouping={grouping}
+                     chapter={picked} chapters={chapters} onClear={() => setPicked(ALL)}
                      onGrouping={setGrouping} onOpen={studio.openTask} />
             : <div className="loading dim">Reading the board…</div>}
       </main>
@@ -71,8 +86,17 @@ function App(): JSX.Element {
         />
       ) : null}
 
-      {/* Last, and outside `main`, so it slides OVER the content instead of reflowing it — and
-        * mounted whatever the view is, which is what "reachable from anywhere" means here. */}
+      {/* The three subjects of the model, one modal each and never a tab: a chapter's facts end
+        * with it, a project's do not, and a person's are theirs. `People` in the header owns the
+        * third. Mounted last so they slide OVER the board instead of reflowing it. */}
+      {dashboard && here && studio.context ? (
+        <MilestoneModal chapter={here} context={studio.context} board={studio.board}
+                        onClose={() => setDashboard(false)} />
+      ) : null}
+      {project && studio.context ? (
+        <ProjectModal context={studio.context} repo={studio.config?.repo ?? ""}
+                      onClose={() => setProject(false)} />
+      ) : null}
     </>
   );
 }

@@ -11,8 +11,9 @@
  * other column combined, and a hundred-card list is a wall — it pushes the columns that need
  * attention off the screen and answers no question anybody asks. */
 
-import type { Board as BoardData, Card as CardData, Status } from "../contracts";
+import type { Board as BoardData, Card as CardData, Milestone, Status } from "../contracts";
 import { Actor, COLUMN_LABEL, Counts, MARK, Priority, ago } from "./bits";
+import { ALL, LOOSE } from "./Picker";
 
 /* Grouped, and above which size. `done` because that is the column that grows without bound —
  * nothing ever leaves it — and the threshold so that a young board still reads as a plain list. */
@@ -21,17 +22,31 @@ const GROUP_FROM = 6;
 
 export type Grouping = "date" | "feature";
 
-export function Board({ board, hideEmpty, grouping, onGrouping, onOpen }: {
+export function Board({ board, hideEmpty, grouping, chapter, chapters, onClear, onGrouping,
+                       onOpen }: {
   board: BoardData;
   hideEmpty: boolean;
   grouping: Grouping;
+  /* The chapter the rail has selected, `ALL` for every card, `LOOSE` for the ones naming none. */
+  chapter: string;
+  /* Every chapter this board knows, for the badge a card wears when the view is NOT filtered. */
+  chapters: Milestone[];
   onGrouping: (how: Grouping) => void;
+  onClear: () => void;
   onOpen: (id: string) => void;
 }): JSX.Element {
   /* The empty-PROJECT case is still special: a board with no tasks at all wants instructions, not
    * eight empty columns. An empty COLUMN on a populated board is information. */
   if (board.total === 0) return <Empty />;
-  const columns = hideEmpty ? board.columns.filter((c) => c.cards.length > 0) : board.columns;
+  const filtered = narrow(board, chapter);
+  /* A FILTERED board that comes back empty is its own state and not the empty project: the cards
+   * exist, they are in another chapter, and saying "no tasks yet" there would be a lie the reader
+   * can disprove by clicking `All`. */
+  if (chapter !== ALL && filtered.total === 0) {
+    return <NoneHere named={nameOf(chapters, chapter)} onClear={onClear} />;
+  }
+  const columns = hideEmpty
+    ? filtered.columns.filter((c) => c.cards.length > 0) : filtered.columns;
   return (
     <div className="board">
       {columns.map((column) => {
@@ -48,9 +63,11 @@ export function Board({ board, hideEmpty, grouping, onGrouping, onOpen }: {
               {column.cards.length === 0
                 ? <p className="column-empty dim">Nothing here.</p>
                 : grouped
-                  ? <Grouped cards={column.cards} how={grouping} onOpen={onOpen} />
+                  ? <Grouped cards={column.cards} how={grouping} onOpen={onOpen}
+                             chapters={chapter === ALL ? chapters : []} />
                   : column.cards.map((card) => (
-                      <Card card={card} key={card.task.id} onOpen={onOpen} />
+                      <Card card={card} key={card.task.id} onOpen={onOpen}
+                            chapter={chapter === ALL ? nameOf(chapters, card.task.milestone) : ""} />
                     ))}
             </div>
           </section>
@@ -77,9 +94,10 @@ function GroupingToggle({ how, onPick }: {
 
 /* The FIRST group is open and the rest are collapsed. Opening all of them would be the wall the
  * grouping exists to remove, and the newest bucket is the one somebody came to read. */
-function Grouped({ cards, how, onOpen }: {
+function Grouped({ cards, how, chapters, onOpen }: {
   cards: CardData[];
   how: Grouping;
+  chapters: Milestone[];
   onOpen: (id: string) => void;
 }): JSX.Element {
   const groups = how === "date" ? byDate(cards) : byFeature(cards);
@@ -91,7 +109,10 @@ function Grouped({ cards, how, onOpen }: {
             <span className="group-label">{label}</span>
             <span className="tally">{members.length}</span>
           </summary>
-          {members.map((card) => <Card card={card} key={card.task.id} onOpen={onOpen} />)}
+          {members.map((card) => (
+            <Card card={card} key={card.task.id} onOpen={onOpen}
+                  chapter={nameOf(chapters, card.task.milestone)} />
+          ))}
         </details>
       ))}
     </>
@@ -150,7 +171,28 @@ function collect(cards: CardData[], named: (card: CardData) => string,
   return keys.map((key) => [key, groups.get(key)!]);
 }
 
-function Card({ card, onOpen }: { card: CardData; onOpen: (id: string) => void }): JSX.Element {
+/* Every card, narrowed to one chapter. The FILTER is here rather than in the fetch: the board is one
+ * request the live feed already refreshes, and asking the server per chapter would make switching
+ * cost a round trip — the whole reason the rail exists is that switching has to be instant. */
+function narrow(board: BoardData, chapter: string): BoardData {
+  if (chapter === ALL) return board;
+  const mine = (card: CardData): boolean =>
+    chapter === LOOSE ? !card.task.milestone : card.task.milestone === chapter;
+  const columns = board.columns.map((column) => ({ ...column, cards: column.cards.filter(mine) }));
+  return { ...board, columns, total: columns.reduce((n, c) => n + c.cards.length, 0) };
+}
+
+function nameOf(chapters: Milestone[], id: string): string {
+  return chapters.find((chapter) => chapter.id === id)?.title ?? "";
+}
+
+function Card({ card, chapter, onOpen }: {
+  card: CardData;
+  /* Its chapter, as text, and "" when the board is already filtered to one — a badge repeating the
+   * rail's selection on forty cards is forty lines of noise saying what the reader just chose. */
+  chapter: string;
+  onOpen: (id: string) => void;
+}): JSX.Element {
   const { task, lease } = card;
   return (
     <article
@@ -168,6 +210,7 @@ function Card({ card, onOpen }: { card: CardData; onOpen: (id: string) => void }
         <Counts up={card.blocked_by} down={card.blocks} commits={card.commits} />
       </div>
       <p className="title">{task.title}</p>
+      {chapter ? <p className="card-chapter dim" title={`milestone: ${chapter}`}>◆ {chapter}</p> : null}
       {lease ? (
         <div className="card-lease">
           <Actor id={lease.actor} />
@@ -198,6 +241,21 @@ function Card({ card, onOpen }: { card: CardData; onOpen: (id: string) => void }
       ) : null}
       <div className="card-foot dim">{ago(task.updated)}</div>
     </article>
+  );
+}
+
+/* The filtered-and-empty state. It names the chapter and the way out, because a person who filtered
+ * three clicks ago and got distracted reads an empty board as a broken one. */
+function NoneHere({ named, onClear }: { named: string; onClear: () => void }): JSX.Element {
+  return (
+    <div className="empty">
+      <h2>No cards in {named || "this chapter"}</h2>
+      <p>
+        <button className="linkish" onClick={onClear}>show every milestone</button>, or plan into
+        this one:
+      </p>
+      <pre>{`taskops_plan milestone=<id> tasks=[…]`}</pre>
+    </div>
   );
 }
 

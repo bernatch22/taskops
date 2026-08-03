@@ -188,6 +188,10 @@ taskops tasks cancel  tk-4f2a9c -m "superseded by tk-8b31d0"
 
 ### Milestones — the chapter a board is in
 
+A milestone has a **title** (three or five words — what the board's selector and a card's badge
+show) and a **goal** (what done means, and what is out of scope — prose, as long as it needs to be,
+and what every worker under the chapter reads).
+
 **Every card belongs to exactly one milestone**, and a board with none refuses to plan. That is the
 one hard rule of the model, and it buys the thing a context layer cannot buy any other way: a fact
 attached to a chapter LEAVES every slice when a person says the chapter was reached. Nobody has to
@@ -198,8 +202,12 @@ reached — the same argument as `done` on a card, one level up: no count of clo
 "we shipped it".
 
 ```sh
-taskops milestone new "que una clienta suba su CSV y reciba el reporte" --horizon 2026-09-01
-taskops milestone new "que pueda facturar desde el CRM" --planned   # written down, not started
+taskops milestone new "El importador" \
+  --goal "que una clienta suba su CSV y reciba el reporte sin pedirnos nada. NO entra el envío por
+          mail ni el export a Excel — ese es el capítulo siguiente" \
+  --horizon 2026-09-01
+taskops milestone new "Facturación" --planned      # written down, not started
+taskops milestone edit 31b0b89a --goal "…"         # the goal is written as the team learns it
 taskops milestone start 31b0b89a                                    # a planned one becomes active
 
 taskops milestone                        # every ACTIVE chapter, its counts, then what is planned
@@ -219,15 +227,17 @@ it is "one chapter per card" — so `plan` asks which when more than one is acti
 ```
 $ taskops milestone
 # active — 2
-◐ c5df2915  que una clienta suba su CSV y reciba el reporte  by 2026-09-01
+◐ c5df2915  El importador  by 2026-09-01
+   que una clienta suba su CSV y reciba el reporte sin pedirnos nada. NO entra el envío por mail…
    3 card(s) · 2 done · 1 in review
    REPORTED FINISHED — "las tres cards cerradas, el import anda"
    A person verifies: `taskops milestone done c5df2915` — or sends it back with `reject`.
-◆ 5217f040  que pueda facturar desde el CRM
+◆ 5217f040  Facturación
+   que se pueda emitir una factura desde el CRM y quede en AFIP
    4 card(s) · 1 done · 2 ready · 1 blocked
 
 # planned — written down, not started
-○ 31b0b89a  que la clienta exporte a Excel
+○ 31b0b89a  Export a Excel
 ```
 
 ### What this project has already decided
@@ -276,7 +286,8 @@ juan's, and never a chapter that shipped:
 ## Rules — the project's. Every card, every milestone, no exceptions.
 · 03ff2ef1  cero dependencias fuera de la stdlib
 
-## ◆ Milestone in force — que una clienta suba su CSV y reciba el reporte      by 2026-09-01
+## ◆ Milestone in force — El importador      by 2026-09-01
+   que una clienta suba su CSV y reciba el reporte sin pedirnos nada
    3 card(s) · 2 done · 1 in review
    decisions   36b8de72  el CSV se lee en streaming, nunca entero en memoria  [importador]
    notes       79c06207  el importador tiene tres etapas: leer, validar, cargar

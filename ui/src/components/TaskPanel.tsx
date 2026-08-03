@@ -160,7 +160,9 @@ function Belongs({ slice }: { slice: ContextSlice | null }): JSX.Element | null 
   return (
     <p className="meta dim">
       <span className="context-mark">◎</span>{" "}
-      {chapter ? chapter.text : <em>(sin milestone)</em>}
+      {/* The TITLE, and the goal as its tooltip: the drawer's job is to say which chapter this
+        * card is in, and the ⓘ dashboard is where the goal is read at full length. */}
+      {chapter ? <span title={chapter.goal}>{chapter.title}</span> : <em>(sin milestone)</em>}
       {chapter?.horizon ? <> · <span className="context-horizon">by {chapter.horizon}</span></> : null}
       {counts ? <> · {counts}</> : null}
       {chapter?.state === "review" ? <> · <Waiting /></> : null}

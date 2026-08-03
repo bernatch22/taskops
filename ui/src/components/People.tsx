@@ -110,6 +110,15 @@ function said(person: Person): string {
   return bits.join(", ") || "nothing in hand";
 }
 
+/* The title of the chapter an owned fact belongs to, or "" when it names none — a fact written
+ * before this board had chapters. Resolved here because a Fact carries the id and a person reads
+ * names: the slice already carries every active chapter, so this costs no request. */
+function chapterOf(context: ContextView | null, id: string): string {
+  if (!id) return "";
+  const every = [...(context?.active ?? []), ...(context?.planned ?? [])];
+  return every.find((chapter) => chapter.id === id)?.title ?? "";
+}
+
 function Profile({ dev, person, context, onOpen, onClose }: {
   dev: string;
   person: Person | null;
@@ -162,6 +171,11 @@ function Profile({ dev, person, context, onOpen, onClose }: {
               {own.objective.horizon
                 ? <span className="context-horizon"> by {own.objective.horizon}</span> : null}
             </p>
+            {/* WHICH chapter, by title. An objective belongs to one, and "terminar el parser" means
+              * two different things under the importer and under invoicing. */}
+            {chapterOf(context, own.objective.milestone)
+              ? <p className="ctx-meta dim">in ◆ {chapterOf(context, own.objective.milestone)}</p>
+              : null}
           </section>
         ) : null}
 

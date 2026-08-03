@@ -26,10 +26,12 @@ MILESTONE_VERBS: dict[str, Callable[[Path, dict[str, Any]], Any]] = {
     # A chapter is the only thing on a board that ENDS, so every one of its moves routes: applied
     # locally it would be a milestone that closed on one machine and stayed open everywhere else.
     "milestone_create": lambda root, a: _wrapped(ms.open_chapter(
-        root, str(a.get("text", "")), horizon=str(a.get("horizon", "")),
+        root, str(a.get("title", "")), goal=str(a.get("goal", "")),
+        horizon=str(a.get("horizon", "")),
         planned=bool(a.get("planned")), actor=str(a.get("actor", "")))),
     "milestone_update": lambda root, a: _wrapped(ms.edit(
-        root, str(a.get("milestone", "")), text=str(a.get("text", "")),
+        root, str(a.get("milestone", "")), title=str(a.get("title", "")),
+        goal=str(a.get("goal", "")),
         horizon=str(a.get("horizon", "")), actor=str(a.get("actor", "")))),
     "milestone_move": lambda root, a: _wrapped(_moved(root, a)),
     "milestone_review": lambda root, a: _wrapped(ms.hand_over(

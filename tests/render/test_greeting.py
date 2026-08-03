@@ -36,7 +36,18 @@ def view(**over: Any) -> dict[str, Any]:
             "context": {"active": [], "milestone": None, "yours": None}, **over}
 
 
+def chapter(title: str, horizon: str = "") -> dict[str, str]:
+    """A MILESTONE literal, whose field is `title` and not `text`.
+
+    It said `text` and the greeting read `fact["text"]`, so a test passed while the real call —
+    handed an actual `Milestone` — raised `KeyError` on every session start. A literal standing in
+    for a type has to carry that type's fields; this repository has the scar already.
+    """
+    return {"title": title, "horizon": horizon}
+
+
 def goal(text: str, horizon: str = "") -> dict[str, str]:
+    """A FACT literal — `yours`, the reader's own objective. Its field is `text`."""
     return {"text": text, "horizon": horizon}
 
 
@@ -78,7 +89,7 @@ def test_a_move_from_a_newer_taskops_still_reads_as_English() -> None:
 def test_it_is_ONE_line() -> None:
     """A four-section block was written first and arrived as a run-on paragraph on a real
     screen. Whatever `systemMessage` does with a newline, this never gives it one."""
-    said = render_greeting(view(context={"active": [goal("ship it", "2026-08-20")],
+    said = render_greeting(view(context={"active": [chapter("ship it", "2026-08-20")],
                                          "yours": goal("the parser")},
                                 recent=[moved("dev:juan", "claimed")],
                                 waiting=waiting("verify"), held=[{"task": "t"}],
@@ -96,7 +107,7 @@ def test_the_objective_leads_and_so_does_your_own() -> None:
     """Left out at first, on the argument that the model has it and whoever wrote it remembers.
     One real session killed that: you open a project you have not touched in a week and you do
     not remember — the same reason the board keeps a context strip on screen at all times."""
-    said = plain(render_greeting(view(context={"active": [goal("ship the importer", "2026-08-20")],
+    said = plain(render_greeting(view(context={"active": [chapter("ship the importer", "2026-08-20")],
                                                "yours": goal("the parser")})))
     assert "the team is working towards ship the importer (by 08-20)" in said
     assert "you are on the parser" in said
@@ -133,7 +144,7 @@ def test_the_last_move_of_each_person_not_a_feed() -> None:
 def test_colour_is_present_and_removable() -> None:
     """Two escapes and no library. Stripping every one of them must leave the same sentence —
     if a reader's terminal shows them raw, what is left is still the message and not a stub."""
-    said = render_greeting(view(context={"active": [goal("ship it")], "yours": None},
+    said = render_greeting(view(context={"active": [chapter("ship it")], "yours": None},
                                 waiting=waiting("dispatch")))
     assert "\x1b[" in said
     assert plain(said) == ("taskops is tracking this project on this machine only — the team "
@@ -161,7 +172,7 @@ def test_the_line_does_not_grow_with_the_board() -> None:
 def test_every_stated_fact_is_capped() -> None:
     """A sentence that grew with the length of somebody's objective would push the part that
     changes daily — what is waiting — off the right of the screen."""
-    said = plain(render_greeting(view(context={"active": [goal("x " * 90)],
+    said = plain(render_greeting(view(context={"active": [chapter("x " * 90)],
                                                "yours": goal("y " * 90)},
                                       waiting=waiting("verify"))))
     assert said.count("…") == 2 and "1 waiting for somebody to review" in said

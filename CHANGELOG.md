@@ -26,6 +26,56 @@ una card, un nivel arriba: ningún conteo de cards cerradas significa "lo shippe
 - Cancelar **conserva el motivo**. No hay delete: "paramos" no es "shippeamos", y el motivo es lo
   que alguien quiere tres semanas después cuando la misma idea vuelve.
 
+### Un milestone era una sola frase, y por eso el UI no se entendía
+
+Un capítulo tenía `text` y nada más, así que la misma oración hacía de nombre, de objetivo y de
+descripción. El síntoma estaba en la pantalla: una banda al 100% del ancho con
+`◎ que una clienta suba su CSV y reciba el reporte  +1  by 2026-09-01  2 cards` — de la que no se
+podía sacar qué es un milestone, y en la que el segundo capítulo era un `+1` sin forma de abrirlo.
+
+Ahora tiene dos campos, porque se leen en lugares distintos y a largos distintos:
+
+- **`title`** — tres o cinco palabras (`El importador`). Es lo que imprime el selector, el badge de
+  una card y cada línea de log. Corto POR ESO: antes, todo lo que tenía que meterlo en una fila lo
+  cortaba a la mitad de una palabra.
+- **`goal`** — qué significa *done* y qué queda afuera, en las palabras que haga falta. Es lo que
+  lee todo worker del capítulo, así que el borde se escribe adentro: *"NO entra el envío por mail —
+  ese es el capítulo siguiente"*. Un goal escrito como `decision` fue la primera versión de esto, y
+  quedaba en una lista de fallos técnicos donde nadie lo leía como el punto del trabajo.
+
+`edit` deja en paz lo que no le pasás: escribir un goal no borra el nombre que alguien eligió.
+
+**Los tableros viejos no se reescriben.** Un capítulo pre-0.5.0 tiene `text` y el fold lo mapea a
+`title` — se lee largo, que es un problema de display y no de datos.
+
+### La UI: un selector, y un modal por cada sujeto del modelo
+
+La banda murió. En su lugar, arriba de las columnas, un **pill** del tamaño de su texto:
+
+```
+╭─────────────────────────────╮ ╭───╮ ╭───╮
+│ ◆ El importador ▾  ▬▬▬░ 3/7 │ │ ⓘ │ │ ◎ │
+╰─────────────────────────────╯ ╰───╯ ╰───╯
+```
+
+- **Elegir un capítulo filtra el board**: las columnas quedan, sus cards cambian. Sin filtro, cada
+  card dice a qué capítulo pertenece; filtrado, ese badge desaparece.
+- El dropdown muestra **el estado de todos mientras elegís** — progreso, quién está adentro, y cuál
+  espera a una persona. Eso es lo que hace visible que dos agentes trabajan en capítulos distintos.
+- **`ⓘ` es el dashboard del capítulo**: el goal completo arriba y en grande, el progreso, quién está,
+  qué scopes toca (derivado de los labels de sus cards), y los objectives/rules/decisions/notes que
+  son SUYOS. Sin lista de cards: el board está tres pulgadas más abajo y ya las dibuja.
+- **`◎` es el modal del proyecto**: lo que vale para siempre, lo que el engine REFUSA, y el registro
+  de lo shippeado. Los tabs `Project | Milestones | Policies` se fueron: partían en tres cosas que
+  se leen juntas y hermanaban un hecho de proyecto con uno de capítulo, que es lo contrario de lo
+  que dice el modelo.
+
+Y un `npm run smoke`: los componentes renderizados a string contra un payload REAL del servidor,
+con 18 aserciones sobre comportamiento y no sobre markup. Existe por un bug y tiene su forma: elegir
+un milestone no cambiaba las cards. `tsc` estaba limpio, el payload estaba bien, el servidor estaba
+bien, y nada en la suite miraba el cableado entre el selector y las columnas. Las tres mutaciones
+que le metí las caza.
+
 ### Un hecho ahora tiene VIDA, y es lo único que impedía que el contexto creciera para siempre
 
 Un hecho declara su `level` al escribirse: `project` vive para siempre, y cualquier otro pertenece al

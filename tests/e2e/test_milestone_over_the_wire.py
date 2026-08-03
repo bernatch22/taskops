@@ -70,7 +70,7 @@ def test_a_chapter_created_from_a_clone_exists_on_the_SERVER(tmp_path: Path,
                            actor="dev:berna")
 
     (found,) = _on_the_server(hub.root)
-    assert found["text"] == "que una clienta suba su CSV"
+    assert found["title"] == "que una clienta suba su CSV"
     assert found["id"] == made["id"], "the clone's id must be the server's"
     assert found["horizon"] == "2026-09-01", "the whole body crosses, not four fields"
 
@@ -133,5 +133,5 @@ def test_reading_the_chapters_from_a_clone_answers_with_the_servers(tmp_path: Pa
     ms.open_chapter(mine, "la facturacion", planned=True, actor="dev:berna")
 
     listed = ms.listing(mine)
-    assert [m["text"] for m in listed["milestones"]] == ["el importador", "la facturacion"]
+    assert [m["title"] for m in listed["milestones"]] == ["el importador", "la facturacion"]
     assert "counts" in listed

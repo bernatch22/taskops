@@ -224,7 +224,13 @@ export interface Fact {
  * as active: an agent reported it finished, and nothing archives on an agent's word. */
 export interface Milestone {
   id: string;
-  text: string;
+  /* Three or five words — what somebody calls this chapter out loud. It is what the selector, a
+   * card's badge and the log print. A pre-0.5.0 chapter has no title of its own and the fold maps
+   * its one sentence here, so this CAN be long: truncate on display, never in the data. */
+  title: string;
+  /* What done means, and what is out of scope. Prose, usually an agent's, and "" on a chapter
+   * nobody has written it for yet — which is the normal state of one just opened. */
+  goal: string;
   horizon: string;
   state: "planned" | "in_force" | "review" | "reached" | "abandoned";
   created_by: string;

@@ -291,8 +291,10 @@ model rests on. An agent may open one, work under it and REPORT it finished; onl
 it was reached.
 
 ```sh
-taskops milestone new "que el importador ande de punta a punta" --horizon 2026-08-20
-taskops milestone new "que se pueda facturar" --planned      # written down, not started
+taskops milestone new "El importador" \
+  --goal "que ande de punta a punta con el CSV real de la clienta. No entra el envío por mail" \
+  --horizon 2026-08-20
+taskops milestone new "Facturación" --planned                # written down, not started
 taskops milestone                                            # every ACTIVE chapter, with counts
 taskops milestone review 31b0b89a -m "las tres cards cerradas, el import anda"
 taskops milestone done   31b0b89a                            # a PERSON, and the record says who

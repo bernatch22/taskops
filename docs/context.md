@@ -31,7 +31,9 @@ and nothing recorded whether it was ever reached, so a board with eight of them 
 "what have we shipped".
 
 ```sh
-taskops milestone new "ship the refund flow before the audit" --horizon 2026-09-01
+taskops milestone new "The refund flow" \
+  --goal "a customer gets their money back without us touching the database, before the audit" \
+  --horizon 2026-09-01
 taskops milestone review 31b0b89a -m "las tres cards cerradas"    # an agent REPORTS
 taskops milestone done   31b0b89a                                 # a PERSON verifies
 ```

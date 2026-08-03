@@ -47,7 +47,7 @@ def statusline(start: Path | str, *, actor: str = "") -> Bar:
         # the screen. With several active it says the oldest and counts the rest — the row has one
         # slot and the one a session is most likely to be closing is the one it opened first.
         open_now = chapters(store).active
-        said = open_now[0]["text"] if open_now else ""
+        said = open_now[0]["title"] if open_now else ""
         if len(open_now) > 1:
             said += f" +{len(open_now) - 1}"
         return Bar(milestone=said,
