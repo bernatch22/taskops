@@ -94,7 +94,9 @@ narrations, a channel that adopted a UI it never started, a specialist spawned w
 
 - `.venv/bin/ruff check . && .venv/bin/python -m pytest -q` — both, always
 - `cd plugin/channel && bun test` — when the channel changed (opt-in; see `docs/orchestrator.md`)
-- `cd ui && npm run build` — when the UI changed, and **commit the bundle**
+- `cd ui && npm run check` — when the UI changed: build, `npm run smoke` (the components
+  rendered to a string against a real payload — it is what caught a picker that filtered nothing),
+  and it refuses unless the **bundle is committed**
 - then exercise it by hand and paste the real output
 
 **Never run a mutating diagnostic against a live project.** Running `next_task` against
