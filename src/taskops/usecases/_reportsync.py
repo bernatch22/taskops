@@ -46,11 +46,38 @@ class ReportSwap:
 
 
 def exchange(wire: Wire, root: Path, *, upload: bool, force: bool = False) -> ReportSwap:
-    """Reconcile every report both sides know about. `upload` is False on a plain `pull`."""
+    """Reconcile every report both sides know about. `upload` is False on a plain `pull`.
+
+    The STAMPS come first, in one request, and they are what keeps this cheap: a label whose server
+    copy is not newer than ours needs no body, and on a plain pull it needs nothing at all. Before
+    that, every label was downloaded in full to read one number out of it — eleven seconds on a pull
+    with nothing to bring, paid by every write, because a write pulls.
+
+    `None` from `report_stamps` means the server cannot say (an older one), and then this does what
+    it always did. Slow is a fine answer to "that server is older"; wrong is not.
+    """
     swap = ReportSwap()
+    stamps = wire.report_stamps()
     for label in _labels(wire, root):
+        if _settled(root, label, stamps, upload=upload):
+            continue
         _reconcile(wire, root, label, swap, upload=upload, force=force)
     return swap
+
+
+def _settled(root: Path, label: str, stamps: dict[str, int] | None, *, upload: bool) -> bool:
+    """True when this label needs no request at all.
+
+    Only ever on a PULL. With `upload` the local copy may be the newer one and the decision needs
+    the server's content to compare against, so a push still fetches — the asymmetry is the point:
+    a pull asks "is there anything for me", a push also asks "is there anything of mine".
+    """
+    if stamps is None or upload:
+        return False
+    path = report_path(root, label)
+    if not path.is_file():
+        return False        # we have nothing, so anything the server holds is newer
+    return stamps.get(label, -1) <= stamped_seq(path.read_text(encoding="utf-8"))
 
 
 def _reconcile(wire: Wire, root: Path, label: str, swap: ReportSwap, *,

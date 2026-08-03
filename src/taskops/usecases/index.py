@@ -35,7 +35,7 @@ def report_index(start: Path | str) -> list[ReportEntry]:
         if not any(entry["label"] == today for entry in entries):
             entries.insert(0, ReportEntry(label=today, path=str(report_path(store.root, today)),
                                           exists=False, stale=False, missing_events=0,
-                                          has_narration=False, bytes=0))
+                                          has_narration=False, max_seq=0, bytes=0))
         return entries
 
 
@@ -44,7 +44,7 @@ def _entry(store: Store, path: Path) -> ReportEntry:
     behind = _behind(store, path.stem, text)
     return ReportEntry(label=path.stem, path=str(path), exists=True, stale=behind > 0,
                        missing_events=behind, has_narration=not is_pending(text),
-                       bytes=len(text.encode("utf-8")))
+                       max_seq=stamped_seq(text), bytes=len(text.encode("utf-8")))
 
 
 def _behind(store: Store, label: str, text: str) -> int:

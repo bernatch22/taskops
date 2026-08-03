@@ -81,6 +81,19 @@ class Wire:
             return []
         return [str(label) for label in cast("list[Any]", found)]
 
+    def report_stamps(self) -> dict[str, int] | None:
+        """`label -> max_seq` for every report the server holds. `None` when it cannot say.
+
+        The whole point is what it does NOT fetch: a body. Reconciling used to download every
+        report in full to read one number out of each — eight round-trips on a pull with nothing to
+        bring, eleven seconds measured on a real board, and every write pays a pull. `None` rather
+        than `{}` so an older server (whose rows carry no stamp) is distinguishable from one holding
+        no reports: the first means "compare the old way", the second means "there is nothing".
+        """
+        found: Any = self.call("GET", "/api/report/file", allow=(400, 404)).get("stamps")
+        return None if not isinstance(found, dict) else {
+            str(label): int(seq or 0) for label, seq in cast("dict[str, Any]", found).items()}
+
     def put_report(self, label: str, content: str, *, force: bool = False) -> dict[str, Any]:
         """Store a report. `{"stored": true}`, or the 409 body with both seqs in it.
 
