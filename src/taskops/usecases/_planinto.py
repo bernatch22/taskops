@@ -17,7 +17,7 @@ from .._errors import BadRequest
 from ..storage import Store
 from ..storage.milestone import active, one
 
-__all__ = ["chapter_to_plan_into"]
+__all__ = ["chapter_to_plan_into", "chapter_to_move_into"]
 
 
 def chapter_to_plan_into(store: Store, entries: list[dict[str, Any]]) -> str:
@@ -54,3 +54,34 @@ def chapter_to_plan_into(store: Store, entries: list[dict[str, Any]]) -> str:
             f"rules and nothing says so.\n{listed}\n"
             f"  name one:  `milestone` on the entry, or `--milestone <id>`")
     return running[0]["id"]
+
+
+def chapter_to_move_into(store: Store, wanted: str) -> str:
+    """The milestone a card that ALREADY EXISTS is being moved into.
+
+    A separate question from `chapter_to_plan_into` and answered by a stricter rule, because the
+    two are asked about different things. Planning names a chapter for work that does not exist
+    yet; this re-homes work that does, and the only chapters that can receive it are the ACTIVE
+    ones — `--carry` on `milestone done` already refuses anything else, for the reason the
+    changelog gives: a reached chapter with open cards inside it is one of two lies, either about
+    the chapter or about the cards.
+
+    It exists because the projection that let a pre-0.5.0 board keep its facts did nothing for its
+    CARDS. Every card planned before chapters existed carries `""` for ever, so the board's first
+    chapter is born empty and its counts describe none of the work actually under way. Measured on
+    a real board: 63 cards, 6 of them open, and a brand-new chapter reading `no cards`.
+    """
+    if not (asked := wanted.strip()):
+        raise BadRequest("a card belongs to exactly one milestone, so there is no way to clear "
+                         "this — name the chapter it belongs in instead. "
+                         "`taskops milestone list` prints them.")
+    if (found := one(store, asked)) is None:
+        raise BadRequest(f"`{asked}` names no milestone — `taskops milestone list` prints them "
+                         f"with the eight characters that name one")
+    if found not in active(store):
+        raise BadRequest(
+            f"`{found['title']}` is {found['state']}, and a card cannot move into a chapter that "
+            f"is not being worked on — that would put open work inside something already closed.\n"
+            f"  start it again:  taskops milestone start {found['id'][:8]}\n"
+            f"  or name an active one:  taskops milestone list")
+    return found["id"]

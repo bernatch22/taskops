@@ -80,13 +80,13 @@ def run_edit(args: argparse.Namespace) -> str:
     # scalar half is skipped when nothing scalar was passed. Calling it anyway made
     # `edit <id> --acceptance "…"` fail with "nothing to edit", which is `edit`'s refusal for a
     # caller who named no field, about a call that named one.
-    scalars = (args.title, args.spec, args.priority, args.reviewer)
+    scalars = (args.title, args.spec, args.priority, args.reviewer, args.milestone)
     said = ""
     if args.acceptance is None or any(field is not None for field in scalars):
         said = render_edit(rewrite(
             repo_of(args), str(args.task), title=args.title, spec=args.spec,
             priority=None if args.priority is None else int(args.priority),
-            reviewer=args.reviewer, actor=str(args.actor)))
+            reviewer=args.reviewer, milestone=args.milestone, actor=str(args.actor)))
     if args.acceptance is None:
         return said
     # A separate use case and therefore a separate call: criteria are a LIST and `edit` rewrites
