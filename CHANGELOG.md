@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.5.2 — el tablero que migra: archivar su historia, y decir quien la hizo
+
+Dos cosas que faltaban para que un tablero anterior a los capitulos quedara entero, encontradas
+mirando uno de verdad.
+
+### Una card cerrada tampoco podia archivarse, y eso es TODA la historia
+
+Con `--milestone` puesto, el capitulo nuevo de un tablero real se quedo con sus 6 cards abiertas y
+las 57 cerradas siguieron sin capitulo: el picker mostraba el unico capitulo del tablero al lado de
+un balde con todo lo que ese tablero habia terminado en su vida.
+
+`edit` refusa cualquier edicion de una card `done` o `cancelled`, y el argumento es correcto para
+cuatro de los cinco campos — reescribir el spec de trabajo entregado reescribe el registro de lo que
+se entrego. No lo es para `milestone`: archivar no cambia nada de lo entregado, dice **en que
+capitulo** se entrego, que es la unica pregunta que se le hace a una card cerrada despues. La
+exencion es de un campo, el guard sigue puesto (el capitulo existe y esta activo), ningun status se
+mueve, y una llamada que nombra `--milestone` **y** otro campo se refusa entera.
+
+### El header no mostraba a nadie en un tablero con dos developers y 63 cards
+
+`peopleOf` derivaba la gente de tres cosas y las tres son estado **vivo**: quien tiene un lease
+ahora, quien tiene una card asignada, quien escribio un objetivo. Un tablero cuyas cards abiertas
+estan todas en `review` (que libera el lease) y sin asignar no tiene ninguna de las tres — asi que
+la fila devolvia vacio y el header desaparecia. Los nombres estaban en el payload que ya tenia
+cargado: `created_by`. Ahora cuenta tambien a quien escribio una card, sigue sin costar un request, y
+una cara que dice "nothing in hand" es la respuesta correcta para un dev entre cards.
+
 ## 0.5.1 — el modelo de capítulos, usable en el tablero que ya existía
 
 Tres defectos, uno por cada cosa que pasó al abrir el primer milestone de un tablero real. Ninguno
