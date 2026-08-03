@@ -153,7 +153,7 @@ check("and zero prints NOTHING rather than 0m", spell(0) === "" && spell(20) ===
 
 console.log("the project panel");
 const proj = renderToStaticMarkup(
-  <ProjectModal context={context} repo="/tmp/px" onClose={() => {}} />);
+  <ProjectModal context={context} onClose={() => {}} />);
 check("the project's rules are here",
       context.project_rules.every((f) => proj.includes(f.text)));
 check("and a CHAPTER's rule is not — it dies with its chapter",

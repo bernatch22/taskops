@@ -916,7 +916,12 @@ ol.md-list li { list-style: decimal; }
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
 }
-.ctx-fact + .ctx-fact { margin-top: 6px; }
+/* Ten and not six: nine project rules of two sentences each read as one mass at six, and the
+   whole job of this list is being scannable — a reader is looking for WHICH rule, not reading them
+   all. The left accent says what kind of thing it is at a glance. */
+.ctx-fact + .ctx-fact { margin-top: 10px; }
+.ctx-fact { border-left: 2px solid var(--line); }
+.ctx-group.rules .ctx-fact { border-left-color: var(--amber); }
 .ctx-fact .context-text {
   margin: 0;
   font-size: 13.5px; line-height: 1.55;
