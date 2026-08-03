@@ -47,7 +47,7 @@ def chapter_to_plan_into(store: Store, entries: list[dict[str, Any]]) -> str:
             '  open one:  taskops milestone new "<what this is for>" --horizon YYYY-MM-DD\n'
             "  or from an agent:  taskops_milestone create=\"<what this is for>\"")
     if len(running) > 1:
-        listed = "\n".join(f"    {m['id'][:8]}  {m['text'][:60]}" for m in running)
+        listed = "\n".join(f"    {m['id'][:8]}  {m['title'][:60]}" for m in running)
         raise BadRequest(
             f"{len(running)} milestones are active, so which one these cards belong to is not "
             f"something to guess — a card in the wrong chapter is judged against somebody else's "

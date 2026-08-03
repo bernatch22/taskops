@@ -68,7 +68,7 @@ def chapters(store: Store) -> Chapters:
     for task in store.tasks.all():
         into = counts.setdefault(task["milestone"], {})
         into[task["status"]] = into.get(task["status"], 0) + 1
-        into["total"] = into.get("total", 0) + 1
+        pass
     return Chapters(active=active(store), planned=planned(store), counts=counts)
 
 
