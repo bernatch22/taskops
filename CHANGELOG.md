@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.3 — una card sin capitulo deja de ser un estado que el sistema carga
+
+El modelo empieza diciendo que **toda card pertenece a exactamente un milestone**, y el codigo
+llevaba un balde permanente para las que no. `plan` y `capture` refusan crear una sin capitulo — pero
+una card escrita antes de 0.5.0 lleva `""` de por vida, y el UI tenia un sentinel y una fila
+`No milestone` para dibujarlas. Medido en un tablero real: su unico capitulo mostrando `0/6` al lado
+de un balde con las 56 cards que ese tablero habia cerrado en su vida.
+
+`replay` no lo resolvia, y su propio comentario dice por que: enganchar una card al capitulo que
+casualmente este abierto en ESTE clon inventaria un hecho sobre el pasado y diferiria de una maquina
+a otra. Ese argumento es sobre una **eleccion** — y con un capitulo en toda la vida del tablero no
+hay ninguna: todos los clones foldean el mismo log al mismo id.
+
+`storage/belonging.py` (modulo nuevo: el budget refuso meterlo en `milestone.py` y tenia razon, aquel
+foldea los capitulos del tablero y este contesta en cual esta UNA card) resuelve al **leer** y en los
+tres lectores que existen — el payload del board, los counts y el slice del worker. Nunca al ingest:
+una card es mas vieja que su capitulo. `_snapshot` queda afuera, porque reproduce el evento de la
+card en otra maquina y tiene que decir lo que el evento dice.
+
+El balde no se borra. Con varios capitulos activos y cards legacy, adivinar **si** seria inventar, y
+ahi la card sigue suelta y toda superficie lo dice. Lo que desaparece es el balde en el tablero donde
+la respuesta esta determinada.
+
 ## 0.5.2 — el tablero que migra: archivar su historia, y decir quien la hizo
 
 Dos cosas que faltaban para que un tablero anterior a los capitulos quedara entero, encontradas
