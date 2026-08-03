@@ -11,6 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { Board } from "../src/components/Board";
 import { MilestoneModal } from "../src/components/MilestoneModal";
+import { peopleOf } from "../src/components/People";
 import { Menu, Picker } from "../src/components/Picker";
 import { ProjectModal } from "../src/components/ProjectModal";
 import type { Board as BoardData, ContextView } from "../src/contracts";
@@ -101,6 +102,29 @@ check("its own facts are under it",
 check("a fact of the OTHER chapter is not",
       !context.rules.some((f) => f.milestone === second.id && dash.includes(f.text)));
 check("no card list — the board is right underneath", !dash.includes('class="card'));
+
+console.log("who is on the board");
+/* The shape a real board is in most of the time, and the one the fixture is not: every open card
+ * sits in `review` (which releases the lease) or is unassigned, so there is no live state to derive
+ * anybody from. Measured on axion: 0 leases, 0 assignees, 63 cards, two developers — and the header
+ * drew nothing. The names were in `created_by` all along. */
+const quiet = {
+  ...board,
+  columns: board.columns.map((column) => ({
+    ...column,
+    cards: column.cards.map((card) => ({
+      ...card, lease: null, task: { ...card.task, assignee: "" },
+    })),
+  })),
+} as unknown as BoardData;
+const creators = new Set(quiet.columns.flatMap(
+  (column) => column.cards.map((card) => card.task.created_by)));
+const quietFaces = peopleOf(quiet, { ...context, objectives: [] } as unknown as ContextView);
+check("with nothing in anybody's hands, the board still names who is on it",
+      quietFaces.length > 0, `${quietFaces.length} faces from ${creators.size} creators`);
+check("and it is the developers, folded from their agents",
+      quietFaces.every((person) => [...creators].some((id) => id.includes(person.dev))),
+      quietFaces.map((p) => p.dev).join(", "));
 
 console.log("the project panel");
 const proj = renderToStaticMarkup(

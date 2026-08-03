@@ -53,6 +53,13 @@ export function peopleOf(board: Board | null, context: ContextView | null): Pers
   };
   for (const column of board?.columns ?? []) {
     for (const card of column.cards) {
+      /* WHO WROTE IT, always — the fact that makes this row work on a board that is not mid-sprint.
+       * The three sources below are all live state: a lease is somebody's hands right now, an
+       * assignment is somebody about to start, an objective is somebody having stated one. A board
+       * whose open cards are all in `review` (which releases the lease) and unassigned has none of
+       * the three — so a project with 63 cards and two developers' whole history in it drew ZERO
+       * faces and the header vanished. The names were in the payload the row already had. */
+      seen(card.task.created_by);
       if (card.lease) seen(card.lease.actor).holding.push(card.task.id);
       else if (card.task.assignee) seen(card.task.assignee).assigned += 1;
     }
