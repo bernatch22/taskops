@@ -50,8 +50,17 @@ def standup(start: Path | str, *, since: str = DEFAULT_WINDOW, actor: str = "") 
         return build_standup(store, since=now() - parse_window(since), actor=actor)
 
 
-def activity(start: Path | str, *, since: str = HISTORY_WINDOW) -> Activity:
+def activity(start: Path | str, *, since: str = HISTORY_WINDOW,
+             range_from: float = 0.0, range_to: float = 0.0) -> Activity:
+    """A window (`since="30d"`) or a closed RANGE in epoch seconds — the range wins when given.
+
+    Both, because they answer different askers: a lookback is what a terminal types, and "last
+    month" needs both ends and only the CLIENT knows where a month starts — the 1st at 00:00 in
+    the timezone of whoever is looking, which no server clock can know.
+    """
     with project(start) as store:
+        if range_from or range_to:
+            return build_activity(store, since=range_from, until=range_to)
         return build_activity(store, since=now() - parse_window(since))
 
 

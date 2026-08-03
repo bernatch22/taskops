@@ -25,14 +25,44 @@ import { api } from "../api";
 import type {
   Activity, ActorRoll, Attended, Board, ContextView, Fact, Stretch,
 } from "../contracts";
-import { ago, spell } from "./bits";
+import { ago, heat, spell } from "./bits";
 import { Overlay } from "./Overlay";
 
-/* How far back a profile looks. Long enough that somebody who took Friday off still has a
- * footprint, short enough that it is a picture of NOW rather than of the project's history —
- * which is what the activity view is for, and it is one click away. */
-const WINDOW = "14d";
 const PAGE = 8;
+
+/* The periods a profile can be read over. `14d` was the only one for a while and it was hardcoded,
+ * so the panel could not answer "all time" or "last month" at all and the cards further back simply
+ * did not exist as far as it was concerned.
+ *
+ * The RANGES are computed here, in the browser, and that is the point rather than an accident: a
+ * month starts on the 1st at 00:00 wherever the reader is, and no server clock knows that. `from`
+ * and `to` are epoch seconds; `0` for `to` means "up to now", `0` for `from` means the whole log.
+ */
+type Period = { key: string; label: string; range: () => [number, number] };
+
+const START_OF_MONTH = (shift: number): Date => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + shift, 1);
+};
+
+const TWO_WEEKS: Period = {
+  key: "14d", label: "14 days", range: () => [seconds(new Date()) - 14 * 86400, 0],
+};
+
+/* Two weeks FIRST because it is the answer to "what is going on", which is what somebody opening a
+ * profile usually wants — long enough that a Friday off still leaves a footprint. */
+const PERIODS: Period[] = [
+  TWO_WEEKS,
+  { key: "month", label: "This month", range: () => [seconds(START_OF_MONTH(0)), 0] },
+  /* The only one that needs BOTH ends, and the reason the range call exists. */
+  { key: "last", label: "Last month",
+    range: () => [seconds(START_OF_MONTH(-1)), seconds(START_OF_MONTH(0))] },
+  { key: "all", label: "All time", range: () => [0, 0] },
+];
+
+function seconds(at: Date): number {
+  return Math.floor(at.getTime() / 1000);
+}
 
 
 export interface Person {
@@ -142,15 +172,21 @@ function Profile({ dev, person, context, onOpen, onClose }: {
   /* One fetch, on open. Not in the header and not per avatar: a roll-up over two weeks is a scan
    * of the log, and paying for one per face on every reload would be the board taxing itself to
    * draw decoration nobody clicked. */
+  const [tab, setTab] = useState<"work" | "context">("work");
+  const [period, setPeriod] = useState(TWO_WEEKS);
+
+  /* Refetches when the PERIOD changes, and clears first — a stale total under a new label is the
+   * one thing this control must never show. */
   useEffect(() => {
     let alive = true;
-    api.activity(WINDOW)
+    setActivity(null);
+    setFailed(false);
+    const [from, to] = period.range();
+    api.activityBetween(from, to)
       .then((got) => { if (alive) setActivity(got); })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
-  }, [dev]);
-
-  const [tab, setTab] = useState<"work" | "context">("work");
+  }, [dev, period]);
   const roll = (activity?.actors ?? []).filter((a) => devOf(a.actor) === dev);
   /* Their agents' sittings, INTERLEAVED by when they happened and never merged: two of a dev's
    * agents running in parallel are two sittings, because they do not share attention — that is the
@@ -201,7 +237,17 @@ function Profile({ dev, person, context, onOpen, onClose }: {
           <>
             <Numbers roll={roll} />
             <section className="ctx-group">
-              <h4>Cards <span className="dim">what they touched, last {WINDOW}</span></h4>
+              <h4>Cards <span className="dim">what they touched</span>
+                {/* The period sits IN the heading it qualifies, not above the tabs: it changes what
+                  * these rows and the totals above them mean, and a control far from the number it
+                  * governs is a control people forget is set. */}
+                <span className="periods" role="group" aria-label="period">
+                  {PERIODS.map((each) => (
+                    <button key={each.key} className={each.key === period.key ? "on" : ""}
+                            onClick={() => setPeriod(each)}>{each.label}</button>
+                  ))}
+                </span>
+              </h4>
               {failed ? <p className="ctx-empty">could not read the log just now.</p>
                 : activity === null ? <p className="ctx-empty">reading…</p>
                 : <Cards sittings={sittings} titles={activity.titles}
@@ -209,8 +255,12 @@ function Profile({ dev, person, context, onOpen, onClose }: {
               {/* The bound, stated where the numbers are. A window capped at 600 events makes every
                 * total on this tab a partial one, and a partial number that does not say so is the
                 * exact failure this project keeps paying for. */}
+              {/* The TIMELINE is capped, the totals are not — they are folded over the whole period
+                * server-side. Said precisely, because "partial" about the wrong half is worse than
+                * saying nothing. */}
               {activity?.truncated
-                ? <p className="ctx-empty">The window hit its limit, so these totals are partial.</p>
+                ? <p className="ctx-empty">Long period — the totals cover all of it; only the raw
+                  timeline is capped.</p>
                 : null}
             </section>
           </>
@@ -268,7 +318,8 @@ function Numbers({ roll }: { roll: ActorRoll[] }): JSX.Element | null {
         * per-card row: it had to be added up by eye. Labelled "at least" for the same reason every
         * row is — it is a floor, and a floor drawn as a total is the lie the cap exists to avoid. */}
       {spell(total.seconds)
-        ? <span className="stat" title="the sum of every card's floor, so the total is one too">
+        ? <span className={`stat ${heat(total.seconds)}`}
+                 title="the sum of every card's floor, so the total is one too">
             <b>{spell(total.seconds)}</b> at least
           </span>
         : null}
@@ -312,7 +363,7 @@ function Cards({ sittings, titles, holding, on, onOpen }: {
   const real = sittings
     .map((s) => ({ ...s, tasks: s.tasks.filter((id) => id && id !== "project") }))
     .filter((s) => s.tasks.length);
-  if (!real.length) return <p className="ctx-empty">nothing in the last {WINDOW}.</p>;
+  if (!real.length) return <p className="ctx-empty">nothing in this period.</p>;
   const cards = real.reduce((n, s) => n + s.tasks.length, 0);
   /* Cut on SITTINGS and count in CARDS: a group is one claim and half of it is not a smaller
    * claim, it is a wrong one. So the page grows to the sitting that crosses the line. */
@@ -346,7 +397,7 @@ function Cards({ sittings, titles, holding, on, onOpen }: {
                       * the answer is worse than no number: nothing in the log records when
                       * somebody stopped. */}
                     {spell(on.get(id)?.seconds ?? 0) ? (
-                      <span className="ctx-card-time"
+                      <span className={`ctx-card-time ${heat(on.get(id)?.seconds ?? 0)}`}
                             title={`at least this long: the gaps between ${on.get(id)?.events} `
                                    + "events, each capped at 30m, so it under-reports rather "
                                    + "than guessing"}>

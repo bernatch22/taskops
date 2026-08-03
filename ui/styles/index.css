@@ -1004,3 +1004,28 @@ ol.md-list li { list-style: decimal; }
 /* The time a CARD took, in the drawer that reads it. Beside the commits, because both answer "how
    much went into this" and a reader comparing them should not have to look in two places. */
 .card-spent { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+
+/* The heat of a duration — three steps, matching `bits.heat`. Colour carries the ranking so a column
+   of them can be skimmed without reading a single number, which is the whole reason it is here; the
+   NUMBER stays the truth and the colour never replaces it. */
+.heat-cool { color: var(--ink-dim); }
+.heat-warm { color: var(--blue); }
+.heat-hot { color: var(--amber); }
+.stat.heat-warm b, .stat.heat-hot b { color: inherit; }
+
+/* The period selector, in the heading it qualifies. Small, and the chosen one is the only one that
+   reads as a surface — a row of four equal buttons makes a reader look for which is on. */
+.periods { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.periods button {
+  padding: 2px 7px; font-size: 10.5px; letter-spacing: 0; text-transform: none;
+  background: none; border-color: transparent; color: var(--ink-faint);
+}
+.periods button:hover:not(.on) { color: var(--ink-dim); background: none; }
+.periods button.on {
+  color: var(--lime); background: color-mix(in srgb, var(--lime) 12%, transparent);
+  border-color: color-mix(in srgb, var(--lime) 30%, transparent);
+}
+
+/* The tabs get their selected state in the accent too, not just a lighter grey: they switch what the
+   whole panel is about, and a control that changes the subject should look like it did something. */
+.ctx-tabs button.on { color: var(--lime); border-color: color-mix(in srgb, var(--lime) 28%, transparent); }

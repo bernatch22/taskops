@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from taskops.contracts import Event
 from taskops.engine.history import rolls
-from taskops.engine.timespent import GAP, attended
+from taskops.engine.timespent import GAP, attended, per_card
 
 MINUTE = 60.0
 BASE = 1_785_000_000.0
@@ -55,21 +55,44 @@ def test_events_that_arrived_OUT_OF_ORDER_are_sorted_before_subtracting() -> Non
 
 def test_two_cards_are_counted_apart_and_the_longest_leads() -> None:
     """Per card, because the question is which card took the time — a total over an actor's whole
-    window is the number the profile already had."""
+    window is the number the profile already had.
+
+    The numbers are 18 and 2 rather than 20 and 2, and that is the fold working: this actor's stream
+    is `short(0) long(0) short(2m) long(20m)`, so the first two minutes closed a `short` event and
+    belong to `short`. They cannot ALSO belong to `long` — the old version gave each card the gaps
+    between its own events, which in an interleaved stream double-counts the shared middle. The two
+    add up to 20, which is the span.
+    """
     found = attended([ev("tk-short", 0), ev("tk-short", 2 * MINUTE),
                       ev("tk-long", 0), ev("tk-long", 20 * MINUTE)])
     assert [a["task"] for a in found] == ["tk-long", "tk-short"]
-    assert [a["seconds"] for a in found] == [20 * MINUTE, 2 * MINUTE]
+    assert [a["seconds"] for a in found] == [18 * MINUTE, 2 * MINUTE]
+    assert sum(a["seconds"] for a in found) == 20 * MINUTE, "the span, exactly"
 
 
-def test_interleaved_work_on_two_cards_does_not_count_the_SWITCH_as_time() -> None:
-    """An agent bouncing between two cards: each card's gaps are its own, so the minutes spent on
-    the other one are not billed to it. Naively subtracting consecutive events of the ACTOR — rather
-    than of the actor on that card — would count every switch twice."""
+def test_the_minutes_of_an_INTERLEAVED_sitting_add_up_to_its_span() -> None:
+    """The bug a reader caught by checking the rows against the span they were drawn under.
+
+    `a(0) b(2m) a(4m) b(6m)` is a six-minute sitting. Giving each card the gaps between ITS OWN
+    events made `a` claim 0→4 and `b` claim 2→6 — eight minutes inside a span of six, because the
+    middle four belong to both. Attributed to the card of the event that CLOSES each gap, they
+    partition the span instead of overlapping it, and the sum is checkable against the header.
+    """
+    found = attended([ev("tk-a", 0), ev("tk-b", 2 * MINUTE),
+                      ev("tk-a", 4 * MINUTE), ev("tk-b", 6 * MINUTE)])
+    per = {a["task"]: a["seconds"] for a in found}
+    assert per == {"tk-a": 2 * MINUTE, "tk-b": 4 * MINUTE}
+    assert sum(per.values()) == 6 * MINUTE, "the span of the sitting, and nothing invented"
+
+
+def test_a_card_touched_ONCE_mid_stream_still_gets_the_gap_into_it() -> None:
+    """A consequence worth pinning rather than tolerating: a single event is no longer always zero.
+    A card opened once in the middle of a stretch was worked — the minutes before that event went
+    into producing it — and only a stream with no gap on either side of it accrues nothing."""
     found = attended([ev("tk-a", 0), ev("tk-b", 3 * MINUTE), ev("tk-a", 6 * MINUTE)])
     per = {a["task"]: a["seconds"] for a in found}
-    assert per["tk-a"] == 6 * MINUTE, "its own two events, capped-summed"
-    assert per["tk-b"] == 0.0, "one event, so no span"
+    assert per == {"tk-a": 3 * MINUTE, "tk-b": 3 * MINUTE}
+    assert attended([ev("tk-solo", 0)])[0]["seconds"] == 0.0, "alone, there is no gap at all"
 
 
 def test_two_actors_on_one_card_are_never_merged() -> None:
@@ -90,7 +113,9 @@ def test_the_roll_up_carries_it_over_the_SAME_events_it_counts() -> None:
     (roll,) = rolls(events)
     assert roll["tasks"] == 2 and roll["commits"] == 1
     assert sum(a["events"] for a in roll["on"]) == 3
-    assert sum(a["seconds"] for a in roll["on"]) == 7 * MINUTE
+    # 8 and not 7: the last minute closed `tk-b`'s event, so it is `tk-b`'s. The total is the span
+    # from the first event to the last, which is the only total a reader can check.
+    assert sum(a["seconds"] for a in roll["on"]) == 8 * MINUTE
 
 
 # ---- sittings: what was open AT THE SAME TIME
@@ -147,31 +172,27 @@ def test_two_agents_of_one_dev_are_never_ONE_sitting() -> None:
 
 def test_a_card_worked_by_TWO_actors_adds_both_stretches() -> None:
     """The one thing a naive version gets wrong. A card two agents worked in the same hour was
-    attended twice, so the two add — subtracting consecutive events of the CARD would fold them into
-    one and report half the work."""
-    from taskops.engine.timespent import on_card
-
-    stamps = [("agent:berna/one", "commit", BASE), ("agent:berna/one", "comment", BASE + 10 * MINUTE),
-              ("agent:ana/one", "comment", BASE + 2 * MINUTE),
-              ("agent:ana/one", "commit", BASE + 8 * MINUTE)]
-    assert on_card(stamps) == 16 * MINUTE
+    attended twice, so the two add — folding the card's events into one stream would report half the
+    work. Grouped by actor first, exactly like the profile's rows, so the two agree."""
+    rows = [("tk-a", "agent:berna/one", "commit", BASE),
+            ("tk-a", "agent:berna/one", "comment", BASE + 10 * MINUTE),
+            ("tk-a", "agent:ana/one", "comment", BASE + 2 * MINUTE),
+            ("tk-a", "agent:ana/one", "commit", BASE + 8 * MINUTE)]
+    assert per_card(rows) == {"tk-a": 16 * MINUTE}
 
 
 def test_a_card_nobody_touched_twice_is_zero_and_not_a_guess() -> None:
-    """Same rule as `attended`, and it has to be the same rule: one event is a moment."""
-    from taskops.engine.timespent import on_card
-
-    assert on_card([("dev:berna", "comment", BASE)]) == 0.0
-    assert on_card([]) == 0.0
+    """One event in the whole log is a moment: no gap on either side of it, so nothing to credit."""
+    assert per_card([("tk-a", "dev:berna", "comment", BASE)]) == {}
+    assert per_card([]) == {}
 
 
 def test_a_card_s_time_does_not_depend_on_the_order_rows_arrive() -> None:
-    """It comes out of SQL grouped by task and ordered by ts today, and a fold that relied on that
-    would break the day somebody adds an index or a UNION."""
-    from taskops.engine.timespent import on_card
-
-    forwards = [("dev:berna", "comment", BASE), ("dev:berna", "commit", BASE + 5 * MINUTE)]
-    assert on_card(list(reversed(forwards))) == on_card(forwards) == 5 * MINUTE
+    """It comes out of SQL ordered by ts today, and a fold that relied on that would break the day
+    somebody adds an index or a UNION."""
+    forwards = [("tk-a", "dev:berna", "comment", BASE),
+                ("tk-a", "dev:berna", "commit", BASE + 5 * MINUTE)]
+    assert per_card(list(reversed(forwards))) == per_card(forwards) == {"tk-a": 5 * MINUTE}
 
 
 # ---- bookkeeping is not work, and that is what running it found
@@ -204,7 +225,5 @@ def test_the_kinds_that_DO_mean_work_still_group() -> None:
 def test_a_cards_own_time_ignores_its_bookkeeping_too() -> None:
     """Same filter on the card's number, because the two must not disagree: a card whose only events
     are its creation and a bulk re-filing was never worked, and its row has to say so."""
-    from taskops.engine.timespent import on_card
-
-    assert on_card([("dev:berna", "created", BASE),
-                    ("dev:berna", "edited", BASE + 20 * MINUTE)]) == 0.0
+    assert per_card([("tk-a", "dev:berna", "created", BASE),
+                     ("tk-a", "dev:berna", "edited", BASE + 20 * MINUTE)]) == {}

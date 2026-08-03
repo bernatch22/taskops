@@ -51,18 +51,24 @@ class EventTable:
                                "ORDER BY ts, seq LIMIT ?", (ts, limit)).fetchall()
         return [to_event(row) for row in rows]
 
-    def newest_since(self, ts: float, *, limit: int) -> list[Event]:
-        """The LAST `limit` events in a window, oldest first — what a history view reads.
+    def between(self, since: float, until: float) -> list[Event]:
+        """Every event in a CLOSED range, oldest first. `until <= 0` means "up to now".
 
-        Not `since(...)[-limit:]`: `LIMIT` applies to the ascending scan, so that expression takes
-        the OLDEST rows and then shows them as the newest. On a thirty-day window over a busy
-        project it produced a timeline that was entirely correct and entirely the wrong end.
+        Not `newest_since` with a bigger number: a lookback cannot express "last month", which needs
+        both ends, and this is the read the per-period roll-ups fold over. Unbounded on purpose — the
+        RANGE is the bound, and the caller picked it. A month of a busy board is thousands of rows,
+        which is one scan; the timeline shown beside it stays capped, because nobody scrolls that.
 
-        Ordered DESC to pick the tail and reversed here, so callers still get the log's own order.
+        It replaced a `newest_since(ts, limit=…)`, whose whole difficulty was that `LIMIT` applies to
+        the ascending scan — so the obvious spelling took the OLDEST rows and showed them as the
+        newest, and produced a timeline entirely correct and entirely the wrong end. Capping moved to
+        the caller, which slices the tail of an ordered list and cannot get that backwards.
         """
-        rows = self.db.execute("SELECT * FROM events WHERE ts > ? "
-                               "ORDER BY ts DESC, seq DESC LIMIT ?", (ts, limit)).fetchall()
-        return [to_event(row) for row in reversed(rows)]
+        # `inf` rather than a branch on the SQL: two spellings of one read is two places for the
+        # ordering to be got wrong, and that ordering is exactly what this call has already cost.
+        rows = self.db.execute("SELECT * FROM events WHERE ts > ? AND ts <= ? ORDER BY ts, seq",
+                               (since, until if until > 0 else float("inf"))).fetchall()
+        return [to_event(row) for row in rows]
 
     def after_seq(self, seq: int, *, limit: int = 200) -> list[Event]:
         """The studio's cursor read: strictly local order, no clock involved.
