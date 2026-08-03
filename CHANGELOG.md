@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.4 — el goal de un capitulo se lee
+
+Salia como un muro de veinte lineas: `<p>{goal}</p>`, y HTML colapsa los saltos de linea, asi que la
+forma que el autor escribio no existia en pantalla. El spec de una card nunca tuvo el problema porque
+`TaskPanel` usa `<pre>` — el proyecto ya sabia que estos textos traen su propia forma, y el goal era
+el unico campo que la tiraba. Ahora pasa por el MISMO reader que los reports: parrafos, listas y
+`codigo`, sin `dangerouslySetInnerHTML`, que es la razon por la que ese reader existe.
+
 ## 0.5.3 — una card sin capitulo deja de ser un estado que el sistema carga
 
 El modelo empieza diciendo que **toda card pertenece a exactamente un milestone**, y el codigo
