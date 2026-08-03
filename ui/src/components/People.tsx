@@ -360,11 +360,34 @@ function Cards({ sittings, titles, holding, on, onOpen }: {
   onOpen: (id: string) => void;
 }): JSX.Element {
   const [shown, setShown] = useState(PAGE);
-  const real = sittings
-    .map((s) => ({ ...s, tasks: s.tasks.filter((id) => id && id !== "project") }))
-    .filter((s) => s.tasks.length);
+  const clean = sittings
+    .map((s) => ({ ...s, spent: s.spent.filter((e) => e.task && e.task !== "project") }))
+    .filter((s) => s.spent.length);
+  /* GROUPS first, then one row per remaining card — and that split is what stops the list reading as
+   * duplicates. A card worked in six separate sittings produced six identical-looking rows, which is
+   * six answers to a question ("which cards did they touch") that has one. So only a sitting with
+   * SEVERAL cards keeps its own rows, because there the claim is about the sitting; a card worked
+   * alone is folded to one row carrying its total for the period, and a card that already appears
+   * inside a group is not repeated below. */
+  const groups = clean.filter((s) => s.spent.length > 1);
+  const grouped = new Set(groups.flatMap((s) => s.spent.map((e) => e.task)));
+  const singles = new Map<string, number>();
+  for (const sitting of clean) {
+    if (sitting.spent.length > 1) continue;
+    for (const each of sitting.spent) {
+      if (grouped.has(each.task)) continue;
+      singles.set(each.task, (singles.get(each.task) ?? 0) + each.seconds);
+    }
+  }
+  const real = [
+    ...groups,
+    ...[...singles].map(([task, seconds]) => ({
+      started: 0, ended: 0, events: 0,
+      spent: [{ task, seconds, events: on.get(task)?.events ?? 0 }],
+    })),
+  ];
   if (!real.length) return <p className="ctx-empty">nothing in this period.</p>;
-  const cards = real.reduce((n, s) => n + s.tasks.length, 0);
+  const cards = real.reduce((n, s) => n + s.spent.length, 0);
   /* Cut on SITTINGS and count in CARDS: a group is one claim and half of it is not a smaller
    * claim, it is a wrong one. So the page grows to the sitting that crosses the line. */
   const upto: typeof real = [];
@@ -372,22 +395,27 @@ function Cards({ sittings, titles, holding, on, onOpen }: {
   for (const sitting of real) {
     if (counted >= shown) break;
     upto.push(sitting);
-    counted += sitting.tasks.length;
+    counted += sitting.spent.length;
   }
   return (
     <>
       <ul className="ctx-list sittings">
+        {/* Keyed by the sitting's start AND its first card: every folded single row carries
+          * `started: 0`, so the timestamp alone is not unique among them. */}
         {upto.map((sitting) => (
-          <li key={`${sitting.started}`}
-              className={sitting.tasks.length > 1 ? "sitting together" : "sitting"}>
-            {sitting.tasks.length > 1 ? (
+          <li key={`${sitting.started}-${sitting.spent[0]?.task ?? ""}`}
+              className={sitting.spent.length > 1 ? "sitting together" : "sitting"}>
+            {sitting.spent.length > 1 ? (
               <p className="sitting-head dim">
-                {sitting.tasks.length} at the same time
+                {sitting.spent.length} at the same time
                 <span className="sitting-when"> · {when(sitting)}</span>
+                {/* The span, beside the rows that partition it — which is what makes the group
+                  * checkable, and what a reader used to catch it being wrong. */}
+                <span className="sitting-span"> · {spell(sitting.ended - sitting.started)}</span>
               </p>
             ) : null}
             <ul className="ctx-list">
-              {sitting.tasks.map((id) => (
+              {sitting.spent.map(({ task: id, seconds, events }) => (
                 <li key={id}>
                   <button className="ctx-card" onClick={() => onOpen(id)}>
                     <code className="context-id">{id}</code>
@@ -396,12 +424,12 @@ function Cards({ sittings, titles, holding, on, onOpen }: {
                       * purpose. The tooltip says which it is, because a bound drawn as if it were
                       * the answer is worse than no number: nothing in the log records when
                       * somebody stopped. */}
-                    {spell(on.get(id)?.seconds ?? 0) ? (
-                      <span className={`ctx-card-time ${heat(on.get(id)?.seconds ?? 0)}`}
-                            title={`at least this long: the gaps between ${on.get(id)?.events} `
-                                   + "events, each capped at 30m, so it under-reports rather "
-                                   + "than guessing"}>
-                        {spell(on.get(id)?.seconds ?? 0)}
+                    {spell(seconds) ? (
+                      <span className={`ctx-card-time ${heat(seconds)}`}
+                            title={`in this sitting: ${events} event(s), and the gaps between them `
+                                   + `each capped at 30m. Over the whole period: `
+                                   + `${spell(on.get(id)?.seconds ?? 0) || "—"}`}>
+                        {spell(seconds)}
                       </span>
                     ) : null}
                     {holding.includes(id) ? <span className="context-horizon">now</span> : null}

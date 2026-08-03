@@ -37,7 +37,16 @@ class Stretch(TypedDict):
 
     started: float
     ended: float
-    tasks: list[str]
-    """In the order they were FIRST touched: the order somebody opened them."""
+
+    spent: list[Attended]
+    """The cards of this sitting with the minutes spent on each INSIDE it, in the order they were
+    first touched.
+
+    Per sitting and not per period, which is the whole reason this field exists rather than a list of
+    ids. A row drawn inside a group has to be checkable against that group's own header: the card
+    totals were the period's, so a card with 32 minutes across the fortnight was drawn inside an
+    eleven-minute stretch and read as thirty-two minutes of it. These partition the span exactly —
+    no gap inside a sitting exceeds the cap, so nothing is lost to capping either.
+    """
 
     events: int

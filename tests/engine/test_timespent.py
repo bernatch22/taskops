@@ -130,7 +130,7 @@ def test_cards_alternated_in_one_sitting_come_back_TOGETHER() -> None:
 
     found = stretches([ev("tk-a", 0), ev("tk-b", 4 * MINUTE), ev("tk-a", 9 * MINUTE)])
     assert len(found) == 1
-    assert found[0]["tasks"] == ["tk-a", "tk-b"], "in the order they were first touched"
+    assert [e["task"] for e in found[0]["spent"]] == ["tk-a", "tk-b"], "first-touch order"
     assert found[0]["events"] == 3
 
 
@@ -141,7 +141,7 @@ def test_a_gap_past_the_cap_ENDS_the_sitting() -> None:
     from taskops.engine.timespent import stretches
 
     found = stretches([ev("tk-a", 0), ev("tk-b", 9 * 3600)])
-    assert [s["tasks"] for s in found] == [["tk-b"], ["tk-a"]], "newest sitting first"
+    assert [[e["task"] for e in s["spent"]] for s in found] == [["tk-b"], ["tk-a"]], "newest first"
 
 
 def test_a_sitting_carries_its_SPAN() -> None:
@@ -163,8 +163,9 @@ def test_two_agents_of_one_dev_are_never_ONE_sitting() -> None:
     events = [ev("tk-a", 0, actor="agent:berna/one"), ev("tk-a", 3 * MINUTE, actor="agent:berna/one"),
               ev("tk-b", 1 * MINUTE, actor="agent:berna/two")]
     per = {roll["actor"]: roll["sittings"] for roll in rolls(events)}
-    assert [s["tasks"] for s in per["agent:berna/one"]] == [["tk-a"]]
-    assert [s["tasks"] for s in per["agent:berna/two"]] == [["tk-b"]]
+    cards = lambda sittings: [[e["task"] for e in s["spent"]] for s in sittings]  # noqa: E731
+    assert cards(per["agent:berna/one"]) == [["tk-a"]]
+    assert cards(per["agent:berna/two"]) == [["tk-b"]]
 
 
 # ---- a CARD's own time, over everybody who touched it
@@ -219,7 +220,7 @@ def test_the_kinds_that_DO_mean_work_still_group() -> None:
     real = [ev("tk-a", 0, kind="claimed"), ev("tk-b", 3 * MINUTE, kind="comment"),
             ev("tk-a", 7 * MINUTE, kind="commit")]
     (found,) = stretches(real)
-    assert found["tasks"] == ["tk-a", "tk-b"]
+    assert [e["task"] for e in found["spent"]] == ["tk-a", "tk-b"]
 
 
 def test_a_cards_own_time_ignores_its_bookkeeping_too() -> None:
@@ -227,3 +228,17 @@ def test_a_cards_own_time_ignores_its_bookkeeping_too() -> None:
     are its creation and a bulk re-filing was never worked, and its row has to say so."""
     assert per_card([("tk-a", "dev:berna", "created", BASE),
                      ("tk-a", "dev:berna", "edited", BASE + 20 * MINUTE)]) == {}
+
+
+def test_a_sitting_s_rows_ADD_UP_to_its_span() -> None:
+    """The invariant a reader can check on screen, and the one that was false: a card's total for the
+    whole PERIOD was drawn inside a single sitting, so a card with 32 minutes over a fortnight read
+    as thirty-two minutes of an eleven-minute stretch. Attributed within the run, the rows partition
+    the span — and no gap inside a sitting exceeds the cap, so nothing is lost to capping either."""
+    from taskops.engine.timespent import stretches
+
+    (found,) = stretches([ev("tk-a", 0), ev("tk-b", 2 * MINUTE), ev("tk-a", 5 * MINUTE),
+                          ev("tk-c", 8 * MINUTE), ev("tk-a", 11 * MINUTE)])
+    assert {e["task"]: e["seconds"] for e in found["spent"]} == {
+        "tk-a": 6 * MINUTE, "tk-b": 2 * MINUTE, "tk-c": 3 * MINUTE}
+    assert sum(e["seconds"] for e in found["spent"]) == found["ended"] - found["started"]

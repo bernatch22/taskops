@@ -108,8 +108,10 @@ export interface Attended {
 export interface Stretch {
   started: number;
   ended: number;
-  /* In the order they were FIRST touched. */
-  tasks: string[];
+  /* The cards of THIS sitting with the minutes spent on each inside it, in the order they were first
+   * touched. Per sitting and not per period: the rows have to add up to the header above them, and a
+   * card's fortnight total drawn inside an eleven-minute stretch read as thirty-two minutes of it. */
+  spent: Attended[];
   events: number;
 }
 
