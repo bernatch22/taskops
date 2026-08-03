@@ -1,93 +1,17 @@
-"""The block `taskops init` writes into `.gitignore`, and how it grows without being rewritten.
+"""Writing the ignore block into `.gitignore`, and growing it without rewriting it.
 
 Its own module because it stopped being a detail of init the moment it started guarding a
-SECRET. The rule this file encodes is: everything under `.taskops/` is ignored except the
-event log — which is the whole replication story — and the list is written out path by path
-rather than as `.taskops/*` plus exceptions, so that a person reading it can see what each
-line is for.
-
-That explicitness has a cost the token found first: a new file under `.taskops/` is TRACKED
-by default. `remote.json` holds a bearer, and a token in git history is still a token after
-somebody deletes the file. Hence `_UPGRADES` — a project initialised by an older taskops must
-gain that line the next time init runs, or upgrading in place is one `git add .` from a leak.
+SECRET, and separate from `_ignorerules` — which is WHAT is ignored — because this is HOW: an
+append-only upgrade with a matcher in it that took two goes to get right.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..storage import PROJECT_DIR
+from ._ignorerules import ANNOTATES, BLOCK, MARKER, UPGRADES
 
 __all__ = ["ignore"]
-
-MARKER = "# taskops"
-
-REPORTS_NOTE = f"# {PROJECT_DIR}/reports/ is COMMITTED — a written dossier is not derived state"
-"""A COMMENT, not a rule, and that is the point.
-
-`reports/` is tracked, so the correct entry here is no entry at all — but "no entry" is
-indistinguishable from an oversight, and the next person tidying this block would add
-`{PROJECT_DIR}/*` and untrack every report in the project. The line says why the hole exists.
-"""
-
-REMOTE_RULE = f"{PROJECT_DIR}/remote.json"
-"""The remote's URL and its BEARER TOKEN. The one line here that guards a secret.
-
-Everything else is ignored because committing it would be noise; this one because committing
-it would be a leak that outlives the commit. The file is also written 0600
-(`usecases/remote.py`) — belt and braces, on purpose, because the two failures are different:
-the mode stops another account on this machine, the ignore stops the whole internet.
-"""
-
-GUIDE_NOTE = f"{PROJECT_DIR}/GUIDE.md"
-"""Ignored rather than committed, which looks wrong at first.
-
-It is GENERATED: it ships inside the package and init rewrites it every run, so it always
-describes the version of taskops actually installed. Tracking a file that a command overwrites
-would leave `git status` dirty after every init, and two developers on different versions would
-fight over its contents forever. It also removed a real merge conflict — two clones that each
-ran `taskops init` could not pull from one another, because the incoming commit carried files
-both sides had independently created untracked.
-"""
-
-AGENTS_RULE = ".claude/agents/taskops-*.md"
-"""Ours are GENERATED — rewritten by every init to match the installed version, exactly like
-GUIDE.md and for the same reason: a stale copy describes tools that no longer exist, and two
-developers on different versions would fight over the file forever. Only `taskops-*` is
-ignored; a project's own agents are its code and commit normally."""
-
-SETTINGS_RULE = ".claude/settings.local.json"
-"""Written by `init` and machine-specific: it names the absolute path to `taskops-hook` on
-THIS machine. Committing it would hand a teammate five hooks pointing into a directory they do
-not have, which fails silently — the worst shape a failure can take."""
-
-BLOCK = f"""
-{MARKER} — commit events.jsonl and NOTHING else under {PROJECT_DIR}/
-{PROJECT_DIR}/db.sqlite
-{PROJECT_DIR}/db.sqlite-wal
-{PROJECT_DIR}/db.sqlite-shm
-{GUIDE_NOTE}
-{PROJECT_DIR}/workers/
-{PROJECT_DIR}/trees/
-{REMOTE_RULE}
-{REPORTS_NOTE}
-{PROJECT_DIR}/*.stamp
-{PROJECT_DIR}/stop-blocks.json
-{SETTINGS_RULE}
-{AGENTS_RULE}
-"""
-
-_ANNOTATES = {REPORTS_NOTE: f"{PROJECT_DIR}/reports/"}
-"""What a COMMENT in the block is about, so it can be skipped with its subject.
-
-The reports note explains why `reports/` has no rule. In a project that ignores `.taskops/`
-wholesale it is not merely redundant, it is FALSE — reports are ignored there like everything
-else — and a comment that contradicts the file it lives in is worse than no comment.
-"""
-
-_UPGRADES = (REPORTS_NOTE, REMOTE_RULE, f"{PROJECT_DIR}/*.stamp",
-             f"{PROJECT_DIR}/stop-blocks.json", SETTINGS_RULE, AGENTS_RULE)
-"""Lines added to the block AFTER projects existed with it. Order is the order they land in."""
 
 
 def ignore(root: Path) -> None:
@@ -112,13 +36,12 @@ def _upgrade(path: Path, current: str) -> None:
     a tool that replaces a file it does not own loses whatever they added.
 
     "Missing" is asked of GIT, not of the text. The literal test was wrong in the one way that
-    matters: a project that ignores `.taskops/` wholesale — every project whose board lives on
-    a server, where the whole directory is a cache — does not contain the string
-    `.taskops/remote.json`, so every `init` and every `join` appended four rules that changed
-    nothing and left the clone permanently dirty. That is not cosmetic: a modified tracked file
-    is what `land` and `git switch` refuse on, so nothing could ever be merged into the trunk.
+    matters: a project ignoring `.taskops/` wholesale does not contain the string
+    `.taskops/remote.json`, so every `init` and `join` appended four rules that changed nothing
+    and left the clone permanently dirty — and a modified tracked file is what `land` and
+    `git switch` refuse on, so nothing could ever reach the trunk.
     """
-    missing = [line for line in _UPGRADES
+    missing = [line for line in UPGRADES
                if line not in current and not _already_ignored(path.parent, line)]
     if not missing:
         return
@@ -133,18 +56,17 @@ def _already_ignored(root: Path, line: str) -> bool:
     and every `.gitignore` above this one, and reimplementing it here would be a second matcher
     able to disagree with the one that decides what actually gets committed.
 
-    But its plain answer is the wrong question, and a test caught me shipping it: on this
-    machine a personal global ignore already covered `.taskops/remote.json`, so taskops skipped
-    writing the rule that guards a bearer token — and the repository would have travelled to a
-    teammate with no such global file and nothing protecting the secret. So `-v` is used and
-    only a `.gitignore` inside the repository counts; `~/.config/git/ignore` and
-    `.git/info/exclude` are somebody's preferences, not a property of the project.
+    But its plain answer is the wrong question, and a test caught me shipping it: a personal
+    global ignore already covered `.taskops/remote.json` here, so taskops skipped writing the
+    rule guarding a bearer — and the repository would have reached a teammate with no such file
+    and nothing protecting the secret. Hence `-v`, and only a `.gitignore` inside the repository
+    counts: a global ignore is somebody's preference, not a property of the project.
 
     A comment is judged by its SUBJECT: the reports note exists to explain a missing rule, so
     where that path is already ignored the note would contradict the file it sits in.
     """
     if line.startswith("#"):
-        subject = _ANNOTATES.get(line)
+        subject = ANNOTATES.get(line)
         return bool(subject) and _already_ignored(root, subject)
     import subprocess
 

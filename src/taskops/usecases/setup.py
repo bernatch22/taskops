@@ -99,7 +99,7 @@ def _adopt(root: Path) -> int:
 
 
 def _specialists(root: Path) -> None:
-    """Write the two sub-agents into `.claude/agents/`, OVERWRITING ours every init.
+    """Write our sub-agents into `.claude/agents/`, OVERWRITING ours every init.
 
     The third rendering of the same failure, closed at the pattern this time. `.mcp.json` was
     missing (specialists spawned with no tools), the Claude hooks were missing (sessions never

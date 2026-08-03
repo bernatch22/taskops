@@ -31,7 +31,7 @@ from .._errors import BadRequest, TaskopsError, Unreachable
 from ._ghlink import links
 from ._sessions import mint
 
-__all__ = ["authenticate", "NoAccess", "API", "TIMEOUT"]
+__all__ = ["authenticate", "may_push", "NoAccess", "API", "TIMEOUT"]
 
 
 class NoAccess(TaskopsError, PermissionError):
@@ -69,7 +69,7 @@ def authenticate(root: Path, github_token: str) -> dict[str, Any]:
         raise BadRequest("a GitHub token is required — `taskops login` sends the one "
                          "`gh auth token` prints, and this server keeps none of its own")
     login = str(_call(token, "/user").get("login") or "")
-    granted = [name for name, slug in links(home) if _has_push(token, slug)]
+    granted = [name for name, slug in links(home) if may_push(token, slug)]
     if not granted:
         raise NoAccess(f"the GitHub account {login or 'you logged in as'} has no push access "
                        f"to any repository linked to a project on this server — ask whoever "
@@ -77,7 +77,17 @@ def authenticate(root: Path, github_token: str) -> dict[str, Any]:
     return {"login": login, "session": mint(home, login, granted), "projects": granted}
 
 
-def _has_push(token: str, slug: str) -> bool:
+def whoami(github_token: str) -> str:
+    """The GitHub login behind a token, asked of GitHub. Never taken from the caller.
+
+    Exported because CREATING a board needs the same answer logging in does, and the reason
+    the client cannot supply it is the whole security argument: the request carries a token and
+    no username, so there is nothing to forge — the name comes back from `/user` or not at all.
+    """
+    return str(_call(github_token.strip(), "/user").get("login") or "")
+
+
+def may_push(token: str, slug: str) -> bool:
     """Write access to one repository. A repository the account cannot see answers 404, which
     is GitHub refusing to confirm it exists — the same answer as "no access", and treated as
     one here so a private repository is never an existence oracle.

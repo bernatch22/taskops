@@ -70,6 +70,24 @@ def session_of(url: str) -> dict[str, str]:
     return found
 
 
+def note_server(url: str) -> str:
+    """Remember a server WITHOUT signing in to it. Returns the address as recorded.
+
+    The first of the three commands that start a board — `remote add <server>`, `board create`,
+    `board invite` — and until this existed it was the one that failed. `add_remote` is about a
+    BOARD and demands the credential that writes to it; a bare server URL names no board yet,
+    so there is nothing to authenticate to and nothing to authenticate with.
+
+    Recorded in the same file as a login, with an empty session, because "known, not signed in"
+    is what it is and a second file would be a second thing to keep in step. Every reader is
+    already required to treat an empty session as absent — see `_board_where.signed_in`.
+    """
+    base = _base(url)
+    if session_for(base) is None:
+        save_session(base, "", "")
+    return base
+
+
 def logins() -> dict[str, dict[str, str]]:
     """Every server this machine is signed in to, sessions included — callers print the
     `login` field and nothing else unless the person asked."""

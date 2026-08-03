@@ -1,4 +1,9 @@
-"""`taskops join <url>` — everything between a clone and a working board, in one command."""
+"""`taskops join` — everything between a clone and a working board, in one command.
+
+The URL is OPTIONAL, and that is the whole ambition: a clone carries `.taskops/board.json`, so
+the second developer types two words. Passing one is for the first person to join a board
+nobody has committed the address of yet — and it writes that address for everybody after.
+"""
 
 from __future__ import annotations
 
@@ -11,16 +16,17 @@ __all__ = ["register", "run"]
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("join", help="join a shared board: init, wire the hooks and MCP, "
-                                         "connect, and pull — paste the board's URL")
-    parser.add_argument("url", help="the board's address, exactly as shared: "
-                                    "https://server/project?token=…")
+    parser = sub.add_parser("join", help="join this repo's board: init, wire the hooks and "
+                                         "MCP, connect, and pull — no URL needed")
+    parser.add_argument("url", nargs="?", default="",
+                        help="the board's address, if this clone does not carry one yet: "
+                             "https://server/project?token=…")
     add_target(parser)
     parser.set_defaults(run=run)
 
 
 def run(args: argparse.Namespace) -> str:
-    done = join(repo_of(args), str(args.url))
+    done = join(repo_of(args), str(args.url or ""))
     lines = [f"joined {done.url}", f"  project: {done.root}"]
     if done.adopted:
         lines.append(f"  {done.adopted} event(s) adopted from the checkout")

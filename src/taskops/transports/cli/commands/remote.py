@@ -9,8 +9,11 @@ may be looking at it, and this is the one value in the system that a screenshot 
 from __future__ import annotations
 
 import argparse
+from urllib.parse import urlsplit
 
 from ....usecases import add_remote, is_session, read_remote, remove_remote
+from ....usecases._moved import moved_note
+from ....usecases.login import note_server
 from ._shared import add_target, repo_of
 
 __all__ = ["register"]
@@ -44,10 +47,34 @@ def run_show(args: argparse.Namespace) -> str:
 
 
 def run_add(args: argparse.Namespace) -> str:
+    # A bare SERVER is not a board, and refusing it was the first command of the three that
+    # start one. `taskops remote add <server>` / `board create <name>` / `board invite <who>`:
+    # at the first line there is no board to point at and no credential to point with, so this
+    # records the server and says what comes next instead of demanding a token for nothing.
+    if _is_bare_server(str(args.url)):
+        return _noted(note_server(str(args.url)))
     added = add_remote(repo_of(args), str(args.url), str(args.token))
     kind = "session" if is_session(added["token"]) else "token"
     return (f"remote set to {added['url']} — the {kind} is in .taskops/remote.json (mode 0600, "
-            f"gitignored). `taskops push` to send this board up.")
+            f"gitignored). `taskops push` sends the history this project already has."
+            + moved_note(added["url"]))
+
+
+def _is_bare_server(url: str) -> bool:
+    """No path at all — `https://host`, not `https://host/board`. A board's URL always carries
+    the board's name as its one segment, which is what `join` and `push` are given."""
+    return not urlsplit(url.strip().rstrip("/")).path.strip("/")
+
+
+def _noted(server: str) -> str:
+    return "\n".join([
+        f"{server} noted — no board named yet, so nothing to sync with and no token needed.",
+        "",
+        "  make one:   taskops board create <name>",
+        "  or join an existing one:",
+        "              taskops remote add " + server + "/<name> --token <token>",
+        "              taskops join " + server + "/<name>?invite=<code>",
+    ])
 
 
 def run_remove(args: argparse.Namespace) -> str:
