@@ -229,3 +229,64 @@ def test_already_merged_here_is_not_landed(repo: Path, tmp_path: Path) -> None:
     assert done.ok, done.why
     assert git(origin, "rev-parse", "main") == git(mine, "rev-parse", "main"), (
         "the shortcut has to push, not just agree with itself")
+
+
+def test_a_branch_whose_NAME_drifted_still_lands_by_its_commits(repo: Path) -> None:
+    """The failure that stranded five cards on a live board.
+
+    `branch_for` computes the name, and so does the clone that CREATES the branch — and two clones
+    on two versions truncated it one character apart: the card was claimed as
+    `…-toggle-toll-of-a-c` and the branch that existed was `…-toggle-toll-of-a`. So `land` looked
+    for a name nothing answered to, and told the closer that the author had not published it.
+
+    Here the branch is deliberately renamed after the commit, which is exactly that shape: the name
+    is gone, the commits are not.
+    """
+    from taskops.engine import branch_for
+
+    card = a_card_with_a_commit(repo, title="Ship it")
+    named = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+    git(repo, "branch", "-m", named, f"{named}-drifted")
+
+    with_name = land(repo, named)
+    assert not with_name.ok, "the computed name alone cannot find it — that is the bug"
+
+    sha = git(repo, "rev-parse", "--short", f"{named}-drifted")
+    landed = land(repo, named, shas=(sha,))
+
+    assert landed.ok, landed.why
+    assert "hecho.txt" in git(repo, "ls-tree", "--name-only", "main")
+
+
+def test_the_refusal_names_the_COMMITS_and_never_blames_the_author(repo: Path) -> None:
+    """The old message asserted something about somebody else's machine — "the author's machine has
+    not published it" — and on the board where this was found it was false, and it sent that person
+    to run a command they had already run. A refusal may only say what this clone can see."""
+    card = a_card_with_a_commit(repo)
+    from taskops.engine import branch_for
+
+    named = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+    git(repo, "branch", "-D", named)
+
+    refused = land(repo, named, shas=("deadbee",))
+
+    assert not refused.ok
+    assert "deadbee" in refused.why, "it says what it looked for"
+    assert "author" not in refused.why.lower(), "and asserts nothing about another machine"
+
+
+def test_several_branches_carrying_one_card_are_REFUSED_and_not_guessed(repo: Path) -> None:
+    """Two branches with the same commits is a fact about the repository, and a merge picking one
+    would be deciding something the person has not. Named, both, and left to them."""
+    from taskops.engine import branch_for
+
+    card = a_card_with_a_commit(repo)
+    named = branch_for({"id": card, "title": "Ship it"})    # type: ignore[arg-type]
+    sha = git(repo, "rev-parse", "--short", named)
+    git(repo, "branch", f"{named}-copia", named)
+    git(repo, "branch", "-m", named, f"{named}-otra")
+
+    refused = land(repo, named, shas=(sha,))
+
+    assert not refused.ok
+    assert f"{named}-copia" in refused.why and f"{named}-otra" in refused.why

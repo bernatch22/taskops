@@ -37,6 +37,7 @@ from ._gitland import pushed as _pushed
 from ._gitland import run as _run
 from ._gitland import sha as _sha
 from ._gitland import trunk_of as _trunk
+from ._whichbranch import actual as _actual
 
 __all__ = ["land", "Landing", "TRUNKS"]
 
@@ -54,8 +55,12 @@ class Landing:
         self.sha = sha
 
 
-def land(root: Path, branch: str) -> Landing:
-    """Merge `branch` into the trunk and push. Never raises; never leaves a merge half-done."""
+def land(root: Path, branch: str, *, shas: tuple[str, ...] = ()) -> Landing:
+    """Merge the card's branch into the trunk and push. Never raises; never half-merges.
+
+    `branch` is a GUESS — the name `branch_for` computes — and `shas` are the card's commits, which
+    are not. When the guess is not here, the commits say which branch is: see `_actual`.
+    """
     if not branch.startswith("tk/"):
         return Landing(ok=False, why="not a task branch")
     # NO blanket dirty check. There was one, and it refused every landing that has ever been
@@ -74,10 +79,10 @@ def land(root: Path, branch: str) -> Landing:
                        why=f"{LOG_FILE} is not committed on {trunk} — checking it out would "
                            f"delete this board. Commit the log on {trunk} first")
     if not _fetched(root, branch):
-        return Landing(ok=False, trunk=trunk,
-                       why=f"{branch} is nowhere this clone can see — the author's machine "
-                           f"has not published it. `taskops publish` on their side, then "
-                           f"`taskops land` this card")
+        found = _actual(root, branch, shas)
+        if found.why:
+            return Landing(ok=False, trunk=trunk, why=found.why)
+        branch = found.branch
     # The "already merged" shortcut lives INSIDE `_merge`, after the trunk is caught up. Asked
     # here it was answered against a LOCAL trunk and returned `ok` without pushing anything:
     # a card reported as landed whose work the shared trunk had never seen. Merged-into-my-copy

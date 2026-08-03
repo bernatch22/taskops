@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ..storage import LOG_FILE
 
-__all__ = ["catch_trunk_up", "fetched", "has_board", "merged", "pushed", "run", "sha",
+__all__ = ["carrying", "catch_trunk_up", "fetched", "has_board", "merged", "pushed", "run", "sha",
            "trunk_of", "TRUNKS", "TIMEOUT"]
 
 TRUNKS = ("main", "master")
@@ -92,6 +92,31 @@ def has_board(root: Path, trunk: str) -> bool:
     if run(root, "ls-files", "--error-unmatch", LOG_FILE) is None:
         return True
     return run(root, "cat-file", "-e", f"{trunk}:{LOG_FILE}") is not None
+
+
+def carrying(root: Path, shas: list[str]) -> list[str]:
+    """Every task branch that contains ALL of these commits, local or remote, deduped by name.
+
+    The commits are the ground truth a NAME cannot be: a sha is written by the machine that made
+    it and read the same everywhere, while the branch name is computed — by `next` when it prints
+    one, by the commit guard when it checks one, and by `land` when it looks for one. Two clones on
+    two versions computed it differently and the trunk went without finished work.
+
+    `origin/` is stripped so a branch only this clone lacks is still answered by the name a person
+    would type, and `--contains` is asked per sha and intersected: a card with four commits belongs
+    to the branch that has the four, not to whichever one happens to carry the first.
+    """
+    if not shas:
+        return []
+    found: set[str] | None = None
+    for commit in shas:
+        listed = run(root, "branch", "-a", "--contains", commit, "--format=%(refname:short)")
+        if listed is None:
+            return []       # a sha this clone does not have: it cannot answer, and must not guess
+        here = {name.removeprefix("origin/") for name in listed.splitlines()
+                if name.removeprefix("origin/").startswith("tk/")}
+        found = here if found is None else (found & here)
+    return sorted(found or ())
 
 
 def merged(root: Path, trunk: str, branch: str) -> bool:
