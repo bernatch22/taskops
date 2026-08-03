@@ -37,6 +37,13 @@ export function MilestoneModal({ chapter, context, board, onClose }: {
         <button className="close" onClick={onClose} title="close (Esc)">✕</button>
       </header>
 
+      {/* ONE scrolling region per modal, and the header stays put. The goal used to sit outside the
+        * only child that scrolled (`ms-body`), with nothing bounding it — so a goal of more than a
+        * sentence grew past the viewport and took everything below it, the progress bar and the
+        * chapter's own facts, somewhere no scroll could reach. It was not a missing property on the
+        * goal: nesting a second scroller inside a bounded one is worse than one. */}
+      <div className="ms-scroll">
+
       {/* The GOAL, in the largest text in the modal and above everything. A chapter whose goal is
         * a line of small print is a chapter people navigate past — and it is the one field that
         * says when the work is over. Absent on a chapter nobody has written one for, which is the
@@ -105,6 +112,7 @@ export function MilestoneModal({ chapter, context, board, onClose }: {
             (<code>--project</code>), which is the ◎ panel.
           </p>
         ) : null}
+        </div>
       </div>
     </Overlay>
   );

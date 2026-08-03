@@ -111,6 +111,15 @@ check("its own facts are under it",
 check("a fact of the OTHER chapter is not",
       !context.rules.some((f) => f.milestone === second.id && dash.includes(f.text)));
 check("no card list — the board is right underneath", !dash.includes('class="card'));
+/* Everything below the header lives inside ONE scroller. The goal used to sit outside it, so a long
+ * one grew the panel past the viewport and took the progress bar and the chapter's facts somewhere
+ * no scroll reached — measured on a live board with a real goal. */
+const scrolled = shapedDash.slice(shapedDash.indexOf('class="ms-scroll"'));
+check("the goal and the facts are both inside the one scroller",
+      shapedDash.includes('class="ms-scroll"')
+      && scrolled.indexOf("ms-goal") < scrolled.indexOf("ms-body")
+      && scrolled.includes("ms-body"),
+      shapedDash.slice(0, 200));
 
 console.log("who is on the board");
 /* The shape a real board is in most of the time, and the one the fixture is not: every open card
