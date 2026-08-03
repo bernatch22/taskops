@@ -7,12 +7,15 @@ import type { Status } from "../contracts";
  * Matching matters: a person reading `taskops report board` in a terminal and `taskops ui` in a
  * browser must not have to learn two vocabularies for the same eight states. */
 export const MARK: Record<Status, string> = {
-  backlog: "·", ready: "○", claimed: "◐", in_progress: "●",
+  backlog: "·", ready: "○", claimed: "◐",
   blocked: "✕", review: "◆", done: "✓", cancelled: "—",
 };
 
+/* `claimed` reads "In progress" because that is what it means to somebody looking at the board: a
+ * person took the card and is on it. "Claimed" is the ENGINE's word for the lease underneath, and a
+ * column heading is not the place to teach it. */
 export const COLUMN_LABEL: Record<Status, string> = {
-  backlog: "Backlog", ready: "Ready", claimed: "Claimed", in_progress: "In progress",
+  backlog: "Backlog", ready: "Ready", claimed: "In progress",
   blocked: "Blocked", review: "Review", done: "Done", cancelled: "Cancelled",
 };
 

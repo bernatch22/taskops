@@ -20,6 +20,7 @@ from taskops.transports.http.policy import Policy
 from taskops.transports.http.router import build
 from taskops.usecases import board as ask_board
 from taskops.usecases import init, plan, read_report, report_path, update, write_report
+from taskops.usecases._ignorerules import BOARD_NOTE, REPORTS_NOTE
 
 
 @pytest.fixture
@@ -218,11 +219,20 @@ def test_init_does_not_gitignore_the_reports(project: Path) -> None:
         assert "reports" not in stripped, f"{stripped!r} would untrack the reports"
 
 
-def test_init_is_idempotent_about_the_note(project: Path) -> None:
+def test_init_is_idempotent_about_the_notes(project: Path) -> None:
+    """Every explaining COMMENT appears exactly once, however many times init runs.
+
+    Counted per note rather than by the shared phrase `is COMMITTED`, which is what this
+    asserted while there was only one of them. A second note made that count read 2 and say
+    nothing — a duplicated `reports/` line and a correctly-written `board.json` one are
+    indistinguishable to it, and the duplicate is the failure this exists to catch.
+    """
     init(project, install_git_hooks=False)
     init(project, install_git_hooks=False)
     ignored = (project / ".gitignore").read_text(encoding="utf-8")
-    assert ignored.count("is COMMITTED") == 1
+
+    for note in (REPORTS_NOTE, BOARD_NOTE):
+        assert ignored.count(note) == 1, f"{note!r} appears {ignored.count(note)} times"
 
 
 def test_an_older_project_gains_the_note_on_re_init(tmp_path: Path) -> None:

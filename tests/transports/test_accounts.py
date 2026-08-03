@@ -192,8 +192,17 @@ def test_the_root_endpoints_mint_a_session_and_then_list_what_it_opens(server: A
     assert minted["projects"] == ["axion"]
     listed = server(get("/api/projects", authorization=f"Bearer {minted['session']}"))
     assert listed.status == 200
-    assert json.loads(listed.body) == {"login": "jpolivera",
-                                       "projects": [{"name": "axion", "path": "/axion/"}]}
+    answer = json.loads(listed.body)
+    assert answer["login"] == "jpolivera"
+    # The fields this test is ABOUT, not the whole row. It asserted exact equality until a
+    # field was added to the row and it failed for saying "and nothing else" — which is the
+    # one thing `login._names` documents that nobody may depend on, in both directions: a
+    # client that broke on an added field would make the contract impossible to extend.
+    # `github` rides along because the client cannot know it: the link lives here, and a
+    # board is routinely bound to a repository that is not the checkout's `origin`.
+    [row] = answer["projects"]
+    assert row["name"] == "axion" and row["path"] == "/axion/"
+    assert row["github"] == "cloudacio/Axion"
 
 
 def test_a_session_opens_the_board_of_the_project_it_lists(server: Any) -> None:

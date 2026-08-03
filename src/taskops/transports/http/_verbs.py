@@ -3,6 +3,18 @@
 Split from `rpc` when the table outgrew the module budget, and the split says what each half
 is: `rpc` is the DOOR (parse, refuse, guard), this is the LIST. A new remote-safe verb is one
 row here; a verb that stays off this list stays local, which is the security posture.
+
+The rows that need more than a lambda live in `_verbargs`, for the same reason and one more:
+this table hit the budget with a verb still to add, and a list nobody can append to without
+deleting something has stopped being a list of what the surface is.
+
+**Every verb answers with a JSON OBJECT, never a bare array.** The client decoder returns `{}`
+for anything that is not an object — deliberately, because an nginx in front of this server
+answers 502 in HTML and a reader wants the status rather than a parser traceback. The cost is
+that a verb returning a list decodes to nothing, silently: `search` and `context_history` both
+did, so on a board with a remote, searching found zero tasks and `context log` was empty, with
+no error anywhere. Wrapping is the price of that decoder, so the wrappers live here, on the row,
+where the next list-returning verb will see them.
 """
 
 from __future__ import annotations
@@ -11,43 +23,16 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ... import usecases as uc
-from ...usecases.capture import assign
 from ...usecases.ingest import bind
 from ...usecases.pick import pick
+from ._verbargs import assigned as _assigned
+from ._verbargs import recovered as _recovered
+from ._verbargs import span as _span
+from ._verbargs import strings as _strings
 
 __all__ = ["VERBS", "Verb"]
 
 Verb = Callable[[Path, dict[str, Any]], Any]
-
-
-def _strings(args: dict[str, Any], key: str) -> list[str]:
-    found = args.get(key)
-    return [str(item) for item in found] if isinstance(found, list) else []
-
-
-def _span(args: dict[str, Any]) -> uc.Selector:
-    return uc.Selector(date=str(args.get("date", "")), last=str(args.get("last", "")),
-                    from_date=str(args.get("from_date", "")), to=str(args.get("to", "")),
-                    whole=bool(args.get("whole")))
-
-
-def _assigned(root: Path, args: dict[str, Any]) -> dict[str, str]:
-    return {"assigned": assign(root, str(args.get("task", "")), str(args.get("to", "")),
-                               actor=str(args.get("actor", "")))}
-
-
-def _recovered(root: Path, args: dict[str, Any]) -> dict[str, Any]:
-    """`Recovered` and `Stuck` are classes, so this row says how they cross the wire."""
-    from ..._clock import HEARTBEAT_GRACE
-
-    done = uc.recover(root, actor=str(args.get("actor", "")),
-                   grace=float(args.get("grace", 0) or 0) or HEARTBEAT_GRACE,
-                   force=bool(args.get("force")))
-    return {"alive": done.alive,
-            "released": [{"task": s.task, "actor": s.actor, "silent_for": s.silent_for,
-                          "commits": s.commits, "leftovers": s.leftovers,
-                          "tree": str(s.tree)} for s in done.released]}
-
 
 VERBS: dict[str, Verb] = {
 
@@ -67,17 +52,20 @@ VERBS: dict[str, Verb] = {
                                  dry_run=bool(a.get("dry_run"))),
     "recover": lambda root, a: _recovered(root, a),
     "bind": lambda root, a: bind(root, a),
-    "context_state": lambda root, a: uc.context_state(root, str(a.get("sort", "")),
-                                                   str(a.get("text", "")),
-                                                   labels=_strings(a, "labels"),
-                                                   actor=str(a.get("actor", ""))),
+    "context_state": lambda root, a: uc.context_state(
+        root, str(a.get("sort", "")), str(a.get("text", "")), labels=_strings(a, "labels"),
+        files=_strings(a, "files"), horizon=str(a.get("horizon", "")),
+        owner=str(a.get("owner", "")), actor=str(a.get("actor", ""))),
     "context_retire": lambda root, a: uc.context_retire(root, str(a.get("id", "")),
                                                      actor=str(a.get("actor", ""))),
+    "policy_set": lambda root, a: uc.set_policy(root, str(a.get("name", "")),
+                                                str(a.get("value", "")),
+                                                actor=str(a.get("actor", ""))),
     # reads — served from the one store every write above landed in
     "ask": lambda root, a: uc.ask(root, str(a.get("task", "")), actor=str(a.get("actor", ""))),
     "inbox": lambda root, a: uc.inbox(root, actor=str(a.get("actor", ""))),
-    "search": lambda root, a: uc.search(root, str(a.get("query", "")),
-                                     limit=int(a.get("limit", 20) or 20)),
+    "search": lambda root, a: {"tasks": uc.search(root, str(a.get("query", "")),
+                                                  limit=int(a.get("limit", 20) or 20))},
     "attention": lambda root, a: uc.attention(root, actor=str(a.get("actor", ""))),
     "landed": lambda root, a: uc.note_landing(
         root, task=str(a.get("task", "")), ok=bool(a.get("ok")), why=str(a.get("why", "")),
@@ -90,7 +78,8 @@ VERBS: dict[str, Verb] = {
                                        actor=str(a.get("actor", ""))),
     "day": lambda root, a: uc.day(root, str(a.get("date", ""))),
     "period": lambda root, a: uc.period(root, _span(a)),
-    "context_show": lambda root, _a: uc.context_show(root),
+    "context_show": lambda root, a: uc.context_show(root, mine=bool(a.get("mine"))),
     "context_for": lambda root, a: uc.context_for(root, str(a.get("task", ""))),
-    "context_history": lambda root, _a: uc.context_log(root),
+    "context_history": lambda root, _a: {"facts": uc.context_log(root)},
+    "policy_show": lambda root, _a: {"policies": uc.policy_show(root)},
 }

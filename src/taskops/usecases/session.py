@@ -22,11 +22,11 @@ from typing import cast
 
 from .._clock import now
 from ..contracts import Event, Inbox, Lease
+from ..contracts.context import CONTEXT_TASK
 from ..engine import record
 from ..storage import Store
 from ._project import caller, heartbeat, project
 from ._routing import read_remote_first
-from .chat import CHAT_TASK
 from .view import inbox_for
 
 __all__ = ["brief", "inbox", "checkout", "track", "Brief"]
@@ -123,7 +123,7 @@ def track(start: Path | str, *, summary: str, task: str = "", actor: str = "",
         held = store.leases.of_actor(who, now())
         if session:
             _stamp(store, held, session)
-        target = task or (held[0]["task"] if len(held) == 1 else "") or CHAT_TASK
+        target = task or (held[0]["task"] if len(held) == 1 else "") or CONTEXT_TASK
         return record(store, task=target, actor=who, kind="activity",
                       body={"summary": summary, "session": session})
 

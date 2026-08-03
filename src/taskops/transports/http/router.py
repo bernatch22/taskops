@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 
 from ...usecases.journal import journal
-from . import agentapi, api, assigning, chat, exchange, live, reports, rpc, static, unlock
+from . import agentapi, api, assigning, exchange, invites, live, reports, rpc, static, unlock
 from ._wire import Reply, Request, Route, error_reply
 from .policy import Policy
 
@@ -29,14 +29,13 @@ def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
         ("GET", "/api/task"): partial(api.get_task, root),
         ("GET", "/api/search"): partial(api.get_search, root),
         ("GET", "/api/activity"): partial(api.get_activity, root),
+        ("GET", "/api/context"): partial(api.get_context, root),
+        ("POST", "/api/invite"): partial(invites.post_invite, root),
         ("GET", "/api/report"): partial(reports.get_report, root),
         ("GET", "/api/reports"): partial(reports.get_reports, root),
         ("POST", "/api/report/digest"): partial(reports.post_digest, root),
         ("POST", "/api/comment"): partial(api.post_comment, root),
         ("POST", "/api/status"): partial(api.post_status, root),
-        ("GET", "/api/chat"): partial(chat.get_chat, root),
-        ("POST", "/api/chat"): partial(chat.post_chat, root),
-        ("POST", "/api/conversation"): partial(chat.post_conversation, root),
         ("GET", "/api/agents"): partial(assigning.get_agents, root),
         ("POST", "/api/assign"): partial(assigning.post_assign, root),
         ("GET", "/api/live"): partial(live.stream, root),

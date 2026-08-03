@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...usecases import narration, parse_date, read_report, report_index
-from ._wire import Reply, Request, json_reply
+from ._wire import Reply, Request, error_reply, json_reply
 from .api import guarded
 
 __all__ = ["get_report", "get_reports", "post_digest"]
@@ -61,6 +61,8 @@ def post_digest(root: Path, request: Request) -> Reply:
     person may have edited that prose. A second request while one is running is refused too
     (409) — two models rewriting one file is corruption, not contention.
     """
+    if why := narration.narratable_here():
+        return error_reply(503, why, "cannot_narrate")
     payload = request.payload()
     label = str(payload.get("date") or payload.get("label") or "")
     force = bool(payload.get("force"))

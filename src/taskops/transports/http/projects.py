@@ -24,12 +24,12 @@ sees a frame.
 
 from __future__ import annotations
 
-import re
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlencode
 
 from ..._errors import TaskopsError
+from ...contracts.hosting import NAME, TOKEN_FILE
 from ...usecases import locate
 from ...usecases._sessions import opens
 from ...usecases.journal import reconcile
@@ -39,29 +39,27 @@ from .root import bearer, root_route
 from .router import build
 
 __all__ = ["mount", "NAME", "TOKEN_FILE"]
-
-NAME = re.compile(r"^[a-z0-9-]{1,40}$")
-"""What may name a project. Deliberately narrower than "a valid directory name": lowercase,
-digits and dashes only, so a project name is also a URL segment nobody has to escape — and
-`..`, `/`, an empty string and a leading dot are all refused by the pattern itself."""
-
-TOKEN_FILE = "token"
-"""The project's secret, `0600`, minted by `taskops serve init`. A project without one is not
-served AT ALL, rather than served open: this transport is meant to face the internet, and the
-failure mode of the alternative is a board that is public because a file was missing."""
+"""`NAME` and `TOKEN_FILE` are RE-EXPORTED, not defined: they moved to `contracts.hosting` when
+provisioning became a use case, and they stay importable from here because this is where every
+reader of this transport already looks for them."""
 
 
-def mount(root: Path, *, readonly: bool = False, rate_limit: int = 0) -> Route:
+def mount(root: Path, *, readonly: bool = False, rate_limit: int = 0,
+          create: bool = True) -> Route:
     """The root dispatcher for a directory of projects.
 
     Routers are CACHED per project. Building one opens a store, so constructing it per request
     would open and close sqlite on every poll of every board.
+
+    `create` is remote board creation, open by default and off under `--readonly` — a server
+    that refuses every write has no business minting a directory either.
     """
     home = Path(root).expanduser().resolve()
     cache: dict[str, tuple[Policy, Route]] = {}
+    may_create = create and not readonly
 
     def dispatch(request: Request) -> Reply:
-        if reply := root_route(home, request):
+        if reply := root_route(home, request, create=may_create):
             return reply
         name, rest = _split(request.path)
         found = _project(home, name)

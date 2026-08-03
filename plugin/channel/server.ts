@@ -6,7 +6,6 @@
  *         -> taskops ui  ws://127.0.0.1:<port>/api/live
  *             -> this server  -> notifications/claude/channel  -> the session
  *     the session -> `reply` tool -> POST /api/comment -> the card's thread
- *                              (or /api/chat, when there is no card to answer on)
  *
  * Three decisions are worth stating, because they are the ones a reader will question:
  *
@@ -131,7 +130,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: 'object',
         properties: {
-          card: { type: 'string', description: 'The task id, e.g. tk-90bd23 (the `card` tag attribute). OMIT it to answer in the board\'s chat sidebar, which is where a message that named no card came from' },
+          card: { type: 'string', description: 'The task id, e.g. tk-90bd23 — the `card` tag attribute. REQUIRED: every event that reaches you names one, and an answer belongs on the work it is about' },
           text: { type: 'string', description: 'What to say on the card' },
           mentions: {
             type: 'array',
@@ -160,9 +159,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         // would otherwise be stored as a permanent fact on a card, and the board never forgets.
         const text = sanitize(String(args.text ?? '').trim()).trim()
         if (!text) throw new Error('`text` is required')
-        // No card, no comment: a chat message named none, and answering it on whatever card
-        // was last mentioned would file a conversation under work it is not about. The board's
-        // sidebar is where that reply belongs, and it is the only place the asker is looking.
+        // A CARD is required, and that is a narrowing. There used to be a cardless branch that
+        // posted into the board's chat sidebar; the sidebar is gone, because it assumed exactly
+        // one session was listening — which stops being true the moment a board is shared, and
+        // a shared board is the deployment this channel exists for. Every event that reaches a
+        // session names a card, so there is nothing left that a reply could be about instead.
+        if (!card) throw new Error('`card` is required — every event names one, and a reply belongs on the work it is about')
         const mentions = Array.isArray(args.mentions) ? args.mentions.map(String) : []
         // `/api/update` and not `/api/comment` when we know who we are. `comment` RESOLVES the
         // actor on the server — right for a browser, which could otherwise post as somebody
@@ -170,11 +172,9 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         // Watched on a live board: a reply written by uno's session was recorded as `dev:berna`,
         // the identity the server resolves to, and on a `reviewer: peer` board the author of a
         // message is not decoration, it decides who may close what.
-        const [route, body] = card
-          ? ME
-            ? ['/api/update', { task: card, actor: ME, comment: text, mentions }]
-            : ['/api/comment', { task: card, text, mentions }]
-          : ['/api/chat', { text, source: 'session' }]
+        const [route, body] = ME
+          ? ['/api/update', { task: card, actor: ME, comment: text, mentions }]
+          : ['/api/comment', { task: card, text, mentions }]
         const response = await fetch(`${BASE}${route}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', ...auth },
@@ -182,7 +182,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         })
         const payload = await response.text()
         if (!response.ok) throw new Error(`${response.status}: ${payload}`)
-        return { content: [{ type: 'text', text: card ? `posted on ${card}` : 'sent to the chat' }] }
+        return { content: [{ type: 'text', text: `posted on ${card}` }] }
       }
       case 'board': {
         const response = await fetch(`${BASE}/api/board`, { headers: auth })
@@ -224,7 +224,6 @@ let child: ReturnType<typeof Bun.spawn> | null = null
 async function ensureUi(): Promise<void> {
   if (await listening()) {
     log(`attached to the UI already on ${BASE}`)
-    await newConversation()
     announce()
     return
   }
@@ -241,7 +240,6 @@ async function ensureUi(): Promise<void> {
   })
   for (let attempt = 0; attempt < 40; attempt++) {
     if (await listening()) {
-      await newConversation()
       announce()
       openBoard()
       return
@@ -249,18 +247,6 @@ async function ensureUi(): Promise<void> {
     await Bun.sleep(250)
   }
   log(`the UI did not come up on ${BASE} within 10s — events will not flow`)
-}
-
-async function newConversation(): Promise<void> {
-  // A session opening onto the last one's conversation is a session reading somebody else's
-  // argument. This channel IS the session's MCP server — born with it, dead with it — so its
-  // startup is exactly when a new conversation begins, and nothing else has to know.
-  // Nothing is deleted: the previous conversation stays in the log, it stops being shown.
-  try {
-    await fetch(`${BASE}/api/conversation`, {method: 'POST', headers: auth})
-  } catch {
-    // A board that would not open one is a board that shows a longer history. Never fatal.
-  }
 }
 
 function announce(): void {

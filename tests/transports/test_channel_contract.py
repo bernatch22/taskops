@@ -280,28 +280,26 @@ def test_the_channel_reaches_only_the_routes_asserted_above() -> None:
     """
     source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
     used = set(re.findall(r"/api/([a-z]+)", source))
-    assert used == {"config", "comment", "chat", "conversation", "board", "live", "task",
-                    "sync", "update"}
+    assert used == {"config", "comment", "board", "live", "task", "sync", "update"}
 
 
-def test_the_chat_route_answers_the_shape_reply_posts(route: Any) -> None:
-    """`reply` with no card posts `{"text": …}` to `/api/chat` — the sidebar is where a message
-    naming no card came from, and answering it on whatever card was mentioned last would file a
-    conversation under work it is not about. If this route or its one field is renamed, the
-    channel would answer into a 404 and the asker would watch nothing arrive."""
-    answered = route(post("/api/chat", {"text": "porque nadie la reclamo"}))
-    assert answered.status == 200
-    assert json.loads(answered.body)["kind"] == "chat"
+def test_the_board_chat_is_gone_from_both_sides(route: Any) -> None:
+    """The sidebar and its two routes are removed, and the pair is asserted TOGETHER because
+    either one surviving alone is the failure.
 
+    It assumed exactly ONE session was listening — "reply with no card goes to whoever is
+    watching" — which stops being true the moment a board is shared, and a shared board is the
+    deployment the channel exists for. With several channels connected, a cardless reply had no
+    answerable destination and a question had no answerable audience.
 
-def test_the_conversation_route_the_channel_opens_on_startup_exists(route: Any) -> None:
-    """The channel POSTs it when a session starts, which is what stops a new session opening
-    onto the last one's conversation. If the route moved, the channel would fail silently — it
-    swallows that error on purpose, because a board that will not cut is a board with a longer
-    history, not a broken one."""
-    answered = route(post("/api/conversation", {}))
-    assert answered.status == 200
-    assert json.loads(answered.body)["conversation"]
+    Everything that reaches a session is ADDRESSED now: a mention, a review routed to a dev, a
+    card assigned to one of their agents. That is what makes the channel's own promise true —
+    if you do not act on it, nobody will.
+    """
+    source = (CHANNEL / "server.ts").read_text(encoding="utf-8")
+    assert "/api/chat" not in source and "/api/conversation" not in source
+    assert route(post("/api/chat", {"text": "hola"})).status == 404
+    assert route(post("/api/conversation", {})).status == 404
 
 
 def test_the_channel_declares_no_permission_relay() -> None:

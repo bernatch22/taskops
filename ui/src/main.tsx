@@ -4,12 +4,12 @@
  * one piece of shared state, and every layer of indirection between a click and a fetch is a layer
  * somebody has to read before they can change anything. */
 
-import { StrictMode, useCallback, useEffect, useState } from "react";
+import { StrictMode } from "react";
 import type { Board as BoardData } from "./contracts";
 import { createRoot } from "react-dom/client";
 import { Activity } from "./components/Activity";
 import { Board, type Grouping } from "./components/Board";
-import { Chat, useChatKeys } from "./components/Chat";
+import { Context } from "./components/Context";
 import { Header, type View } from "./components/Header";
 import { Reports } from "./components/Reports";
 import { TaskPanel } from "./components/TaskPanel";
@@ -23,28 +23,22 @@ function App(): JSX.Element {
   const [hideEmpty, setHideEmpty] = remembered("taskops-hide-empty", false);
   const [grouping, setGrouping] = remembered<Grouping>("taskops-grouping", "date");
   const [view, setView] = remembered<View>("taskops-view", "board");
+  /* Remembered: this is reference material somebody chooses to keep pinned, not a thing they
+   * are doing right now. Left open, it stays open tomorrow. */
+  const [context, setContext] = remembered("taskops-context-open", false);
 
-  /* The chat is open or shut, and NOT remembered: unlike a grouping, it is a thing you are doing
-   * right now, and a board that reopened a sidebar over itself on every reload would be a board
-   * that decided for you. `unread` is the dot on the trigger — set by a line that arrived while
-   * it was shut, cleared by opening it. */
-  const [chat, setChat] = useState(false);
-  const [unread, setUnread] = useState(false);
-  const toggleChat = useCallback(() => setChat((was) => !was), []);
-  const closeChat = useCallback(() => setChat(false), []);
-  useChatKeys(toggleChat, closeChat);
-  useEffect(() => { if (chat) setUnread(false); }, [chat, studio.last]);
-  useEffect(() => {
-    if (!chat && studio.last?.kind === "chat") setUnread(true);
-  }, [chat, studio.last]);
 
   return (
     <>
-      <Header config={studio.config} board={studio.board} live={studio.live}
+      <Header config={studio.config} board={studio.board} context={studio.context} live={studio.live}
               pulse={studio.pulse} view={view} onView={setView}
               hideEmpty={hideEmpty} onHideEmpty={setHideEmpty}
-              onOpen={studio.openTask}
-              chat={chat} unread={unread} onChat={toggleChat} />
+              onOpen={studio.openTask} />
+
+      {/* Under the header and OUTSIDE `main`, so it is on screen whichever view is chosen —
+        * which is the whole point. Filing it as a fourth tab would put the objective behind a
+        * click that nobody makes twice. */}
+      <Context context={studio.context} open={context} onToggle={() => setContext(!context)} />
 
       {studio.error ? (
         <div className="banner">
@@ -79,9 +73,6 @@ function App(): JSX.Element {
 
       {/* Last, and outside `main`, so it slides OVER the content instead of reflowing it — and
         * mounted whatever the view is, which is what "reachable from anywhere" means here. */}
-      <Chat open={chat} card={studio.open?.task.id ?? ""}
-            readonly={studio.config?.readonly ?? false}
-            last={studio.last} onClose={closeChat} />
     </>
   );
 }

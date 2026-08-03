@@ -6,14 +6,16 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Board, Config, Task } from "../contracts";
+import type { Board, Config, ContextView, Task } from "../contracts";
+import { People } from "./People";
 
 export type View = "board" | "activity" | "reports";
 
-export function Header({ config, board, live, pulse, view, onView,
-                         hideEmpty, onHideEmpty, onOpen, chat, unread, onChat }: {
+export function Header({ config, board, context, live, pulse, view, onView,
+                         hideEmpty, onHideEmpty, onOpen }: {
   config: Config | null;
   board: Board | null;
+  context: ContextView | null;
   live: boolean;
   pulse: number;
   view: View;
@@ -21,11 +23,8 @@ export function Header({ config, board, live, pulse, view, onView,
   hideEmpty: boolean;
   onHideEmpty: (hide: boolean) => void;
   onOpen: (id: string) => void;
-  chat: boolean;
   /* Something was said while the sidebar was shut. A dot and not a count: the number would be a
    * thing to read, and the only question it answers is "is there anything I have not seen". */
-  unread: boolean;
-  onChat: () => void;
 }): JSX.Element {
   return (
     <header className="top">
@@ -64,12 +63,10 @@ export function Header({ config, board, live, pulse, view, onView,
         </button>
       ) : null}
 
-      {/* In the header and NOT in the view bar, deliberately: the three buttons next to it choose
-        * WHERE you are, and this one changes nothing about where you are. */}
-      <button className={`squeeze${chat ? " on" : ""}`} aria-pressed={chat}
-              title="talk to the session — ⌘/Ctrl+K" onClick={onChat}>
-        ✎{unread ? <span className="unread" /> : null}
-      </button>
+      {/* Where the chat trigger used to be, and answering the same question from state instead of
+        * from a session: who is on this board, and what have they been doing. A question needs
+        * somebody listening, which a shared board cannot promise; a projection needs nobody. */}
+      <People board={board} context={context} onOpen={onOpen} />
 
       <div className="top-right">
         {board ? (

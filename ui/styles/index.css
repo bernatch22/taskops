@@ -277,13 +277,13 @@ main { padding: 16px; display: flex; flex-direction: column; flex: 1; min-height
 /* The status colour lives on the column's top edge, not on every card. One coloured line per
  * column says the same thing as fifty coloured cards, without the noise. */
 .column-ready { box-shadow: inset 0 2px 0 var(--lime); }
-.column-claimed, .column-in_progress { box-shadow: inset 0 2px 0 var(--amber); }
+.column-claimed { box-shadow: inset 0 2px 0 var(--amber); }
 .column-blocked { box-shadow: inset 0 2px 0 var(--red); }
 .column-review { box-shadow: inset 0 2px 0 var(--blue); }
 .column-done { box-shadow: inset 0 2px 0 color-mix(in oklab, var(--lime) 45%, var(--line)); }
 .column-ready .mark { color: var(--lime); }
 .column-blocked .mark { color: var(--red); }
-.column-claimed .mark, .column-in_progress .mark { color: var(--amber); }
+.column-claimed .mark { color: var(--amber); }
 
 .cards { display: flex; flex-direction: column; gap: 8px; min-height: 44px; }
 
@@ -427,15 +427,16 @@ main { padding: 16px; display: flex; flex-direction: column; flex: 1; min-height
 
 /* ── task drawer ────────────────────────────────────────────────────────────── */
 
+/* ABOVE the modals, not below. A card is routinely opened FROM one — the avatar row's profile
+   lists the cards somebody touched — and at z-index 40 it arrived behind the scrim: invisible
+   until you closed the thing you had clicked through. The stack is the order you asked for them. */
 .drawer {
-  position: fixed; inset: 0; z-index: 40;
+  position: fixed; inset: 0; z-index: 60;
   background: rgb(0 0 0 / 55%);
   backdrop-filter: blur(2px);
   display: flex; justify-content: flex-end;
 }
-/* The task drawer and the chat sidebar are the SAME surface in two places, so they share every
- * declaration that makes them look like one — the width and how they arrive is all that differs. */
-.panel, .side {
+.panel {
   height: 100%; overflow-y: auto;
   background: var(--bg);
   border-left: 1px solid var(--line);
@@ -444,42 +445,6 @@ main { padding: 16px; display: flex; flex-direction: column; flex: 1; min-height
 }
 .panel { width: min(620px, 100%); animation: slide 180ms ease-out; }
 @keyframes slide { from { transform: translateX(24px); opacity: 0.6; } }
-
-/* ── the chat sidebar ───────────────────────────────────────────────────────── */
-
-/* Fixed and with NO backdrop, unlike the drawer: it slides over the board and the board stays
- * readable and clickable underneath, because the whole point is talking about what you are
- * looking at. Always in the DOM — hidden with `visibility`, never unmounted — so its scroll
- * position survives a tab switch. `visibility` and not `display`, so the transition has
- * something to animate; the delayed half of it is what keeps a shut sidebar unclickable.
- *
- * Only transform and opacity move: both are composited, so the slide cannot make the board
- * underneath reflow or repaint. Reduced motion is already handled — the global rule in this
- * file drops every transition, and this appears in place rather than sliding. */
-.side {
-  position: fixed; top: 0; right: 0; z-index: 45;
-  width: min(400px, 100%);
-  /* The viewport, exactly — dvh so a phone's collapsing chrome cannot leave the compose box
-   * under the toolbar — and the SIDEBAR never scrolls: the thread does, inside. Scrolling the
-   * whole panel meant a long conversation carried the input away with it, and a chat whose
-   * input has to be scrolled back to is a chat you stop using. */
-  height: 100dvh; overflow: hidden;
-  transform: translateX(100%); opacity: 0; visibility: hidden;
-  transition: transform 170ms ease-out, opacity 170ms ease-out, visibility 0s linear 170ms;
-}
-.side.on {
-  transform: none; opacity: 1; visibility: visible;
-  transition: transform 170ms ease-out, opacity 170ms ease-out;
-}
-/* The thread takes the slack AND owns the scrolling: header above and compose below stay
- * pinned whatever the conversation's length. `min-height: 0` is the line that makes it true —
- * without it a flex child refuses to shrink below its content and the overflow never engages. */
-.side .thread { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
-.side .compose { margin-top: auto; }
-.unread {
-  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--lime); vertical-align: top; margin-left: 4px;
-}
 
 .panel-head { display: flex; align-items: center; gap: 10px; }
 .panel-head > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -490,7 +455,7 @@ main { padding: 16px; display: flex; flex-direction: column; flex: 1; min-height
 
 .status { font-family: var(--mono); font-size: 11px; border-radius: 20px; padding: 2px 9px; border: 1px solid currentColor; }
 .status-ready { color: var(--lime); }
-.status-claimed, .status-in_progress { color: var(--amber); }
+.status-claimed { color: var(--amber); }
 .status-blocked { color: var(--red); }
 .status-review { color: var(--blue); }
 .status-done { color: var(--lime); }
@@ -639,53 +604,217 @@ ol.md-list li { list-style: decimal; }
 .md-table th, .md-table td { padding: 5px 10px; border: 1px solid var(--line-soft); text-align: left; }
 .md-table th { color: var(--ink-dim); font-weight: 600; background: var(--bg); }
 
-/* A reply from the session, told apart from your own line by the one thing that differs: which
-   door it came through. Indent and a rule, no new colour — the palette already says enough. */
-.thread li.said { padding-left: .75rem; border-left: 2px solid var(--lime); }
+/* ── the standing context ───────────────────────────────────────────────────── */
 
-/* ── the chat: the session thinking, and what it is doing ───────────────────── */
+/* A STRIP and not a view. It sits under the header on every screen, so it has to cost almost no
+ * vertical space when shut — one line — and read as a rule rather than as content: dimmer than
+ * the board, no card, no shadow. The lime edge is the only colour, because this is the thing the
+ * board is FOR and the eye should be able to find it without being pulled to it. */
 
-/* A row in the thread, not a message: no rule down its left, because nothing was said yet. */
-.think {
-  display: flex; align-items: center; gap: 6px;
-  border-left-color: transparent !important;
-  font-size: 12.5px;
+.context {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
 }
-.dots { display: inline-flex; align-items: center; gap: 3px; }
-.dots i {
-  width: 3px; height: 3px; border-radius: 50%;
-  background: var(--ink-dim); animation: blink 1.1s ease-in-out infinite;
-}
-.dots i:nth-child(2) { animation-delay: 0.18s; }
-.dots i:nth-child(3) { animation-delay: 0.36s; }
-@keyframes blink { 0%, 65%, 100% { opacity: 0.2; } 32% { opacity: 1; } }
-/* The global rule above kills transitions, not keyframes — a spinner is exactly the animation
-   somebody who asked for less motion meant. The row still says "thinking", which is the content. */
-@media (prefers-reduced-motion: reduce) { .dots i { animation: none; opacity: 0.55; } }
 
-/* The tool strip. Quieter than everything above it on purpose: it is glanceable, and a person
-   reading the conversation must be able to ignore it without effort. No new colour and no new
-   surface — the raised background and the dim ink are both already in this file. */
-.tools { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
-.tools-head {
-  align-self: flex-start; padding: 0;
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint);
+.context-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px var(--pad);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.tool-list {
-  display: flex; flex-direction: column; gap: 2px;
-  /* Bounded, and it scrolls itself: the conversation above must never be pushed off screen by an
-     agent having a busy minute. */
-  max-height: 148px; overflow-y: auto;
-  padding: 7px 9px; border-radius: var(--r);
-  background: var(--bg-raised); border: 1px solid var(--line-soft);
+
+.context-strip:hover { background: var(--bg-hover); }
+.context.open .context-strip { border-left-color: var(--lime); color: var(--ink); }
+
+.context-mark { color: var(--lime); flex: none; }
+
+/* The objective takes the room and truncates; everything else keeps its size. A wrapped strip
+ * would change the page height as the text changes, which on a live board is the layout moving
+ * under somebody's cursor. */
+.context-objective {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
 }
-.tool-line { display: flex; align-items: baseline; gap: 7px; font-size: 11.5px; min-width: 0; }
-.tool-chip {
-  flex: 0 0 auto; font-family: var(--mono); font-size: 10px; color: var(--ink-dim);
-  border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+
+.context-horizon,
+.context-counts { flex: none; font-size: 12px; }
+.context-horizon { color: var(--amber); }
+
+.context-scope,
+.context-id,
+.context-name { font-family: var(--mono); font-size: 11px; }
+.context-scope { color: var(--violet); }
+.context-name { color: var(--lime); }
+
+/* ── who is on the board ─────────────────────────────────────────────────────── */
+
+/* Where the chat trigger was. Two letters and no photo: taskops knows a name and nothing else
+ * about a person, and a generated cartoon would be inventing an identity to fill a circle.
+ *
+ * The lime ring means HOLDING A CARD — a live lease, not an assignment — which is the one fact
+ * about a teammate that changes what you do next: it is the difference between a card somebody is
+ * working on and a card sitting on a worker that is not running. */
+
+.faces { display: flex; align-items: center; gap: 4px; flex: none; }
+
+.face {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; padding: 0;
+  border-radius: 50%;
+  background: var(--bg-raised); border: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: -.02em; text-transform: lowercase;
+  cursor: pointer;
 }
-.tool-target {
-  font-family: var(--mono); color: var(--ink-faint);
-  overflow: hidden; white-space: nowrap;
+.face:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-faint); background: var(--bg-hover); }
+.face.busy { color: var(--lime); border-color: color-mix(in oklab, var(--lime) 45%, transparent); }
+.face.big {
+  width: 30px; height: 30px; font-size: 12px; cursor: default; flex: none;
 }
-.tool-more { font-size: 11px; letter-spacing: 0.2em; }
+
+/* A card in a profile: the id, the title, and nothing else. It is a way BACK to the card — the
+   drawer has everything — so a row that tried to summarise would be a worse copy of it. */
+.ctx-card {
+  display: flex; align-items: baseline; gap: 9px; width: 100%;
+  padding: 7px 10px; text-align: left;
+  background: var(--bg); border: 1px solid var(--line-soft); border-radius: var(--r);
+  color: inherit; font: inherit; font-size: 13px; cursor: pointer;
+}
+.ctx-card:hover:not(:disabled) { border-color: var(--ink-faint); background: var(--bg-hover); }
+.ctx-card-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-list > li + li > .ctx-card { margin-top: 6px; }
+
+/* The roll-up. It borrows `.stats` from the header verbatim — same idea, same shape, and a second
+   set of sizes for one row of numbers is how a UI stops looking like one program. */
+.ctx-body > .stats { gap: 16px; }
+
+/* ── the context modal ──────────────────────────────────────────────────────── */
+
+/* CENTRED, unlike the task drawer, and that difference is the content. A drawer is for a thing
+ * you act on while the board stays visible beside it; this is reference material you read and
+ * leave, and there is nothing to keep an eye on behind it.
+ *
+ * It replaced an inline expansion that pushed the board down — reference material shoving the
+ * work off the screen — and that could only hold one-line facts, because it was a three-column
+ * grid of flex rows. An agent can state a paragraph, and did. */
+
+/* PORTALLED to the body — see `Overlay`, which is where the reason lives. `position: fixed` is
+   relative to the viewport only while no ancestor has claimed that job, and `backdrop-filter`
+   claims it silently. Mounted inside the header, which blurs its own backdrop, this covered the
+   header and nothing else: a 40-pixel "full screen" scrim with the panel squeezed into it. */
+.ctx-back {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 5vh 1rem;
+  /* A literal, not a custom property. The scrim IS the modal — a transparent one is not a plainer
+     screen, it is a broken one — so it does not depend on a variable being defined. */
+  background: rgb(0 0 0 / 62%);
+  backdrop-filter: blur(3px);
+  /* The page must not scroll when the modal's body reaches its end. */
+  overscroll-behavior: contain;
+}
+
+.ctx-modal {
+  display: flex; flex-direction: column;
+  width: min(720px, 100%);
+  /* Bounded, and its BODY scrolls rather than the page: a project with forty decisions must not
+     produce a dialog taller than the screen with its tabs scrolled off the top. */
+  max-height: 100%;
+  /* `--bg-raised` and not `--bg`: the panel sits ON the scrim, so it has to read as a surface
+     above the page rather than as the page showing through a hole in it. */
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  animation: ctx-in 140ms ease-out;
+}
+@keyframes ctx-in { from { transform: translateY(8px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ctx-modal { animation: none; } }
+
+.ctx-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px var(--pad) 10px;
+}
+.ctx-head h2 { font-size: 14px; }
+.ctx-head .close {
+  margin-left: auto; padding: 2px 9px;
+  background: none; border-color: transparent; color: var(--ink-dim);
+}
+.ctx-head .close:hover { color: var(--ink); }
+
+/* Tabs and not headings, because these are three different QUESTIONS — what has the project
+ * decided, who is on what, what does the engine enforce — and one scroll made the reader do the
+ * filtering. The count on each is what says whether the tab is worth the click. */
+.ctx-tabs {
+  display: flex; gap: 2px;
+  padding: 0 var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+.ctx-tab {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 11px 9px;
+  background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  color: var(--ink-dim); font-size: 12.5px; cursor: pointer;
+}
+.ctx-tab:hover:not(:disabled) { background: none; color: var(--ink); }
+.ctx-tab.on { color: var(--ink); border-bottom-color: var(--lime); }
+
+.ctx-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: var(--pad);
+  display: flex; flex-direction: column; gap: 18px;
+}
+
+.ctx-group h4 {
+  margin: 0 0 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.ctx-group h4 .dim {
+  font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none;
+}
+
+.ctx-list { margin: 0; padding: 0; list-style: none; }
+
+/* A BLOCK per fact: the text owns the full width and wraps, the metadata sits under it. The row
+ * it replaced shared one line between the text, its scope and its id, which reads fine until the
+ * text is a paragraph — and a paragraph is exactly what `taskops_context` exists to accept. */
+/* On `--bg` now, one step BACK from the panel: the panel moved to `--bg-raised`, and a card the
+   same colour as the surface under it is a border pretending to be a card. */
+.ctx-fact {
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+}
+.ctx-fact + .ctx-fact { margin-top: 6px; }
+.ctx-fact .context-text {
+  margin: 0;
+  font-size: 13.5px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+.ctx-meta {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px;
+  margin: 6px 0 0;
+}
+.ctx-meta:empty { display: none; }
+
+.ctx-goal { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+
+.ctx-empty {
+  margin: 0; color: var(--ink-dim); font-size: 13px; line-height: 1.6;
+}
+.ctx-empty code { color: var(--lime); }

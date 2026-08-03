@@ -4,8 +4,8 @@
  * rather than a hunt through components. Components never call `fetch`. */
 
 import type {
-  Activity, AgentEntry, Board, Config, DigestStarted, Event, ReportEntry, ReportFile, Task,
-  TaskView, WireMessage,
+  Activity, AgentEntry, Board, Config, ContextView, DigestStarted, Event, ReportEntry,
+  ReportFile, Task, TaskView, WireMessage,
 } from "./contracts";
 
 /* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
@@ -72,6 +72,9 @@ export const api = {
   board: () => call<Board>("/api/board"),
   /* Its own call, not folded into the board: the history is the expensive read here, and the board
    * refetches on every event. Only the activity view pays for it, and only while it is open. */
+  /* The standing facts and settings. Cheap and rarely changing, so the panel that shows it can
+   * stay open all day — it refetches only when a `context` or `policy` event says to. */
+  context: () => call<ContextView>("/api/context"),
   activity: (since: string) => call<Activity>(`/api/activity?since=${encodeURIComponent(since)}`),
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
   reports: () => call<ReportEntry[]>("/api/reports"),
@@ -95,16 +98,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ task, text, mentions }),
     }),
-  /* The sidebar's conversation. Events, like everything else — so the UI needs no new type, and
-   * a line that arrives on the live socket is the same shape as one read back here. */
-  chat: () => call<Event[]>("/api/chat"),
-  /* `card` is CONTEXT, not a parent: what the board happened to be showing when you typed. It is
-   * omitted on Activity and Reports, which is exactly why the endpoint does not require it. */
-  say: (text: string, card: string) =>
-    call<Event>("/api/chat", { method: "POST", body: JSON.stringify({ text, card }) }),
-  /* "Clear" in a log with no eraser: the previous conversation stops being shown and stays
-   * readable. The channel calls the same route when a session starts. */
-  newConversation: () => call<{ conversation: string }>("/api/conversation", { method: "POST" }),
   agents: () => call<AgentEntry[]>("/api/agents"),
   /* A registry NAME (the server mints `agent:<you>/<name>` from it) or a full actor id. The
    * server refuses a bare name it does not know, and its sentence names the ones it does. */

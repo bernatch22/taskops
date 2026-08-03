@@ -7,12 +7,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiFailure, subscribe } from "./api";
-import type { Board, Config, Event, TaskView } from "./contracts";
+import type { Board, Config, ContextView, Event, TaskView } from "./contracts";
 import { reduce, type Narration } from "./narration";
 
 export interface Studio {
   config: Config | null;
   board: Board | null;
+  /* The standing facts and settings. Fetched once and refetched only when an event says they
+   * changed — the panel showing them is open all day, and re-reading them on every card move
+   * would be a request per keystroke of somebody else's agent for prose that changes weekly. */
+  context: ContextView | null;
   open: TaskView | null;
   live: boolean;
   error: string;
@@ -37,6 +41,7 @@ const COALESCE_MS = 120;
 export function useStudio(): Studio {
   const [config, setConfig] = useState<Config | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
+  const [context, setContext] = useState<ContextView | null>(null);
   const [open, setOpen] = useState<TaskView | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState("");
@@ -79,14 +84,24 @@ export function useStudio(): Studio {
     });
   }, []);
 
+  /* Its own loader, not folded into `load`: that one runs on every event and on every reconnect,
+   * and this reads three tables to answer a question whose answer changed last Tuesday. */
+  const loadContext = useCallback(() => {
+    api.context().then(setContext).catch(() => {});
+  }, []);
+
   useEffect(() => {
     api.config().then(setConfig).catch(() => setConfig(null));
     void load();
+    loadContext();
     const stop = subscribe(
       (event) => {
         setLast(event);
         setPulse((n) => n + 1);
         refresh();
+        /* The two kinds that CAN change it. Anything else moves a card, and a card cannot
+         * restate an invariant. */
+        if (event.kind === "context" || event.kind === "policy") loadContext();
       },
       () => {
         /* Refetch on every OPEN, not just the first. A reconnect after a dropped stream has an
@@ -94,6 +109,7 @@ export function useStudio(): Studio {
          * no replay cursor. */
         setLive(true);
         void load();
+        loadContext();
       },
       /* NO refetch and NO pulse: a delta is not an event, nothing on the server stored it, and
        * a board that reloaded itself fifty times a second while somebody read a report would be
@@ -108,7 +124,8 @@ export function useStudio(): Studio {
       stop();
       window.removeEventListener("offline", onError);
     };
-  }, [load, refresh]);
+  }, [load, refresh, loadContext]);
 
-  return { config, board, open, live, error, pulse, narration, last, openTask, refresh };
+  return { config, board, context, open, live, error, pulse, narration, last, openTask,
+           refresh };
 }

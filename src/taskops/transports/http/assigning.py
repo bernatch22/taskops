@@ -28,10 +28,9 @@ from pathlib import Path
 from typing import Any
 
 from ..._errors import BadRequest
-from ...usecases import registry
+from ...usecases import registry, update
 from ...usecases._handoff import hand_over
 from ...usecases._project import caller, project
-from ...usecases.chat import say
 from ._wire import Reply, Request, error_reply, json_reply
 from .api import guarded
 
@@ -95,10 +94,14 @@ def _assign(root: Path, task_id: str, assignee: str) -> dict[str, Any]:
         if not to.startswith("agent:"):
             hand_over(store, task_id, to, actor=who["id"])
             return {"task": task_id, "assignee": to}
-    # A REQUEST, through the same use case the sidebar posts with — the transport composes use
-    # cases and never reaches past them, which is what the architecture test just refused.
-    say(root, f"dispatch {task_id} to `{to.rsplit('/', 1)[-1]}` — assign it and spawn that "
-              f"sub-agent (or say why not)", card=task_id)
+    # A REQUEST, and it lands ON THE CARD with the target MENTIONED. It used to go to the
+    # board's chat sidebar, which is gone: that surface assumed exactly one session was
+    # listening, which stops being true the moment a board is shared. A mention has none of
+    # that ambiguity — it is addressed, it is delivered on the recipient's very next tool call,
+    # and it is filed under the work it is about instead of a conversation beside it.
+    update(root, task_id, mentions=(to,),
+           comment=f"dispatch to `{to.rsplit('/', 1)[-1]}` — assign it and spawn that "
+                   f"sub-agent (or say why not)")
     return {"task": task_id, "requested": to}
 
 

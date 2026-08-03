@@ -269,9 +269,16 @@ def test_assigning_to_a_specialist_is_a_request_not_a_write(with_registry: Path)
     assert body_of(reply).get("requested", "").endswith("/taskops-collectors")
     assert body_of(route(get("/api/task", id=task_id)))["task"]["assignee"] == "", (
         "the assignee is the orchestrator's to write, through dispatch")
-    asked = body_of(route(get("/api/chat")))
-    assert any(task_id in event["body"]["text"] and "dispatch" in event["body"]["text"]
-               for event in asked), "the request travels the chat, which the channel forwards"
+    # ON THE CARD, with the target mentioned. The request used to go to the board's chat
+    # sidebar — a surface that assumed exactly one session was listening, which stops being true
+    # the moment a board is shared. A mention is addressed, is delivered on the recipient's very
+    # next tool call, and is filed under the work it is about rather than beside it.
+    thread = body_of(route(get("/api/task", id=task_id)))["thread"]
+    asked = [event for event in thread if "dispatch" in event["body"].get("text", "")]
+    assert asked, "the request is a comment on the card, which the channel forwards"
+    assert "agent:" in " ".join(asked[0]["body"].get("mentions", [])), (
+        "and it is ADDRESSED at the specialist, which is what makes it reach one session "
+        "rather than every session watching a shared board")
 
 
 def test_assigning_to_a_full_agent_id_is_also_a_request(route: Any) -> None:
@@ -670,3 +677,64 @@ def test_a_card_with_no_reviewer_says_nothing_rather_than_a_placeholder(
     board = body_of(route(get("/api/board")))
     cards = {c["task"]["id"]: c["task"] for col in board["columns"] for c in col["cards"]}
     assert cards[made["id"]]["reviewer"] == ""
+
+
+def test_every_rpc_verb_answers_with_a_json_object(project: Path, route: Any) -> None:
+    """The rule the wire decoder makes mandatory, pinned so a fourth violation cannot be silent.
+
+    `_wirereply.decode` returns `{}` for anything that is not a JSON object — on purpose: an
+    nginx in front of the server answers 502 in HTML, and a reader wants the status rather than
+    a traceback through the parser. The cost is that a verb returning a bare ARRAY decodes to
+    nothing at all, with no error anywhere. Three did: `search` found zero tasks on every board
+    with a remote, `context_history` was empty, and `policy_show` reported no settings — each
+    one passing every single-store test in this suite.
+
+    The read verbs that need no arguments are exercised here. A new verb that returns a list
+    fails this the moment it is added, which is the whole point.
+    """
+    plan(project, [{"title": "the searchable one", "spec": "find me"}], actor="dev:ana")
+    calls = {"search": {"query": "searchable"}, "context_history": {}, "policy_show": {},
+             "board": {}, "attention": {}, "inbox": {"actor": "dev:ana"}}
+
+    for verb, args in calls.items():
+        payload = body_of(route(post("/api/rpc", {"verb": verb, "args": args})))
+        assert isinstance(payload, dict), f"`{verb}` answers a bare array — the client sees {{}}"
+
+    found = body_of(route(post("/api/rpc", {"verb": "search", "args": {"query": "searchable"}})))
+    assert [t["title"] for t in found["tasks"]] == ["the searchable one"], "and it carries data"
+
+
+def test_the_context_endpoint_carries_the_facts_and_the_settings_in_one_call(
+        project: Path, route: Any) -> None:
+    """The panel that shows this is open all day on every screen, so it is ONE call: two would
+    be two spinners for one strip, and the two halves are read together or not at all.
+
+    They stay two concepts in the payload. A `decision` is prose a person weighs; a `policy` is a
+    value the engine obeys and refuses to be wrong about. Flattening them into one list is
+    precisely how a policy came to be hidden inside a decision, silently doing nothing.
+    """
+    from taskops.usecases import context_state, set_policy
+
+    context_state(project, "objective", "ship the importer", horizon="2026-08-15",
+                  actor="dev:ana")
+    context_state(project, "invariant", "no dependencies outside the stdlib", actor="dev:ana")
+    context_state(project, "decision", "sqlite, not postgres", labels=["db"], actor="dev:ana")
+    set_policy(project, "reviewer", "peer", actor="dev:ana")
+
+    seen = body_of(route(get("/api/context")))
+
+    assert seen["objective"]["text"] == "ship the importer"
+    assert seen["objective"]["horizon"] == "2026-08-15"
+    assert [f["text"] for f in seen["invariants"]] == ["no dependencies outside the stdlib"]
+    assert [f["labels"] for f in seen["decisions"]] == [["db"]]
+    assert seen["policies"] == [{"name": "reviewer", "value": "peer",
+                                 "actor": "dev:ana", "ts": seen["policies"][0]["ts"]}]
+
+
+@pytest.mark.usefixtures("project")
+def test_a_project_that_has_stated_nothing_answers_with_empty_lists(route: Any) -> None:
+    """Not a 404 and not an error: "nothing decided yet" is a legal state, and the strip renders
+    nothing at all for it rather than nagging on every screen forever."""
+    seen = body_of(route(get("/api/context")))
+    assert seen == {"objective": None, "yours": None, "objectives": [], "invariants": [],
+                    "decisions": [], "notes": [], "policies": []}

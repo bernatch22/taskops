@@ -9,11 +9,11 @@
  * is here, not a cast at the call site. */
 
 export type Status =
-  | "backlog" | "ready" | "claimed" | "in_progress"
+  | "backlog" | "ready" | "claimed"
   | "blocked" | "review" | "done" | "cancelled";
 
 export const STATUSES: Status[] = [
-  "backlog", "ready", "claimed", "in_progress", "blocked", "review", "done", "cancelled",
+  "backlog", "ready", "claimed", "blocked", "review", "done", "cancelled",
 ];
 
 export interface Task {
@@ -124,6 +124,10 @@ export interface TaskView {
   blocked_by: Task[];
   blocks: Task[];
   children: Task[];
+  /* The card this one is PART OF, resolved. `task.parent` is only an id, and an id is not
+   * something anybody can read — so a child never showed what it belonged to while its parent
+   * had listed it all along. One direction of a tree is not a tree. */
+  epic: Task | null;
   neighbours: Task[];
   thread: Event[];
   commits: CommitRef[];
@@ -186,4 +190,49 @@ export interface ReportFile {
   exists: boolean;
   stale: boolean;
   missing_events: number;
+}
+
+/* ── the standing context: what a worker must know that its card cannot carry ─────────────── */
+
+/* One fact, as `storage.context` reconstructs it from its event. `id` is the EVENT id — the
+ * content hash — which is why it is the same string on every machine and what `retire` takes. */
+export interface Fact {
+  id: string;
+  sort: "objective" | "invariant" | "decision" | "note";
+  text: string;
+  /* The scope. Empty means project-wide, which is why an invariant normally carries neither. */
+  labels: string[];
+  files: string[];
+  horizon: string;
+  owner: string;
+  actor: string;
+  ts: number;
+  retired: boolean;
+}
+
+/* A project SETTING: a value the engine obeys, validated when it was written. Beside the facts
+ * on the wire because they are one question on screen — what has this project already decided —
+ * and kept apart in the payload because they are not the same kind of answer. */
+export interface Policy {
+  name: string;
+  value: string;
+  actor: string;
+  ts: number;
+}
+
+/* `GET /api/context`. One call, because the panel that shows it is open all the time and two
+ * spinners for one panel is two spinners too many. */
+export interface ContextView {
+  /* The PROJECT's north — what everybody reads whatever they are holding. */
+  objective: Fact | null;
+  /* Every objective in force, the project's and one per dev. This is the OVERVIEW, and it is
+   * what answers "who is on what" when you are deciding who to hand a card to. */
+  objectives: Fact[];
+  /* Whoever asked, when they have one of their own. Null in the board's view, which belongs
+   * to nobody. */
+  yours: Fact | null;
+  invariants: Fact[];
+  decisions: Fact[];
+  notes: Fact[];
+  policies: Policy[];
 }

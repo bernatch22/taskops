@@ -146,11 +146,6 @@ export function classify(event: BoardEvent): Kind | null {
       // A plain comment reaches nobody's inbox; only an explicit @handle in the prose
       // makes it addressed at someone.
       return /(^|\s)@[\w:/-]+/.test(String(event.body.text ?? '')) ? 'mention' : null
-    case 'chat':
-      // Somebody typing in the board's sidebar IS an interruption addressed at this session —
-      // that is the entire reason the sidebar exists. It arrives with `task: "project"`, the
-      // sentinel, so nothing downstream may assume the tag names a card.
-      return 'mention'
     case 'handoff':
       // Only a handoff the ORCHESTRATOR wrote (through dispatch) reads as an assignment worth
       // acting on. A manual one used to arrive as an order to spawn, sideways, into a session
@@ -212,8 +207,10 @@ export function audience(event: BoardEvent): string[] {
  *    reconnects, so a replayed id is normal traffic — and a notification delivered twice is
  *    read as two things happening.
  * 3. **Not addressed to me.** An event that names an audience and leaves me out of it is
- *    somebody else's work. A `chat` line names nobody and is addressed at whoever is listening
- *    by construction — that is what the board's sidebar IS — so it crosses.
+ *    somebody else's work. Everything that crosses is therefore ADDRESSED: a mention, a review
+ *    routed to my dev, a card assigned to one of my agents. There is no "to whoever is
+ *    listening" any more — the board's chat sidebar was exactly that, and it went because it
+ *    assumed one listener on a board that may have five.
  *
  * `seen` is mutated deliberately: the caller owns the memory, so a test can hand in a fresh
  * Set and a reconnect cannot forget what it already said.
@@ -393,19 +390,6 @@ function line(event: BoardEvent, kind: Kind, card: ReviewCard | null): string {
   const text = String(event.body.text ?? '').trim()
   switch (kind) {
     case 'mention': {
-      // A chat line is somebody TALKING TO THIS SESSION from the board's sidebar, and it needs
-      // the orchestrator rule restated. The connect-time instructions say it once; this arrives
-      // mid-session, after a compaction, and the session cheerfully did the work itself the
-      // first time somebody asked it to assign a card and pick a reviewer. Naming the sentinel
-      // task in the prose would leak `project` into a sentence about nothing of the sort.
-      if (event.kind === 'chat') {
-        const about = String(event.body.card ?? '')
-        return `${who} says${about ? ` (looking at ${about})` : ''}: ${text}`
-          + ` — you are the ORCHESTRATOR. If this is work, put it on the board and hand it to a`
-          + ` specialist from .claude/agents/ (taskops_capture or taskops_plan, then assign and`
-          + ` spawn that sub-agent with actor=agent:<dev>/<name>); do not implement it here.`
-          + ` Answer with the \`reply\` tool and NO card — your transcript never reaches the board.`
-      }
       const to = strings(event.body, 'mentions')
       return `${who} mentioned ${to.join(', ') || 'you'} on ${event.task}: ${text}`
     }

@@ -24,6 +24,14 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
   onDone: () => void;
 }): JSX.Element {
   const { task } = view;
+  /* Escape closes it, and it is the TOP surface: a card opened from a profile sits above that
+   * modal, and `Overlay` stands down while a drawer exists. Without this, Escape did nothing
+   * here at all — the only way out was the ✕ or the backdrop. */
+  useEffect(() => {
+    const key = (e: KeyboardEvent): void => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
   return (
     <div className="drawer" onClick={onClose}>
       <div className="panel" onClick={(click) => click.stopPropagation()}>
@@ -125,6 +133,11 @@ function Commit({ commit }: { commit: CommitRef }): JSX.Element {
 
 function Graph({ view, onOpen }: { view: TaskView; onOpen: (id: string) => void }): JSX.Element | null {
   const groups: [string, Task[]][] = [
+    /* First, and it was missing entirely: what this card is FOR is the sentence that makes its
+     * spec make sense, and a spec read without it is how a subtask gets solved correctly for
+     * the wrong problem. Wrapped in a list because every other row here is one — the shape is
+     * "related cards", and one of them is not worth a second component. */
+    ["Part of", view.epic ? [view.epic] : []],
     ["Waiting on", view.blocked_by],
     ["Blocking", view.blocks],
     ["Subtasks", view.children],

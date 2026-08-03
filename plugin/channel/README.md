@@ -101,8 +101,9 @@ So: *does the web server start with the plugin?* With the channel, yes.
    client reconnects, so a replayed event is ordinary traffic and a line said twice reads as
    two things happening;
 3. **an audience you are not in** — an event that names people and does not name you is
-   somebody else's work. Naming nobody (the board's chat sidebar) still crosses: that is what
-   the sidebar IS.
+   somebody else's work. There is no exemption for naming nobody any more: the board's chat
+   sidebar was exactly that, and it went because "whoever is listening" stops being one session
+   the moment a board is shared. Everything that crosses is ADDRESSED.
 
 A status change crosses **nothing** by default, and that is the correction, not an oversight.
 A card entering review used to be news for everybody connected, so two free developers both
@@ -121,7 +122,7 @@ The categories, stated in a person's terms rather than the log's:
 | `recovery`   | `released` with `recovered_from` — a dead worker's card came back. OFF by default; the sweep reports it |
 
 **Never, at any setting:** `activity` (the per-keystroke heartbeat), narration deltas, socket
-keepalives, `claimed`/`in_progress` moves, commits, and every kind this channel has not been
+keepalives, `claimed` moves, commits, and every kind this channel has not been
 taught. An unknown kind stays quiet rather than defaulting to loud — a newer taskops writing a
 new kind will not start shouting at an older channel.
 
@@ -164,7 +165,7 @@ is unchanged and costs no read.
 
 | tool     | what it does                                                                    |
 | -------- | ------------------------------------------------------------------------------- |
-| `reply`  | `POST /api/comment` — a comment on a card, with optional `mentions`. **The only way to answer**: transcript output never reaches the board. |
+| `reply`  | `POST /api/comment` — a comment on a card, with optional `mentions`. **`card` is required**: every event that reaches a session names one, and the cardless destination (the board's chat sidebar) is gone. **The only way to answer**: transcript output never reaches the board. |
 | `board`  | the compact board snapshot: columns, cards, and who holds each one.              |
 
 Neither spends money. There is no tool here that calls a model.

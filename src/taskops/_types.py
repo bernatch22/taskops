@@ -70,9 +70,9 @@ EventKind = Literal[
     "edited",  # a field of the card itself changed: title, spec or priority
     "acceptance",  # what a card promises: its EARS criteria, restated whole
     "context",  # a standing fact about the PROJECT: an objective, invariant or decision
+    "policy",  # a standing SETTING the engine reads, validated when written
     "landed",   # a done card's branch was merged into the trunk, or could not be
     "inferred",  # taskops attributed a call to the card's assignee, the caller named nobody
-    "chat",  # a line said to the open session from the board's sidebar, about no card
 ]
 """What happened. The event log is append-only and every projection — the board,
 a standup, an inbox — is derived from it, so a new fact about a task is a new
@@ -102,9 +102,12 @@ EDITABLE_FIELDS: tuple[str, ...] = ("title", "spec", "priority", "reviewer")
 use case records one event per field, and replay refuses a body naming anything else."""
 
 PEER = "peer"
-"""A reviewer that means "anybody but this card's own developer". Stated once as a project
-decision (`reviewer: peer`) rather than written per card, because it is a team's policy and a
-per-card copy of a policy is a policy with exceptions nobody meant."""
+"""A reviewer that means "anybody but this card's own developer".
+
+Written on the card like every other reviewer, and normally not by hand: a team states it once
+with `taskops policy reviewer peer` and every card created after that carries it. The policy is
+where the intent lives, the field is where the engine reads it — stamping it at creation is what
+keeps a policy changed today from rewriting who was allowed to close work planned last week."""
 
 HUMAN = "human"
 """What a card's `reviewer` says when a PERSON closes it — "whoever is reading the board".
@@ -135,13 +138,8 @@ write updates, so a developer who handed a card over kept a live lease on it for
 board then read that lease as "somebody is working on this" and went silent about a card that
 was waiting for a reviewer — and about the same card when it came back rejected."""
 
-LOCAL_ONLY_KINDS: frozenset[str] = frozenset({"activity", "chat"})
+LOCAL_ONLY_KINDS: frozenset[str] = frozenset({"activity"})
 """Kinds that never reach the git-committed log. `activity` is a per-keystroke
 heartbeat: replicating it through git would add thousands of lines a day to a
 file whose whole value is that a human can read its diff.
-
-`chat` is here for the opposite reason — not volume, CONTENT. It is a box where a
-person types half-formed thinking at the speed of a terminal prompt, and an
-append-only replicated log has no eraser. What deserves to be read by the team goes
-in a comment or a context fact, deliberately. See `usecases.chat` for the full
-argument, including the one it was weighed against."""
+"""

@@ -356,14 +356,17 @@ test('the delegation line asks for the actor on EVERY call, not only the claim',
   expect(line).toContain('EVERY taskops_* call')
 })
 
-test('a chat message from the sidebar reaches the session', () => {
-  // The sidebar exists to interrupt this session; a chat line that did not cross would be a
-  // notes field. It arrives on the SENTINEL task, so nothing downstream may read the tag's
-  // card attribute as a real card.
+test('the sidebar kind no longer crosses, on any board', () => {
+  // The board's chat sidebar is GONE, and with it the only thing that ever arrived addressed at
+  // "whoever is listening". It assumed exactly one session was, which stops being true the
+  // moment a board is shared — and a shared board is the deployment this channel exists for.
+  //
+  // Asserted rather than deleted, because a teammate on an older taskops can still WRITE the
+  // kind: their log reaches this board, and an unknown kind that fell through to "addressed at
+  // everyone" would interrupt every session on it with a line nobody can answer.
   const event = {actor: 'dev:berna', kind: 'chat', task: 'project',
                  body: {text: 'why is tk-2 still open?'}, ts: 1, id: 'x'} as BoardEvent
-  expect(classify(event)).toBe('mention')
-  expect(selects(parseKinds(undefined), event)).toBe('mention')
+  expect(classify(event)).toBeNull()
 })
 
 // ---------------------------------------------------------------- the leaked markup
@@ -416,24 +419,6 @@ group('sanitize — the Claude Code tool-markup leak', () => {
     const shut = (name: string) => `</${name}>`
     expect(sanitize(`Fixed it.${shut('antml:parameter')}${shut('antml:invoke')}`)).toBe('Fixed it.')
   })
-})
-
-test('a chat line restates the orchestrator rule and never names the sentinel', () => {
-  // Asked in the sidebar to assign a card and pick a reviewer, the session did all of it
-  // itself. Nothing in the line said otherwise — the rule lived only in the connect-time
-  // instructions, which are one compaction away from gone.
-  const event = {actor: 'dev:berna', kind: 'chat', task: 'project',
-                 body: {text: 'podes asignar una tarea?', card: ''}, ts: 1, id: 'x'} as BoardEvent
-  const line = describe(event, 'mention').content
-  expect(line).toContain('ORCHESTRATOR')
-  expect(line).toContain('.claude/agents/')
-  expect(line).not.toContain('on project')
-})
-
-test('a chat line sent while a card was open says which one', () => {
-  const event = {actor: 'dev:berna', kind: 'chat', task: 'project',
-                 body: {text: 'esta bien esto?', card: 'tk-4f2a9c'}, ts: 1, id: 'x'} as BoardEvent
-  expect(describe(event, 'mention').content).toContain('looking at tk-4f2a9c')
 })
 
 test('a real mention on a real card is unchanged', () => {
@@ -549,9 +534,12 @@ group('what actually crosses into a session', () => {
     expect(forwards(ADDRESSED, mention(['dev:ana']), 'ana', new Set())).toBe('mention')
   })
 
-  test('the sidebar names nobody and is addressed at whoever is listening', () => {
+  test('nothing crosses addressed at whoever is listening', () => {
+    // The one exemption this filter had, and it is gone with the sidebar it served: every event
+    // that reaches a session is now ADDRESSED — a mention, a routed review, a card assigned to
+    // one of my agents — which is what makes "if you do not act on it nobody will" true.
     expect(forwards(ADDRESSED, from('dev:berna', 'chat', { text: 'where are we' }), 'ana',
-                    new Set())).toBe('mention')
+                    new Set())).toBeNull()
   })
 
   test('an unknown dev reads everything rather than nothing', () => {
