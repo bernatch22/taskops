@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { Board } from "../src/components/Board";
 import { MilestoneModal } from "../src/components/MilestoneModal";
-import { Picker } from "../src/components/Picker";
+import { Menu, Picker } from "../src/components/Picker";
 import { ProjectModal } from "../src/components/ProjectModal";
 import type { Board as BoardData, ContextView } from "../src/contracts";
 import fixture from "./fixture.json";
@@ -49,6 +49,19 @@ check("with no filter it offers every milestone", picker("").includes("All miles
 check("with one picked it names THAT chapter", picker(first.id).includes(first.title));
 check("and offers its dashboard", picker(first.id).includes("pill-info"));
 check("the project panel is always reachable", picker("").includes("pill-project"));
+/* The case a real board landed in the day it upgraded: a chapter IN FORCE whose cards are all still
+ * legacy, so it has none. The row used to call that "not started" — this menu's own word for the
+ * `planned` group — so a chapter with a `◆` beside it read as one nobody had opened. The fixture
+ * cannot carry it (both its active chapters have cards), so the empty one is built here. */
+const emptyChapter = { ...first, id: "0000emptychapter", title: "Recien abierto" };
+const rowsFor = (list: typeof chapters): string => renderToStaticMarkup(
+  <Menu context={context} board={board} chapters={list} loose={0} picked="" onPick={() => {}} />);
+const emptyRow = rowsFor([emptyChapter]);
+check("a chapter in force with no cards says `no cards`, not `not started`",
+      emptyRow.includes("no cards") && !emptyRow.includes("not started"), emptyRow);
+const plannedRow = rowsFor([context.planned[0]]);
+check("and a PLANNED one still does say `not started`",
+      plannedRow.includes("not started"), plannedRow);
 
 console.log("the board");
 const all = titlesOn("");
