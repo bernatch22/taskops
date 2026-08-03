@@ -220,3 +220,62 @@ def test_clearing_a_card_s_chapter_is_refused(carded: tuple[Path, str]) -> None:
         edit(root, card, milestone="   ", actor="dev:berna")
 
     assert "exactly one milestone" in str(refusal.value)
+
+
+def test_a_CLOSED_card_can_still_be_filed_under_a_chapter(carded: tuple[Path, str]) -> None:
+    """The half of the refusal that was too wide, and the reason a migrated board could not be
+    tidied: every card it ever finished is closed AND has no chapter, so refusing both left the
+    board's one chapter sitting beside a bucket holding all of its history.
+
+    Filing says WHICH chapter the work was delivered in. It rewrites nothing about what was
+    delivered, which is what the refusal is actually protecting.
+    """
+    root, card = carded
+    from taskops.usecases.milestone import open_chapter
+
+    next_task(root, task=card, actor="dev:berna")
+    update(root, card, status="done", no_code=True, comment="shipped", actor="dev:berna")
+    second = open_chapter(root, "el capitulo siguiente", actor="dev:berna")
+
+    edit(root, card, milestone=second["id"], actor="dev:berna")
+
+    with Store(root) as store:
+        moved = store.tasks.need(card)
+        assert moved["milestone"] == second["id"]
+        assert moved["status"] == "done", "and it is STILL closed — filing moves no card back"
+
+
+def test_a_closed_card_still_refuses_every_OTHER_field(carded: tuple[Path, str]) -> None:
+    """The other half, and the one a hurried fix opens by accident. Widening the exemption to the
+    whole call would let somebody rewrite the spec of delivered work, which is the record a
+    standup and a teammate's clone read back."""
+    root, card = carded
+    next_task(root, task=card, actor="dev:berna")
+    update(root, card, status="done", no_code=True, comment="shipped", actor="dev:berna")
+
+    for field in ({"spec": "rewritten"}, {"title": "renamed"}, {"priority": 0},
+                  {"reviewer": "human"}, {"acceptance": "WHEN x THE SYSTEM SHALL y"}):
+        with pytest.raises(BadRequest) as refusal:
+            edit(root, card, actor="dev:berna", **field)          # type: ignore[arg-type]
+        assert "history" in str(refusal.value), field
+
+
+def test_filing_a_closed_card_and_rewriting_it_in_ONE_call_is_refused_WHOLE(
+        carded: tuple[Path, str]) -> None:
+    """A call naming both must not half-apply: the spec is refused, so the move goes with it. A
+    partial write here would leave the caller told `no` about a card that did change."""
+    root, card = carded
+    from taskops.usecases.milestone import open_chapter
+
+    next_task(root, task=card, actor="dev:berna")
+    update(root, card, status="done", no_code=True, comment="shipped", actor="dev:berna")
+    second = open_chapter(root, "el capitulo siguiente", actor="dev:berna")
+    before = None
+    with Store(root) as store:
+        before = store.tasks.need(card)["milestone"]
+
+    with pytest.raises(BadRequest):
+        edit(root, card, milestone=second["id"], spec="rewritten", actor="dev:berna")
+
+    with Store(root) as store:
+        assert store.tasks.need(card)["milestone"] == before, "nothing moved"

@@ -849,6 +849,12 @@ card belongs to exactly one milestone, so "no chapter" is not a state to ask for
 because a board that predates 0.5.0 has cards carrying no chapter at all, and nothing else
 could ever move them into the first one it opens.
 
+It is also the ONE field a closed card still accepts. Every other edit is refused on a `done` or
+`cancelled` card, because rewriting the spec of delivered work rewrites the record of what was
+delivered — but filing says WHICH chapter it was delivered in, which is the question a closed card
+is asked afterwards, and on a migrated board every closed card has no answer to it. A call that
+names `--milestone` AND another field on a closed card is refused whole, so nothing half-applies.
+
 ### Who closes a card: `--reviewer`
 
 A card carries the name of whoever may close it, chosen when it is created — a FIELD and not a

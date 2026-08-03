@@ -39,7 +39,19 @@ CLOSED_REFUSAL = "closed cards are history — open a new card referencing it"
 """Why a done or cancelled card is frozen. The log is what a standup, a report and a
 teammate's clone read back; letting somebody rewrite the spec of work already delivered
 would rewrite the record of what was delivered, which is the one thing this system exists
-to keep honest."""
+to keep honest.
+
+`milestone` is exempt, and only it. Filing a card under a chapter does not change anything
+about what was delivered — it records WHICH chapter it was delivered in, which is the one
+question a closed card is asked afterwards. On a board that predates chapters that is the only
+way its history can be filed at all: every closed card on it carries none, so a picker shows the
+board's one chapter beside a bucket holding every card ever finished. Nothing can be invented
+this way either — the chapter still has to exist and be active, and no status moves."""
+
+FILING = "milestone"
+"""The one field a closed card still accepts. Named rather than inlined because the refusal
+above argues about exactly this distinction, and a reader checking the argument against the code
+should land on one word in both places."""
 
 
 def edit(start: Path | str, task_id: str, *, title: str | None = None,
@@ -75,7 +87,7 @@ def edit(start: Path | str, task_id: str, *, title: str | None = None,
         who = caller(store, actor)["id"]
         heartbeat(store, who)
         task = store.tasks.need(task_id)
-        if task["status"] in CLOSED_STATUSES:
+        if task["status"] in CLOSED_STATUSES and (set(wanted) - {FILING} or acceptance is not None):
             raise BadRequest(CLOSED_REFUSAL)
         if reviewer is not None:
             wanted["reviewer"] = named(store, reviewer)
