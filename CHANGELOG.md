@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.12 — `land` encuentra la branch por sus commits, y puede no pushear
+
+Los dos salieron de un dia en que cinco cards quedaron `done` y fuera del trunk.
+
+**El nombre de la branch no era evidencia.** Una card no se pudo aterrizar y el mensaje decia que la
+maquina del autor no la habia publicado. Estaba publicada: `branch_for` respondia
+`…-toggle-toll-of-a-c` y la branch era `…-toggle-toll-of-a`, un caracter apart, porque el clon que la
+creo trunca el slug distinto. El nombre se calcula en TRES lugares — `next` lo imprime, el commit
+guard lo exige, `land` lo busca — y basta una diferencia de version entre dos developers para que el
+trunk no reciba trabajo terminado, con un mensaje que manda a la otra persona a correr algo que ya
+corrio.
+
+Ahora deciden los **commits**: `git branch -a --contains <sha>`, preguntado por cada sha de la card e
+intersectado, porque una card de cuatro commits pertenece a la branch que tiene los cuatro. El nombre
+calculado queda como camino rapido. Y el refusal dice que shas busco y en que branches estan, en vez
+de afirmar algo sobre la maquina de otro que no puede saber; varias coincidencias se refusan
+nombrandolas, porque dos branches con los commits de una card es un hecho del repositorio que un merge
+no deberia resolver solo.
+
+**Y `land --no-push`.** El push estaba adentro del merge, asi que a un worker con la instruccion "no
+pushees hasta que el suite este verde" se le fueron tres cards a origin. Aterrizar es justo el paso que
+mas quiere un suite verde antes de publicar. Con el flag mergea y para — y **no** reporta la card
+aterrizada, porque la posicion de este modulo es que merged-into-my-copy no es landed: la card sigue en
+la barrida bajo LAND con la mitad que falta nombrada. El push sigue siendo el default.
+
 ## 0.5.11 — una lectura no pullea, y un pull sin novedades es UN request
 
 Medido en un tablero real con remoto, y hacia la herramienta inusable ahi: el `SessionStart` tardaba
