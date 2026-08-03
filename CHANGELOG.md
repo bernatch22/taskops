@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.9 — los minutos de una card cierran con el span de su tanda, y el periodo se elige
+
+**La aritmetica estaba mal y se vio en pantalla.** Cada card sumaba los huecos entre SUS PROPIOS
+eventos, y en una tanda intercalada esos huecos se superponen: `a(0) b(2m) a(4m) b(6m)` es una tanda de
+seis minutos donde `a` reclamaba 0→4 y `b` reclamaba 2→6 — ocho minutos dibujados dentro de un span de
+seis. El grupo estaba bien; la atribucion no, y lo encontro un lector sumando las filas contra el
+encabezado bajo el que estaban dibujadas.
+
+Ahora un solo fold recorre el stream completo de cada actor en orden y acredita cada hueco capado a
+UNA card: la del evento que lo **cierra**, porque el trabajo dentro del hueco es el que produjo ese
+evento. Los minutos de una tanda **particionan** su span en vez de superponerlo, asi que la suma es
+chequeable contra el encabezado. Los tres lectores usan el mismo fold — el perfil, el tablero y el
+drawer de la card.
+
+Consecuencia correcta: una card tocada una vez ya puede acumular tiempo (el hueco que entra a su unico
+evento), y solo un stream sin hueco a ninguno de los dos lados acumula cero.
+
+**El periodo se elige:** 14 dias · este mes · el mes pasado · todo el tiempo. Un lookback no puede
+expresar un rango cerrado, asi que la lectura toma `since` y `until`, y el rango lo calcula el CLIENTE
+— un mes empieza el 1 a las 00:00 donde esta quien mira, y ningun reloj del server sabe eso. El
+roll-up se plega sobre TODO el rango y solo el timeline queda capado: un total corto porque el evento
+601 no entro es un numero equivocado, no uno acotado.
+
+Y una escala de color de tres pasos sobre las duraciones, derivada del valor. Tres pasos y no un
+gradiente: el numero es un piso, y una rampa suave sugeriria una precision que no tiene.
+
 ## 0.5.8 — un `plan` de 24 cards no es 24 cards trabajadas a la vez
 
 Encontrado corriendo 0.5.7 contra un tablero real: el primer grupo decia **62 cards en una tanda**, y
