@@ -7,10 +7,9 @@ answer the questions it asks about one candidate. Both are pure reads.
 
 from __future__ import annotations
 
-from .._errors import BadRequest
 from .._types import Status
 from ..contracts import Task
-from ..engine.identity import parse
+from ..engine.identity import assigned_to
 from ..engine.routereview import routed_to
 from ..storage import Store
 from ._facts import entered_review_by
@@ -29,10 +28,16 @@ def claimable(task: Task, who: str) -> bool:
 
     Pool calls never see review cards (`ready_tasks` is ready only), so nothing wanders into
     one by asking for "anything": a verification is always deliberate, by id.
+
+    "Assigned to this caller" is `assigned_to`, which folds an agent onto its developer: a card
+    dispatched to `dev:ana` is claimable by `agent:ana/w1` and by no other developer's worker.
+    Comparing actor ids refused the delegation path itself — the session assigns to a person,
+    that person's session spawns a worker, and the worker was refused its own card.
     """
     if task["status"] == "review":
         return _review_claimable(task, who)
-    return task["status"] == "ready" and task["assignee"] in ("", who)
+    return task["status"] == "ready" and (not task["assignee"]
+                                          or assigned_to(task["assignee"], who))
 
 
 def _review_claimable(task: Task, who: str) -> bool:
@@ -52,18 +57,11 @@ def _review_claimable(task: Task, who: str) -> bool:
     from ..engine.routereview import route_is_fresh
 
     owner = task["assignee"]
-    if owner in ("", who):
+    if not owner or assigned_to(owner, who):
         return True
     if not owner.startswith("dev:"):
         return False                      # an agent's bounced card is that agent's
-    return not route_is_fresh(task) or _same_dev(owner, who)
-
-
-def _same_dev(owner: str, who: str) -> bool:
-    try:
-        return parse(owner)["dev"] == parse(who)["dev"]
-    except BadRequest:
-        return False
+    return not route_is_fresh(task)
 
 
 def lands_on(store: Store, task: Task, who: str) -> Status:

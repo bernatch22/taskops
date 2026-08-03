@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .._clock import now
-from ..contracts import Claim, NextResult, Task
+from ..contracts import Claim, NextResult
 from ..engine import branch_for, counts, ready_tasks, record, unblock
 from ..engine import claim as take_lease
 from ..storage import Store
@@ -116,20 +116,6 @@ def _fence(store: Store, who: str, wanted: str) -> str:
     if card["assignee"] == who:
         return ""
     return fenced(agent_named(store.root, who), card["labels"])
-
-
-def _claimable(task: Task, who: str) -> bool:
-    """Ready — or in review — and either unassigned or assigned to this caller.
-
-    `review` is claimable BY ID because of what claiming it means: coming back to fix. The
-    verifier posted findings, the worker returns, and the return needs a lease (`review ->
-    in_progress` demands one). Before this, a bounced-back card was unreachable: review had
-    released the lease, and the claim refused review outright — so the one agent that was
-    supposed to pick the findings up was told the card was "held by someone else" about a card
-    nobody held. Pool calls never see review cards (`ready_tasks` is ready only), so nothing
-    can wander into one by asking for "anything".
-    """
-    return task["status"] in ("ready", "review") and task["assignee"] in ("", who)
 
 
 def _result(store: Store, claim: Claim | None, reason: str) -> NextResult:

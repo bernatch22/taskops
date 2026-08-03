@@ -32,7 +32,7 @@ from pathlib import Path
 from .._errors import BadRequest
 from ..contracts import Actor
 
-__all__ = ["parse", "resolve", "a_person", "ENV_ACTOR", "ENV_SESSION"]
+__all__ = ["parse", "resolve", "a_person", "assigned_to", "ENV_ACTOR", "ENV_SESSION"]
 
 ENV_ACTOR = "TASKOPS_ACTOR"
 ENV_SESSION = "TASKOPS_SESSION"
@@ -57,6 +57,34 @@ def parse(actor_id: str) -> Actor:
             return Actor(id=f"agent:{dev}/{name}", kind="agent", dev=dev)
     raise BadRequest(f"`{actor_id}` is not an actor id — use `dev:<name>` or "
                      f"`agent:<dev>/<name>`")
+
+
+def assigned_to(assignee: str, actor: str) -> bool:
+    """Is a card assigned to `assignee` THIS caller's to take? An empty assignee is nobody's.
+
+    The fold is what makes delegation work at all. A card assigned to `dev:ana` is work given to a
+    PERSON, and a person works through the agents they spawn — so `agent:ana/w1` arriving at it is
+    the assignee with one more hand, the reading `reviewer: peer` already makes. Actor-id equality
+    refused exactly the normal path: assign to a dev, that dev's session spawns a worker, and the
+    worker is locked out of its own card and wanders off into the pool.
+
+    One way only. An `agent:` assignee names a specific worker — a dispatch made for it, or a card
+    bounced back to it — and handing that to anybody else, its own developer included, takes work
+    in its most fragile state. And never across people: `agent:juan/w1` is still refused a
+    `dev:ana` card, the only thing keeping "assigned" from a label anybody may ignore.
+    """
+    if not assignee or not actor:
+        return False
+    return assignee == actor or (assignee.startswith("dev:") and _same_dev(assignee, actor))
+
+
+def _same_dev(one: str, other: str) -> bool:
+    """One person behind both ids. Never raises: an id typed by hand on another machine must
+    degrade to "not yours", never turn a claim into a crash."""
+    try:
+        return parse(one)["dev"] == parse(other)["dev"]
+    except BadRequest:
+        return False
 
 
 def resolve(root: Path, asked: str = "") -> Actor:

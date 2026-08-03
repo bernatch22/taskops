@@ -7,10 +7,9 @@ its last dependency closes. `unblock` is that one writer — nothing else in the
 package may set `ready` — which is what keeps the column from drifting away from the
 dependency graph.
 
-**Score.** Priority first, then the anti-collision term: a task whose `files`
-overlap what a LIVE agent is editing sorts last. Two agents in one file is a merge
-conflict that both of them will spend context on, and the cheapest place to prevent
-it is here, before either has started.
+**Score.** Priority first, then the anti-collision term, and who a card is assigned to —
+all of it in `_pool`, which this module re-exports so the choosing and the claiming
+still read as one story from the outside.
 
 **Claim.** One INSERT on a primary key, under a transaction that took the write lock
 before it read. See `_leases` for why that ordering is the whole story.
@@ -23,17 +22,10 @@ from .._ids import slugify
 from .._types import OPEN_STATUSES, WORKING_STATUSES, Status
 from ..contracts import Lease, Task
 from ..storage import Store
+from ._pool import ready_tasks, score
 from .log import record
 
 __all__ = ["unblock", "ready_tasks", "score", "claim", "branch_for", "sweep_dead"]
-
-_COLLISION_PENALTY = 100
-"""Bigger than any priority band, so a file collision always outranks urgency.
-
-Deliberate: an urgent task handed to a second agent in the same file is not urgent
-work, it is two agents about to undo each other. The penalty defers it, never
-hides it — nothing else is pickable and it comes back to the top.
-"""
 
 
 def sweep_dead(store: Store, *, at: float | None = None) -> list[str]:
@@ -77,41 +69,6 @@ def unblock(store: Store, *, at: float | None = None) -> list[str]:
             if target == "ready":
                 changed.append(task["id"])
     return changed
-
-
-def ready_tasks(store: Store, *, labels: tuple[str, ...] = (),
-                actor: str = "") -> list[Task]:
-    """Pickable work for this actor, best first. Call `unblock` before this, or it lies.
-
-    Assignment FILTERS, it does not merely sort: a card assigned to somebody else is not offered at
-    all, and the caller's own assigned cards come before the open pool. Without the filter,
-    "assigned" would be a label any agent could ignore, and dispatch could not promise a worker that
-    the card it was launched for is still there when it asks.
-    """
-    pool = [t for t in store.tasks.with_status(("ready",))
-            if not t["assignee"] or t["assignee"] == actor]
-    if labels:
-        wanted = set(labels)
-        pool = [t for t in pool if wanted & set(t["labels"])]
-    busy = _busy_files(store)
-    return sorted(pool, key=lambda t: (0 if t["assignee"] == actor and actor else 1,
-                                      score(t, busy), t["created"]))
-
-
-def _busy_files(store: Store) -> set[str]:
-    """Files that a live lease is plausibly editing right now."""
-    out: set[str] = set()
-    for lease in store.leases.live(now()):
-        task = store.tasks.get(lease["task"])
-        if task is not None:
-            out |= set(task["files"])
-    return out
-
-
-def score(task: Task, busy_files: set[str]) -> int:
-    """Lower is better. Priority, plus a penalty for touching occupied files."""
-    collides = bool(busy_files & set(task["files"]))
-    return task["priority"] + (_COLLISION_PENALTY if collides else 0)
 
 
 def branch_for(task: Task) -> str:

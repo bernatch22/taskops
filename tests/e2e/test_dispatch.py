@@ -114,6 +114,67 @@ def test_the_assignee_can_still_claim_its_own_card(project: Path) -> None:
     assert mine["claim"]["view"]["task"]["id"] == target
 
 
+def test_a_card_assigned_to_a_developer_is_claimable_by_that_developers_worker(
+        project: Path) -> None:
+    """The delegation path, and it was refused end to end: assign a card to a PERSON, that
+    person's session spawns a worker, and the worker was told the card was somebody else's.
+
+    All four rows of the rule are here because only the pair says anything. `agent:ana/w1` is
+    `dev:ana` with one more hand, so it must be let in; `dev:juan` and its workers must not be,
+    or "assigned" stops meaning anything at all.
+    """
+    target = first_ready(project)
+    assign(project, target, "dev:ana")
+
+    for stranger in ("agent:juan/w1", "dev:juan"):
+        refused = next_task(project, actor=stranger, task=target)
+        assert refused["claim"] is None, f"{stranger} took a card assigned to dev:ana"
+        assert "dev:ana" in refused["reason"]
+
+    mine = next_task(project, actor="agent:ana/w1", task=target)
+    assert mine["claim"] is not None, "a worker was refused the card dispatched to its dev"
+    assert mine["claim"]["view"]["task"]["id"] == target
+
+
+def test_the_developer_the_card_names_can_still_claim_it_directly(project: Path) -> None:
+    """The other hand of the same person: folding the agent in must not push the dev out."""
+    target = first_ready(project)
+    assign(project, target, "dev:ana")
+
+    mine = next_task(project, actor="dev:ana", task=target)
+    assert mine["claim"] is not None
+    assert mine["claim"]["view"]["task"]["id"] == target
+
+
+def test_a_card_dispatched_to_a_worker_stays_that_workers_own(project: Path) -> None:
+    """The fold goes ONE way. An `agent:` assignee is a specific worker's card — its developer
+    reaching in would be taking work mid-flight, and the sibling worker case is theft outright.
+    """
+    target = first_ready(project)
+    assign(project, target, "agent:ana/w1")
+
+    for other in ("dev:ana", "agent:ana/w2"):
+        refused = next_task(project, actor=other, task=target)
+        assert refused["claim"] is None, f"{other} reached into agent:ana/w1's card"
+
+
+def test_the_pool_offers_a_developers_card_to_that_developers_worker(project: Path) -> None:
+    """The POOL half of the same bug, and it had it too: a worker asking for "anything" was not
+    offered the card its own developer had been handed, while a stranger's worker was correctly
+    not offered it either. Filtering by actor id hid a person's work from their own hands.
+    """
+    target = first_ready(project)
+    assign(project, target, "dev:ana")
+
+    stranger = next_task(project, actor="agent:juan/w1")
+    assert stranger["claim"] is not None
+    assert stranger["claim"]["view"]["task"]["id"] != target, "an intruder was handed it"
+
+    mine = next_task(project, actor="agent:ana/w1")
+    assert mine["claim"] is not None
+    assert mine["claim"]["view"]["task"]["id"] == target, "own work sorts first, and is offered"
+
+
 def test_an_assigned_card_is_not_dispatched_twice(project: Path) -> None:
     """Re-dispatching would start a second worker on a card the first one is already doing."""
     target = first_ready(project)
