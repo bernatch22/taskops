@@ -65,11 +65,21 @@ def owed(start: Path | str, session: str, agent_type: str = "") -> list[dict[str
         return rows
 
 
-def should_block(start: Path | str, session: str, task_id: str) -> bool:
-    """True while this card has held this session at the door fewer than BLOCK_LIMIT times.
+def should_block(start: Path | str, session: str, task_id: str, *,
+                 limit: int = BLOCK_LIMIT) -> bool:
+    """True while this card has held this session at the door fewer than `limit` times.
 
     The count SURVIVES in a file rather than in memory because each hook invocation is a fresh
     process — an in-memory counter would reset on every check and block forever.
+
+    `limit` is a parameter because the two nets ask for different things. A card still IN this
+    session's hands is something the session can finish RIGHT NOW, so a second copy of the message
+    is worth the risk of nagging. A review is DELEGATED: the session spawns a sub-agent and the
+    proof arrives in another process, seconds later — so a second block lands after the session has
+    already acted and before anything could show it. Watched live: the session spawned the verifier,
+    was blocked again, answered "ya está lanzado, no voy a spawnear otro", and was blocked a third
+    time. Blocking on something the reader cannot make happen faster is how a net becomes an
+    argument.
     """
     with project(start) as store:
         path = store.root / ".taskops" / COUNTS_FILE
@@ -77,7 +87,7 @@ def should_block(start: Path | str, session: str, task_id: str) -> bool:
         key = f"{session}:{task_id}"
         counts[key] = counts.get(key, 0) + 1
         path.write_text(json.dumps(counts), encoding="utf-8")
-        return counts[key] <= BLOCK_LIMIT
+        return counts[key] <= limit
 
 
 def _read(path: Path) -> dict[str, int]:

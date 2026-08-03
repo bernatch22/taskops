@@ -80,4 +80,13 @@ def verify_text(rows: list[dict[str, Any]], *, closing: bool) -> str:
     lines.append("Spawn it — do not read the diff yourself. You already have the worker's "
                  "summary in this context, so you are the one reader who cannot judge it "
                  "cold; the sub-agent starts empty and that is the whole of its value.")
+    if closing:
+        # The way OUT, and it is not a second door in the sense that cost a run — those were two
+        # ways to do the same job. This is the exit for a session that has ALREADY done it: a
+        # verifier claims the card in its own process, seconds later, so this net cannot see the
+        # spawn that just happened. Without this line the only moves left were a duplicate
+        # sub-agent or an argument with the hook, and a live session picked the argument.
+        lines.append("Already spawned one for a card on this list? Then you are done — end the "
+                     "turn. This fires ONCE per card, and the verifier closes it from its own "
+                     "process; nothing here will see that until it does.")
     return "\n".join(lines)

@@ -550,7 +550,7 @@ lacks the tool.
 | `SessionStart` | **and the person at the keyboard** | One coloured sentence in plain English — the only thing taskops ever prints to a terminal. See below. |
 | `PreToolUse` | the agent about to act | Sees a `git commit` before it runs and refuses one no lease covers — with a sentence that says how to get a card, not just "no". |
 | `PostToolUse` | the agent that just acted | Delivers the inbox. A session cannot be pushed to mid-turn, so a message addressed to an agent arrives on its **very next tool call** — seconds, for a working agent. |
-| `Stop` | the main conversation | Refuses to end a turn on a review this session opened and nobody picked up, and on cards it left unfinished. Twice, then it lets you go: an agent that has read the message twice will not act on a third copy, and a trapped session is worse than a stale board. |
+| `Stop` | the main conversation | Refuses to end a turn on a review this session opened and nobody picked up, and on cards it left unfinished. A REVIEW blocks once per card — verifying is delegated, so a second block necessarily lands before the sub-agent it asked for could prove anything, and a live session spent two turns arguing with it. An unfinished card blocks twice, because that one the session can finish right now. Both then let you go: a trapped session is worse than a stale board. |
 | `SubagentStop` | the sub-agent that stopped | Only what that reader can act on: its own unfinished card. Nothing about spawning, because it cannot. |
 
 Two of those are the *only* reason the loop closes without anybody watching it. `SessionStart`

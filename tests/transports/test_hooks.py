@@ -410,14 +410,56 @@ def test_stop_never_blocks_over_work_nobody_started(project: Path, monkeypatch: 
     assert _events.stop(event(project)) == {}
 
 
-def test_a_session_is_let_go_after_being_told_twice(project: Path, monkeypatch: Any) -> None:
-    """The same limit `unfinished` uses, for the same reason: an agent that has read the
-    message twice will not act on a third copy."""
+def test_a_review_blocks_ONCE_and_then_lets_the_session_go(project: Path,
+                                                           monkeypatch: Any) -> None:
+    """Once, and it used to be twice — the count was the implementation of "do not trap a session"
+    and it was what trapped one.
+
+    Watched live: the session was blocked, spawned a `taskops-verifier`, ended its turn, was blocked
+    AGAIN by the same line, answered "ya está lanzado, no voy a spawnear otro", and got a third
+    copy. Nothing was broken except the number: a sub-agent claims the card in its own process a
+    moment later, so the second block necessarily lands before anything can prove the first one
+    worked. Blocking on something the reader cannot make happen faster is how a net becomes an
+    argument.
+
+    `unfinished` keeps TWO and that asymmetry is the point — a card still in this session's hands is
+    something it can finish right now, so a second copy is worth the nag. A review is delegated.
+    """
     _handover(project, monkeypatch)
 
     assert _events.stop(event(project))["decision"] == "block"
+    assert _events.stop(event(project)) == {}, "told once, then let go"
+
+
+def test_the_block_names_the_way_OUT_for_a_session_that_already_spawned_one(
+        project: Path, monkeypatch: Any) -> None:
+    """A blocked session with no exit has two moves: a duplicate sub-agent, or an argument. It
+    picked the argument, twice, on a real board."""
+    _handover(project, monkeypatch)
+
+    said = _events.stop(event(project))["reason"]
+    assert "Already spawned one" in said and "end the turn" in said
+    assert "ONCE per card" in said, "and it has to say the net will not repeat"
+
+
+def test_a_SECOND_review_still_gets_its_own_message(project: Path, monkeypatch: Any) -> None:
+    """What the shared counter broke while nobody was looking. It counted under one key for the
+    whole session, so the first card's two blocks used up the budget and a card handed over later
+    was never mentioned — the exact silence this net exists to prevent, reached by the mechanism
+    meant to prevent it."""
+    from taskops.usecases import next_task, plan, update
+
+    _handover(project, monkeypatch)
     assert _events.stop(event(project))["decision"] == "block"
-    assert _events.stop(event(project)) == {}, "told twice, then let go"
+    assert _events.stop(event(project)) == {}
+
+    second = plan(project, [{"title": "otra card", "spec": "x"}], actor="dev:berna")["created"][0]
+    next_task(project, task=second["id"], actor="agent:berna/w2")
+    update(project, second["id"], status="review", comment="over to you", actor="agent:berna/w2")
+
+    reason = _events.stop(event(project))
+    assert reason.get("decision") == "block", "a new review is a new thing to say"
+    assert second["id"] in reason["reason"]
 
 
 

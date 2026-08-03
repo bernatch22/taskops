@@ -64,7 +64,7 @@ ssh gpu 'lxc exec bernardocastro -- sudo -u berna bash -lc \
 | el rol se entrega solo | la sesión despacha workers en vez de laburar ella |
 | la colisión se refuta | el segundo dev recibe `assigned to agent:…, which is not running` |
 | el verifier se pide solo | `SubagentStop` nombra la card en el momento del handover |
-| el turno no muere sucio | `Stop` bloquea dos veces sobre reviews propias y después suelta |
+| el turno no muere sucio | `Stop` bloquea UNA vez por review propia (una card nueva avisa de nuevo) y dos por card sin terminar |
 | una review, un verifier | la card claimeada desaparece del `attention` de los demás |
 | nadie firma lo suyo | `reviewer: peer` refuta a `dev:X` sobre lo que hizo `agent:X/wN` |
 | el commit es del agente | el trailer `Task:` y el bind salen a nombre del lease-holder |

@@ -19,7 +19,7 @@ from ...render import render_greeting, render_inbox, render_opening
 from ...usecases import check_command, checkout, inbox, track
 from ...usecases.opening import opening
 from ._args import cwd, session_of
-from ._door import unfinished_verdict
+from ._door import reviews_pending, unfinished_verdict
 
 __all__ = ["pre_tool_use", "post_tool_use", "session_start", "stop"]
 
@@ -101,42 +101,11 @@ def stop(payload: dict[str, Any]) -> dict[str, Any]:
     An instruction is not a mechanism — that lesson is carved into this codebase four times
     over — and "remember to close your card" was an instruction. This is the mechanism.
     """
-    verdict = unfinished_verdict(payload) or _reviews_pending(payload)
+    verdict = unfinished_verdict(payload) or reviews_pending(payload)
     if verdict:
         return verdict
     checkout(cwd(payload), summary="Session ended.", session=session_of(payload))
     return {}
-
-
-def _reviews_pending(payload: dict[str, Any]) -> dict[str, Any]:
-    """Hold the turn while cards this session finished sit unverified.
-
-    ONLY reviews. Blocking on everything `attention` reports would trap a person who asked a
-    question into doing a board's worth of work before they could get an answer — but a card
-    in `review` is work this session already started, and letting the turn end on it is the
-    exact shape of the two cards that died.
-
-    The same BLOCK_LIMIT that governs `unfinished`, for the same reason: an agent that has read
-    the message twice will not act on a third copy, and a trapped session is a worse failure
-    than a stale board.
-    """
-    try:
-        from ...usecases._routing import whoami
-        from ...usecases.pending import unverified, verify_text
-        from ...usecases.unfinished import should_block
-
-        where = cwd(payload)
-        # WHOSE reviews. A session is blocked until it acts on this list, so a card in it that
-        # belongs to another dev is not a nudge, it is an order to do refused work.
-        rows = unverified(where, actor=whoami(where, ""))
-        if not rows or not should_block(where, session_of(payload), "unverified-reviews"):
-            return {}
-        return {"decision": "block", "reason": verify_text(rows, closing=True)}
-    except Exception:  # noqa: BLE001 — never trap a session at the door over our own bug
-        return {}
-
-
-
 
 
 def _spoken(reply: dict[str, Any], line: str) -> dict[str, Any]:

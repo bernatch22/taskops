@@ -26,6 +26,25 @@ una card, un nivel arriba: ningún conteo de cards cerradas significa "lo shippe
 - Cancelar **conserva el motivo**. No hay delete: "paramos" no es "shippeamos", y el motivo es lo
   que alguien quiere tres semanas después cuando la misma idea vuelve.
 
+### El `Stop` hook exigía un verifier que ya estaba corriendo
+
+Visto en vivo: la sesión es bloqueada, spawnea un `taskops-verifier`, cierra el turno, **la vuelven
+a bloquear con la misma línea**, contesta *"ya está lanzado, no voy a spawnear otro"*, y recibe una
+tercera copia. Nada estaba roto salvo el número: un sub-agente reclama la card en su propio proceso
+un momento después, así que el segundo bloqueo cae necesariamente antes de que algo pueda probar que
+el primero funcionó. Bloquear sobre algo que el lector no puede hacer que pase más rápido es cómo una
+red se convierte en una discusión.
+
+Dos mitades:
+
+- **Una vez por card**, y contaba en un solo balde para toda la sesión — así que la primera card se
+  gastaba el presupuesto de dos y una card entregada más tarde **no se mencionaba nunca**: el
+  silencio exacto que esta red existe para evitar, alcanzado por el mecanismo que lo evitaba.
+  `unfinished` conserva dos y esa asimetría es el punto: una card todavía en tus manos la podés
+  terminar AHORA.
+- **El mensaje ahora nombra la salida.** Una sesión bloqueada sin salida tiene dos movidas: un
+  sub-agente duplicado, o discutir. Eligió discutir.
+
 ### Un milestone era una sola frase, y por eso el UI no se entendía
 
 Un capítulo tenía `text` y nada más, así que la misma oración hacía de nombre, de objetivo y de

@@ -107,7 +107,9 @@ this loop is a mechanism that fires without anyone's memory:
 
 ```
  forgotten claim      → git pre-commit hook REFUSES the commit on main / off-branch
- forgotten close      → Stop + SubagentStop hooks: "you hold tk-b" blocks the turn end (≤2×)
+ forgotten close      → Stop + SubagentStop: "you hold tk-b" blocks the turn end (≤2×)
+ forgotten review     → Stop: "spawn a verifier for tk-b" blocks it ONCE per card — verifying is
+                        delegated, so a second block would land before the sub-agent could act
  self-certification   → engine: agent + acceptance criteria → only review, never done
  own review           → engine: you opened it, you cannot close it
  dead worker          → lease TTL 900 s, `taskops recover` for the impatient

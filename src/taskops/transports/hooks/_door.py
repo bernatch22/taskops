@@ -1,9 +1,14 @@
-"""The net at the door: a turn may not END with a half-done card.
+"""The nets at the door: a turn may not END with a half-done card, or with a review nobody took.
 
 Split from `events.py` when the code budget refused it, and the split reads true: `events` is
-what each hook event MEANS, and this is one judgement two of them share. Stop fires for the
+what each hook event MEANS, and these are the judgements it applies. Stop fires for the
 main conversation; SubagentStop for the workers — which is where the forgetting actually
 happens, because a worker is a sub-agent and the main Stop never fires for it.
+
+The two nets are NOT symmetric, and the asymmetry is the whole of what the second one learned:
+an unfinished card is something the session can finish right now, so it is worth blocking twice.
+A review is DELEGATED, so a second block lands before the sub-agent it asked for could prove
+anything — see `reviews_pending`.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ from typing import Any
 
 from ._args import cwd, session_of
 
-__all__ = ["unfinished_verdict", "subagent_stop"]
+__all__ = ["unfinished_verdict", "reviews_pending", "subagent_stop"]
 
 
 def subagent_stop(payload: dict[str, Any]) -> dict[str, Any]:
@@ -71,3 +76,40 @@ def _owed_text(rows: list[dict[str, Any]]) -> str:
         lines.append(f"    stuck?     taskops_update task={row['task']} actor={row['actor']} "
                      f"status=ready comment=\"<where you got to and why you stopped>\"")
     return "\n".join(lines)
+
+
+def reviews_pending(payload: dict[str, Any]) -> dict[str, Any]:
+    """Hold the turn while cards this session finished sit unverified.
+
+    ONLY reviews. Blocking on everything `attention` reports would trap a person who asked a
+    question into doing a board's worth of work before they could get an answer — but a card
+    in `review` is work this session already started, and letting the turn end on it is the
+    exact shape of the two cards that died.
+
+    ONCE PER CARD, and both halves of that are the fix for what a live session did with the old
+    shape. It counted under ONE key for the whole session, so the second card got no message at
+    all while the first got two — and the second of those arrived after the session had spawned the
+    verifier, because a sub-agent claims the card in its own process a moment later. The session
+    was blocked, said "ya está lanzado", was blocked again, and spent two turns arguing with a net
+    that could not see what it had done. See `should_block`'s `limit`.
+    """
+    try:
+        from ...usecases._routing import whoami
+        from ...usecases.pending import unverified, verify_text
+        from ...usecases.unfinished import should_block
+
+        where = cwd(payload)
+        # WHOSE reviews. A session is blocked until it acts on this list, so a card in it that
+        # belongs to another dev is not a nudge, it is an order to do refused work.
+        rows = unverified(where, actor=whoami(where, ""))
+        session = session_of(payload)
+        # Per CARD, and `limit=1`: a review is delegated, so a second block lands before anything
+        # could prove the first one worked. A card this session has not been told about yet still
+        # gets its message, which one shared bucket did not.
+        fresh = [row for row in rows
+                 if should_block(where, session, f"verify:{row['task']['id']}", limit=1)]
+        if not fresh:
+            return {}
+        return {"decision": "block", "reason": verify_text(fresh, closing=True)}
+    except Exception:  # noqa: BLE001 — never trap a session at the door over our own bug
+        return {}
