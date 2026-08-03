@@ -166,8 +166,6 @@ function Profile({ dev, person, context, onOpen, onClose }: {
           * belongs in that card's thread, which is a click away on the card itself. */}
         <Standing title="Technical decisions" note="they hold these on every card, not one"
                   facts={own.decisions} />
-        <Standing title="Invariants" note="never broken, whatever the card says"
-                  facts={own.invariants} />
 
         <section className="ctx-group">
           <h4>Cards <span className="dim">what they touched, last {WINDOW}</span></h4>
@@ -253,12 +251,10 @@ function Cards({ events, titles, holding, onOpen }: {
 function ownFacts(context: ContextView | null, dev: string): {
   objective: Fact | null;
   decisions: Fact[];
-  invariants: Fact[];
 } {
   const his = (facts: Fact[]): Fact[] => facts.filter((f) => devOf(f.owner) === dev);
   return {
     objective: (context?.objectives ?? []).find((f) => devOf(f.owner) === dev) ?? null,
     decisions: his(context?.decisions ?? []),
-    invariants: his(context?.invariants ?? []),
   };
 }

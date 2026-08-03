@@ -17,6 +17,7 @@ from pathlib import Path
 from ..contracts.opening import Opening
 from ._contextviews import show
 from .attention import attention
+from .policy import show as policy_show
 from .remote import read_remote
 from .report import standup
 from .session import brief
@@ -44,6 +45,7 @@ def opening(start: Path | str, *, session: str = "", actor: str = "") -> Opening
     return Opening(actor=held.actor, session=session, board=_where(start),
                    shared=read_remote(start) is not None,
                    context=show(start, actor=held.actor, mine=True),
+                   policies=[p for p in policy_show(start) if p["value"]],
                    waiting=attention(start, actor=held.actor)["waiting"], held=held.held,
                    messages=held.messages, team=mates,
                    # Everybody's, not this actor's: "what did the OTHERS do" is half the

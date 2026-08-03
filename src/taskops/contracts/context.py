@@ -20,13 +20,26 @@ from typing import Literal, TypedDict, get_args
 
 __all__ = ["Sort", "SORTS", "Fact", "ContextSlice", "CONTEXT_TASK", "CONTEXT_KIND"]
 
-Sort = Literal["objective", "invariant", "decision", "note"]
+Sort = Literal["objective", "decision", "note"]
 """objective — what we are chasing now; superseded, never deleted.
-invariant — what must never break; long-lived, and what EVERY worker gets.
 decision — what was decided and why (ADR-lite), so a settled question is not re-litigated.
 note — anything standing that is none of those: a habit, a warning, a thing worth remembering.
-Usually somebody's OWN, which is what it is for — the other three are statements about the
-project and this is the one that does not have to be."""
+Usually somebody's OWN, which is what it is for — the other two are statements about the
+project and this is the one that does not have to be.
+
+`invariant` was a fourth and is gone. It meant "never break this, and it reaches EVERY card" —
+and the second half was the only mechanical difference: an invariant skipped the subject filter
+that narrows a decision. But a decision with no `labels` and no `files` already reaches every
+card (`_contextslice._applies` returns True for an unscoped fact), so an invariant was a
+scopeless decision plus a word saying "this one is not up for debate". Four categories to
+choose between is a choice somebody makes wrong, and the tie-break they need is not there:
+what actually REFUSES is a policy, which the engine validates and obeys. Prose does not refuse.
+
+Facts already written as invariants are read as decisions — see `storage.context` — and their
+scope is dropped on the way, because "reaches everything" was their meaning and a remapped
+fact that suddenly stopped reaching everything would be a silent behaviour change on a live
+board. The cost of the whole removal is one lost guarantee: a rule that must reach every card is
+now an UNSCOPED decision, and scoping it silently narrows it. That was impossible before."""
 
 SORTS: tuple[Sort, ...] = get_args(Sort)
 """Derived, not retyped: a second hand-written list is how a sort becomes legal to the type
@@ -61,7 +74,7 @@ class Fact(TypedDict):
 
     labels: list[str]
     files: list[str]
-    """The scope. Empty means project-wide, which is why an invariant normally carries
+    """The scope. Empty means project-wide, which is why a standing rule carries
     neither: `context_for` must never drop one. A decision scoped to labels or to an edit
     surface reaches only the cards that share them."""
 
@@ -103,6 +116,5 @@ class ContextSlice(TypedDict):
     """Every objective in force, the project's and one per dev. For the OVERVIEW — `context
     show`, the board — never for a worker's slice: it is what answers "who is on what" when you
     are deciding who to hand a card to."""
-    invariants: list[Fact]
     decisions: list[Fact]
     notes: list[Fact]

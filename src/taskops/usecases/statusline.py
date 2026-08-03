@@ -24,6 +24,7 @@ from .._clock import now
 from ..contracts.bar import Bar, Holding
 from ..engine.attention import waiting_on
 from ..storage import Store
+from ._contextviews import show as context_show
 from ._project import caller, project
 from .remote import read_remote
 from .view import inbox_for
@@ -42,7 +43,9 @@ def statusline(start: Path | str, *, actor: str = "") -> Bar:
         counted: dict[str, int] = {}
         for item in waiting_on(store, actor=who):
             counted[item["move"]] = counted.get(item["move"], 0) + 1
-        return Bar(board=store.root.name, local=shared is None,
+        goal = context_show(store.root)["objective"]
+        return Bar(objective=goal["text"] if goal else "",
+                   board=store.root.name, local=shared is None,
                    holding=_holding(store, who), waiting=counted,
                    # `mark=False`: delivery is a fact about an AGENT having read something,
                    # and a bar counting a message must never be what asserts it was read.

@@ -109,15 +109,14 @@ RECOVER = (
 )
 
 CONTEXT = (
-    "READ the standing facts of this project: the current objective, the invariants that must "
-    "never break, and the decisions already settled — what a card cannot carry and a fresh "
-    "agent has no way to guess. Call it at the START of a session, before planning anything, "
-    "because a plan that does not serve the current objective is work nobody wanted. Pass a "
-    "task id and you get the SLICE that applies to that card — every invariant, the objective, "
-    "and only the decisions matching its labels or its files — which is what to hand a worker "
-    "instead of the whole book. Reading it costs one call and stops the two failures that cost "
-    "a day: re-litigating a settled question, and two agents working from different definitions "
-    "of the same rule."
+    "READ the standing facts of this project: the current objective, the decisions already "
+    "settled, and the standing notes — what a card cannot carry and a fresh agent has no way to "
+    "guess. Call it at the START of a session, before planning anything, because a plan that "
+    "does not serve the current objective is work nobody wanted. Pass a task id and you get the "
+    "SLICE that applies to that card — the objective, plus the decisions that are project-wide "
+    "or match its labels or its files — which is what to hand a worker instead of the whole "
+    "book. Reading it costs one call and stops the two failures that cost a day: re-litigating a "
+    "settled question, and two agents working from different definitions of the same rule."
 )
 
 CAPTURE = """Create ONE card for work that has no card yet — and claim it, so you can commit.

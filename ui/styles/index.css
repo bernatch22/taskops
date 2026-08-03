@@ -782,7 +782,11 @@ ol.md-list li { list-style: decimal; }
   font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink-dim);
 }
-.ctx-group h4 .dim {
+/* The caption beside a heading, in this modal and in the card drawer — where the same facts now
+   appear, under the drawer's own `h3`. Sentence case and lighter: a heading here is uppercase and
+   letter-spaced, and a whole clause inheriting that reads as shouting rather than as a caption. */
+.ctx-group h4 .dim,
+.panel h3 .dim {
   font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none;
 }
 

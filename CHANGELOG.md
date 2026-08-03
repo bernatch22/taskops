@@ -1,5 +1,94 @@
 # Changelog
 
+## Sin publicar
+
+### El worker de una persona no podía tomar la card de esa persona
+
+El camino normal de delegación estaba roto de punta a punta: asignás una card a `dev:ana`, la
+sesión de Ana spawnea un worker, y `agent:ana/w1` era **refusado su propia card** — tanto pidiéndola
+por id como pidiendo "cualquiera", porque el pool filtraba con la misma comparación. El worker se
+iba al pool y agarraba otra cosa, que es exactamente el síntoma que ya costó cuatro sesiones de
+debugging cuando la causa era otra (un sub-agente que no se nombraba).
+
+La comparación era por **actor id**, y un actor id no es una persona. Ahora se pliega a dev en
+`engine/identity.assigned_to`, el mismo pliegue que ya hacían `reviewer: peer` y la rebanada de
+contexto: un `agent:ana/w1` y un `dev:ana` son una persona con dos manos.
+
+Pliega en **un** sentido y nunca entre personas, y las dos mitades se pagan solas:
+
+- un assignee `agent:` sigue siendo de ESE worker — un dispatch hecho para él o una card devuelta
+  con findings — así que ni su propio dev se la lleva por delante;
+- `agent:juan/w1` sigue siendo rechazado en una card de `dev:ana`, que es lo único que impide que
+  "assigned" sea una etiqueta que cualquiera ignora.
+
+El ruteo de reviews no se toca: un assignee `dev:` en `review` es el revisor elegido y lo sigue
+distinguiendo `routed_to`, con su expiración intacta.
+
+`engine/_pool.py` sale de `scheduler.py`, que estaba en 70 de 70 líneas de código y 159 de 160 de
+archivo: no entraba ni el import. Eran dos cosas — la mecánica de un claim (unblock, sweep, lease,
+branch) y **qué se le ofrece a quién**, que no escribe nada. Y se borró la copia muerta de esa
+valla que había quedado en `usecases/claim.py`, con la regla vieja adentro.
+
+### Una persona no podía ver bajo qué contexto trabaja el agente de una card
+
+Lo que un worker recibe al claimear una card — la rebanada: el objetivo, lo que el proyecto tiene
+zanjado y que alcanza a ESA card — no tenía forma de leerse desde afuera. Había `context_for` como
+caso de uso y como verbo rpc, pero **ninguna ruta HTTP**, así que la UI solo podía mostrar el
+overview del proyecto entero, sin el angostamiento por sujeto.
+
+`GET /api/task/context?id=<tk-…>` la expone verbatim — la misma llamada que hacen la tool MCP y
+`SessionStart`, no una aproximación filtrada distinto — y el drawer de una card la muestra
+inmediatamente antes de la spec, por el mismo argumento que ordena ese módulo: el lector para
+temprano, y algo ya zanjado leído DESPUÉS del plan que debía moldear es una decisión
+re-litigada en el diff. Sin policies: una policy es un setting de proyecto que no se angosta por
+card, así que repetirla en cada una sería una copia por card de un hecho que no varía por card.
+
+`get_context` se mudó con ella a `transports/http/context.py`: `api.py` estaba en 68 de 70 líneas
+de código y no entraba otro handler. Que un módulo no entre es la invariante avisando que hace dos
+cosas — y ahí eran dos: los endpoints del board, y el contexto.
+
+### El verificador leía el contexto equivocado
+
+La rebanada de una card es el proyecto **más una persona**, y esa persona pasa a ser el **autor**
+y no el `assignee`. Son lo mismo mientras la card se trabaja; en `review` no: el ruteo escribe en
+`assignee` al **revisor** elegido, así que un verifier de otro dev recibía su propio objetivo y
+nunca el de quien hizo el trabajo — justo el que necesita para juzgarlo.
+
+El autor sale de los **eventos** (`entered_review_by`, la misma derivación que usan los guards de
+cierre) y no de una columna nueva: el log ya dice quién movió la card y hacia dónde, y una segunda
+copia de esa respuesta es una copia capaz de discrepar. `_contextslice` sigue siendo puro — recibe
+el autor ya resuelto, no el store — que es lo que mantiene la regla testeable desde literales.
+
+La rebanada sigue creciendo en **uno**: el contexto del verificador no se suma al del autor.
+
+### Dos especialistas, no cuatro — y un solo modelo fijado
+
+`taskops-lead` y `taskops-fixer` se van. Ninguno se ganaba un archivo:
+
+- El **lead** es el orquestador con otro nombre: mismas tools menos `Edit`, mismo trabajo, un
+  nivel abajo. Y la sesión que planificó es la que ya tiene el plan en la cabeza, así que
+  delegar el epic a otro agente era duplicar al que ya estaba ahí.
+- El **fixer** es un worker cuya card resulta ser un conflicto de merge: el mismo loop, los
+  mismos guards, y un prompt más angosto. Dos roles que en realidad son uno, descritos dos
+  veces, son dos lugares para que la misma regla se desincronice.
+
+El árbol pasa a ser de dos niveles y sigue sin poder ser más profundo, porque eso es una
+propiedad de las tool lists y no una regla que alguien tenga que recordar.
+
+Y el modelo: **el worker no fija ninguno, el verifier fija `opus`.** La asimetría es la política
+entera. Una card que es un typo en un docstring y una que es una máquina de estados tienen la
+misma forma para ese prompt y no se parecen en nada como trabajo — y el orquestador que la
+despacha es el único que leyó la spec, así que fijar un modelo ahí sería pagar de más en cada
+card chica o mandar uno barato a las difíciles. El verifier es lo contrario: su trabajo es ser
+más difícil de convencer que el worker, así que **no puede ser el más débil de los dos**, y sin
+modelo heredaría lo que la sesión estuviera corriendo — que en una sesión barata es un sello de
+goma con pasos extra.
+
+Los strings que apuntaban al fixer y **corren** — `attention` bajo `LAND`, el `why` de un
+landing que no mergeó — ahora dicen `taskops-worker`. Eran los que le decían a una persona qué
+spawnear, así que dejarlos nombrando un agente que no existe habría sido un `Agent type not
+found` en el peor momento.
+
 ## 0.4.0 — el board sin GitHub, la barra de abajo, y el tablero local que se levanta solo
 
 ### Perfil de dev, y el modal que estaba roto

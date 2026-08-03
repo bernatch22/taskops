@@ -100,7 +100,7 @@ export function useStudio(): Studio {
         setPulse((n) => n + 1);
         refresh();
         /* The two kinds that CAN change it. Anything else moves a card, and a card cannot
-         * restate an invariant. */
+         * restate a settled decision. */
         if (event.kind === "context" || event.kind === "policy") loadContext();
       },
       () => {

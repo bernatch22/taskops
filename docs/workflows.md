@@ -48,7 +48,7 @@ One command writes all of it, and merges rather than overwrites — a hook, an M
 | five git hooks | `.git/hooks` | never tracked, so a fresh clone has none: re-running `init` is the repair |
 | the MCP server | `.mcp.json` | with an ABSOLUTE interpreter — a bare `python3` is whatever the shell that typed it answers, which is not what a GUI-launched session resolves |
 | five Claude Code hooks + the status line | `.claude/settings.local.json` | machine-specific (it names paths on this disk), hence `.local` and gitignored |
-| four specialists | `.claude/agents/` | regenerated every init to match the installed version |
+| two specialists | `.claude/agents/` | `taskops-worker` and `taskops-verifier`, regenerated every init to match the installed version |
 
 **Do not register the MCP server by hand.** `init` did it, and a `claude mcp add … python3 …`
 typed into a shell records the wrong interpreter in a way that fails silently.
@@ -183,7 +183,8 @@ shared trunk had never seen the work.
 **A conflict is work, not a failure.** The card closes either way — refusing over a git problem
 would strand finished work behind something nobody is looking at — and the outcome is recorded on
 the board, so `taskops attention` lists it under `LAND`. From there it is a job for a
-`taskops-fixer` sub-agent, and `taskops land <id>` is the retry once the conflict is resolved.
+`taskops-worker` sub-agent — a conflict is a card whose work happens to be a merge — and
+`taskops land <id>` is the retry once it is resolved.
 
 A card that never carried code is silent here rather than reported as unlanded: filling a sweep
 with cards nobody can act on is how a sweep stops being read.
@@ -288,7 +289,7 @@ agent slightly worse.
 
 ```sh
 taskops context objective "que el importador ande de punta a punta" --horizon 2026-08-20
-taskops context invariant "cero dependencias fuera de la stdlib"
+taskops context decision "cero dependencias fuera de la stdlib"    # sin alcance: llega a toda card
 taskops context decision "sqlite y no postgres" --labels db
 taskops context objective "el parser de fechas" --mine        # yours, not the project's
 taskops context show          # or: log, retire <id-prefix>
@@ -299,7 +300,6 @@ Four sorts and two dimensions of scope:
 | sort | what it is |
 |---|---|
 | `objective` | what this is for. One per owner: the project's, plus one each |
-| `invariant` | never broken, whatever the card says |
 | `decision` | settled, so it is not re-litigated |
 | `note` | standing, and neither a goal nor a rule |
 
@@ -309,9 +309,16 @@ nobody else's. That second one protects SIZE: three developers each stating an o
 make every worker read four, so everybody reads the project's and their own and a slice grows by
 ONE whatever the size of the team.
 
-Invariants are **not** narrowed by subject, and that asymmetry is load-bearing: a decision that
-does not reach a card costs a re-litigation, an invariant that does not reach it costs the
-breakage it existed to prevent.
+**A rule that must reach every card is a decision with NO `labels` and NO `files`.** There used to
+be a fourth sort, `invariant`, that skipped the subject filter entirely — so a rule reached every
+card whatever its labels said. It is gone: four categories to choose between is a choice somebody
+makes wrong, and mechanically an invariant *was* an unscoped decision plus a word. The cost is one
+lost guarantee, and it is worth knowing: **scoping a rule now narrows it, silently.** Before, that
+was impossible. If you want something that refuses rather than persuades, that is a policy — prose
+does not refuse.
+
+Facts already written as invariants are read as decisions, with their scope dropped, so a board
+that used them keeps them reaching everything.
 
 An agent can read and write this through `taskops_context` — but an `agent:` actor is refused a
 write. Stating an objective is a person's call about the project, and the fence lives in the use

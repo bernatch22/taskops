@@ -27,7 +27,7 @@ delivered per task in slices — rather than as prose that accumulates.
 
 ```sh
 taskops context objective  "ship the refund flow before the audit"
-taskops context invariant  "never a Co-Authored-By trailer in a commit"
+taskops context decision   "never a Co-Authored-By trailer in a commit"   # sin alcance → toda card
 taskops context decision   "queues over cron: retries are the whole reason, see tk-9c1e02"
 taskops context note       "I run pytest -x, not the whole suite" --mine
 ```
@@ -35,7 +35,7 @@ taskops context note       "I run pytest -x, not the whole suite" --mine
 | | What it is | Lifetime |
 |---|---|---|
 | **objective** | what we are chasing now | one **per owner** — a new one supersedes the last with the same owner |
-| **invariant** | what must never break | long-lived; **every** agent gets **every** project invariant |
+| **decision** with no `--labels`/`--files` | what must never break | long-lived; **every** agent gets **every** unscoped decision |
 | **decision** | what was decided and *why* | permanent; exists to stop agents re-litigating settled questions |
 | **note** | standing, and neither of those | a habit, a warning. Usually somebody's own |
 
@@ -74,7 +74,7 @@ the project actually thought.
 Because everything else follows for free:
 
 - **They replicate.** Facts travel with `push`/`pull` and through git, like cards and reports. A
-  teammate's new invariant arrives with their work.
+  teammate's new decision arrives with their work.
 - **They have history.** `context log` shows the objective from three weeks ago, and when it changed.
 - **They converge deterministically.** The current objective is the latest by `(ts, id)`. The `id` is
   a content hash, identical on every machine, so **a same-timestamp tie elects the same winner
@@ -88,7 +88,7 @@ Because everything else follows for free:
 An agent does not receive the whole book. `taskops_context` returns, for a specific card:
 
 ```
-every invariant          ← never filtered. Your RULE 0 reaches every worker, always.
+unscoped decisions       ← never narrowed. Your RULE 0 reaches every worker, always.
 the current objective    ← so a worker knows what the work is FOR
 the decisions that match its labels or its edit surface
 ```
@@ -100,13 +100,19 @@ the frontend, so what it does receive stays inside the budget where it is actual
 Unscoped decisions reach everyone. Scoping is opt-in, because a decision nobody can see is worse
 than one that is slightly off-topic.
 
+**Whose owned facts ride along: the card's AUTHOR's.** For a card being worked that is its holder.
+For a card in `review` it is whoever handed it over — read from the log, because routing writes the
+chosen *reviewer* into `assignee`, so the field no longer names the author by then. A verifier from
+another developer therefore reads the objective the work was done for, and only that one: the slice
+still grows by one person, never by the reader as well.
+
 ```markdown
 # what a worker actually receives with its card
 
 ## objective
 ship the refund flow before the audit
 
-## invariants
+## decisions
 - never a Co-Authored-By trailer in a commit
 - migrations are forward-only
 
@@ -143,12 +149,12 @@ never written.
 The context layer is where a project's *judgement* lives, as opposed to its state:
 
 - **A new teammate's agents inherit it on the first `pull`.** They do not need to be told the
-  conventions; the invariants arrive with the board.
+  conventions; the standing decisions arrive with the board.
 - **Decisions stop being re-argued.** "Why not cron?" has an answer with a card id attached, and the
   agent reads it before proposing cron again.
 - **The objective is visible where work is picked.** `taskops status` shows it above the columns, so
   "is this card still what we should be doing" is answerable without asking anybody.
-- **Invariants are the team's non-negotiables, enforced by delivery rather than by hope.** They
+- **Unscoped decisions are the team's non-negotiables, enforced by delivery rather than by hope.** They
   cannot be scoped out of a slice, so no agent can end up not having been told.
 
 Write few of them, and write them as *rules*, not as background. The whole value is that what

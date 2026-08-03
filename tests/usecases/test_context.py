@@ -1,7 +1,7 @@
 """The context layer: what stays in force, what falls out, and what two clones agree on.
 
 Four properties earn their test here, and each one is a way the layer would fail SILENTLY:
-a supersede that ate its predecessor, a slice that dropped an invariant, a retire that
+a supersede that ate its predecessor, a slice that dropped a standing decision, a retire that
 deleted, and a tie two machines broke differently. None of them raise; they just make the
 next agent work from something slightly wrong, which is the whole failure mode the context
 layer exists to remove.
@@ -18,10 +18,12 @@ from taskops.contracts.context import CONTEXT_KIND, CONTEXT_TASK
 from taskops.engine.log import build
 from taskops.storage import Store
 from taskops.storage.context import facts
+from taskops.usecases import next_task, update
 from taskops.usecases._contextslice import for_task, in_force
 from taskops.usecases._contextviews import context_for, history, show
 from taskops.usecases.context import retire, state
 from taskops.usecases.plan import plan
+from taskops.usecases.session import brief
 
 NEVER = "never Co-Authored-By in a commit"
 
@@ -39,9 +41,9 @@ def test_a_new_objective_supersedes_without_erasing(root: Path) -> None:
 def test_a_retired_fact_leaves_show_and_stays_in_the_log(root: Path) -> None:
     """`retire` retires. An append-only log has no eraser, so the fact is still there,
     flagged — otherwise "why did we stop doing this" has no answer six months later."""
-    fact = state(root, "invariant", NEVER)
+    fact = state(root, "decision", NEVER)
     retire(root, fact["id"])
-    assert show(root)["invariants"] == []
+    assert show(root)["decisions"] == []
     logged = history(root)
     assert [f["id"] for f in logged] == [fact["id"]]
     assert logged[0]["retired"] is True
@@ -53,17 +55,20 @@ def test_retiring_something_that_was_never_stated_says_so(root: Path) -> None:
     assert "context log" in str(raised.value)
 
 
-def test_an_invariant_is_never_filtered_out_of_a_slice(root: Path) -> None:
-    """The load-bearing asymmetry: a decision that misses a card costs a re-litigation, an
-    invariant that misses one costs the breakage it existed to prevent. So scope narrows
-    decisions and never invariants — including one whose labels match nothing on the card."""
-    state(root, "invariant", NEVER)
-    state(root, "invariant", "SQL only in storage/", labels=["storage"])
-    state(root, "decision", "sqlite, not postgres", labels=["storage"])
+def test_an_UNSCOPED_decision_reaches_every_card_and_a_scoped_one_does_not(root: Path) -> None:
+    """The distinction that survived `invariant`. That sort skipped the subject filter entirely,
+    so a rule reached every card whatever its labels said; now the way to write one is to give it
+    NO scope, and `_applies` lets it through on that basis alone.
+
+    Both directions in one test on purpose. Asserting only that the unscoped one arrives would
+    pass with the filter deleted, which is the mutation that makes every scoped decision global —
+    and a worker reading three projects' worth of settled questions is the failure the slice
+    exists to prevent."""
+    state(root, "decision", NEVER)
+    state(root, "decision", "SQL only in storage/", labels=["storage"])
     task = plan(root, [{"title": "render the board", "labels": ["ui"], "files": ["src/ui.py"]}])
     view = context_for(root, task["created"][0]["id"])
-    assert {f["text"] for f in view["invariants"]} == {NEVER, "SQL only in storage/"}
-    assert view["decisions"] == []
+    assert [f["text"] for f in view["decisions"]] == [NEVER]
 
 
 def test_a_decision_reaches_a_card_by_label_or_by_edit_surface(root: Path) -> None:
@@ -109,19 +114,19 @@ def _winner_after(where: Path, events: list[dict]) -> str:  # type: ignore[type-
 
 def test_the_slice_is_pure_and_survives_a_card_with_no_scope() -> None:
     """`for_task` takes facts and a task, no store — which is why a card with neither labels
-    nor files can be tested from literals, and why it still gets every invariant."""
-    live = [_fact("i", "invariant"), _fact("d", "decision", labels=["ui"])]
+    nor files can be tested from literals, and why it still gets every unscoped fact."""
+    live = [_fact("i", "decision"), _fact("d", "decision", labels=["ui"])]
     # `assignee` too: the slice now asks who holds the card, to hand them THEIR objective. A
     # literal standing in for a Task has to carry the fields a Task has — a hand-made one that
     # did not is a scar this repository already has.
     bare = {"labels": [], "files": [], "assignee": ""}
     view = for_task(live, bare)                 # type: ignore[arg-type]
-    assert len(view["invariants"]) == 1 and view["decisions"] == []
+    assert [f["text"] for f in view["decisions"]] == ["i"]
 
 
 def test_a_fact_with_no_text_is_refused(root: Path) -> None:
     with pytest.raises(BadRequest):
-        state(root, "invariant", "   ")
+        state(root, "decision", "   ")
 
 
 def test_an_unknown_sort_is_refused_before_anything_is_written(root: Path) -> None:
@@ -188,13 +193,13 @@ def test_somebody_elses_fact_is_not_in_your_slice() -> None:
     for herself in juan's page is noise he cannot act on, and noise is what the slice exists
     to keep out."""
     live = [_owned("mine", "note", owner="dev:ana"),
-            _owned("also mine", "invariant", owner="dev:ana"),
-            _owned("everyone's", "invariant")]
+            _owned("also mine", "decision", owner="dev:ana"),
+            _owned("everyone's", "decision")]
 
     juan = for_task(live, _card("agent:juan/w1"))                # type: ignore[arg-type]
 
     assert juan["notes"] == []
-    assert [f["text"] for f in juan["invariants"]] == ["everyone's"]
+    assert [f["text"] for f in juan["decisions"]] == ["everyone's"]
 
 
 def test_the_overview_shows_everybody_because_that_is_what_it_is_for() -> None:
@@ -243,3 +248,126 @@ def test_an_owner_nothing_can_parse_is_refused(root: Path) -> None:
         with pytest.raises(BadRequest):
             state(root, "objective", "mine", owner=bad)
     assert state(root, "objective", "mine", owner="dev:ana")["owner"] == "dev:ana"
+
+
+# ---- the seam: the slice a VERIFIER reads on a card somebody else handed over
+
+
+def _routed_review(root: Path) -> tuple[str, str]:
+    """Ana's card, handed to review, routed by the server to the other connected dev.
+
+    Driven through the real verbs and not assembled by hand, because the whole bug lives in a
+    field being OVERWRITTEN halfway along: `assignee` says `agent:ana/w1` at the claim and
+    `dev:dos` after routing writes the reviewer into it. A literal Task would have to pick one,
+    and picking the first is picking the state where the bug does not exist.
+    """
+    brief(root, actor="dev:ana", session="s-ana")
+    brief(root, actor="dev:dos", session="s-dos")
+    card = plan(root, [{"title": "t", "spec": "s", "reviewer": "peer",
+                        "acceptance": ["WHEN handed over THE SYSTEM SHALL route it"]}],
+                actor="dev:ana")["created"][0]["id"]
+    next_task(root, task=card, actor="agent:ana/w1")
+    routed = update(root, card, status="review", comment="over to you",
+                    actor="agent:ana/w1")["routed_to"]
+    return str(card), str(routed)
+
+
+def test_a_review_slice_carries_the_AUTHORS_objective_and_not_the_REVIEWERS(root: Path) -> None:
+    """The case the owner filter was missing, and the only one where the reader is not the
+    author. A verifier judges work against what the person who wrote it was trying to do — so
+    the slice for a card in review is the project's facts plus ANA's, even though by then the
+    card is assigned to the dev the review was routed to.
+    """
+    state(root, "objective", "ship 0.4")
+    state(root, "objective", "the parser", owner="dev:ana")
+    state(root, "objective", "the importer", owner="dev:dos")
+
+    card, routed = _routed_review(root)
+    assert routed == "dev:dos", "the fixture must reach the state where `assignee` is a REVIEWER"
+    slice_ = context_for(root, card)
+
+    assert slice_["objective"]["text"] == "ship 0.4"
+    assert slice_["yours"]["text"] == "the parser", "the author's, not the reviewer's"
+    assert {f["text"] for f in slice_["objectives"]} == {"ship 0.4", "the parser"}
+
+
+def test_a_review_slice_still_grows_by_ONE_and_never_reaches_a_third_developer(
+        root: Path) -> None:
+    """The counterpart, and the property the whole owner filter exists for. Handing the author's
+    facts to a verifier must not turn the slice into everybody's: a dev with nothing to do with
+    this card is noise, and adding the reviewer's own on top would make it grow by two.
+    """
+    state(root, "decision", "never Co-Authored-By")
+    state(root, "note", "ana's own scratchpad", owner="dev:ana")
+    state(root, "note", "dos's own scratchpad", owner="dev:dos")
+    state(root, "note", "tres is elsewhere", owner="dev:tres")
+    state(root, "objective", "the migration", owner="dev:tres")
+
+    slice_ = context_for(root, _routed_review(root)[0])
+
+    assert [f["text"] for f in slice_["notes"]] == ["ana's own scratchpad"]
+    assert [f["text"] for f in slice_["decisions"]] == ["never Co-Authored-By"]
+    assert "the migration" not in {f["text"] for f in slice_["objectives"]}
+
+
+# ---- what a board written by an OLDER taskops still says
+
+
+def test_a_fact_written_as_an_invariant_is_read_as_a_decision(root: Path) -> None:
+    """`invariant` was a fourth sort and is gone. A board that used it is not a board that loses
+    its standing rules: the reader MAPS the retired sort instead of skipping it, which is the
+    difference between "a newer taskops invented a sort" (skip — correct) and "this taskops
+    retired one" (map — because skipping makes every rule on that board vanish from every slice,
+    with no error anywhere).
+
+    Written straight into the log, because that is the only way to produce the state: the use
+    case cannot state a sort the type no longer has.
+    """
+    from taskops.contracts.context import CONTEXT_KIND, CONTEXT_TASK
+    from taskops.engine import record
+    from taskops.usecases._project import project as opened
+
+    with opened(root) as store:
+        record(store, task=CONTEXT_TASK, actor="dev:ana", kind=CONTEXT_KIND,
+               body={"sort": "invariant", "text": "no dependencies outside the stdlib",
+                     "labels": ["core"], "files": [], "horizon": "", "owner": ""})
+
+    seen = show(root)
+    assert [f["text"] for f in seen["decisions"]] == ["no dependencies outside the stdlib"]
+    # And its SCOPE is dropped. An invariant reached every card whatever its labels said, so a
+    # remapped one that kept `core` would quietly stop reaching everything else — the meaning to
+    # preserve is "reaches everything", not the field.
+    assert seen["decisions"][0]["labels"] == []
+
+
+def test_a_remapped_invariant_still_reaches_a_card_it_shares_nothing_with(root: Path) -> None:
+    """THE point of dropping the scope, asserted where it shows: a card with unrelated labels."""
+    from taskops.contracts.context import CONTEXT_KIND, CONTEXT_TASK
+    from taskops.engine import record
+    from taskops.usecases._project import project as opened
+
+    with opened(root) as store:
+        record(store, task=CONTEXT_TASK, actor="dev:ana", kind=CONTEXT_KIND,
+               body={"sort": "invariant", "text": NEVER, "labels": ["storage"], "files": [],
+                     "horizon": "", "owner": ""})
+    task = plan(root, [{"title": "render the board", "labels": ["ui"]}])
+
+    view = context_for(root, task["created"][0]["id"])
+
+    assert [f["text"] for f in view["decisions"]] == [NEVER]
+
+
+def test_a_sort_a_NEWER_taskops_invented_is_still_skipped(root: Path) -> None:
+    """The other half of the same branch, and it must not have moved: an unknown sort is dropped,
+    because a teammate on a newer version writing one must not make this board unreadable."""
+    from taskops.contracts.context import CONTEXT_KIND, CONTEXT_TASK
+    from taskops.engine import record
+    from taskops.usecases._project import project as opened
+
+    with opened(root) as store:
+        record(store, task=CONTEXT_TASK, actor="dev:ana", kind=CONTEXT_KIND,
+               body={"sort": "from-the-future", "text": "x", "labels": [], "files": [],
+                     "horizon": "", "owner": ""})
+
+    seen = show(root)
+    assert seen["decisions"] == [] and seen["notes"] == [] and seen["objectives"] == []

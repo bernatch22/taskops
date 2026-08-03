@@ -152,7 +152,7 @@ def test_session_start_leads_with_the_role_then_the_project_then_the_board(
     itself; told the role first, it reads the same state as something to delegate."""
     from taskops.usecases import context_state
 
-    context_state(project, "invariant", "no runtime dependencies outside the stdlib")
+    context_state(project, "decision", "no runtime dependencies outside the stdlib")
     plan(project, [{"title": "Something ready", "spec": "x"}])
 
     said = _events.session_start(event(project))["hookSpecificOutput"]["additionalContext"]

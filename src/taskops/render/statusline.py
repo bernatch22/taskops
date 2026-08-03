@@ -1,10 +1,17 @@
 """The bottom bar — one row of a terminal, rebuilt hundreds of times per session.
 
-Claude Code renders a status line in **its own row above** the built-in footer badges; it does
-not replace them, so `⏵⏵ bypass permissions on` stays where it is whatever this prints. What a
-status line CAN do is own the row above it, and the vim mode is repeated there on purpose: the
-eye that goes looking for `-- INSERT --` should not have to travel to a different row to also
-learn what the board is doing.
+Claude Code renders a status line in **its own row above** the built-in footer badges; it does not
+replace them, so `⏵⏵ bypass permissions on` stays where it is whatever this prints.
+
+**It said `-- INSERT --` and that was a mistake.** The reasoning was that an eye going to the
+bottom of the screen should find the mode and the board in one place — but Claude Code already
+prints the vim mode in the very next row, so the bar spent its most valuable characters saying
+something already on screen one line below. Repeating what the harness says is worse than saying
+nothing: it costs the width AND it makes the row look like chrome.
+
+What went there instead is the **objective** — the one fact whose entire value is being in your eye
+while you decide something else, and the only thing here that no other surface keeps visible. The
+session greeting says it once and scrolls away; the board says it in a browser nobody has open.
 
 **Ordered by how fast it decays.** What you are holding changes when you claim; what is waiting
 changes when a teammate moves; the board name never changes. So the volatile end leads, and a
@@ -27,7 +34,7 @@ DIM, OFF = "\x1b[2m", "\x1b[0m"
 AMBER, LIME, BLUE, RED = "\x1b[33m", "\x1b[32m", "\x1b[34m", "\x1b[31m"
 
 GAP = f"{DIM}  ·  {OFF}"
-TITLE = 28
+TITLE, GOAL = 28, 40
 
 SAYS: dict[str, tuple[str, str]] = {
     "verify": ("to review", BLUE),
@@ -44,20 +51,19 @@ somebody who has not read the manual."""
 
 def render_statusline(bar: Bar, payload: dict[str, Any]) -> str:
     """The row. `payload` is the JSON Claude Code writes to a status line's stdin."""
-    parts = [_mode(payload), _holding(bar), _waiting(bar), _where(bar), _context(payload)]
+    parts = [_north(bar), _holding(bar), _waiting(bar), _where(bar), _context(payload)]
     return GAP.join(part for part in parts if part)
 
 
-def _mode(payload: dict[str, Any]) -> str:
-    """`-- INSERT --`, when the session is in vim mode and only then.
+def _north(bar: Bar) -> str:
+    """What this project is for, first on the row.
 
-    Claude Code sends `vim.mode` on every update whether or not vim bindings are on; the field
-    is absent for everybody else, so an editor mode never appears on the bar of somebody who
-    does not use one.
+    Cut hard and deliberately: this is the one segment that would grow with somebody's prose, and
+    a bar whose left end pushes what is WAITING off the right of the screen has inverted its own
+    priorities. Truncated it is still the reminder; absent it is nothing.
     """
-    vim: dict[str, Any] = payload.get("vim") or {}
-    mode = str(vim.get("mode") or "").upper()
-    return f"{DIM}-- {mode} --{OFF}" if mode else ""
+    said = _short(bar.get("objective") or "", GOAL)
+    return f"{DIM}◎{OFF} {said}" if said else ""
 
 
 def _holding(bar: Bar) -> str:
@@ -69,7 +75,7 @@ def _holding(bar: Bar) -> str:
     more = f"{DIM} +{len(held) - 1}{OFF}" if len(held) > 1 else ""
     # The id WHOLE: it is nine characters, and the point of putting it on screen is that
     # somebody can read it straight into `taskops tasks show`. A shortened one cannot be.
-    return f"{AMBER}◐ {first['id']}{OFF} {_short(first['title'])}{more}"
+    return f"{AMBER}◐ {first['id']}{OFF} {_short(first['title'], TITLE)}{more}"
 
 
 def _waiting(bar: Bar) -> str:
@@ -115,6 +121,6 @@ def _context(payload: dict[str, Any]) -> str:
     return f"{tone}{used}% ctx{OFF}"
 
 
-def _short(text: str) -> str:
+def _short(text: str, width: int) -> str:
     clean = " ".join(text.split())
-    return clean if len(clean) <= TITLE else clean[: TITLE - 1].rstrip() + "…"
+    return clean if len(clean) <= width else clean[: width - 1].rstrip() + "…"

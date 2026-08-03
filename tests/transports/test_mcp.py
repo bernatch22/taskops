@@ -229,7 +229,7 @@ def test_the_context_tool_answers_project_wide_and_per_card(tmp_path: Path) -> N
 
     init(tmp_path, install_git_hooks=False)
     context_state(tmp_path, "objective", "ship 0.4 by Friday", actor="dev:berna")
-    context_state(tmp_path, "invariant", "never break the frozen contract", actor="dev:berna")
+    context_state(tmp_path, "decision", "never break the frozen contract", actor="dev:berna")
     created = plan(tmp_path, [{"title": "Wire the tool", "spec": "x"}],
                    actor="dev:berna")["created"]
 

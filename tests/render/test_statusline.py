@@ -22,8 +22,8 @@ def plain(said: str) -> str:
 
 
 def bar(**over: Any) -> Bar:
-    base: dict[str, Any] = {"board": "probe", "local": True, "holding": [], "waiting": {},
-                            "mail": 0}
+    base: dict[str, Any] = {"objective": "", "board": "probe", "local": True, "holding": [],
+                            "waiting": {}, "mail": 0}
     return {**base, **over}  # type: ignore[return-value]
 
 
@@ -60,15 +60,27 @@ def test_it_says_when_it_is_showing_a_cache() -> None:
     assert "(shared, cached)" in plain(render_statusline(bar(local=False), {}))
 
 
-def test_the_vim_mode_is_repeated_here_when_there_is_one() -> None:
-    """The built-in footer badges are a separate row taskops cannot write to, so the eye that
-    goes looking for `-- INSERT --` should not have to travel to find the board too."""
+def test_the_vim_mode_is_NEVER_repeated_here() -> None:
+    """It used to print `-- INSERT --`, on the theory that an eye going to the bottom should find
+    the mode and the board together. Claude Code already prints the mode in the very next row, so
+    the bar spent its most valuable characters saying something on screen one line below — which
+    costs the width and makes the row read as chrome."""
     said = plain(render_statusline(bar(), {"vim": {"mode": "insert"}}))
-    assert said.startswith("-- INSERT --")
+    assert "INSERT" not in said and "--" not in said
 
 
-def test_somebody_who_does_not_use_vim_never_sees_a_mode() -> None:
-    assert "--" not in plain(render_statusline(bar(waiting={"verify": 1}), {}))
+def test_the_objective_leads_because_nothing_else_keeps_it_on_screen() -> None:
+    """The greeting says it once and scrolls away; the browser board says it where nobody is
+    looking. This row is the only surface still showing it an hour later."""
+    said = plain(render_statusline(bar(objective="que el importador ande"), {}))
+    assert said.startswith("◎ que el importador ande")
+
+
+def test_a_long_objective_never_pushes_out_what_is_waiting() -> None:
+    """The one segment that would grow with somebody's prose. A bar whose left end shoves the
+    counts off the right of the screen has inverted its own priorities."""
+    said = plain(render_statusline(bar(objective="x " * 90, waiting={"verify": 2}), {}))
+    assert "…" in said and "2 to review" in said and len(said) < 90
 
 
 # ---- the ceilings

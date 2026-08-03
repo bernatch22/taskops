@@ -26,7 +26,7 @@ __all__ = ["register", "run"]
 
 
 def register(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    parser = sub.add_parser("context", help="the standing objective, invariants and decisions")
+    parser = sub.add_parser("context", help="the standing objective, decisions and notes")
     add_target(parser)
     add_actor(parser)
     parser.add_argument("verb", nargs="?", default="show",

@@ -18,6 +18,7 @@ from .attention import Waiting
 from .context import ContextSlice
 from .event import Event
 from .lease import Lease
+from .policy import Policy
 from .team import Team
 
 __all__ = ["Opening"]
@@ -46,8 +47,15 @@ class Opening(TypedDict):
     now — and everything a reader concludes from the first line depends on it: "5 ready to hand
     out" is five the whole team can see, or five nobody else knows about."""
 
+    policies: list[Policy]
+    """The settings the ENGINE obeys, `reviewer` above all. Injected because the orchestrator is
+    the one that PLANS: a board on `reviewer: peer` needs cards handed to a session that is not
+    the author's, and a session that did not know dispatched them back to the same developer and
+    watched the close get refused. A decision is prose it weighs; a policy is a value it cannot
+    argue with, so it arrives stated rather than left to be discovered by a refusal."""
+
     context: ContextSlice
-    """The standing objective, invariants and decisions. Injected HERE rather than left for
+    """The standing objective, decisions and notes. Injected HERE rather than left for
     the agent to fetch, because a session that has to remember to ask about the project's
     constraints is a session that will edit against one of them before it does."""
 

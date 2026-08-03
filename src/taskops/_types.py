@@ -69,7 +69,7 @@ EventKind = Literal[
     "activity",  # a session's heartbeat: a tool ran, a file was touched
     "edited",  # a field of the card itself changed: title, spec or priority
     "acceptance",  # what a card promises: its EARS criteria, restated whole
-    "context",  # a standing fact about the PROJECT: an objective, invariant or decision
+    "context",  # a standing fact about the PROJECT: an objective, a decision or a note
     "policy",  # a standing SETTING the engine reads, validated when written
     "landed",   # a done card's branch was merged into the trunk, or could not be
     "inferred",  # taskops attributed a call to the card's assignee, the caller named nobody

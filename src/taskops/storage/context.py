@@ -55,12 +55,28 @@ def fact_of(event: Event, *, retired: bool = False) -> Fact | None:
     """
     body = event["body"]
     sort = str(body.get("sort", ""))
+    scope: tuple[list[str], list[str]] = (_strings(body.get("labels")),
+                                          _strings(body.get("files")))
+    if sort in _RETIRED:
+        # A fact written as an `invariant` by an older taskops. Read as a decision — the sort is
+        # gone — and its SCOPE IS DROPPED, which is the whole care this mapping takes: an
+        # invariant reached every card whatever its labels said, so a remapped one that kept
+        # them would quietly stop reaching most of them. Preserving the meaning is preserving
+        # "reaches everything", not preserving the field.
+        sort, scope = _RETIRED[sort], ([], [])
     if sort not in SORTS:
         return None
     return Fact(id=event["id"], sort=_as_sort(sort), text=str(body.get("text", "")),
-                labels=_strings(body.get("labels")), files=_strings(body.get("files")),
+                labels=scope[0], files=scope[1],
                 horizon=str(body.get("horizon", "")), owner=str(body.get("owner", "")),
                 actor=event["actor"], ts=event["ts"], retired=retired)
+
+
+_RETIRED = {"invariant": "decision"}
+"""Sorts a previous taskops wrote and this one does not have. Mapped rather than dropped: the
+reader skips an UNKNOWN sort, which is right for one a newer version invented and wrong for one
+this version retired — that would make a board's standing rules vanish from every slice with no
+error anywhere. Same shape as `engine.replay._RETIRED`, which does it for a status."""
 
 
 def _as_sort(value: str) -> Sort:

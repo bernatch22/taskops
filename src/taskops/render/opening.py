@@ -33,6 +33,7 @@ def render_opening(view: dict[str, Any]) -> str:
     """`Opening` -> the injection. Never empty: the role is worth stating on a quiet board."""
     lines = [f"taskops — {ROLE}", f"You are `{view['actor']}` in this project.", ""]
     lines += ["## The project", render_context(view["context"]), ""]
+    lines += _settings(view.get("policies") or [])
     lines += _team(view.get("team") or {})
     lines += _waiting(view["waiting"])
     if view["held"]:
@@ -42,6 +43,17 @@ def render_opening(view: dict[str, Any]) -> str:
     if view["messages"]:
         lines += ["", f"{len(view['messages'])} message(s) waiting — `taskops_ask` reads them."]
     return "\n".join(lines)
+
+
+def _settings(policies: list[dict[str, Any]]) -> list[str]:
+    """The values the engine OBEYS, apart from the prose it weighs. Two lists and not one on
+    purpose: a decision is something to take into account, a policy is something that will refuse
+    you — and they read identically until one of them refuses, which is exactly how a policy came
+    to be hidden inside a decision in the first place."""
+    if not policies:
+        return []
+    said = [f"- `{p['name']}: {p['value']}`" for p in policies]
+    return ["## Settings the engine enforces (not advice)", *said, ""]
 
 
 def _team(team: dict[str, Any]) -> list[str]:

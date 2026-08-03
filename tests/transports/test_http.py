@@ -717,7 +717,10 @@ def test_the_context_endpoint_carries_the_facts_and_the_settings_in_one_call(
 
     context_state(project, "objective", "ship the importer", horizon="2026-08-15",
                   actor="dev:ana")
-    context_state(project, "invariant", "no dependencies outside the stdlib", actor="dev:ana")
+    # Una SIN alcance y una CON: es la distincion que quedo cuando `invariant` se fue — una
+    # decision sin labels ni files llega a toda card, que es como se escribe una regla que no se
+    # rompe, y ponerle alcance la angosta.
+    context_state(project, "decision", "no dependencies outside the stdlib", actor="dev:ana")
     context_state(project, "decision", "sqlite, not postgres", labels=["db"], actor="dev:ana")
     set_policy(project, "reviewer", "peer", actor="dev:ana")
 
@@ -725,10 +728,50 @@ def test_the_context_endpoint_carries_the_facts_and_the_settings_in_one_call(
 
     assert seen["objective"]["text"] == "ship the importer"
     assert seen["objective"]["horizon"] == "2026-08-15"
-    assert [f["text"] for f in seen["invariants"]] == ["no dependencies outside the stdlib"]
-    assert [f["labels"] for f in seen["decisions"]] == [["db"]]
+    assert {f["text"] for f in seen["decisions"]} == {"no dependencies outside the stdlib",
+                                                     "sqlite, not postgres"}
+    assert sorted(f["labels"] for f in seen["decisions"]) == [[], ["db"]]
     assert seen["policies"] == [{"name": "reviewer", "value": "peer",
                                  "actor": "dev:ana", "ts": seen["policies"][0]["ts"]}]
+
+
+def test_a_cards_own_slice_is_narrowed_to_what_reaches_that_card(
+        project: Path, route: Any) -> None:
+    """What the DRAWER shows, and it has to be what the worker on the card was handed.
+
+    The narrowing is the whole feature and it is checked here rather than trusted: an unscoped
+    fact reaches every card, one scoped to another subject reaches none of them. A person reading
+    a card must see what the agent on it is working under, not a nearby approximation of it.
+    """
+    from taskops.usecases import context_state
+
+    context_state(project, "decision", "no dependencies outside the stdlib", actor="dev:berna")
+    context_state(project, "decision", "the table IS the surface", files=["r.py"],
+                  actor="dev:berna")
+    context_state(project, "decision", "sqlite, not postgres", labels=["db"], actor="dev:berna")
+
+    board = body_of(route(get("/api/board")))
+    card = next(c["task"] for column in board["columns"] for c in column["cards"]
+                if c["task"]["files"] == ["r.py"])
+
+    seen = body_of(route(get("/api/task/context", id=card["id"])))
+
+    assert [f["text"] for f in seen["decisions"]] == ["no dependencies outside the stdlib",
+                                                      "the table IS the surface"], (
+        "unscoped reaches everything; `db` does not reach a card about `r.py`")
+    assert "policies" not in seen, "a setting does not vary per card — the overview carries it"
+
+
+def test_a_slice_without_an_id_is_a_400(route: Any) -> None:
+    reply = route(get("/api/task/context"))
+    assert reply.status == 400
+    assert body_of(reply)["code"] == "bad_request"
+
+
+def test_a_slice_of_a_missing_card_carries_the_engines_own_status(route: Any) -> None:
+    reply = route(get("/api/task/context", id="tk-nothing"))
+    assert reply.status == 404
+    assert body_of(reply)["code"] == "no_such_task"
 
 
 @pytest.mark.usefixtures("project")
@@ -736,5 +779,5 @@ def test_a_project_that_has_stated_nothing_answers_with_empty_lists(route: Any) 
     """Not a 404 and not an error: "nothing decided yet" is a legal state, and the strip renders
     nothing at all for it rather than nagging on every screen forever."""
     seen = body_of(route(get("/api/context")))
-    assert seen == {"objective": None, "yours": None, "objectives": [], "invariants": [],
+    assert seen == {"objective": None, "yours": None, "objectives": [],
                     "decisions": [], "notes": [], "policies": []}

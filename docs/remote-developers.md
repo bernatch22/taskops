@@ -192,12 +192,12 @@ sets up the Claude Code scheduled task for the unattended path.
 ## 6 · Where the project is heading
 
 ```sh
-taskops context show        # the objective in force, the invariants, the decisions
+taskops context show        # the objective in force, the decisions, the notes
 taskops context log         # …and what we used to believe
 ```
 
 These are events like everything else, so they replicate with your `push` and keep their history.
-Agents receive the **slice** that applies to their card — every invariant, the current objective,
+Agents receive the **slice** that applies to their card — the current objective, the unscoped decisions,
 and the decisions matching its labels or files — rather than a document that grows until nobody
 follows it.
 

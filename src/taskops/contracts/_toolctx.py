@@ -33,7 +33,7 @@ class ContextParams(Target, total=False):
     # WITHOUT this the fence could never fire: a caller that cannot name itself resolves from
     # git config, so every worker would arrive as the developer and state whatever it liked.
     actor: f.Actor
-    state: Annotated[Literal["objective", "invariant", "decision", "note"], f.STATE]
+    state: Annotated[Literal["objective", "decision", "note"], f.STATE]
     text: Annotated[str, f.TEXT]
     labels: Annotated[str, f.SCOPE]
     mine: Annotated[bool, f.MINE]

@@ -1,8 +1,8 @@
-"""A context slice as text: the objective, then the invariants, then the decisions.
+"""A context slice as text: the objective, then the decisions, then the notes.
 
-That order is the reading order, not an alphabet. An invariant is the one kind a worker may
-not weigh against anything else, so it comes before the decisions it constrains and after the
-objective it exists to protect.
+That order is the reading order, not an alphabet. The objective is what everything else exists
+to serve, so it leads; a decision is settled and constrains what a worker may reconsider, so it
+comes next; a note is standing and neither, so it comes last.
 
 Pure text, like everything in `render/`, which is what lets the same three lists serve the CLI
 and the MCP reply without either surface growing its own formatter — the shape has been
@@ -26,8 +26,6 @@ def render_context(view: ContextSlice) -> str:
     lines = ["# objective", *_goals(view)]
     if view["yours"]:
         lines += ["", f"# yours ({_dev(view['yours']['owner'])})", _line(view["yours"])]
-    lines += ["", "# invariants"]
-    lines += [_line(f) for f in view["invariants"]] or ["(none)"]
     lines += ["", "# decisions"]
     lines += [_line(f) for f in view["decisions"]] or ["(none)"]
     if view["notes"]:

@@ -96,14 +96,14 @@ facts, git, and the server. Every command and every subcommand is here.
 
 | | |
 |---|---|
-| `taskops context …` | `show · objective · invariant · decision · log · retire` — **prose a worker weighs** |
+| `taskops context …` | `show · objective · decision · note · log · retire` — **prose a worker weighs** |
 | `taskops policy {show\|reviewer} [value]` | **Values the engine obeys**, validated when written |
 
 **Setting up, and the team**
 
 | | |
 |---|---|
-| `taskops init [--no-hooks]` | The whole wiring: `.taskops/`, the gitignore block, the git hooks, `.mcp.json`, `.claude/settings.local.json` (five hooks + the status line) and the four specialists in `.claude/agents/`. Merges, never overwrites. Safe to re-run — that is how you repair a fresh clone. |
+| `taskops init [--no-hooks]` | The whole wiring: `.taskops/`, the gitignore block, the git hooks, `.mcp.json`, `.claude/settings.local.json` (five hooks + the status line) and the two specialists in `.claude/agents/`. Merges, never overwrites. Safe to re-run — that is how you repair a fresh clone. |
 | `taskops join [<url>]` | Join this repo's board: init, hooks, MCP, remote and first pull. **No URL needed** — the clone carries it. |
 | `taskops board …` | `create · list · view · access · invite` |
 | `taskops login <url> [--logout] [--show]` | Sign in to a server with your GitHub account. |
@@ -193,7 +193,7 @@ a value the engine obeys and refuses to be wrong about.
 
 ```sh
 taskops context objective "ship the importer" --horizon 2026-08-20
-taskops context invariant "no dependencies outside the stdlib"
+taskops context decision "no dependencies outside the stdlib"    # no scope: reaches every card
 taskops context decision  "sqlite, not postgres — one file, zero setup" --labels db --files src/db.py
 
 taskops context objective "the parser, no regex" --mine --horizon 2026-08-08   # YOURS
@@ -213,7 +213,7 @@ sessions and nobody else's.
 | | how many | who receives it |
 |---|---|---|
 | `objective` | **one per owner** — the project's, and one each | the project's, plus your own |
-| `invariant` | as many as you like | **everybody, always** — it carries no subject scope on purpose |
+| `decision` with NO labels/files | as many as you like | **everybody, always** — an unscoped decision is how a rule that must never break is written |
 | `decision` | as many as you like | cards sharing its `--labels` / `--files` |
 | `note` | as many as you like | standing, and neither a goal nor a rule. Usually somebody's own |
 
@@ -228,7 +228,7 @@ $ taskops context show                      ← the overview: who is on what
   juan:  · c8731030  the migration to sqlite       by 2026-08-12
   mirna: · b285aa48  the reports, narrated
 
-# invariants
+# decisions
 · e443c559  no dependencies outside the stdlib
 ```
 
@@ -238,7 +238,7 @@ $ taskops context show                      ← the overview: who is on what
 · 57682fb0  ship the importer                     by 2026-08-20
 # yours (ana)
 · 761f604b  the parser, no regex                  by 2026-08-08
-# invariants
+# decisions
 · e443c559  no dependencies outside the stdlib
 # decisions
 · c9d1fffe  the parser goes without regex  [parser]
@@ -248,6 +248,11 @@ $ taskops context show                      ← the overview: who is on what
 rather than a label: past ~150-200 standing instructions compliance decays, so a page that grew
 with the team would make every agent slightly worse each time somebody joined. Juan does not see
 ana's objective, ana's note, or the `[db]` decision.
+
+The one person is the card's **author**, not whoever is reading. A card in review is assigned to
+the reviewer the server routed it to, so a verifier from juan's session asking for that slice gets
+the project's facts plus **ana's** — the objective the work has to be judged against. Still one
+person: the verifier's own context is not added on top.
 
 ```sh
 taskops policy reviewer peer          # what every NEW card is created with
@@ -332,7 +337,7 @@ Nine tools. The `inputSchema` of each is generated from its typed contract, so a
 | `taskops_update` | Progress, a comment, a close, a handoff — and `mentions`, which is how agents message each other. |
 | `taskops_ask` | One task in full, or free-text search across titles, specs and comments. |
 | `taskops_capture` | ONE card for work nobody planned — created *and* claimed, so a refused commit is one call from allowed. |
-| `taskops_context` | The standing objective, invariants and decisions — the whole project's, or the slice that applies to ONE card. The session that plans can also **state** one (`state` + `text`) or `retire` one; a worker is refused, because those are what it is judged against. |
+| `taskops_context` | The standing objective, decisions and notes — the whole project's, or the slice that applies to ONE card. The session that plans can also **state** one (`state` + `text`) or `retire` one; a worker is refused, because those are what it is judged against. |
 | `taskops_plan` | A whole decomposition in one call: tasks, tree, dependencies. |
 | `taskops_dispatch` | Prepare worker briefs — assign cards, create worktrees. The caller spawns its own sub-agents. |
 | `taskops_recover` | Hand back the cards of workers that died. |
@@ -395,6 +400,7 @@ A dependency that lives only in a comment is one the scheduler will walk somebod
 - **A race is an INSERT.** Two agents claiming one task are two inserts on one primary key; SQLite decides. Verified with fifty real threads: exactly one winner.
 - **Files repel.** A task whose declared `files` overlap what a live agent is editing sorts behind everything else, regardless of priority — the cheapest place to prevent a merge conflict is before either side starts.
 - **Assignment hides.** A card assigned to a worker is invisible to every other agent — not sorted last, *gone* — which is what makes "this one is yours" mean something.
+- **An agent is its developer's hand.** A card assigned to `dev:ana` is claimable by `agent:ana/w1`, because that is what delegation *is*: you hand work to a person, and their session spawns the worker that does it. It never folds the other way (an `agent:` card stays that worker's) and never across people (`agent:juan/w1` is still refused it).
 
 ---
 
@@ -418,35 +424,50 @@ paid for most often, and it is worth stating before any of the detail:
 Every hook below exists because the same thing had been written in a prompt first, and a real
 session had forgotten it by turn forty.
 
-### The agents — four files, and one role that is not a file
+### The agents — two files, and one role that is not a file
 
-Installing the plugin gives you four sub-agents. They are **data**: a markdown file each, with
-name, description, tool list and model in the frontmatter, so a project can add its own without
+Installing the plugin gives you two sub-agents. They are **data**: a markdown file each, with
+name, description and tool list in the frontmatter, so a project can add its own without
 touching any Python.
 
 | | Tools it has | What it does |
 |---|---|---|
 | **your session** — the orchestrator | context, board, plan, dispatch — **no Edit, no Write** | Reads the context and the board, creates the cards that serve the objective with EARS criteria, hands work out, decides what moves. It plans and delegates, never implements. |
-| `taskops-lead` | ask, claim, update, **dispatch**, spawn — **no Edit, no Write** | One EPIC: dispatches its subtasks a worker each, spawns them, reads the board for what came back, hands the epic over when the children are done. |
-| `taskops-worker` | claim, ask, update, and the full edit surface | One card: claim → branch → work → commit → close **with evidence** for each criterion. Hands the card back with notes rather than sitting on it. |
-| `taskops-verifier` | ask, claim, update, Read, Bash — **no Write** | The adversary, on a cheap model. Reads the criteria and the diff and tries to demonstrate `done` is false. Claims the card first, which is what stops a second verifier starting. |
-| `taskops-fixer` | ask, update, Read, Bash | One merge conflict, resolved and landed. Spawned from what `attention` reports under `LAND`. It never reopens the card or rewrites what the card was for. |
+| `taskops-worker` | claim, ask, update, and the full edit surface | One card: claim → branch → work → commit → close **with evidence** for each criterion. Hands the card back with notes rather than sitting on it. Also what resolves a merge conflict when `attention` reports one under `LAND`. |
+| `taskops-verifier` | ask, claim, update, Read, Bash — **no Write** | The adversary. Reads the criteria and the diff and tries to demonstrate `done` is false. Claims the card first, which is what stops a second verifier starting. |
 
-**The tree is three deep and cannot go deeper**, and that is a property of the tool lists above
-rather than a rule anybody has to keep: your session spawns a `taskops-lead`, the lead spawns
-`taskops-worker`s, and a worker has nothing to spawn with. A card whose shape is a CHECKLIST —
-subtasks under subtasks — is planned in one `taskops_plan` call and worked exactly that way:
+**Two, and there were four.** A `taskops-lead` owned an epic and dispatched its children, and a
+`taskops-fixer` resolved one merge conflict — and neither earned a file. The lead is the
+orchestrator with a different name: same tools minus `Edit`, same job, one level down, and the
+session doing the planning is the one that already has the plan. The fixer is a worker whose card
+happens to be a conflict; it had the same loop, the same guards and a narrower prompt. Two roles
+that are really one, described twice, is two places for the same rule to drift.
+
+**The tree is two deep and cannot go deeper**, and that is a property of the tool lists above
+rather than a rule anybody has to keep: your session spawns workers and verifiers, and neither
+has anything to spawn with. A card whose shape is a CHECKLIST — subtasks under subtasks — is
+planned in one `taskops_plan` call and worked one worker per subtask:
 
 ```
-your session ──▶ taskops-lead   (the epic)
-                   ├──▶ taskops-worker   (subtask 1)
-                   ├──▶ taskops-worker   (subtask 2)
-                   └──▶ taskops-worker   (subtask 3)
+your session ──▶ taskops-worker    (subtask 1)
+             ──▶ taskops-worker    (subtask 2)
+             ──▶ taskops-verifier  (each one, as it comes back)
 ```
 
-The lead has no `Edit` for the same reason the orchestrator does not: an agent that can both
-dispatch and implement eventually implements, and the plan stops being kept the moment the work
-gets interesting. The engine backs it up — an epic cannot reach `done` while a child is open.
+The engine backs the shape up — an epic cannot reach `done` while a child is open.
+
+### The one model that is pinned
+
+The worker's file names **no model**, and the verifier's names `opus`. That asymmetry is the
+whole policy:
+
+- **A worker inherits.** A card that is a typo in a docstring and a card that is a state machine
+  are the same shape to that prompt and nothing like the same job, and the orchestrator
+  dispatching it is the only party that has read the spec. Pinning one model would either
+  overpay for every small card or send a cheap one at the hard ones.
+- **A verifier does not.** Its whole job is to be harder to convince than the worker was, so it
+  may never be the weaker of the two — and unpinned it would inherit whatever the session
+  happened to be running, which on a cheap session is a rubber stamp with extra steps.
 
 The orchestrator is the only one with no file, because it is not a sub-agent: **it is the
 session you are typing into.** That is not a naming choice, it is enforced by an event —
@@ -587,7 +608,7 @@ One card, from a plan to the trunk, with each mechanism named as it fires:
                         approval merges the branch into the trunk
                                    │
                           conflict? ──▶ attention reports it under LAND
-                                        ──▶ spawn taskops-fixer
+                                        ──▶ spawn taskops-worker
                                    │
                         whatever was blocked becomes ready, for everyone
 ```
@@ -643,7 +664,7 @@ criteria closes exactly as it always did.
 Worked example, one real card:
 
 ```
-manager   taskops_context            -> objective: "ship 0.4 by Friday"; invariant: "frozen contract"
+manager   taskops_context            -> objective: "ship 0.4 by Friday"; decision: "frozen contract"
           taskops_plan  tk-9f21aa    title:      "Requeue a card whose lease lapsed"
                                      acceptance: WHEN a lease expires, THE SYSTEM SHALL return
                                                  the card to ready
@@ -936,7 +957,7 @@ remember:
                 ├── ok ──▶ the trunk everybody pulls has it
                 │
                 └── conflict ──▶ the card still closes, and the board records why.
-                                 `attention` lists it under LAND, where a `taskops-fixer`
+                                 `attention` lists it under LAND, where a `taskops-worker`
                                  sub-agent resolves it. A conflict is two approved pieces of
                                  work disagreeing about the same lines — that is a task, not
                                  a failure, and telling a person to "resolve it by hand" is
@@ -1199,13 +1220,13 @@ The `SessionStart` hook does the same thing for you, so the first line of a sess
 
 `TASKOPS_NO_UI=1` turns the offer off — it stops taskops *starting* a board, never looking for one you started yourself.
 
-- **The standing context** — a strip under the header, on **every** screen, carrying the objective. It is the one thing here that is not about a moment, so it is not filed behind a tab: an objective behind a click is an objective nobody reads twice. It updates itself — write an invariant in your terminal and it appears without a reload.
+- **The standing context** — a strip under the header, on **every** screen, carrying the objective. It is the one thing here that is not about a moment, so it is not filed behind a tab: an objective behind a click is an objective nobody reads twice. It updates itself — write a decision in your terminal and it appears without a reload.
 
   Click it and the rest opens in a **modal with three tabs**, because there are three different questions and one scroll made you do the filtering:
 
   | tab | answers |
   |---|---|
-  | **Project** | what this project has decided — the objective, the invariants, the decisions, the notes |
+  | **Project** | what this project has decided — the objective, the decisions, the notes |
   | **Who is on what** | one block per developer: their own objective, and the facts they stated for themselves |
   | **Policies** | what the ENGINE obeys — validated values, not prose, which is how a policy once ended up hidden inside a decision |
 
@@ -1230,7 +1251,7 @@ The UI ships inside the wheel as a committed bundle — `pip install taskops-cli
 | [docs/remote-developers.md](docs/remote-developers.md) | The guide to hand a new teammate: getting in, the daily rhythm, what their agents do. |
 | [docs/agents.md](docs/agents.md) | Specialists a project defines, orchestration, sub-tasks and worktrees, who invokes whom. |
 | [docs/reports.md](docs/reports.md) | Why the record matters, the narration, and the sweep that writes itself. |
-| [docs/context.md](docs/context.md) | Objectives, invariants and decisions — and the slice each card receives. |
+| [docs/context.md](docs/context.md) | Objectives, decisions and notes — and the slice each card receives. |
 | [docs/exchange.md](docs/exchange.md) | The wire contract between a client and a server. |
 | [docs/production.md](docs/production.md) | The plan for agents that run where the board lives — runner, sandbox → staging → prod. |
 | [plugin/channel/README.md](plugin/channel/README.md) | The channel: what crosses, what never does, and how to load it. |

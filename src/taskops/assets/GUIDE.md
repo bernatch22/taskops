@@ -301,7 +301,7 @@ who was allowed to close work planned last week.
 Before you design anything, read the standing facts:
 
 ```
-taskops_context                     the objective, every invariant, the decisions
+taskops_context                     the objective, the decisions, the notes
 taskops_context task=tk-4f2a9c      …the SLICE that applies to one card
 ```
 
@@ -309,7 +309,7 @@ Four kinds, and they are not advice:
 
 - **objective** — what the project is chasing now. You get TWO: the project's, and your own
   developer's if they set one. If your card serves neither, say so rather than doing it well.
-- **invariant** — what must never break. Every agent receives every project invariant, always;
+- **decision with no scope** — what must never break. Every agent receives every unscoped decision, always;
   there is no card whose slice leaves one out.
 - **decision** — what was already decided, and *why*. This exists so you do not re-propose a
   thing that was tried and rejected. If you think a decision is wrong, argue with it in a

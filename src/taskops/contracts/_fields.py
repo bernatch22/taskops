@@ -48,8 +48,7 @@ TASKS = ("the tasks to create: a list of {title, spec, priority?, labels?, files
          "<response>\" — and each one should read as a test somebody could write")
 
 STATUS = ("the new status. `released` returns the task to the queue with your progress in "
-          "`comment` — the honest move when out of context. `done` needs a commit bound to "
-          "this task")
+          "`comment` — the honest move when out of context. `done` needs a commit on this task")
 
 COMMENT = ("what happened, for the task's thread. Write the decision and the surprise; the next "
            "agent and the human reviewing at 9am read this and nothing else")
@@ -72,9 +71,9 @@ NO_EVIDENCE = ("close a card with criteria WITHOUT proving them, giving the reas
                "criterion turned out to be wrong, or the work moved. The reason is written into "
                "the done event, so this is an argued exemption and not a way around the rule")
 
-CONTEXT_TASK = ("a task id: returns the slice of context that applies to THAT card — every "
-                "invariant, the current objective, and only the decisions matching its labels "
-                "or files. Omit for the whole project context")
+CONTEXT_TASK = ("a task id: returns the slice that applies to THAT card — the objective, plus the "
+                "decisions that are project-wide or match its labels or files. Omit for the "
+                "whole project context")
 
 LABELS = "comma-separated labels to restrict the pick to"
 
@@ -137,15 +136,16 @@ FILES = "comma-separated paths this will touch, so collisions can be warned abou
 ACCEPTANCE = ("acceptance criteria, one per line, ideally EARS: "
               "`WHEN <trigger> THE SYSTEM SHALL <response>`. These are what `done` is checked against")
 PRIORITY = "0 urgent … 3 whenever (default 2)"
-CLAIM_IT = ("claim it immediately (default true) — pass false only when recording work for "
-            "LATER that you are not about to start")
+CLAIM_IT = ("claim it immediately (default true) — pass false only when recording work for LATER "
+            "that you are not about to start")
 ASSIGN = ("give it to another actor (`agent:dev/name` or `dev:name`) instead of claiming it: "
           "it lands in their inbox and stays pickable")
 
 STATE = ("state a standing fact instead of reading: `objective` (a new one supersedes the last "
-         "WITH THE SAME OWNER), `invariant` (never broken — every worker gets it), `decision` "
-         "(settled; reaches only cards sharing its labels) or `note` (standing, and none of "
-         "those). Needs `text`. A worker is REFUSED: these are what it is judged against.")
+         "WITH THE SAME OWNER), `decision` (settled, so it is not re-litigated) or `note` "
+         "(standing, and neither). Needs `text`. A decision with NO labels and NO files reaches "
+         "EVERY card — that is how a rule that must never break is written, and scoping one "
+         "narrows it. A worker is REFUSED: this is what it is judged against.")
 
 MINE = ("file it under YOU rather than the project. A worker then reads the project's facts and "
         "its own developer's and nobody else's, which is what keeps a slice from growing with "

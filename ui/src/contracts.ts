@@ -198,9 +198,10 @@ export interface ReportFile {
  * content hash — which is why it is the same string on every machine and what `retire` takes. */
 export interface Fact {
   id: string;
-  sort: "objective" | "invariant" | "decision" | "note";
+  sort: "objective" | "decision" | "note";
   text: string;
-  /* The scope. Empty means project-wide, which is why an invariant normally carries neither. */
+  /* The scope. Empty means project-wide — which is how a rule that must reach every card is
+   * written, now that there is no `invariant` sort that skipped this filter. Scoping narrows. */
   labels: string[];
   files: string[];
   horizon: string;
@@ -220,9 +221,11 @@ export interface Policy {
   ts: number;
 }
 
-/* `GET /api/context`. One call, because the panel that shows it is open all the time and two
- * spinners for one panel is two spinners too many. */
-export interface ContextView {
+/* What is in force for ONE reader — the Python `ContextSlice`, verbatim. `GET /api/context` answers
+ * the board's, everything the project has stated; `GET /api/task/context?id=…` answers one CARD's,
+ * narrowed to what reaches it. Same shape on purpose, because the card drawer has to show what the
+ * worker holding it was handed rather than a second filter over the same facts. */
+export interface ContextSlice {
   /* The PROJECT's north — what everybody reads whatever they are holding. */
   objective: Fact | null;
   /* Every objective in force, the project's and one per dev. This is the OVERVIEW, and it is
@@ -231,8 +234,13 @@ export interface ContextView {
   /* Whoever asked, when they have one of their own. Null in the board's view, which belongs
    * to nobody. */
   yours: Fact | null;
-  invariants: Fact[];
   decisions: Fact[];
   notes: Fact[];
+}
+
+/* `GET /api/context`. One call, because the panel that shows it is open all the time and two
+ * spinners for one panel is two spinners too many. The policies ride along and only here: a
+ * setting is project-wide, so it does not narrow to a card and a card's slice does not carry it. */
+export interface ContextView extends ContextSlice {
   policies: Policy[];
 }
