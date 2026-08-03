@@ -11,7 +11,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { Board } from "../src/components/Board";
 import { MilestoneModal } from "../src/components/MilestoneModal";
-import { peopleOf, spell } from "../src/components/People";
+import { spell } from "../src/components/bits";
+import { peopleOf } from "../src/components/People";
 import { Menu, Picker } from "../src/components/Picker";
 import { ProjectModal } from "../src/components/ProjectModal";
 import type { Board as BoardData, ContextView } from "../src/contracts";

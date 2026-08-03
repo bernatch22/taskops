@@ -116,4 +116,9 @@ class TaskView(TypedDict):
     agent happened to put in a comment.
     """
 
+    seconds: float
+    """How long this card was ATTENDED, over every actor that touched it. A floor — see
+    `contracts.spent.Attended`. Folded from this card's own events, so it is the same number the
+    board shows and does not depend on any window."""
+
     history: list[Event]

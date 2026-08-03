@@ -22,15 +22,18 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
-import type { Activity, Attended, Board, ContextView, Event, Fact } from "../contracts";
-import { ago } from "./bits";
+import type {
+  Activity, ActorRoll, Attended, Board, ContextView, Fact, Stretch,
+} from "../contracts";
+import { ago, spell } from "./bits";
 import { Overlay } from "./Overlay";
 
 /* How far back a profile looks. Long enough that somebody who took Friday off still has a
  * footprint, short enough that it is a picture of NOW rather than of the project's history —
  * which is what the activity view is for, and it is one click away. */
 const WINDOW = "14d";
-const CARDS = 6;
+const PAGE = 8;
+
 
 export interface Person {
   dev: string;
@@ -148,8 +151,11 @@ function Profile({ dev, person, context, onOpen, onClose }: {
   }, [dev]);
 
   const [tab, setTab] = useState<"work" | "context">("work");
-  const mine = (activity?.events ?? []).filter((e) => devOf(e.actor) === dev);
   const roll = (activity?.actors ?? []).filter((a) => devOf(a.actor) === dev);
+  /* Their agents' sittings, INTERLEAVED by when they happened and never merged: two of a dev's
+   * agents running in parallel are two sittings, because they do not share attention — that is the
+   * whole point of having several pairs of hands. */
+  const sittings = roll.flatMap((r) => r.sittings).sort((a, b) => b.started - a.started);
   const own = ownFacts(context, dev);
   /* Their agents' cards, MERGED per card: a dev works through several pairs of hands and two rows for
    * one card would read as two cards. Same fold as every number in `Numbers`. */
@@ -198,8 +204,8 @@ function Profile({ dev, person, context, onOpen, onClose }: {
               <h4>Cards <span className="dim">what they touched, last {WINDOW}</span></h4>
               {failed ? <p className="ctx-empty">could not read the log just now.</p>
                 : activity === null ? <p className="ctx-empty">reading…</p>
-                : <Cards events={mine} titles={activity.titles} holding={person?.holding ?? []}
-                         on={on} onOpen={onOpen} />}
+                : <Cards sittings={sittings} titles={activity.titles}
+                         holding={person?.holding ?? []} on={on} onOpen={onOpen} />}
               {/* The bound, stated where the numbers are. A window capped at 600 events makes every
                 * total on this tab a partial one, and a partial number that does not say so is the
                 * exact failure this project keeps paying for. */}
@@ -246,18 +252,26 @@ function Profile({ dev, person, context, onOpen, onClose }: {
   );
 }
 
-function Numbers({ roll }: { roll: { tasks: number; commits: number; done: number;
-                                     last_seen: number }[] }): JSX.Element | null {
+function Numbers({ roll }: { roll: ActorRoll[] }): JSX.Element | null {
   if (!roll.length) return null;
   /* Summed over this dev's agents, because the fold is the whole point: a developer's output is
    * what their hands did, and they have several. */
   const total = roll.reduce((into, one) => ({
     tasks: into.tasks + one.tasks, commits: into.commits + one.commits,
     done: into.done + one.done, last_seen: Math.max(into.last_seen, one.last_seen),
-  }), { tasks: 0, commits: 0, done: 0, last_seen: 0 });
+    seconds: into.seconds + one.on.reduce((sum, each) => sum + each.seconds, 0),
+  }), { tasks: 0, commits: 0, done: 0, last_seen: 0, seconds: 0 });
   return (
     <div className="stats">
       <span className="stat"><b>{total.tasks}</b> cards</span>
+      {/* The total FIRST among the derived numbers, because it is the one somebody wants before any
+        * per-card row: it had to be added up by eye. Labelled "at least" for the same reason every
+        * row is — it is a floor, and a floor drawn as a total is the lie the cap exists to avoid. */}
+      {spell(total.seconds)
+        ? <span className="stat" title="the sum of every card's floor, so the total is one too">
+            <b>{spell(total.seconds)}</b> at least
+          </span>
+        : null}
       <span className="stat"><b>{total.commits}</b> commits</span>
       <span className="stat stat-good"><b>{total.done}</b> closed</span>
       <span className="stat"><b>{ago(total.last_seen)}</b> last seen</span>
@@ -287,53 +301,81 @@ function Standing({ title, note, facts }: {
 
 /* The last cards they touched, newest first, deduplicated. Cards and not EVENTS: nine commits on
  * one card is one thing they worked on, and a feed would rank it above three cards they closed. */
-/* `5400` -> `1h 30m`, `240` -> `4m`, `0` -> "". Zero prints NOTHING rather than `0m`: a card touched
- * once has no span between its one event and nothing, and `0m` beside it reads as a measurement that
- * came out empty instead of a question that cannot be asked. */
-export function spell(seconds: number): string {
-  const minutes = Math.round(seconds / 60);
-  if (!minutes) return "";
-  const hours = Math.floor(minutes / 60);
-  return hours ? `${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
-}
-
-function Cards({ events, titles, holding, on, onOpen }: {
-  events: Event[];
+function Cards({ sittings, titles, holding, on, onOpen }: {
+  sittings: Stretch[];
   titles: Record<string, string>;
   holding: string[];
   on: Map<string, Attended>;
   onOpen: (id: string) => void;
 }): JSX.Element {
-  const order: string[] = [];
-  for (const event of events) {
-    if (event.task && event.task !== "project" && !order.includes(event.task)) {
-      order.push(event.task);
-    }
+  const [shown, setShown] = useState(PAGE);
+  const real = sittings
+    .map((s) => ({ ...s, tasks: s.tasks.filter((id) => id && id !== "project") }))
+    .filter((s) => s.tasks.length);
+  if (!real.length) return <p className="ctx-empty">nothing in the last {WINDOW}.</p>;
+  const cards = real.reduce((n, s) => n + s.tasks.length, 0);
+  /* Cut on SITTINGS and count in CARDS: a group is one claim and half of it is not a smaller
+   * claim, it is a wrong one. So the page grows to the sitting that crosses the line. */
+  const upto: typeof real = [];
+  let counted = 0;
+  for (const sitting of real) {
+    if (counted >= shown) break;
+    upto.push(sitting);
+    counted += sitting.tasks.length;
   }
-  if (!order.length) return <p className="ctx-empty">nothing in the last {WINDOW}.</p>;
   return (
-    <ul className="ctx-list">
-      {order.slice(0, CARDS).map((id) => (
-        <li key={id}>
-          <button className="ctx-card" onClick={() => onOpen(id)}>
-            <code className="context-id">{id}</code>
-            <span className="ctx-card-title">{titles[id] ?? "…"}</span>
-            {/* At least this long — the measure caps every gap, so it under-reports on purpose. The
-              * title says which it is, because a bound drawn as if it were the answer is worse than
-              * no number: nothing in the log records when somebody stopped. */}
-            {spell(on.get(id)?.seconds ?? 0) ? (
-              <span className="ctx-card-time"
-                    title={`at least this long: the gaps between ${on.get(id)?.events} events, `
-                           + "each capped at 30m, so it under-reports rather than guessing"}>
-                {spell(on.get(id)?.seconds ?? 0)}
-              </span>
+    <>
+      <ul className="ctx-list sittings">
+        {upto.map((sitting) => (
+          <li key={`${sitting.started}`}
+              className={sitting.tasks.length > 1 ? "sitting together" : "sitting"}>
+            {sitting.tasks.length > 1 ? (
+              <p className="sitting-head dim">
+                {sitting.tasks.length} at the same time
+                <span className="sitting-when"> · {when(sitting)}</span>
+              </p>
             ) : null}
-            {holding.includes(id) ? <span className="context-horizon">now</span> : null}
-          </button>
-        </li>
-      ))}
-    </ul>
+            <ul className="ctx-list">
+              {sitting.tasks.map((id) => (
+                <li key={id}>
+                  <button className="ctx-card" onClick={() => onOpen(id)}>
+                    <code className="context-id">{id}</code>
+                    <span className="ctx-card-title">{titles[id] ?? "…"}</span>
+                    {/* At least this long — the measure caps every gap, so it under-reports on
+                      * purpose. The tooltip says which it is, because a bound drawn as if it were
+                      * the answer is worse than no number: nothing in the log records when
+                      * somebody stopped. */}
+                    {spell(on.get(id)?.seconds ?? 0) ? (
+                      <span className="ctx-card-time"
+                            title={`at least this long: the gaps between ${on.get(id)?.events} `
+                                   + "events, each capped at 30m, so it under-reports rather "
+                                   + "than guessing"}>
+                        {spell(on.get(id)?.seconds ?? 0)}
+                      </span>
+                    ) : null}
+                    {holding.includes(id) ? <span className="context-horizon">now</span> : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      {counted < cards ? (
+        <button className="linkish" onClick={() => setShown(shown + PAGE)}>
+          {cards - counted} more →
+        </button>
+      ) : null}
+    </>
   );
+}
+
+/* A sitting's span, as a person reads it: `14:20 → 15:05`. The DATE is not repeated per group — the
+ * list is fourteen days at most and the profile says so above it. */
+function when(sitting: Stretch): string {
+  const clock = (at: number): string => new Date(at * 1000)
+    .toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return `${clock(sitting.started)} → ${clock(sitting.ended)}`;
 }
 
 function ownFacts(context: ContextView | null, dev: string): {

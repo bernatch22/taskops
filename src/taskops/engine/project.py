@@ -16,6 +16,7 @@ from .._types import CLOSED_STATUSES, OPEN_STATUSES, STATUSES, WORKING_STATUSES
 from ..contracts import Board, Card, Column
 from ..storage import Store
 from ..storage.belonging import chapter_of, sole
+from .timespent import on_card
 
 __all__ = ["board", "counts"]
 
@@ -29,6 +30,10 @@ def board(store: Store) -> Board:
     """
     tasks = store.tasks.all()
     commits = store.events.count_by_task("commit")
+    # One query, folded per card — the same bargain `count_by_task` makes. A card's time has to
+    # travel WITH the card: read out of a profile's window instead, it would change depending on how
+    # far back somebody happened to be looking.
+    stamps = store.events.stamps_by_task()
     live = {lease["task"]: lease for lease in store.leases.live(now())}
     # A card written before this board had chapters resolves to its only one — see
     # `storage.belonging.sole`. Done HERE and not at ingest because the card is older than the
@@ -38,7 +43,8 @@ def board(store: Store) -> Board:
     cards = [Card(task=task, lease=live.get(task["id"]),
                   blocked_by=len(store.deps.open_blockers_of(task["id"])),
                   blocks=len(store.deps.dependents_of(task["id"])),
-                  commits=commits.get(task["id"], 0))
+                  commits=commits.get(task["id"], 0),
+                  seconds=on_card(stamps.get(task["id"], [])))
              for task in tasks]
     columns = [Column(status=status,
                       cards=[c for c in cards if c["task"]["status"] == status])
