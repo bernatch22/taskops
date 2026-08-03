@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.5.1 — el modelo de capítulos, usable en el tablero que ya existía
+
+Tres defectos, uno por cada cosa que pasó al abrir el primer milestone de un tablero real. Ninguno
+era de lógica: los tres vivían en el día en que el modelo se empieza a usar, que es el día que la
+suite no construye.
+
+### `attention` se caía justo cuando el modelo nuevo se usa
+
+`0.5.0` partió el milestone en `title` + `goal` y sacó `text` del contrato. Dos lectores quedaron
+atrás, y los dos viven en la dirección que nadie chequea:
+
+- `render/attention.py` imprime el grupo CONFIRM, que **sólo existe cuando un capítulo está en
+  review** — el estado normal entre "un agente reportó" y "una persona cerró". O sea que la lectura
+  que el `CLAUDE.md` manda abrir cada turno moría con `KeyError: 'text'` en el momento exacto en que
+  el capítulo empezaba a funcionar.
+- `_planinto.py` lista los candidatos del refusal de `plan`, que **sólo se alcanza con dos capítulos
+  activos**. Un refusal escrito a propósito para nombrar la salida contestaba un traceback.
+
+Ningún test los vio porque toda la suite deja su único capítulo `in_force`. Los dos tests nuevos
+construyen esas dos formas exactas.
+
+### Una card no podía entrar a un capítulo, así que un tablero que migra quedaba entero afuera
+
+La proyección de `0.5.0` lleva los **hechos** de un tablero viejo hacia adelante y no puede llevar
+sus **cards**: enganchar una card al capítulo que casualmente esté abierto en un clon inventaría un
+hecho sobre el pasado y diferiría de máquina a máquina. Así que la que tiene que poder moverla es una
+persona — y no había verbo. Medido en un tablero de verdad: 63 cards, 6 abiertas, y un capítulo nuevo
+que decía `no cards`.
+
+`taskops tasks edit <id> --milestone <id>` ahora la mueve, por el camino que ya existía (un evento
+`edited`, la arbitración por timestamp, el `UPDATE` con whitelist) en vez de un segundo camino de
+escritura para una columna. Con la validación de `--carry` y **no** la de `plan`: el capítulo tiene
+que estar **activo**, porque una card abierta dentro de un capítulo alcanzado es una de dos mentiras.
+Y no se puede vaciar: una card pertenece a exactamente uno, así que "sin capítulo" no es un estado
+que alguien pida — es sólo la forma en que llega una card escrita antes de que los capítulos
+existieran.
+
+### Un capítulo EN VIGENCIA decía "not started"
+
+`◆ Cerrar el menú libre · not started`: la marca decía vigente y la etiqueta decía que nadie lo había
+empezado. La fila imprimía eso con cero cards para **cualquier** estado, y "not started" es la
+leyenda que el mismo menú usa como título del grupo `planned` — mientras el pill del mismo capítulo
+decía `no cards`. Tres renderizados de un estado, dos palabras.
+
+Un capítulo en vigencia sin cards es el primer día normal de uno. Ahora dice `no cards`, y sólo un
+`planned` dice `not started`. `Menu` se exporta para que el smoke pueda alcanzar la fila: sólo existe
+con el dropdown abierto, y la primera versión de esa aserción probaba el pill y pasaba en verde con
+el bug puesto.
+
 ## 0.5.0 — milestones: un tablero tiene capítulos, y un humano los cierra
 
 ### El objetivo del proyecto no era un hecho, era un capítulo
