@@ -195,8 +195,14 @@ function Applies({ slice }: { slice: ContextSlice | null }): JSX.Element | null 
    * the question a reader is asking here. The chapter's notes join them for the same reason — the
    * server already narrowed all three by this card's subject. */
   const settled = [...slice.project_decisions, ...slice.decisions, ...slice.notes];
+  /* The project's rules are NOT a block here, and that is the one thing this component decides.
+   * They are true of every card by definition, so drawing all nine above the spec of all sixty-three
+   * is the same wall repeated — the reader meets an identical section before the brief every single
+   * time, and the brief starts below the fold. What belongs to THIS card is its chapter's rules
+   * (they die when the chapter ships) and what was settled about its own subject. The permanent ones
+   * get a line saying they exist and where; the ◎ panel is one click away and does not scroll past
+   * anything. The slice still CARRIES them — a worker is injected them and is a different reader. */
   const blocks: [string, string, typeof settled][] = [
-    ["Rules", "the project's — every card, every milestone, no exceptions", slice.project_rules],
     ["This milestone's rules", "true until this chapter ships", slice.rules],
     ["Settled for this card", "decisions and notes that name its labels or its files", settled],
   ];
@@ -204,7 +210,8 @@ function Applies({ slice }: { slice: ContextSlice | null }): JSX.Element | null 
   /* Nothing in force for this card renders NOTHING — no heading, no "(none)", the same way the
    * context modal omits an empty group. A card the project has said nothing about is not doing
    * anything wrong, and an empty section on every card is a feature announcing itself. */
-  if (!shown.length) return null;
+  const permanent = slice.project_rules.length;
+  if (!shown.length && !permanent) return null;
   return (
     <>
       {shown.map(([title, note, facts]) => (
@@ -215,6 +222,12 @@ function Applies({ slice }: { slice: ContextSlice | null }): JSX.Element | null 
           </ul>
         </section>
       ))}
+      {permanent ? (
+        <p className="applies-project dim">
+          {permanent} project rule{permanent === 1 ? "" : "s"} apply here, as they do to every
+          card — the ◎ panel has them.
+        </p>
+      ) : null}
     </>
   );
 }
