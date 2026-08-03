@@ -27,6 +27,7 @@ from .._types import CLOSED_STATUSES
 from ..contracts import EditResult, Task
 from ..engine import record
 from ..storage import Store
+from ._planinto import chapter_to_move_into
 from ._project import caller, heartbeat, project
 from ._routing import call_remote, whoami
 from .acceptance import attach, criteria_in
@@ -43,7 +44,8 @@ to keep honest."""
 
 def edit(start: Path | str, task_id: str, *, title: str | None = None,
          spec: str | None = None, priority: int | None = None, reviewer: str | None = None,
-         acceptance: object = None, actor: str = "") -> EditResult:
+         milestone: str | None = None, acceptance: object = None,
+         actor: str = "") -> EditResult:
     """Apply whatever fields were passed, recording one `edited` event for each.
 
     `acceptance` is not one of them. It is a LIST, not a column, so it is restated whole through
@@ -53,15 +55,20 @@ def edit(start: Path | str, task_id: str, *, title: str | None = None,
     `reviewer` is checked before anything is written — an unknown specialist here is a card
     nobody can ever close, so it is refused naming the ones the project has. `--reviewer ""`
     clears it, which is a real edit and not a way of saying nothing.
+
+    `milestone` is checked the same way and by the module that owns the question, which is what
+    makes it a MOVE rather than a relabel: the chapter has to exist and to be active, because a
+    card sitting inside a chapter somebody already closed is work the record says was shipped.
     """
-    asked = {"title": title, "spec": spec, "priority": priority, "reviewer": reviewer}
+    asked = {"title": title, "spec": spec, "priority": priority, "reviewer": reviewer,
+             "milestone": milestone}
     wanted = {field: value for field, value in asked.items() if value is not None}
     if not wanted and acceptance is None:
         raise BadRequest("nothing to edit — pass a `title`, a `spec`, a `priority`, "
-                         "a `reviewer` or `acceptance`")
+                         "a `reviewer`, a `milestone` or `acceptance`")
     if (answer := call_remote(start, "edit", {
             "task": task_id, "title": title, "spec": spec, "priority": priority,
-            "reviewer": reviewer, "acceptance": acceptance,
+            "reviewer": reviewer, "milestone": milestone, "acceptance": acceptance,
             "actor": whoami(start, actor)})) is not None:
         return cast("EditResult", answer)
     with project(start) as store:
@@ -72,6 +79,8 @@ def edit(start: Path | str, task_id: str, *, title: str | None = None,
             raise BadRequest(CLOSED_REFUSAL)
         if reviewer is not None:
             wanted["reviewer"] = named(store, reviewer)
+        if milestone is not None:
+            wanted["milestone"] = chapter_to_move_into(store, milestone)
         changed = [f for f, value in wanted.items() if _apply(store, task, who, f, value)]
         if attach(store, task_id, criteria_in(acceptance), who)["criteria"]:
             changed.append("acceptance")

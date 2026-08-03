@@ -67,7 +67,7 @@ def _confirm(chapters: list[Milestone]) -> list[str]:
     lines = ["CONFIRM — a milestone was reported finished and waits for a PERSON"]
     for chapter in chapters:
         said = f" — “{chapter['note']}”" if chapter["note"] else ""
-        lines.append(f"  {chapter['id'][:8]}  {chapter['text'][:52]:<52}{said}")
+        lines.append(f"  {chapter['id'][:8]}  {chapter['title'][:52]:<52}{said}")
         lines.append(f"            → `taskops milestone done {chapter['id'][:8]}`  ·  send back: "
                      f"`taskops milestone reject {chapter['id'][:8]} -m \"…\"`")
     return lines

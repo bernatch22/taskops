@@ -109,6 +109,9 @@ def _edit_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--priority", type=int, default=None, help="0 urgent … 3 whenever")
     parser.add_argument("--reviewer", default=None,
                         help="who may close it; pass '' to clear and fall back to the verifier")
+    parser.add_argument("--milestone", default=None,
+                        help="move it to this chapter: an id or its first eight characters. It "
+                             "has to be one that is being worked on")
     parser.add_argument("--acceptance", default=None,
                         help="semicolon-separated EARS lines: WHEN <trigger> THE SYSTEM SHALL "
                              "<response>. Pass '' to clear them")

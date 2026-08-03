@@ -90,7 +90,10 @@ export function Picker({ context, board, picked, onPick, onDashboard, onProject 
   );
 }
 
-function Menu({ context, board, chapters, loose, picked, onPick }: {
+/* Exported for the smoke, which cannot open a dropdown: the rows only exist while `open` is true,
+ * and a static render never gets there. The bug this file was last fixed for lived in a ROW, so
+ * "the smoke cannot reach it" would have meant shipping it again. */
+export function Menu({ context, board, chapters, loose, picked, onPick }: {
   context: ContextView;
   board: Board | null;
   chapters: Milestone[];
@@ -151,7 +154,14 @@ function Row({ chapter, counts, actors, on, onPick }: {
       <span className="row-title">{chapter.title}</span>
       {counts.total
         ? <Progress done={counts.done} total={counts.total} />
-        : <span className="row-count dim">not started</span>}
+        /* An EMPTY chapter is not an unstarted one, and the row used to say it was — `◆ Cerrar el
+         * menú libre · not started`, seen on a real board, contradicting its own mark and the pill
+         * beside it, which says `no cards` for the same fact. "not started" belongs to `planned`
+         * and to nothing else: it is this menu's own heading for that group. A chapter in force
+         * with no cards yet is the normal first day of one — and the permanent state of a board
+         * that upgraded, whose cards all predate chapters. */
+        : <span className="row-count dim">
+            {chapter.state === "planned" ? "not started" : "no cards"}</span>}
       {actors.length ? (
         <span className="row-who dim">{actors.slice(0, 2).map(short).join(" ")}
           {actors.length > 2 ? ` +${actors.length - 2}` : ""}</span>

@@ -823,7 +823,7 @@ CLI only, never an MCP tool.
 taskops tasks                              one line per open task (same as `tasks list`)
 taskops tasks show <task-id>               read one task in full
 taskops tasks add <title> [--spec …] [--after id,id] [--files …] [--priority N] [--label …] [--reviewer …]
-taskops tasks edit <task-id> [--title …] [--spec …] [--priority N] [--reviewer …]   correct a card
+taskops tasks edit <task-id> [--title …] [--spec …] [--priority N] [--reviewer …] [--milestone <id>]
 taskops tasks plan <file.json | ->         create tasks from JSON
 taskops tasks done <task-id> [-m …] [--no-code]
 taskops tasks release <task-id> [-m …]     hand it back, unfinished
@@ -840,6 +840,14 @@ card refuses: the log is the record of what was delivered, and rewriting the spe
 finished work rewrites that record. Editing stays out of the MCP tools deliberately —
 correcting a brief is a human act, and an agent that can rewrite its own spec can talk
 itself into having finished.
+
+`--milestone <id>` MOVES a card to another chapter, and it is stricter than the other flags:
+the chapter has to exist and to be one that is being worked on. A card inside a chapter
+somebody already reached is one of two lies — either it was not reached or the card is not
+open — which is the same rule `milestone done --carry` follows. It also cannot be cleared: a
+card belongs to exactly one milestone, so "no chapter" is not a state to ask for. It exists
+because a board that predates 0.5.0 has cards carrying no chapter at all, and nothing else
+could ever move them into the first one it opens.
 
 ### Who closes a card: `--reviewer`
 

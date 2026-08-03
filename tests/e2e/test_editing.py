@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from taskops._errors import BadRequest
-from taskops.engine import build, replay
+from taskops.engine import build, record, replay
 from taskops.storage import Store, all_events
 from taskops.usecases import ask, edit, init, next_task, plan, sync, update
 from taskops.usecases.milestone import open_chapter
@@ -147,3 +147,76 @@ def test_an_edit_travels_to_another_clone_and_both_converge(tmp_path: Path) -> N
     assert mine["title"] == theirs["title"] == "Parse the header, with continuations"
     assert mine["priority"] == theirs["priority"] == 0
     assert [e["kind"] for e in all_events(berna)].count("edited") == 3
+
+
+def test_a_card_planned_before_chapters_existed_can_JOIN_one(tmp_path: Path) -> None:
+    """The migration case, and the reason this field is editable at all.
+
+    A board that predates 0.5.0 has cards carrying `""` — the fold that carries its FACTS forward
+    was never going to touch them, because attaching a card to whichever chapter happens to be
+    open on this clone would invent a fact about the past. So the first chapter such a board opens
+    is born empty, and its counts describe none of the work under way. Measured on a real board
+    before this existed: 63 cards, 6 of them open, and a brand-new chapter reading `no cards`.
+    """
+    init(tmp_path)
+    # A `created` body with no `milestone` at all — the shape a pre-0.5.0 log actually holds, and
+    # the only way to build one: `plan` refuses a board with no chapter, so the orphan cannot be
+    # made through the door that exists today. Replay defaults the column to "" from this.
+    orphan = "tk-legacy"
+    with Store(tmp_path) as store:
+        made = record(store, task=orphan, actor="dev:berna", kind="created",
+                      body={"title": "planned before chapters", "spec": "s"})
+        replay.apply(store, [made])
+        assert store.tasks.need(orphan)["milestone"] == "", "it starts with no chapter"
+
+    chapter = open_chapter(tmp_path, "El importador", goal="lo que sea", actor="dev:berna")
+    edit(tmp_path, orphan, milestone=chapter["id"][:8], actor="dev:berna")
+
+    with Store(tmp_path) as store:
+        assert store.tasks.need(orphan)["milestone"] == chapter["id"]
+    assert "edited" in kinds_on(tmp_path, orphan), "and the move is in the log, like any edit"
+
+
+def test_a_card_cannot_move_into_a_chapter_that_is_CLOSED(carded: tuple[Path, str]) -> None:
+    """The one rule this shares with `--carry` rather than with `plan`.
+
+    Planning may name any chapter that exists; MOVING existing work may not, because a reached
+    chapter holding an open card is one of two lies — either the chapter was not reached or the
+    card is not open. The refusal names both ways out, the way every refusal here has to.
+    """
+    root, card = carded
+    from taskops.usecases.milestone import listing, verify
+
+    closed = listing(root)["milestones"][0]
+    second = open_chapter(root, "el que sigue", actor="dev:berna")
+    edit(root, card, milestone=second["id"], actor="dev:berna")     # out of the one being closed
+    verify(root, closed["id"], actor="dev:berna")
+
+    with pytest.raises(BadRequest) as refusal:
+        edit(root, card, milestone=closed["id"], actor="dev:berna")
+
+    assert "reached" in str(refusal.value)
+    assert "milestone start" in str(refusal.value), "and it names the way out"
+
+
+def test_a_chapter_that_does_not_exist_is_refused_by_NAME(carded: tuple[Path, str]) -> None:
+    """A typo'd id must not silently land a card in nothing — that is the state this whole card
+    exists to get a board out of."""
+    root, card = carded
+
+    with pytest.raises(BadRequest) as refusal:
+        edit(root, card, milestone="deadbeef", actor="dev:berna")
+
+    assert "deadbeef" in str(refusal.value) and "milestone list" in str(refusal.value)
+
+
+def test_clearing_a_card_s_chapter_is_refused(carded: tuple[Path, str]) -> None:
+    """`--reviewer ""` clears, and this deliberately does not: a card belongs to exactly ONE
+    milestone, so "no chapter" is not a state anybody may ask for — it is only the shape a card
+    written before chapters existed arrives in."""
+    root, card = carded
+
+    with pytest.raises(BadRequest) as refusal:
+        edit(root, card, milestone="   ", actor="dev:berna")
+
+    assert "exactly one milestone" in str(refusal.value)

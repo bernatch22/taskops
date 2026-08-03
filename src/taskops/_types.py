@@ -97,10 +97,20 @@ MCP schema that iterates the tuple — a mismatch nothing catches, because the t
 passes and the runtime list is merely short. `STATUSES` keeps its literal spelling: it is
 also the display order, which is a separate decision that happens to agree today."""
 
-EDITABLE_FIELDS: tuple[str, ...] = ("title", "spec", "priority", "reviewer")
+EDITABLE_FIELDS: tuple[str, ...] = ("title", "spec", "priority", "reviewer", "milestone")
 """The columns a person may rewrite after a card exists. Named here rather than in
 `storage` because three layers ask the same question — the CLI validates a flag, the
-use case records one event per field, and replay refuses a body naming anything else."""
+use case records one event per field, and replay refuses a body naming anything else.
+
+`milestone` is here so a card can CHANGE chapter, which it could not until a real board
+migrated: the fold that carries a pre-0.5.0 board's facts forward does nothing for its cards, so
+every one of them was `""` for ever and the board's first chapter was born empty. It rides the
+same path as the other four deliberately — one event kind, one newer-wins arbitration, one
+whitelisted UPDATE — rather than a second write path for one column. What it does NOT share is
+validation: the others are free text, and a chapter has to exist and be active, which is
+`_planinto.chapter_to_move_into`'s job and stays in the use case. Replay accepts whatever
+arrives, for the same reason it accepts an unknown `reviewer` — a teammate's log is not ours to
+second-guess."""
 
 PEER = "peer"
 """A reviewer that means "anybody but this card's own developer".

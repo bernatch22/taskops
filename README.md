@@ -152,6 +152,7 @@ taskops tasks add "Fix the timeout" --spec "DONE = the retry test passes" --file
 taskops tasks add "Rename the column" --reviewer human   # a person closes this one; no agent may
 taskops tasks add "Ship the parser" --after tk-4f2a9c --priority 0 --label core
 taskops tasks edit tk-4f2a9c --priority 0 --spec "…" --title "…" --reviewer peer
+taskops tasks edit tk-4f2a9c --milestone 7c1e9a20   # move it to another chapter, which must be active
 ```
 
 A whole tree in ONE call — `parent` is what a card is PART OF, `after` is what must finish
