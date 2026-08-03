@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.8 — un `plan` de 24 cards no es 24 cards trabajadas a la vez
+
+Encontrado corriendo 0.5.7 contra un tablero real: el primer grupo decia **62 cards en una tanda**, y
+eso habia sido un `tasks edit --milestone` en loop. Otro decia 24, y habia sido un `plan`.
+
+Un `plan` de veinticuatro cards es UNA llamada; un bulk edit de sesenta y dos es un loop. Cada uno
+escribe un evento, en el mismo segundo, en una card distinta — asi que sin filtrar el fold leia eso
+como trabajo simultaneo, que es una frase sobre un script y no sobre la atencion de nadie.
+
+`WORK` es el conjunto de kinds que significan que alguien estuvo EN una card, y lo aplican los tres
+folds. Afuera quedan `created`, `edited`, `acceptance`, `context`, `milestone` y `policy`: registran
+que el TABLERO cambio, no que alguien trabajara. `activity` queda adentro y es la evidencia mas fuerte
+que hay — es el latido de una sesion, escrito cuando corrio una tool o se toco un archivo.
+
 ## 0.5.7 — el tiempo viaja con la card, y se ve que se trabajo A LA VEZ
 
 **El tiempo es de la card.** Vivia solo en el roll-up de una ventana de 14 dias, asi que el numero de
