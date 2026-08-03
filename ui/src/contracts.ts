@@ -90,6 +90,15 @@ export interface Board {
   total: number;
 }
 
+/* One actor's time on one card. A LOWER BOUND: `seconds` sums the gaps between that actor's
+ * consecutive events on that card with each gap capped server-side, so it under-reports rather than
+ * guessing when somebody stopped — which the log does not record. Anything drawing it says so. */
+export interface Attended {
+  task: string;
+  seconds: number;
+  events: number;
+}
+
 export interface ActorRoll {
   actor: string;
   /* Distinct tasks, not events: forty comments on one card is less work than four cards closed,
@@ -98,6 +107,8 @@ export interface ActorRoll {
   commits: number;
   comments: number;
   done: number;
+  /* Longest first. Folded over the same events every count above it comes from. */
+  on: Attended[];
   first_seen: number;
   last_seen: number;
 }

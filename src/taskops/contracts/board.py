@@ -58,6 +58,19 @@ class Standup(TypedDict):
     blocked: list[Task]
 
 
+class Attended(TypedDict):
+    """One actor's time on one card: a LOWER BOUND, and `engine.timespent` argues why.
+
+    `seconds` sums the gaps between that actor's consecutive events on that card, each gap capped, so
+    it under-reports on purpose. Every surface drawing it has to SAY so — the alternative invents the
+    one thing the log does not record, which is when somebody stopped.
+    """
+
+    task: str
+    seconds: float
+    events: int
+
+
 class ActorRoll(TypedDict):
     """One actor's whole record in the window — what they touched, not whether they are free.
 
@@ -75,6 +88,10 @@ class ActorRoll(TypedDict):
     done: int
     first_seen: float
     last_seen: float
+
+    on: list[Attended]
+    """How long this actor was ON each card, busiest first. See `Attended` for what the number is
+    and, more importantly, what it is not."""
 
 
 class Activity(TypedDict):
