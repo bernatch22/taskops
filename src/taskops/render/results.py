@@ -10,6 +10,7 @@ from typing import cast
 
 from ..contracts import Claim, EditResult, NextResult, PlanResult, Task, UpdateResult
 from ._text import bullet, table, truncate
+from ._unreviewed import ask_who_reviews
 from .task import render_claim
 
 __all__ = ["render_plan", "render_next", "render_capture", "render_update", "render_search", "render_edit"]
@@ -25,9 +26,13 @@ def render_plan(result: PlanResult) -> str:
              ", ".join(d["task"] for d in result["deps"]
                        if d["blocks"] == task["id"]) or "—"]
             for task in result["created"]]
-    return "\n".join([f"# planned {len(result['created'])} task(s)", "",
-                      table(["id", "title", "pri", "after"], rows), "",
-                      _readiness(result)])
+    said = [f"# planned {len(result['created'])} task(s)", "",
+            table(["id", "title", "pri", "after"], rows), "", _readiness(result)]
+    # The one question a plan leaves open, asked HERE because this is the return value the
+    # planner reads with every id still in front of it. See `_unreviewed` for why not a guide.
+    if asked := ask_who_reviews(result["created"]):
+        said += ["", asked]
+    return "\n".join(said)
 
 
 def _readiness(result: PlanResult) -> str:

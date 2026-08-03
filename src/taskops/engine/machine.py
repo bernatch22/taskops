@@ -53,6 +53,10 @@ class Facts:
     """Who this card names as its reviewer, straight off the row. Defaulted to "", so every
     card created before the field existed is judged by exactly the rules it always was."""
 
+    comment: str = ""
+    """The text the caller sent with this move. Read by ONE guard — the rejection — and
+    defaulted so no other transition changes shape."""
+
     entered_review_by: str = ""
     """Who moved this card INTO review, if that was the last status move — read off the event
     log by `usecases._facts`, never stored. Empty for every card that never went through
@@ -68,6 +72,24 @@ def _needs_lease(facts: Facts) -> str | None:
         return None
     return (f"{facts.actor} holds no live lease on {facts.task['id']} — claim it "
             f"with taskops_next before working on it")
+
+
+def _needs_findings(facts: Facts) -> str | None:
+    """`review → ready` is the REJECTION, and a rejection with no finding is a card bounced
+    with nothing to act on: the worker reads "not good enough", guesses, and the card goes
+    round twice for no reason.
+
+    The rule is not new — `tasks reject` has demanded a reason since it existed. It lived in
+    ARGPARSE, so it held for a person on a terminal and not for the verifier, which is an agent
+    calling `taskops_update status=ready` through MCP. Every rejection an agent ever made
+    arrived blank. A rule the state machine does not know is a rule two transports disagree
+    about, and the one that skips it is always the one doing the work.
+    """
+    if facts.comment.strip():
+        return None
+    return (f"{facts.task['id']} is going back to its worker with no findings — say what "
+            f"failed and what shows it (a test name, a command, a run). A rejection with "
+            f"nothing to act on sends the card round twice.")
 
 
 TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
@@ -86,8 +108,8 @@ TRANSITIONS: dict[Status, dict[Status, Guard | None]] = {
     # they just read must not have to claim it first, and every existing flow depends on it.
     # Exclusivity is won a layer up instead — `_transition` takes the lease ON BEHALF of the
     # closer, so a second checker meets a held card rather than duplicating the first.
-    "review": {"done": closing, "claimed": _needs_lease, "ready": None, "blocked": None,
-               "cancelled": None},
+    "review": {"done": closing, "claimed": _needs_lease, "ready": _needs_findings,
+               "blocked": None, "cancelled": None},
     "done": {},
     "cancelled": {"backlog": None},
 }

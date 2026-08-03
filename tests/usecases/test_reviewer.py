@@ -5,6 +5,9 @@ happens when it is not a specialist this project has, and where the project's de
 from. Enforcement is a GUARD, so it is tested from literals — a card that names a person
 refuses `done` from every agent, and a card that names nobody behaves exactly as it did
 before this existed, which is the regression the whole feature must not cost.
+
+The default's own mechanism — validation, the log, what a second setting costs — is
+`test_policy`. Here it is only ever asked what a CARD comes out with.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from taskops._types import HUMAN
 from taskops.contracts import Task
 from taskops.engine.machine import Facts, check_move
 from taskops.render import render_view
-from taskops.usecases import ask, edit, init, plan
+from taskops.usecases import ask, edit, init, plan, set_policy
 from taskops.usecases.context import state
 from tests.conftest import CLOCK
 from tests.usecases.test_agents import COLLECTORS, write_agent
@@ -70,27 +73,42 @@ def test_a_card_that_names_nobody_stores_nothing(project: Path) -> None:
     assert card(project)["reviewer"] == ""
 
 
-# ---- the default, which is a project DECISION and not a constant
+# ---- the default, which is a project POLICY and not a constant
 
 
-def test_the_project_decision_supplies_the_default(project: Path) -> None:
-    state(project, "decision", "reviewer: taskops-collectors")
+def test_the_project_policy_supplies_the_default(project: Path) -> None:
+    set_policy(project, "reviewer", "taskops-collectors", actor="dev:ana")
     assert card(project)["reviewer"] == "taskops-collectors"
 
 
-def test_an_explicit_reviewer_beats_the_default(project: Path) -> None:
-    state(project, "decision", "reviewer: taskops-collectors")
+def test_an_explicit_reviewer_beats_the_policy(project: Path) -> None:
+    set_policy(project, "reviewer", "taskops-collectors", actor="dev:ana")
     assert card(project, reviewer=HUMAN)["reviewer"] == HUMAN
 
 
-def test_a_default_naming_nobody_real_degrades_instead_of_breaking_planning(project: Path) -> None:
-    """A typo in one project-wide decision must not make every `plan` call fail — that
-    would take the board down for a sentence somebody wrote by hand."""
-    state(project, "decision", "reviewer: nobody-registered")
+def test_a_card_can_say_nobody_against_a_policy(project: Path) -> None:
+    """The case the three-state read exists for: a project sets `reviewer: human`, and a text
+    fix has to be able to opt out. While an empty reviewer was indistinguishable from an omitted
+    one, the policy won and every card — however trivial — waited for a person."""
+    set_policy(project, "reviewer", HUMAN, actor="dev:ana")
+
+    assert card(project)["reviewer"] == HUMAN, "absent takes the policy"
+    assert card(project, reviewer="none")["reviewer"] == "", "`none` means nobody"
+    assert card(project, reviewer="")["reviewer"] == "", "stated-empty means nobody too"
+
+
+def test_a_decision_is_no_longer_a_way_to_set_one(project: Path) -> None:
+    """The mechanism this replaced, refused at the door rather than ignored.
+
+    Ignoring it would leave the sentence recording, rendering and doing nothing — which is the
+    silent failure the move exists to end, and the shape the old parser failed in."""
+    with pytest.raises(BadRequest) as caught:
+        state(project, "decision", "reviewer: peer — nobody signs off on their own work")
+    assert "taskops policy reviewer" in str(caught.value)
     assert card(project)["reviewer"] == ""
 
 
-def test_a_decision_about_something_else_is_not_read_as_a_reviewer(project: Path) -> None:
+def test_a_decision_about_something_else_still_states_fine(project: Path) -> None:
     state(project, "decision", "we deploy on Fridays")
     assert card(project)["reviewer"] == ""
 
@@ -173,29 +191,6 @@ def test_a_card_with_no_reviewer_and_no_criteria_closes_exactly_as_before() -> N
 def test_the_reviewer_is_shown_where_the_card_is_read(project: Path) -> None:
     task = card(project, reviewer=HUMAN)
     assert "reviewer human" in render_view(ask(project, task["id"]))
-
-
-def test_a_card_can_say_nobody_against_a_project_default(project: Path) -> None:
-    """The case this exists for: a project decides `reviewer: human`, and a text fix has to be
-    able to opt out. Before, an empty reviewer was indistinguishable from an omitted one, so
-    the default won and every card — however trivial — waited for a person."""
-    from taskops.storage import Store
-    from taskops.usecases import context_state, plan
-
-    context_state(project, "decision", "reviewer: human", actor="dev:ana")
-
-    absent = plan(project, [{"title": "a", "spec": "s"}], actor="dev:ana")["created"][0]
-    stated = plan(project, [{"title": "b", "spec": "s", "reviewer": "none"}],
-                  actor="dev:ana")["created"][0]
-    empty = plan(project, [{"title": "c", "spec": "s", "reviewer": ""}],
-                 actor="dev:ana")["created"][0]
-
-    with Store(project) as store:
-        assert store.tasks.need(absent["id"])["reviewer"] == "human", "absent takes the default"
-        assert store.tasks.need(stated["id"])["reviewer"] == "", "`none` means nobody"
-        assert store.tasks.need(empty["id"])["reviewer"] == "", "stated-empty means nobody too"
-
-
 def test_a_flag_nobody_passed_is_not_a_statement() -> None:
     """argparse hands an unset flag over as None, and reading that as "explicitly nothing"
     would make every card created from the CLI opt out of the project's decision silently."""
@@ -205,18 +200,3 @@ def test_a_flag_nobody_passed_is_not_a_statement() -> None:
     assert said({"title": "x", "reviewer": None}, "reviewer") is None
     assert said({"title": "x", "reviewer": ""}, "reviewer") == ""
     assert said({"title": "x", "reviewer": "human"}, "reviewer") == "human"
-
-
-def test_a_decision_keeps_its_reason_and_still_names_a_reviewer(tmp_path: Path) -> None:
-    """The feature disabled itself the first time somebody used it properly. This project asks
-    every decision to carry its why, so a real one reads `reviewer: peer — nobody closes work
-    produced by their own agents` — the whole tail was read as a NAME, nothing matched, and the
-    degradation to "" made every card come out with no reviewer. Silent, and indistinguishable
-    from never having stated it."""
-    init(tmp_path, install_git_hooks=False)
-    state(tmp_path, "decision",
-                  "reviewer: peer — nobody closes work produced by their own agents")
-
-    made = plan(tmp_path, [{"title": "t", "spec": "s"}], actor="dev:berna")["created"][0]
-
-    assert made["reviewer"] == "peer"

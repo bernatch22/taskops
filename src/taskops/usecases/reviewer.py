@@ -1,19 +1,22 @@
 """Who may close a card — reading the name, and the project's default for it.
 
-A card's reviewer is POLICY, so the two questions it raises are answered here rather than in
-the three places that write the field. What a name means (`human`, a person, a registered
-specialist) is one answer; what a card gets when nobody said is the other.
+**The answer lives ON THE CARD**, written when the card is created and printed by
+`taskops tasks show`. That is the field the engine reads at close time, and changing your mind
+is `taskops tasks edit <id> --reviewer <who>` — which is also how you take over a card somebody
+else planned on a shared board.
 
-**The default is a project DECISION, not a constant.** A team that wants every card read by a
-person and a team that wants a `tester` agent are both right, and a constant in the source
-could only serve one of them — worse, changing it would be a release. So it is stated the way
-every other standing fact about a project is stated, as context:
+What a card gets when nobody said is a project SETTING, and it has its own verb:
 
-    taskops context decision "reviewer: tester"
+    taskops policy reviewer peer
 
-Read once, at CREATION, and written onto the card. Resolving it at close time instead would
-make a decision changed today rewrite who was allowed to close work planned last week — and
-the card would no longer be able to say who its reviewer is, which is the whole ask.
+It used to be a `reviewer:` prefix parsed out of a free-text `context decision`, and every
+complaint about that was right. A decision is prose written for a model to weigh, so it cannot
+refuse anything: `reviewer: tsetr` matched no specialist, degraded to "nobody named", and every
+card came out unreviewed in silence — indistinguishable from never having stated it. A policy
+is a value the engine acts on, so it is validated by `named` below, the same function the
+card's own field goes through. One validator, so the two can never disagree.
+
+Read at CREATION and stamped, never resolved at close time — see `usecases.policy`.
 
 **A bare name must be registered, a prefixed id must not** — the same split the assign
 endpoint already makes, and for the same reason: `reviewer: tsetr` is a card nothing can ever
@@ -26,15 +29,10 @@ from __future__ import annotations
 from .._errors import BadRequest
 from .._types import HUMAN, PEER
 from ..storage import Store
-from ..storage.context import facts
-from ._contextslice import in_force
+from ..storage.policy import in_force
 from .agents import registry
 
-__all__ = ["named", "for_new", "project_default"]
-
-_DEFAULT_PREFIX = "reviewer:"
-"""How a decision announces itself. A decision is free prose, so the marker has to be at the
-front where a reader of `taskops context show` sees the same thing the parser does."""
+__all__ = ["named", "for_new"]
 
 
 def named(store: Store, value: str) -> str:
@@ -66,44 +64,16 @@ def named(store: Store, value: str) -> str:
 
 
 def for_new(store: Store, value: str | None) -> str:
-    """The reviewer a card is created with: what was ASKED FOR, else the project's decision.
+    """The reviewer a card is created with: what was ASKED FOR, else the project's policy.
 
-    `None` means the field was absent and the default applies; anything else — including "" —
+    `None` means the field was absent and the policy applies; anything else — including "" —
     was stated and is honoured. That distinction is the whole point: with a project-wide
     `reviewer: human`, a card that could not say "nobody" would have no way to be a text fix,
     and an empty string was indistinguishable from an omission.
+
+    The policy was validated when it was set, so it needs no second check here. Re-validating
+    would also be wrong: a specialist deleted from `.claude/agents/` after the policy was set
+    would start failing every `plan` call, and taking the board down is never the right answer
+    to a stale setting.
     """
-    return project_default(store) if value is None else named(store, value)
-
-
-def _first_word(rest: str) -> str:
-    """The reviewer is the FIRST token; everything after it is the reason it was chosen.
-
-    It used to be the whole line, and that quietly disabled the feature the first time somebody
-    used it properly: this project asks every decision to carry its why, so the text read
-    `reviewer: peer — nobody closes work produced by their own agents`, the whole tail was
-    taken as a name, no specialist matched, and the degradation to "" made every card come out
-    with no reviewer at all. Silent, and indistinguishable from never having stated it.
-
-    A reviewer is `human`, `peer`, `dev:ana`, `agent:ana/api` or a registered name — none of
-    which contain whitespace — so the split is unambiguous and the rest is free prose.
-    """
-    return rest.strip().split(maxsplit=1)[0] if rest.strip() else ""
-
-
-def project_default(store: Store) -> str:
-    """The `reviewer: <who>` decision in force, or "" for the stock verifier.
-
-    An unparseable or unregistered value degrades to "" rather than raising: a typo in a
-    project-wide decision must not make every `plan` call fail, and "" is the behaviour every
-    card had before anybody stated one.
-    """
-    for fact in reversed(in_force(facts(store))["decisions"]):
-        text = fact["text"].strip()
-        if text.lower().startswith(_DEFAULT_PREFIX):
-            wanted = _first_word(text[len(_DEFAULT_PREFIX):])
-            try:
-                return named(store, wanted)
-            except BadRequest:
-                return ""
-    return ""
+    return in_force(store, "reviewer") if value is None else named(store, value)

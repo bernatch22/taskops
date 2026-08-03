@@ -32,7 +32,7 @@ from pathlib import Path
 from .._errors import BadRequest
 from ..contracts import Actor
 
-__all__ = ["parse", "resolve", "ENV_ACTOR", "ENV_SESSION"]
+__all__ = ["parse", "resolve", "a_person", "ENV_ACTOR", "ENV_SESSION"]
 
 ENV_ACTOR = "TASKOPS_ACTOR"
 ENV_SESSION = "TASKOPS_SESSION"
@@ -111,3 +111,21 @@ def _git_config(root: Path, key: str) -> str:
     except (OSError, subprocess.SubprocessError):
         return ""
     return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def a_person(root: Path, asked: str, doing: str) -> Actor:
+    """Resolve the caller and refuse an AGENT — for the handful of calls that are a human's.
+
+    Here rather than at each call site because it is a rule about an actor id and nothing else,
+    and layer 0 already draws the line for exactly this shape: *guards that demand a
+    justification accept one from a dev and reject it from an agent.*
+
+    The session that plans resolves to a `dev:` id — `SessionStart` fires for the main
+    conversation and never for a sub-agent — so this costs the legitimate caller nothing.
+    """
+    who = resolve(root, asked)
+    if who["kind"] == "agent":
+        raise BadRequest(f"{who['id']} may not {doing} — that is a person's call about the "
+                         f"project, and a worker that could make it could move the goalposts "
+                         f"it is judged against.")
+    return who
