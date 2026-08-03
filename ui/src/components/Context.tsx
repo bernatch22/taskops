@@ -2,7 +2,7 @@
  *
  * This is the one panel in the app that is not about a moment. The board says what is happening,
  * activity says what happened, reports say what it meant — all three change every few seconds and
- * all three are read by looking. The objective and the invariants are the opposite: they change
+ * all three are read by looking. The objective and the settled decisions are the opposite: they change
  * about once a week and their whole value is being in your eye while you decide something else.
  * A worker gets its slice injected on every card; a PERSON had nowhere to see it at all.
  *
@@ -58,7 +58,7 @@ export function Context({ context, open, onToggle }: {
 
 function stated(context: ContextView): boolean {
   return Boolean(context.objective) || context.objectives.length > 0
-    || context.notes.length > 0 || context.invariants.length > 0
+    || context.notes.length > 0
     || context.decisions.length > 0 || context.policies.length > 0;
 }
 
@@ -68,7 +68,6 @@ function summarise(context: ContextView): string {
   const parts: string[] = [];
   const owned = context.objectives.filter((o) => o.owner).length;
   if (owned) parts.push(`${owned} dev objective${plural(owned)}`);
-  if (context.invariants.length) parts.push(`${context.invariants.length} invariant${plural(context.invariants.length)}`);
   if (context.decisions.length) parts.push(`${context.decisions.length} decision${plural(context.decisions.length)}`);
   for (const policy of context.policies) if (policy.value) parts.push(`${policy.name}: ${policy.value}`);
   return parts.join(" · ");
@@ -87,7 +86,6 @@ function Modal({ context, onClose }: {
    * belongs on their profile; mixing it in here made "the team decided" and "ana decided, for
    * ana" indistinguishable, which on a question about what is settled is the wrong answer. */
   const project = {
-    invariants: context.invariants.filter((f) => !f.owner),
     decisions: context.decisions.filter((f) => !f.owner),
     notes: context.notes.filter((f) => !f.owner),
   };
@@ -101,7 +99,7 @@ function Modal({ context, onClose }: {
 
       <nav className="ctx-tabs">
         <Tabs tab={tab} onTab={setTab} counts={{
-          project: project.invariants.length + project.decisions.length + project.notes.length,
+          project: project.decisions.length + project.notes.length,
           policies: context.policies.length,
         }} />
       </nav>
@@ -138,21 +136,18 @@ function Tabs({ tab, onTab, counts }: {
  * in the header. */
 function Project({ context, facts }: {
   context: ContextView;
-  facts: { invariants: Fact[]; decisions: Fact[]; notes: Fact[] };
+  facts: { decisions: Fact[]; notes: Fact[] };
 }): JSX.Element {
   return (
     <>
       <Group title="Objective" note="the north — everybody reads it, whatever they hold">
-        {context.objective ? [<Line key={context.objective.id} fact={context.objective} />] : []}
-      </Group>
-      <Group title="Invariants" note="never broken, whatever the card says">
-        {facts.invariants.map((fact) => <Line key={fact.id} fact={fact} />)}
+        {context.objective ? [<FactBlock key={context.objective.id} fact={context.objective} />] : []}
       </Group>
       <Group title="Decisions" note="settled, so it is not re-litigated">
-        {facts.decisions.map((fact) => <Line key={fact.id} fact={fact} />)}
+        {facts.decisions.map((fact) => <FactBlock key={fact.id} fact={fact} />)}
       </Group>
       <Group title="Notes" note="standing, and neither a goal nor a rule">
-        {facts.notes.map((fact) => <Line key={fact.id} fact={fact} />)}
+        {facts.notes.map((fact) => <FactBlock key={fact.id} fact={fact} />)}
       </Group>
     </>
   );
@@ -197,8 +192,12 @@ function Group({ title, note, children }: {
  *
  * The text gets the full width and wraps, and the metadata sits under it. The previous version
  * was a flex row with the text sharing a line with its scope and its id, which is fine until an
- * agent states a paragraph — and stating a paragraph is exactly what `taskops_context` is for. */
-function Line({ fact }: { fact: Fact }): JSX.Element {
+ * agent states a paragraph — and stating a paragraph is exactly what `taskops_context` is for.
+ *
+ * EXPORTED, because a fact now appears in two places: this panel and the card drawer, which shows
+ * the slice the card's worker was handed. A second renderer would drift, and the first thing it
+ * would drop is the id — the only part of a fact you can act on. */
+export function FactBlock({ fact }: { fact: Fact }): JSX.Element {
   const scope = [...fact.labels, ...fact.files];
   return (
     <li className="ctx-fact">

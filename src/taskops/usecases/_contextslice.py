@@ -14,7 +14,7 @@ worker read four — everybody reads the project's and their own, so a slice gro
 the size of the team. That is why `owner` is a filter and not a label.
 
 Pure: facts in, facts out, no store. That is what makes the rules below testable from literals —
-every project invariant survives the filter, and a tie between two machines resolves the same
+every project-wide fact survives the filter, and a tie between two machines resolves the same
 way on both.
 """
 
@@ -38,19 +38,36 @@ def in_force(live: list[Fact], *, mine: str = "") -> ContextSlice:
     return ContextSlice(objective=goals.get(""),
                         yours=goals.get(mine) if mine else None,
                         objectives=[goals[owner] for owner in sorted(goals)],
-                        invariants=[f for f in ours if f["sort"] == "invariant"],
                         decisions=[f for f in ours if f["sort"] == "decision"],
                         notes=[f for f in ours if f["sort"] == "note"])
 
 
-def for_task(live: list[Fact], task: Task) -> ContextSlice:
-    """The slice for one card: the project's facts plus its HOLDER's, narrowed by subject.
+def for_task(live: list[Fact], task: Task, *, entered_review_by: str = "") -> ContextSlice:
+    """The slice for one card: the project's facts plus its AUTHOR's, narrowed by subject.
 
-    Invariants are not filtered by labels, and that is the load-bearing asymmetry. A decision
-    that does not reach a card costs a re-litigation; an invariant that does not reach it costs
-    the breakage it existed to prevent — so subject narrows decisions and never invariants.
+    Subject narrows DECISIONS, and there is nothing left it does not narrow. There used to be:
+    `invariant` was a sort that skipped this filter, so a rule reached every card whatever its
+    labels said. The sort is gone (see `contracts.context.Sort` for why), and the consequence is
+    the one thing this removal cost — a rule that must reach every card is now a decision with NO
+    `labels` and NO `files`, and scoping it narrows it silently. `_applies` is the whole of it.
+
+    `entered_review_by` is who HANDED THE CARD OVER, and it wins over `assignee` because in the
+    one case a slice is read by somebody other than the worker — a verifier reading a card in
+    review — `assignee` no longer names the author: routing borrows that field to name the
+    chosen REVIEWER, so the verifier was handed its own objective and never the author's, which
+    is the one it needs to judge the work against. Empty for a card that is not sitting in a
+    review, so every other flow keeps reading the holder's.
+
+    It is a PARAMETER and not a lookup because that answer lives in the event log, and this
+    module stays pure: facts in, facts out, no store. The caller resolves it — `_facts.
+    entered_review_by`, the same derivation the closing guards use, so the author of a card is
+    one answer here and not two able to disagree.
+
+    The slice still grows by ONE. Project plus one person, never plus the verifier as well: the
+    size property is what the owner filter exists for, and a review is the moment the person
+    whose objective matters is the author rather than the reader.
     """
-    whole = in_force(live, mine=dev_of(task["assignee"]))
+    whole = in_force(live, mine=dev_of(entered_review_by) or dev_of(task["assignee"]))
     whole["decisions"] = [d for d in whole["decisions"] if _applies(d, task)]
     return whole
 

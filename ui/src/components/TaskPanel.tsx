@@ -4,8 +4,11 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { AgentEntry, CommitRef, Event, Task, TaskView } from "../contracts";
+import type {
+  AgentEntry, CommitRef, ContextSlice, Event, Task, TaskView,
+} from "../contracts";
 import { Actor, MARK, Priority, ago } from "./bits";
+import { FactBlock } from "./Context";
 
 /* Every move a PERSON makes by hand. `in_progress` was here and is gone with the status; a
  * button that 400s is worse than no button. `ready` is the reject — a card in review going
@@ -73,6 +76,8 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
           </section>
         ) : null}
 
+        <Applies task={task} />
+
         <section>
           <h3>Spec</h3>
           {task.spec
@@ -107,6 +112,55 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
             </>}
       </div>
     </div>
+  );
+}
+
+/* What the standing context says about THIS card — the same slice the server hands its worker.
+ *
+ * It lived in exactly one place a person could read (the context modal) and nowhere near the work:
+ * you could open a card and have no idea what the project had already settled about it, while the
+ * agent holding it had been handed precisely that. Now both read the same answer, from the same
+ * call (`usecases.context_for`, over `GET /api/task/context`).
+ *
+ * ABOVE the spec, which is the same argument as the file order at the top of this module: a reader
+ * stops early, and something already settled read AFTER the plan it should have shaped is a
+ * decision re-litigated in the diff.
+ *
+ * ONE list and no categories. The server decides what reaches this card — a fact scoped to labels
+ * or to an edit surface reaches only what it overlaps, an unscoped one reaches everything — and
+ * what the reader needs is that result, not a taxonomy to reconcile against their card. Whatever
+ * the slice carries under either heading is merged, so a sort that empties out changes nothing
+ * here and a card whose slice is empty renders nothing at all.
+ *
+ * ONE fetch per card. Not per render and deliberately not on socket events: a standing fact
+ * changes about once a week, while a board event arrives every few seconds. */
+function Applies({ task }: { task: Task }): JSX.Element | null {
+  const [slice, setSlice] = useState<ContextSlice | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    /* Cleared first: the drawer stays mounted when you follow a link to another card, so without
+     * this the new card would show the previous card's context until its own answer landed. */
+    setSlice(null);
+    api.taskContext(task.id).then((got) => { if (alive) setSlice(got); }).catch(() => {});
+    return () => { alive = false; };
+  }, [task.id]);
+
+  const facts = slice?.decisions ?? [];
+  /* Nothing in force for this card renders NOTHING — no heading, no "(none)", the same way the
+   * context modal omits an empty group. A card the project has said nothing about is not doing
+   * anything wrong, and an empty section on every card is a feature announcing itself. */
+  if (!facts.length) return null;
+  return (
+    <section>
+      <h3>
+        What applies here{" "}
+        <span className="dim">what this project has settled that reaches this card</span>
+      </h3>
+      <ul className="ctx-list">
+        {facts.map((fact) => <FactBlock key={fact.id} fact={fact} />)}
+      </ul>
+    </section>
   );
 }
 

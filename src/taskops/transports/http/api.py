@@ -17,13 +17,11 @@ from typing import Any, Callable, cast
 from ..._errors import TaskopsError
 from ..._version import __version__
 from ...usecases import activity, ask, board, fleet, search, standup, update
-from ...usecases._contextviews import show as context_show
-from ...usecases.policy import show as policy_show
 from ...usecases.report import HISTORY_WINDOW
 from ._wire import Reply, Request, error_reply, json_reply
 
 __all__ = ["config", "get_board", "get_fleet", "get_standup", "get_task", "get_search",
-           "get_activity", "get_context", "post_comment", "post_status", "guarded", "strings"]
+           "get_activity", "post_comment", "post_status", "guarded", "strings"]
 
 
 def config(root: Path, request: Request) -> Reply:
@@ -39,17 +37,6 @@ def get_board(root: Path, request: Request) -> Reply:
 
 def get_fleet(root: Path, request: Request) -> Reply:
     return guarded(lambda: json_reply(fleet(root)))
-
-
-def get_context(root: Path, request: Request) -> Reply:
-    """The standing facts and the settings, in ONE call.
-
-    Together because they are one question on screen — "what has this project already decided" —
-    and two calls would be two spinners for a panel the UI keeps open all the time. They stay two
-    concepts in the payload: `decisions` is prose a person weighs, `policies` are values the
-    engine obeys, and the panel says which is which.
-    """
-    return guarded(lambda: json_reply({**context_show(root), "policies": policy_show(root)}))
 
 
 def get_standup(root: Path, request: Request) -> Reply:

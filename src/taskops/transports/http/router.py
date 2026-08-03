@@ -13,6 +13,10 @@ from pathlib import Path
 from ...usecases.journal import journal
 from . import agentapi, api, assigning, exchange, invites, live, reports, rpc, static, unlock
 from ._wire import Reply, Request, Route, error_reply
+
+# Bound by NAME rather than through the module, unlike every row above: `from . import …, context`
+# does not fit the line and the split form costs this module twelve lines of its code budget.
+from .context import get_context, get_task_context
 from .policy import Policy
 
 __all__ = ["build"]
@@ -29,7 +33,10 @@ def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
         ("GET", "/api/task"): partial(api.get_task, root),
         ("GET", "/api/search"): partial(api.get_search, root),
         ("GET", "/api/activity"): partial(api.get_activity, root),
-        ("GET", "/api/context"): partial(api.get_context, root),
+        ("GET", "/api/context"): partial(get_context, root),
+        # The slice for ONE card — what its worker was handed — under `/api/task/` because that
+        # is what it is about: a card, read when a person opens it, not a second board-wide read.
+        ("GET", "/api/task/context"): partial(get_task_context, root),
         ("POST", "/api/invite"): partial(invites.post_invite, root),
         ("GET", "/api/report"): partial(reports.get_report, root),
         ("GET", "/api/reports"): partial(reports.get_reports, root),

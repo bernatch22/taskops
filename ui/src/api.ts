@@ -4,8 +4,8 @@
  * rather than a hunt through components. Components never call `fetch`. */
 
 import type {
-  Activity, AgentEntry, Board, Config, ContextView, DigestStarted, Event, ReportEntry,
-  ReportFile, Task, TaskView, WireMessage,
+  Activity, AgentEntry, Board, Config, ContextSlice, ContextView, DigestStarted, Event,
+  ReportEntry, ReportFile, Task, TaskView, WireMessage,
 } from "./contracts";
 
 /* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
@@ -75,6 +75,10 @@ export const api = {
   /* The standing facts and settings. Cheap and rarely changing, so the panel that shows it can
    * stay open all day — it refetches only when a `context` or `policy` event says to. */
   context: () => call<ContextView>("/api/context"),
+  /* ONE card's slice — what the project has settled that reaches THAT card, which is exactly what
+   * the worker holding it was injected with. Read once when a drawer opens, and never on a socket
+   * event: a standing fact changes about once a week and the card is on screen for a minute. */
+  taskContext: (id: string) => call<ContextSlice>(`/api/task/context?id=${encodeURIComponent(id)}`),
   activity: (since: string) => call<Activity>(`/api/activity?since=${encodeURIComponent(since)}`),
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
   reports: () => call<ReportEntry[]>("/api/reports"),

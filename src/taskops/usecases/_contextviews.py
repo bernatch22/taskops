@@ -19,6 +19,7 @@ from ..contracts.context import ContextSlice, Fact
 from ..engine import identity
 from ..storage.context import facts
 from ._contextslice import dev_of, for_task, in_force
+from ._facts import entered_review_by
 from ._project import locate, project
 from ._routing import read_remote_first
 
@@ -52,15 +53,19 @@ def history(start: Path | str) -> list[Fact]:
 
 
 def context_for(start: Path | str, task_id: str) -> ContextSlice:
-    """The slice one card gets: the project's facts plus its HOLDER's, narrowed by subject.
+    """The slice one card gets: the project's facts plus its AUTHOR's, narrowed by subject.
 
     This is what a worker is handed instead of the book, and what `SessionStart` injects.
+
+    The author is read HERE because it comes out of the event log and the slice is pure. On a
+    card in review that is `entered_review_by` — the log's answer to "who handed this over" —
+    and not `assignee`, which routing has overwritten with the reviewer by then.
     """
     if (answer := read_remote_first(start, "context_for", {"task": task_id})) is not None:
         return cast("ContextSlice", answer)
     with project(start) as store:
         task: Task = store.tasks.need(task_id)
-        return for_task(facts(store), task)
+        return for_task(facts(store), task, entered_review_by=entered_review_by(store, task_id))
 
 
 def me(start: Path | str, actor: str) -> str:

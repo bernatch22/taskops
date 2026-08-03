@@ -108,6 +108,7 @@ known-first-party = ["taskops"]
 # query parameter still has to accept the request, exactly like the ARG002 case above.
 # ARG001 stays on everywhere else, where an unused parameter really is a bug.
 "src/taskops/transports/http/api.py" = ["ARG001"]
+"src/taskops/transports/http/context.py" = ["ARG001"]
 "src/taskops/transports/http/live.py" = ["ARG001"]
 "src/taskops/transports/http/reports.py" = ["ARG001"]
 "src/taskops/transports/http/assigning.py" = ["ARG001"]
