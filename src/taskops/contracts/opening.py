@@ -29,6 +29,23 @@ class Opening(TypedDict):
     actor: str
     session: str
 
+    board: str
+    """Where this board can be OPENED, or "" when there is nowhere.
+
+    A person reading a session's first line wants somewhere to click. It used to be REMOTE
+    ONLY, on the argument that a local `taskops ui` is not running unless somebody started
+    one — which was true and was the wrong conclusion: the fix is to start it, not to print
+    nothing. The `SessionStart` hook brings a local board up before this is read, so both kinds
+    of project answer now, and neither URL carries a credential.
+    """
+
+    shared: bool
+    """True when that address is a SERVER the team reaches, false when it is this machine.
+
+    Separate from `board` because the URL alone no longer says which — both kinds are non-empty
+    now — and everything a reader concludes from the first line depends on it: "5 ready to hand
+    out" is five the whole team can see, or five nobody else knows about."""
+
     context: ContextSlice
     """The standing objective, invariants and decisions. Injected HERE rather than left for
     the agent to fetch, because a session that has to remember to ask about the project's
@@ -42,6 +59,15 @@ class Opening(TypedDict):
     """Cards this actor still holds — a resumed session, or leases that outlived a crash."""
 
     messages: list[Event]
+
+    recent: list[Event]
+    """What happened on this board in the last day, everybody's, newest last.
+
+    The one thing an opening could not answer: a session that knows what is WAITING still has
+    no idea what just moved, and the difference matters — a card in review because somebody
+    finished it an hour ago is a different situation from one that has sat there since Tuesday.
+    Summarised by the renderer into a handful of lines, never printed whole.
+    """
 
     team: Team
     """Who else is connected, and what they are holding. The one thing here that is not about

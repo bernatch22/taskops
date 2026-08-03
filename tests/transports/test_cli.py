@@ -53,7 +53,8 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     hook and by nothing else, so a person scanning this page for their task list should
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
-    assert listed == {"init", "join", "setup", "ui", "serve", "tasks", "attention", "context", "status",
+    assert listed == {"init", "join", "board", "setup", "ui", "serve", "tasks", "attention", "statusline",
+                      "context", "policy", "status",
                       "report", "schedule", "recover", "sync", "login", "open", "publish", "land", "remote",
                       "push", "pull"}
 
@@ -136,6 +137,65 @@ def test_tasks_done_refuses_a_card_with_no_commit(root: Path,
     assert main(["tasks", "done", task, "--repo", str(root), "-m", "finished",
                  "--actor", "dev:berna"]) == 1
     assert "commit" in capsys.readouterr().err
+
+
+def test_tasks_edit_sets_acceptance_criteria_alone(
+        root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The flag the README documented and `set_acceptance`'s own docstring named, for as long as
+    both existed, and that was never wired: the use case, the rpc verb and the MCP field were all
+    there, and the only surface that could not set a card's criteria was the one a PERSON types.
+
+    ALONE is the assertion. `edit` refuses a caller who named no field, and calling it anyway
+    made `--acceptance` fail with "nothing to edit" — its refusal for an empty call, about a call
+    that named something.
+    """
+    main(["tasks", "add", "Import a CSV", "--repo", str(root)])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+
+    assert main(["tasks", "edit", task, "--repo", str(root), "--acceptance",
+                 "WHEN a 3-row CSV is imported THE SYSTEM SHALL store 3 rows; "
+                 "WHEN a row fails THE SYSTEM SHALL keep the rest"]) == 0
+
+    said = capsys.readouterr().out
+    assert "acceptance (2)" in said and "store 3 rows" in said
+    # Split on `;` and not `,`: an EARS line is a sentence, and commas live inside it.
+    assert "WHEN a row fails THE SYSTEM SHALL keep the rest" in said
+
+
+def test_a_criterion_that_is_not_EARS_is_kept_and_flagged(
+        root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Accepted, never refused — refusing would make a card unwriteable over a wording rule —
+    so the warning is the only thing standing between that and a silent downgrade."""
+    main(["tasks", "add", "Import a CSV", "--repo", str(root)])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+
+    assert main(["tasks", "edit", task, "--repo", str(root), "--acceptance", "que ande"]) == 0
+
+    said = capsys.readouterr().out
+    assert "que ande" in said and "does not read as EARS" in said
+
+
+def test_an_empty_acceptance_clears_the_criteria(
+        root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`--acceptance ""` is a real edit — somebody removing criteria that were wrong — and it
+    has to be distinguishable from not passing the flag, which is why the default is `None`."""
+    main(["tasks", "add", "Import a CSV", "--repo", str(root)])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+    main(["tasks", "edit", task, "--repo", str(root), "--acceptance", "WHEN x THE SYSTEM SHALL y"])
+    capsys.readouterr()
+
+    assert main(["tasks", "edit", task, "--repo", str(root), "--acceptance", ""]) == 0
+    assert "(cleared)" in capsys.readouterr().out
+
+
+def test_edit_with_no_field_at_all_is_still_refused(
+        root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The refusal `--acceptance` had to stop borrowing must still fire for the call it is for."""
+    main(["tasks", "add", "Import a CSV", "--repo", str(root)])
+    task = "tk-" + capsys.readouterr().out.split("tk-")[1].split()[0]
+
+    assert main(["tasks", "edit", task, "--repo", str(root)]) == 1
+    assert "nothing to edit" in capsys.readouterr().err
 
 
 def test_tasks_edit_rewrites_the_card_from_the_terminal(

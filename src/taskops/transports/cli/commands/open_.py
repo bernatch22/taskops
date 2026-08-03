@@ -23,7 +23,9 @@ from __future__ import annotations
 import argparse
 import webbrowser
 
-from ....usecases import board_url, root_url
+from ....usecases import board_url, read_remote, root_url
+from ....usecases.localui import local_ui
+from ._shared import repo_of
 
 __all__ = ["register"]
 
@@ -60,4 +62,22 @@ def _target(args: argparse.Namespace) -> tuple[str, str]:
     if args.projects or args.server:
         url, found = root_url(str(args.server))
         return url, f"your projects on {found['url']} — signed in as {found['login']}"
+    root = repo_of(args)
+    # LOCAL projects get a board too, and this is where that stopped being true. A project with
+    # no remote used to be answered with a refusal naming `taskops ui` — a command that BLOCKS,
+    # in a terminal the caller was using for something else. So `open` starts one instead: the
+    # question "show me the board" has the same answer either way, and which kind of project
+    # this is has never been the caller's problem.
+    if read_remote(root) is None:
+        if url := local_ui(root):
+            return url, f"opening this project's board — a local ui is up at {url}"
+        raise _no_ui()
     return board_url(str(args.repo)), "opening this project's board"
+
+
+def _no_ui() -> Exception:
+    """The one failure worth phrasing: we tried to start a board and it did not come up. The
+    caller gets the blocking command, which is where they will see the actual error."""
+    from ...._errors import TaskopsError
+
+    return TaskopsError("could not start a local board — run `taskops ui` here to see why")

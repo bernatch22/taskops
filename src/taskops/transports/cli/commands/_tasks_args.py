@@ -93,16 +93,25 @@ def _add_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def _edit_flags(parser: argparse.ArgumentParser) -> None:
-    """The three fields a card can be corrected in. All default to `None` — "not passed" —
-    so that `--spec ""` clears a brief instead of being indistinguishable from not saying it.
-    Requiring at least one is the use case's job, not argparse's: the CLI is one of three
-    surfaces, and a rule only argparse knows is a rule the other two do not have."""
+    """The fields a card can be corrected in. All default to `None` — "not passed" — so that
+    `--spec ""` clears a brief instead of being indistinguishable from not saying it. Requiring
+    at least one is the use case's job, not argparse's: the CLI is one of three surfaces, and a
+    rule only argparse knows is a rule the other two do not have.
+
+    `--acceptance` was documented in the README and named by `set_acceptance`'s own docstring
+    for as long as both existed, and was never wired: the use case, the rpc verb and the MCP
+    field were all there, and the only surface that could not set a card's criteria was the one
+    a PERSON types. Semicolons, because an EARS line is a sentence and commas live inside it.
+    """
     parser.add_argument("task", help="the task id")
     parser.add_argument("--title", default=None, help="what the task is")
     parser.add_argument("--spec", default=None, help="the brief: what done looks like")
     parser.add_argument("--priority", type=int, default=None, help="0 urgent … 3 whenever")
     parser.add_argument("--reviewer", default=None,
                         help="who may close it; pass '' to clear and fall back to the verifier")
+    parser.add_argument("--acceptance", default=None,
+                        help="semicolon-separated EARS lines: WHEN <trigger> THE SYSTEM SHALL "
+                             "<response>. Pass '' to clear them")
 
 
 _CLOSERS = (

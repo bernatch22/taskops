@@ -1,0 +1,120 @@
+"""The bottom bar — one row of a terminal, rebuilt hundreds of times per session.
+
+Claude Code renders a status line in **its own row above** the built-in footer badges; it does
+not replace them, so `⏵⏵ bypass permissions on` stays where it is whatever this prints. What a
+status line CAN do is own the row above it, and the vim mode is repeated there on purpose: the
+eye that goes looking for `-- INSERT --` should not have to travel to a different row to also
+learn what the board is doing.
+
+**Ordered by how fast it decays.** What you are holding changes when you claim; what is waiting
+changes when a teammate moves; the board name never changes. So the volatile end leads, and a
+narrow terminal truncates the part that was going to be the same tomorrow.
+
+Pure, like everything in this package: a value and the harness payload in, a string out. That is
+what makes a bar testable at all — the alternative is reading a screenshot.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..contracts.attention import MOVES
+from ..contracts.bar import Bar
+
+__all__ = ["render_statusline"]
+
+DIM, OFF = "\x1b[2m", "\x1b[0m"
+AMBER, LIME, BLUE, RED = "\x1b[33m", "\x1b[32m", "\x1b[34m", "\x1b[31m"
+
+GAP = f"{DIM}  ·  {OFF}"
+TITLE = 28
+
+SAYS: dict[str, tuple[str, str]] = {
+    "verify": ("to review", BLUE),
+    "dispatch": ("to hand out", LIME),
+    "land": ("to land", AMBER),
+    "resume": ("stranded", AMBER),
+    "specless": ("with no spec", DIM),
+    "stalled": ("stuck", RED),
+}
+"""Board vocabulary, translated — the same rule the session greeting follows. A bar is allowed
+to be terse, never cryptic: `5 to hand out` is as short as `5 dispatch` and means something to
+somebody who has not read the manual."""
+
+
+def render_statusline(bar: Bar, payload: dict[str, Any]) -> str:
+    """The row. `payload` is the JSON Claude Code writes to a status line's stdin."""
+    parts = [_mode(payload), _holding(bar), _waiting(bar), _where(bar), _context(payload)]
+    return GAP.join(part for part in parts if part)
+
+
+def _mode(payload: dict[str, Any]) -> str:
+    """`-- INSERT --`, when the session is in vim mode and only then.
+
+    Claude Code sends `vim.mode` on every update whether or not vim bindings are on; the field
+    is absent for everybody else, so an editor mode never appears on the bar of somebody who
+    does not use one.
+    """
+    vim: dict[str, Any] = payload.get("vim") or {}
+    mode = str(vim.get("mode") or "").upper()
+    return f"{DIM}-- {mode} --{OFF}" if mode else ""
+
+
+def _holding(bar: Bar) -> str:
+    """What is under this person's hands right now — the first thing the bar owes them."""
+    held = bar["holding"]
+    if not held:
+        return ""
+    first = held[0]
+    more = f"{DIM} +{len(held) - 1}{OFF}" if len(held) > 1 else ""
+    # The id WHOLE: it is nine characters, and the point of putting it on screen is that
+    # somebody can read it straight into `taskops tasks show`. A shortened one cannot be.
+    return f"{AMBER}◐ {first['id']}{OFF} {_short(first['title'])}{more}"
+
+
+def _waiting(bar: Bar) -> str:
+    """What the board wants, counted per move, in the order `MOVES` already argued for.
+
+    Sorted by that order and not by size: the point of the ordering is that closing a review
+    can unblock three cards while a dispatch adds a fourth thing in flight, and a bar that
+    re-sorted by count every time something moved would also be a bar that never sits still.
+    """
+    said = []
+    for move in MOVES:
+        count, seen = bar["waiting"].get(move, 0), SAYS.get(move)
+        if count and seen:
+            said.append(f"{seen[1]}{count}{OFF} {seen[0]}")
+    if bar["mail"]:
+        said.append(f"{DIM}✉{OFF} {bar['mail']}")
+    return f"{DIM},{OFF} ".join(said)
+
+
+def _where(bar: Bar) -> str:
+    """The board, and whether this row is the truth or a copy of it.
+
+    `cached` is the whole reason this segment exists. On a shared board the bar reads a replica
+    that syncs when something calls taskops, so a teammate's claim lands here late — and a bar
+    that looked identical either way would promise a liveness it does not have.
+    """
+    kind = "local" if bar["local"] else "shared, cached"
+    return f"{DIM}{bar['board']} ({kind}){OFF}"
+
+
+def _context(payload: dict[str, Any]) -> str:
+    """Context used, and nothing until it is worth knowing.
+
+    Silent under half: a number that is on screen from the first prompt is a number nobody
+    reads by the time it matters. It turns amber at 70 and red at 90, which is the only place
+    on this bar where a colour is a warning rather than a category.
+    """
+    window: dict[str, Any] = payload.get("context_window") or {}
+    used = int(window.get("used_percentage") or 0)
+    if used < 50:
+        return ""
+    tone = RED if used >= 90 else AMBER if used >= 70 else DIM
+    return f"{tone}{used}% ctx{OFF}"
+
+
+def _short(text: str) -> str:
+    clean = " ".join(text.split())
+    return clean if len(clean) <= TITLE else clean[: TITLE - 1].rstrip() + "…"

@@ -23,9 +23,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .mcpfile import _read, hook_binary
+from .mcpfile import _read, cli_binary, hook_binary
 
-__all__ = ["SETTINGS_FILE", "wire_hooks", "hooks_for"]
+__all__ = ["SETTINGS_FILE", "wire_hooks", "hooks_for", "statusline_for"]
 
 SETTINGS_FILE = ".claude/settings.local.json"
 """The PERSONAL project settings, not the shared ones, and the reason is one line of output:
@@ -68,18 +68,36 @@ def hooks_for() -> dict[str, Any]:
             for event, verb in _EVENTS.items()}
 
 
-def wire_hooks(root: Path) -> list[str]:
-    """Add the missing hook events to `.claude/settings.json`. Returns the ones it added.
+def statusline_for() -> dict[str, Any]:
+    """The bottom row: `taskops statusline`, reading the session JSON Claude Code pipes to it.
 
-    An event somebody already configured is left ALONE, entry for entry — including one that
-    runs taskops differently on purpose. Re-running adds nothing, which is what makes this
-    safe to call from every `init`.
+    No `refreshInterval`. Claude Code re-runs a status line on every tool call, prompt and
+    permission change, debounced at 300 ms, and everything this bar shows changes because
+    something in this session did — a claim, a handover, a message arriving on a tool call. A
+    timer on top would re-read sqlite while a person types and move nothing on the screen.
+
+    The one thing it would buy is a teammate's move on a SHARED board landing without a local
+    command first, and the bar already tells the truth about that: it says `cached`.
+    """
+    return {"type": "command", "command": f"{cli_binary()} statusline"}
+
+
+def wire_hooks(root: Path) -> list[str]:
+    """Add the missing hook events and the status line to `.claude/settings.json`.
+
+    Returns what it added. An event somebody already configured is left ALONE, entry for entry
+    — including one that runs taskops differently on purpose — and so is a `statusLine`, which
+    is somebody's own bar and the last thing a task tool should take over. Re-running adds
+    nothing, which is what makes this safe to call from every `init`.
     """
     path = root / SETTINGS_FILE
     config = _read(path)
     hooks: dict[str, Any] = config.setdefault("hooks", {})
     added = [event for event, entry in hooks_for().items()
              if event not in hooks and not hooks.__setitem__(event, entry)]
+    if "statusLine" not in config:
+        config["statusLine"] = statusline_for()
+        added.append("statusLine")
     if added:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")

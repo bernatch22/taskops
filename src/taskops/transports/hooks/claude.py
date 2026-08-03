@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any, Callable, cast
 
 from ..._errors import TaskopsError
@@ -47,7 +48,30 @@ def session_start(payload: dict[str, Any]) -> dict[str, Any]:
     """
     where = events.cwd(payload)
     launch_sweep(where)
+    _offer_a_board(where)
     return events.session_start(payload)
+
+
+def _offer_a_board(where: str) -> None:
+    """Bring a LOCAL project's web interface up, so the opening line has somewhere to click.
+
+    Here and not in `opening` for the reason `launch_sweep` is here: that module answers what an
+    event MEANS, and starting a web server answers nothing — it is something this event sets in
+    motion, and a projection that started processes could not be called by anything else.
+
+    A project with a remote is skipped: its board is already up, on a machine that is not this
+    one. Everything is swallowed, and the cost of that is a first line with no URL on it.
+    """
+    try:
+        from ...usecases import locate
+        from ...usecases.localui import local_ui
+        from ...usecases.remote import read_remote
+
+        root = locate(Path(where))
+        if read_remote(root) is None:
+            local_ui(root)
+    except Exception:  # noqa: BLE001 — an offer that fails must never be why a session cannot open
+        return
 
 
 HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {

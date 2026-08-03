@@ -19,12 +19,14 @@ from ..._errors import TaskopsError
 from ..._version import __version__
 from .commands import (
     attention,
+    board,
     context,
     init,
     join,
     land,
     login,
     open_,
+    policy,
     publish,
     pushpull,
     recover,
@@ -34,6 +36,7 @@ from .commands import (
     serve,
     setup,
     status,
+    statusline,
     sync,
     tasks,
     ui,
@@ -41,9 +44,20 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, join, setup, ui, serve, tasks, attention, context, status, report,
-             schedule, recover, sync, login, open_, publish, land, remote, pushpull)
-"""Every command there is. Twenty, and `--help` lists all twenty.
+_COMMANDS = (init, join, board, setup, ui, serve, tasks, attention, context, policy, status,
+             statusline, report, schedule, recover, sync, login, open_, publish, land, remote,
+             pushpull)
+"""Every command there is. Twenty-three, and `--help` lists all twenty-three.
+
+`statusline` is the odd one and belongs here anyway: it is not for a person to type, it is what
+`settings.json` runs to paint the bottom row of a Claude Code session. It sits beside `status`
+because it is the same question at a different cadence — `status` when you ask, `statusline`
+without being asked — and putting it anywhere else would have hidden it from the one person
+looking for it, who is reading `--help` to find out what to put in that setting.
+
+`policy` sits beside `context` because they are the two halves of "what this project has
+already decided" — and apart from it because one is prose a worker weighs and the other is a
+value the engine obeys. Folding the second into the first is what made a typo silent.
 
 `login` sits with them because it is the first thing a new teammate types and the last thing
 they should have to look for. It is the only command here that touches nothing under

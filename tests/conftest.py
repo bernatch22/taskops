@@ -30,6 +30,11 @@ def hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for name in ("TASKOPS_ACTOR", "TASKOPS_SESSION", "TASKOPS_ROOT"):
         monkeypatch.delenv(name, raising=False)
+    # No test may BIND A PORT as a side effect. `SessionStart` offers to start a local board,
+    # which is a real web server in a real subprocess — four hook tests began spawning one
+    # each the day that landed, and a suite that leaves servers behind is a suite whose next
+    # run fails for a reason in the last one. The offer itself is tested by calling it.
+    monkeypatch.setenv("TASKOPS_NO_UI", "1")
 
 
 @pytest.fixture

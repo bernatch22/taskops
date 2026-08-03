@@ -8,6 +8,7 @@ import sys
 
 from ....transports.http import Policy, bound_port, build_server
 from ....usecases import locate
+from ....usecases.localui import forget_ui, note_ui
 from ._shared import add_target, repo_of
 
 __all__ = ["register"]
@@ -60,6 +61,10 @@ def run(args: argparse.Namespace) -> str:
     policy = Policy(token=args.token, readonly=bool(args.readonly),
                     rate_limit=int(args.rate_limit))
     server = build_server(str(args.host), int(args.port), root, policy)
+    # WRITTEN AFTER THE BIND, never before: the note says "a board is answering on this port",
+    # and one written on intent would advertise a port that a bind error was about to leave
+    # dead. `--port 0` is how anything that starts this detached asks the OS for a free one.
+    note_ui(root, bound_port(server))
     print(f"taskops ui → http://{args.host}:{bound_port(server)}/  ({root})"
           + ("  [token required]" if args.token else "")
           + ("  [read-only]" if args.readonly else ""), file=sys.stderr)
@@ -69,4 +74,5 @@ def run(args: argparse.Namespace) -> str:
         print("\nstopped", file=sys.stderr)
     finally:
         server.server_close()
+        forget_ui(root)
     return ""

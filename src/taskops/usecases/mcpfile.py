@@ -96,6 +96,12 @@ def hook_binary() -> str:
     return _beside("taskops-hook")
 
 
+def cli_binary() -> str:
+    """`taskops`, absolute. Read by `claudefile` for the status line, which is the one piece of
+    the Claude Code wiring that runs the CLI rather than the hook entry point."""
+    return _beside("taskops")
+
+
 def _beside(name: str) -> str:
     """The named console script beside this interpreter, or the bare name.
 

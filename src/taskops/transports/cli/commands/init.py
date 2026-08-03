@@ -43,6 +43,11 @@ def _describe(report: InitReport) -> str:
     for skipped in report.skipped:
         lines.append(f"hook skipped — {skipped}")
     lines.append("")
-    lines.append("Register the MCP server with:")
-    lines.append("  taskops setup      # the shell alias that opens a session with the board channel")
+    # It used to say "Register the MCP server with:" and then print `taskops setup`, which is a
+    # SHELL ALIAS and registers nothing — while `.mcp.json`, written by this very command two
+    # lines earlier, had already done it. Telling somebody to do a thing that is done, with a
+    # command that does something else, is how a person learns to ignore what a tool prints.
+    lines.append("The MCP server, the Claude Code hooks and the status line are wired —")
+    lines.append("  .mcp.json  ·  .claude/settings.local.json  ·  .claude/agents/")
+    lines.append("Nothing to register by hand. Start Claude Code here and it picks them up.")
     return "\n".join(lines)

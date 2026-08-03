@@ -6,16 +6,16 @@ handler here returns `{}` when there is nothing to say, and that silence is load
 these fire on every tool call, so a handler that always spoke would inject noise into a
 session hundreds of times.
 
-This is also where `brief`/`inbox`/`track`/`checkout` ended up. They used to be four CLI
-commands a hook line typed one at a time; the events call the same use cases directly, so the
-commands were a spelling of this file that a person could reach and nobody should.
+Also where `brief`/`inbox`/`track`/`checkout` ended up: four CLI commands a hook line typed one
+at a time, now the same use cases called directly. And `SessionStart` is the one event with TWO
+audiences — `additionalContext` reaches the model, `systemMessage` the person's terminal.
 """
 
 from __future__ import annotations
 
 from typing import Any, cast
 
-from ...render import render_inbox, render_opening
+from ...render import render_greeting, render_inbox, render_opening
 from ...usecases import check_command, checkout, inbox, track
 from ...usecases.opening import opening
 from ._args import cwd, session_of
@@ -60,16 +60,13 @@ def _rewrite(command: str) -> dict[str, Any]:
 def session_start(payload: dict[str, Any]) -> dict[str, Any]:
     """Inject the ROLE, the project's standing facts, and what is waiting on a decision.
 
-    It used to inject what the session HELD, which for a fresh conversation is nothing, and
-    ended with "Run taskops_next to claim one." That sentence is why two real sessions did the
-    work themselves and left their cards dead in review: the first thing the main agent read
-    told it to be a worker. SessionStart fires for the main conversation only — sub-agents
-    never see it — so this event is the proof of which one is reading, and the role can be
-    stated as a fact instead of hoped for in a prompt.
+    It used to end with "Run taskops_next to claim one", and that sentence is why two real
+    sessions did the work themselves and left their cards dead in review: the first thing the
+    main agent read told it to be a worker. SessionStart fires for the main conversation only,
+    so this event PROVES which one is reading and the role is stated as a fact.
     """
-    said = render_opening(cast("dict[str, Any]", opening(cwd(payload),
-                                                         session=session_of(payload))))
-    return _context("SessionStart", said)
+    view = cast("dict[str, Any]", opening(cwd(payload), session=session_of(payload)))
+    return _spoken(_context("SessionStart", render_opening(view)), render_greeting(view))
 
 
 def post_tool_use(payload: dict[str, Any]) -> dict[str, Any]:
@@ -140,6 +137,12 @@ def _reviews_pending(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 
+
+
+def _spoken(reply: dict[str, Any], line: str) -> dict[str, Any]:
+    """The one line the PERSON sees — `systemMessage` is the only field that reaches a terminal.
+    `additionalContext` is wrapped in a reminder they never see, and stdout is hidden too."""
+    return {**reply, "systemMessage": line} if line else reply
 
 
 def _context(event: str, text: str) -> dict[str, Any]:

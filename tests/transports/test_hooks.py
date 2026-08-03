@@ -341,12 +341,12 @@ def test_a_broken_board_never_traps_a_session(tmp_path: Path) -> None:
 # ---- the review that nobody picked up
 
 
-def _handover(project: Path, monkeypatch: Any) -> str:
+def _handover(project: Path, monkeypatch: Any, *, reviewer: str = "") -> str:
     """One card taken to `review` by a worker — the exact state two live sessions died in."""
     from taskops.usecases import update
 
     monkeypatch.setenv("TASKOPS_ACTOR", "agent:berna/w1")
-    card = plan(project, [{"title": "The parser", "spec": "x",
+    card = plan(project, [{"title": "The parser", "spec": "x", "reviewer": reviewer,
                            "acceptance": ["WHEN x THE SYSTEM SHALL y"]}])["created"][0]["id"]
     next_task(project, task=card, actor="agent:berna/w1", session="sess-1")
     update(project, card, status="review", actor="agent:berna/w1", comment="criterion met")
@@ -441,9 +441,34 @@ def test_a_peer_review_does_not_nag_the_author_s_own_session(project: Path,
     """With `reviewer: peer` the author's session gets NO reminder, and that silence is the
     fix working: the review belongs to the other developer, and telling this session to spawn
     a verifier would tell it to spawn one the close guard is going to refuse."""
-    from taskops.usecases import context_state
-
-    context_state(project, "decision", "reviewer: peer — the other developer reviews")
-    _handover(project, monkeypatch)
+    _handover(project, monkeypatch, reviewer="peer")
 
     assert _door.subagent_stop(event(project)) == {}
+
+
+def test_session_start_speaks_to_BOTH_audiences(project: Path) -> None:
+    """Two channels, and only one of them is the model's.
+
+    `additionalContext` is wrapped in a system reminder the person never sees, and plain stdout
+    from a SessionStart hook is hidden from them too. `systemMessage` is the only field that
+    reaches the terminal — so without it a session opened, the agent silently received the whole
+    board, and the human watching could not tell taskops had run, let alone that three cards
+    were waiting on them.
+
+    Asserted HERE and not only on the renderer: a line that is right and not wired is a line
+    nobody sees, and the renderer's own tests pass either way.
+    """
+    from taskops.usecases import plan
+
+    plan(project, [{"title": "one", "spec": "s"}], actor="dev:ana")
+    response = _events.session_start(event(project))
+
+    import re
+
+    said = response["systemMessage"]
+    assert response["hookSpecificOutput"]["additionalContext"], "the model still gets the board"
+    assert re.sub(r"\x1b\[[0-9;]*m", "", said).startswith("taskops is tracking this project"), (
+        "and the person gets a sentence that names what is running, not a count")
+    assert "\n" not in said, (
+        "ONE line: a four-section block arrived as a run-on paragraph on a real screen, so the "
+        "renderer never emits a newline rather than relying on what the harness does with one")
