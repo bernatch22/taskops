@@ -11,6 +11,7 @@ added without a migration and why it cannot drift from what actually happened.
 from __future__ import annotations
 
 from ..contracts import Activity, ActorRoll, Event
+from ..contracts.context import CONTEXT_TASK
 from ..storage import Store
 from .activity import tasks_of
 
@@ -38,8 +39,14 @@ def activity(store: Store, *, since: float, limit: int = MAX_EVENTS) -> Activity
     found = store.events.newest_since(since, limit=limit + 1)
     kept = found[-limit:] if len(found) > limit else found
     return Activity(repo=str(store.root), since=since, events=list(reversed(kept)),
-                    titles={task["id"]: task["title"]
-                            for task in tasks_of(store, [e["task"] for e in kept])},
+                    # `CONTEXT_TASK` gets a title of its own. It is the sentinel a fact and a
+                    # milestone are filed under — an `Event` must name a task and these are about
+                    # the project — so the timeline has rows whose "card" is not a card, and a
+                    # feed that looked them up found nothing and rendered a bare `project`.
+                    titles={**({CONTEXT_TASK: "the project itself"}
+                               if any(e["task"] == CONTEXT_TASK for e in kept) else {}),
+                            **{task["id"]: task["title"]
+                               for task in tasks_of(store, [e["task"] for e in kept])}},
                     actors=rolls(kept), kinds=sorted({e["kind"] for e in kept}),
                     truncated=len(found) > limit)
 

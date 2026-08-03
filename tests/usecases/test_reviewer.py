@@ -24,6 +24,7 @@ from taskops.engine.machine import Facts, check_move
 from taskops.render import render_view
 from taskops.usecases import ask, edit, init, plan, set_policy
 from taskops.usecases.context import state
+from taskops.usecases.milestone import open_chapter
 from tests.conftest import CLOCK
 from tests.usecases.test_agents import COLLECTORS, write_agent
 
@@ -31,7 +32,11 @@ from tests.usecases.test_agents import COLLECTORS, write_agent
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     """A project that has ONE registered specialist, `taskops-collectors`."""
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     write_agent(tmp_path, "taskops-collectors", COLLECTORS)
     return tmp_path
 
@@ -133,7 +138,9 @@ def test_editing_refuses_an_unknown_specialist_before_writing_anything(project: 
 
 
 def a_card(reviewer: str) -> Task:
-    return Task(id="tk-aaaaaa", title="t", spec="s", status="review", priority=2, parent=None,
+    # `milestone=""` only completes a field `Task` gained in 0.5.0. No rendered byte below
+    # changes: nothing here reads the chapter.
+    return Task(id="tk-aaaaaa", title="t", spec="s", status="review", priority=2, milestone="", parent=None,
                 labels=[], files=[], created_by="dev:berna", assignee="", reviewer=reviewer,
                 created=CLOCK, updated=CLOCK)
 

@@ -12,7 +12,7 @@ flows, each one readable on its own, so you can find the one you are in.
 | 4 | [Landing: how the work reaches the trunk](#4--landing-how-the-work-reaches-the-trunk) | closing a card |
 | 5 | [Sharing a board](#5--sharing-a-board) | `taskops board create` |
 | 6 | [Bringing somebody in](#6--bringing-somebody-in) | `taskops board invite` |
-| 7 | [The standing context](#7--the-standing-context) | `taskops context objective` |
+| 7 | [Milestones and the standing context](#7--milestones-and-the-standing-context) | `taskops milestone new` |
 | 8 | [The daily report](#8--the-daily-report) | nothing — it triggers itself |
 | 9 | [What a person sees](#9--what-a-person-sees) | opening a session |
 
@@ -281,54 +281,58 @@ of the repository's collaborators, and a copy goes stale the day somebody is rem
 
 ---
 
-## 7 · The standing context
+## 7 · Milestones and the standing context
 
-The facts a worker needs on every card, and the reason it is a SLICE rather than a book: past
-roughly 150–200 standing instructions, compliance decays, so a context that grows makes every
-agent slightly worse.
+Two vocabularies over one log, and the seam between them is TIME.
+
+A **milestone** is the chapter a board is in: a thing a person would recognise as finished. Every
+card belongs to exactly one, and a board with none refuses to plan — which is the rule the whole
+model rests on. An agent may open one, work under it and REPORT it finished; only a person may say
+it was reached.
 
 ```sh
-taskops context objective "que el importador ande de punta a punta" --horizon 2026-08-20
-taskops context decision "cero dependencias fuera de la stdlib"    # sin alcance: llega a toda card
-taskops context decision "sqlite y no postgres" --labels db
-taskops context objective "el parser de fechas" --mine        # yours, not the project's
-taskops context show          # or: log, retire <id-prefix>
+taskops milestone new "que el importador ande de punta a punta" --horizon 2026-08-20
+taskops milestone new "que se pueda facturar" --planned      # written down, not started
+taskops milestone                                            # every ACTIVE chapter, with counts
+taskops milestone review 31b0b89a -m "las tres cards cerradas, el import anda"
+taskops milestone done   31b0b89a                            # a PERSON, and the record says who
 ```
 
-Four sorts and two dimensions of scope:
+Several are active at once on a real board — a team ships two things in a fortnight — so `plan`
+asks which chapter its cards belong to when more than one is open. It refuses rather than guessing:
+a card in the wrong chapter is judged against somebody else's rules, and nothing says so.
+
+The **context** is the facts a worker needs on every card, and the reason it is a SLICE rather than
+a book: past roughly 150–200 standing instructions, compliance decays, so a context that grows
+makes every agent slightly worse.
+
+```sh
+taskops context rule     "cero dependencias fuera de la stdlib" --project
+taskops context decision "el CSV se lee en streaming"        # sin alcance: llega a toda su card
+taskops context decision "sqlite y no postgres" --labels db
+taskops context note     "el importador tiene tres etapas"
+taskops me objective     "el parser de fechas"               # yours, and only yours
+taskops context          # or: log, retire <id-prefix>, --task tk-…, --milestone <id>
+```
+
+Three sorts, three dimensions of scope:
 
 | sort | what it is |
 |---|---|
-| `objective` | what this is for. One per owner: the project's, plus one each |
+| `rule` | it does not break. Unscoped by nature, and `--project` outlives every chapter |
 | `decision` | settled, so it is not re-litigated |
-| `note` | standing, and neither a goal nor a rule |
+| `note` | standing, and neither. Always a chapter's — a permanent note is a rule |
+| `me objective` | what one PERSON is chasing. One each, the latest wins |
 
 **`labels`/`files` narrow by subject** — a decision about the database does not reach a card about
-the parser. **`owner` narrows by person**: a fact you state for yourself reaches your sessions and
-nobody else's. That second one protects SIZE: three developers each stating an objective must not
-make every worker read four, so everybody reads the project's and their own and a slice grows by
-ONE whatever the size of the team.
+the parser. **The person narrows by owner**: a fact you state for yourself reaches your sessions and
+nobody else's. **The chapter narrows by time**: a fact belongs to the milestone open when it was
+written and leaves every slice when a person verifies that milestone — nobody retires it by hand.
 
-**A rule that must reach every card is a decision with NO `labels` and NO `files`.** There used to
-be a fourth sort, `invariant`, that skipped the subject filter entirely — so a rule reached every
-card whatever its labels said. It is gone: four categories to choose between is a choice somebody
-makes wrong, and mechanically an invariant *was* an unscoped decision plus a word. The cost is one
-lost guarantee, and it is worth knowing: **scoping a rule now narrows it, silently.** Before, that
-was impossible. If you want something that refuses rather than persuades, that is a policy — prose
-does not refuse.
-
-Facts already written as invariants are read as decisions, with their scope dropped, so a board
-that used them keeps them reaching everything.
-
-An agent can read and write this through `taskops_context` — but an `agent:` actor is refused a
-write. Stating an objective is a person's call about the project, and the fence lives in the use
-case where `Bash` cannot walk around it.
-
-Separately, a **policy** is a value the ENGINE obeys, validated when it was written
-(`taskops policy reviewer peer`). It used to be a `reviewer:` prefix parsed out of a free-text
-decision, and every complaint about that was right: a decision is prose for a model to weigh, so
-it cannot refuse anything — `reviewer: tsetr` matched nothing, degraded to "nobody named", and
-every card came out unreviewed in silence.
+The first protects relevance and the other two protect SIZE, from the two directions it grows: with
+the TEAM (everybody reads the project's facts and their own, so a slice grows by ONE whether three
+people are on the board or thirty) and with the YEAR (a decision taken in March is no longer
+injected in December).
 
 ---
 

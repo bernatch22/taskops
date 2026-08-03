@@ -13,7 +13,8 @@ the whole context is one indexed scan and this module owns no SQL of its own.
 from __future__ import annotations
 
 from ..contracts import Event
-from ..contracts.context import CONTEXT_KIND, CONTEXT_TASK, SORTS, Fact, Sort
+from ..contracts.context import CONTEXT_KIND, CONTEXT_TASK, LEVELS, SORTS, Fact, Level, Sort
+from ._prefix import matching
 from .store import Store
 
 __all__ = ["facts", "fact_of", "matching"]
@@ -32,18 +33,6 @@ def facts(store: Store, *, retired: bool = False) -> list[Fact]:
     live = [f for f in found if f is not None]
     return sorted(live if retired else [f for f in live if not f["retired"]],
                   key=lambda f: (f["ts"], f["id"]))
-
-
-def matching(rows: list[Fact], prefix: str) -> list[str]:
-    """Every fact id `prefix` could name, sorted — the whole id alone when it matches one.
-
-    A PREFIX because `show` and `log` print eight characters, so the string a person can see is
-    the only one they can retype. Ambiguity is returned rather than resolved: which of two the
-    caller meant is not a question this layer may answer by picking.
-    """
-    if any(fact["id"] == prefix for fact in rows):
-        return [prefix]
-    return sorted(fact["id"] for fact in rows if fact["id"].startswith(prefix))
 
 
 def fact_of(event: Event, *, retired: bool = False) -> Fact | None:
@@ -69,7 +58,25 @@ def fact_of(event: Event, *, retired: bool = False) -> Fact | None:
     return Fact(id=event["id"], sort=_as_sort(sort), text=str(body.get("text", "")),
                 labels=scope[0], files=scope[1],
                 horizon=str(body.get("horizon", "")), owner=str(body.get("owner", "")),
+                milestone=str(body.get("milestone", "")), level=_level_of(body),
                 actor=event["actor"], ts=event["ts"], retired=retired)
+
+
+def _level_of(body: dict[str, object]) -> Level:
+    """A fact's lifetime, and the whole compatibility question in four lines.
+
+    A body with NO `level` was written before levels existed, and it reads as `project` —
+    permanently in force, attached to no chapter. Not `milestone`, which is the default a WRITER
+    gets today: a legacy fact has no chapter to belong to, so calling it milestone-level would
+    attach it to whichever one happens to be open now and then drop it from every slice the moment
+    that chapter closed. A board's standing rules may not vanish because a version changed; same
+    argument as `_RETIRED` below, one field over.
+
+    An unrecognised level falls the same way, for the same reason: a value a NEWER taskops wrote
+    is one this one cannot place, and the safe failure is "still in force" rather than "gone".
+    """
+    stated = str(body.get("level", ""))
+    return stated if stated in LEVELS else "project"    # type: ignore[return-value]
 
 
 _RETIRED = {"invariant": "decision"}

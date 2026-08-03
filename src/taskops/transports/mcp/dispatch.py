@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 from ..._errors import TaskopsError
 from . import _context as context
+from . import _milestone as milestone
 from . import _reads as read
 from . import _writes as write
 from .answers import Answer, answer, failure, from_engine
@@ -25,6 +26,7 @@ HANDLERS: dict[str, Handler] = {
     "taskops_update": write.update_,
     "taskops_ask": read.ask_,
     "taskops_context": context.context_,
+    "taskops_milestone": milestone.milestone_,
     "taskops_capture": write.capture_,
     "taskops_plan": write.plan_,
     "taskops_dispatch": write.dispatch_,

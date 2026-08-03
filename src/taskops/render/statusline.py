@@ -62,7 +62,7 @@ def _north(bar: Bar) -> str:
     a bar whose left end pushes what is WAITING off the right of the screen has inverted its own
     priorities. Truncated it is still the reminder; absent it is nothing.
     """
-    said = _short(bar.get("objective") or "", GOAL)
+    said = _short(bar.get("milestone") or "", GOAL)
     return f"{DIM}◎{OFF} {said}" if said else ""
 
 

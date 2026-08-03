@@ -26,6 +26,7 @@ import pytest
 
 from taskops.transports.http import Policy, bound_port, build_server
 from taskops.usecases import init, locate, plan
+from taskops.usecases.milestone import open_chapter
 
 DEADLINE = 15.0
 """Seconds a test waits for a frame. Generous on purpose: this runs on CI machines that are
@@ -34,7 +35,11 @@ sometimes very slow, and a flaky liveness test is one somebody eventually marks 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     return tmp_path
 
 

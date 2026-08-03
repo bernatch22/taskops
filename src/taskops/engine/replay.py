@@ -89,6 +89,10 @@ def _create(store: Store, event: Event) -> bool:
         id=event["task"], title=str(body.get("title", "(untitled)")),
         spec=str(body.get("spec", "")), status="backlog",
         priority=_int(body.get("priority"), 2), parent=_optional(body.get("parent")),
+        # A body with no `milestone` is a card planned before chapters existed, and it lands with
+        # none — never attached to whichever chapter happens to be open on THIS clone, which would
+        # invent a fact about the past and differ from one machine to the next.
+        milestone=str(body.get("milestone", "")),
         labels=_strings(body.get("labels")), files=_strings(body.get("files")),
         created_by=event["actor"], assignee=str(body.get("assignee", "")),
         # No validation on the way in: a teammate's registry is not ours, and a card that
@@ -127,7 +131,7 @@ def _status(store: Store, event: Event) -> bool:
     task = store.tasks.get(event["task"])
     stated = event["body"].get("to", _IMPLIED.get(event["kind"]))
     target: object = _RETIRED.get(stated, stated)
-    if task is None or not isinstance(target, str) or target not in _STATUSES:
+    if task is None or not isinstance(target, str) or target not in STATUSES:
         return False
     if event["ts"] <= task["updated"]:
         return False
@@ -138,7 +142,8 @@ def _status(store: Store, event: Event) -> bool:
 # Retired statuses map to what they always meant: replay is the one reader that may never
 # refuse history, and a teammate's log can still carry `in_progress`.
 _RETIRED = {"in_progress": "claimed"}
-_STATUSES = frozenset(STATUSES)     # derived: a second hand-written list would drift
+# Membership is tested against `STATUSES` itself — seven values, so a frozenset copy bought
+# nothing and was one more name to keep in step with layer 0.
 
 
 def _int(value: object, fallback: int) -> int:

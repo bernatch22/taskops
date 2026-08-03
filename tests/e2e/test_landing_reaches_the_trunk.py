@@ -15,6 +15,7 @@ import pytest
 
 from taskops.usecases import init, next_task, plan, update
 from taskops.usecases.land import _has_board, _trunk, land
+from taskops.usecases.milestone import open_chapter
 
 
 def git(repo: Path, *args: str) -> str:
@@ -30,7 +31,11 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "seed.txt").write_text("seed\n")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-qm", "seed")
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-qm", "taskops")
     return tmp_path

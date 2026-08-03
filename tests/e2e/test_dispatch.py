@@ -16,11 +16,16 @@ from taskops._errors import BadRequest
 from taskops.storage import Store
 from taskops.usecases import board, dispatch, init, next_task, plan
 from taskops.usecases.dispatch import DEFAULT_WORKERS, MAX_WORKERS
+from taskops.usecases.milestone import open_chapter
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "A", "spec": "a", "files": ["a.py"]},
                     {"title": "B", "spec": "b", "files": ["b.py"]},
                     {"title": "C", "spec": "c", "files": ["c.py"]}], actor="dev:berna")
@@ -71,6 +76,8 @@ def test_asking_for_more_than_the_ceiling_is_refused(tmp_path: Path) -> None:
     from taskops import BadRequest
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     made = plan(tmp_path, [{"title": f"T{i}", "spec": "x"} for i in range(MAX_WORKERS + 1)],
                 actor="dev:berna")
     with pytest.raises(BadRequest) as caught:
@@ -189,6 +196,8 @@ def test_dispatching_a_blocked_card_is_refused_not_launched(tmp_path: Path) -> N
     """A worker started on a blocked card finds nothing to do and exits, which reads as a broken
     dispatch rather than as the wrong request it was."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     made = plan(tmp_path, [{"title": "first", "spec": "x"},
                            {"title": "second", "spec": "y", "after": [0]}],
                 actor="dev:berna")
@@ -205,6 +214,8 @@ def test_nothing_to_dispatch_says_so(tmp_path: Path) -> None:
     from taskops.render import render_dispatch
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     result = dispatch(tmp_path, dry_run=True, actor="dev:berna")
     assert result.launched == []
     assert "nothing to dispatch" in render_dispatch(result)
@@ -276,6 +287,8 @@ def test_a_dispatched_card_names_the_specialist_it_belongs_to(tmp_path: Path) ->
     """taskops routes; the CALLER spawns. The name has to reach the brief, because the host
     session is the only thing that can act on it."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     register(tmp_path, "taskops-collectors", "etl")
     plan(tmp_path, [{"title": "fix the loader", "spec": "x", "labels": ["etl"]}],
          actor="dev:berna")
@@ -303,6 +316,8 @@ def test_an_after_naming_nothing_is_refused_rather_than_silently_flat(tmp_path: 
     line: the board showed a card depending on something and offered it to three workers at once.
     """
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
 
     with pytest.raises(BadRequest, match="not a task in this batch"):
         plan(tmp_path, [{"title": "one", "spec": "s"}, {"title": "two", "spec": "s"},

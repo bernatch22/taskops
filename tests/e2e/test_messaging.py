@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from taskops.usecases import ask, init, next_task, plan, sync, update
+from taskops.usecases.milestone import open_chapter
 from taskops.usecases.session import brief, inbox
 
 
@@ -27,7 +28,11 @@ def shared(tmp_path: Path) -> Path:
     git(tmp_path, "init", "-q", "-b", "main")
     git(tmp_path, "config", "user.email", "berna@example.com")
     git(tmp_path, "config", "user.name", "Berna")
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     return tmp_path
 
 
@@ -126,6 +131,8 @@ def test_two_clones_converge_through_git(tmp_path: Path) -> None:
         git(who, "config", "user.email", email)
         git(who, "config", "user.name", who.name)
         init(who)
+        open_chapter(who, "the chapter these tests plan into",
+                     actor="dev:berna")
 
     planned = plan(ana, [
         {"title": "Ana's foundation", "spec": "The full brief, which must travel.",
@@ -169,6 +176,8 @@ def test_a_status_change_travels_and_unblocks_on_the_other_side(tmp_path: Path) 
         git(who, "config", "user.email", email)
         git(who, "config", "user.name", who.name)
         init(who)
+        open_chapter(who, "the chapter these tests plan into",
+                     actor="dev:berna")
 
     planned = plan(ana, [{"title": "Blocker", "spec": "x"},
                          {"title": "Waiter", "spec": "y", "after": [0]}], actor="dev:ana")
@@ -198,6 +207,8 @@ def test_replaying_the_same_log_twice_changes_nothing(tmp_path: Path) -> None:
     from taskops.usecases import rebuild
 
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     planned = plan(tmp_path, [{"title": "Once", "spec": "x"}], actor="dev:berna")
     sync(tmp_path)
     before = ask(tmp_path, planned["created"][0]["id"])["task"]

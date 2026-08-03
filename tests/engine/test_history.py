@@ -7,10 +7,27 @@ of those is worse than no history, because nobody can tell from the screen.
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Iterator
+
+import pytest
+
 from taskops.contracts import Task
 from taskops.engine import record
 from taskops.engine.history import activity
 from taskops.storage import Store
+
+
+@pytest.fixture
+def store(bare: Path) -> Iterator[Store]:
+    """The shared `store` narrowed to a board with NO chapter.
+
+    Nothing here plans a card, so the chapter the shared fixture opens buys nothing — and it is an
+    EVENT, so it lands in the very timeline these tests count and window. A history test whose feed
+    carries a fact from its own scaffolding is measuring the scaffolding.
+    """
+    with Store(bare) as opened:
+        yield opened
 
 
 def _log(store: Store, task: str, actor: str, kind: str, ts: float,
@@ -71,7 +88,10 @@ def test_truncation_is_admitted_and_keeps_the_END(store: Store) -> None:
 def test_titles_ride_along_with_the_timeline(store: Store) -> None:
     """Fetching a title per row would be a hundred requests to render one screen."""
     store.tasks.insert(Task(id="tk-1", title="The one thing", spec="", status="ready",
-                            priority=2, parent=None, labels=[], files=[], assignee="", reviewer="",
+                            # Required field of `Task`, completed by the fixture. Unrelated to
+                            # what this pins (a title travelling with the timeline).
+                            priority=2, milestone="", parent=None, labels=[], files=[],
+                            assignee="", reviewer="",
                             created_by="dev:berna", created=1.0, updated=1.0))
     _log(store, "tk-1", "dev:berna", "comment", 1_000.0, text="hi")
     assert activity(store, since=0.0)["titles"] == {"tk-1": "The one thing"}

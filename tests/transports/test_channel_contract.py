@@ -36,6 +36,7 @@ from taskops.transports.http.router import build
 from taskops.usecases import init, next_task, plan, update
 from taskops.usecases._freeing import unassign
 from taskops.usecases._handoff import hand_over
+from taskops.usecases.milestone import open_chapter
 
 CHANNEL = Path(__file__).parents[2] / "plugin" / "channel"
 
@@ -58,7 +59,11 @@ def body_of(reply: Reply) -> Any:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "Write the channel", "spec": "A bridge.", "files": ["s.ts"]},
                     {"title": "Then the README", "spec": "Prose."}],
          actor="dev:berna")

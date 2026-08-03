@@ -131,3 +131,16 @@ between them; that call takes the whole tree at once. Use this one when there is
 and you are already doing it.
 
 `assign` hands it to somebody else instead of claiming it; `claim=false` records it for later."""
+
+MILESTONE = (
+    "The CHAPTER a board is in. Every card belongs to exactly one, so this is the first call on a "
+    "fresh board — `plan` refuses without one. Call it bare and you get every ACTIVE chapter with "
+    "its counts (`9 cards · 3 done`) plus what is planned next, which is what you need before "
+    "planning: several are active at once and a card in the wrong one is judged against somebody "
+    "else's rules. `milestone=<id>` gives one chapter WITH ITS CARDS, closed ones included. "
+    "You may `create`, `start`, `update` and `review` — planning a chapter, beginning it, "
+    "re-wording it and reporting it finished are all yours. You may NOT `done`, `reject` or "
+    "`cancel`: `done` on a card already needs somebody who is not its author, and this is that "
+    "rule one level up. Report with `review` and stop; a person verifies, and the chapter stays "
+    "in force until they do, so nothing is archived on your word."
+)

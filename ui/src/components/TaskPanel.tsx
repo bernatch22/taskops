@@ -8,7 +8,11 @@ import type {
   AgentEntry, CommitRef, ContextSlice, Event, Task, TaskView,
 } from "../contracts";
 import { Actor, MARK, Priority, ago } from "./bits";
-import { FactBlock } from "./Context";
+/* The fact renderer and the chip live in `facts`, not in the panel that hosts them: the same
+ * fact is drawn here, in the project block, in a chapter block and on a profile, and a
+ * second renderer would drift — the first thing a copy drops is the id, which is the only
+ * part of a fact anybody can act on. */
+import { FactBlock, Waiting, countLine } from "./facts";
 
 /* Every move a PERSON makes by hand. `in_progress` was here and is gone with the status; a
  * button that 400s is worse than no button. `ready` is the reject — a card in review going
@@ -27,6 +31,11 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
   onDone: () => void;
 }): JSX.Element {
   const { task } = view;
+  /* ONE fetch per card, read HERE rather than inside the section that shows the facts — because two
+   * parts of this drawer need the same answer now: the chapter the card belongs to, which goes
+   * under the title, and what applies to it, which goes above the spec. Two components fetching it
+   * would be two requests for one card, and the second would arrive after the first had rendered. */
+  const slice = useSlice(task.id);
   /* Escape closes it, and it is the TOP surface: a card opened from a profile sits above that
    * modal, and `Overlay` stands down while a drawer exists. Without this, Escape did nothing
    * here at all — the only way out was the ✕ or the backdrop. */
@@ -50,6 +59,7 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
         </header>
 
         <h1>{task.title}</h1>
+        <Belongs slice={slice} />
         <p className="meta dim">
           created by <Actor id={task.created_by} /> · {ago(task.created)}
           {task.assignee ? <> · assigned to <Actor id={task.assignee} /></> : null}
@@ -76,7 +86,7 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
           </section>
         ) : null}
 
-        <Applies task={task} />
+        <Applies slice={slice} />
 
         <section>
           <h3>Spec</h3>
@@ -115,52 +125,95 @@ export function TaskPanel({ view, readonly, people, onClose, onOpen, onDone }: {
   );
 }
 
-/* What the standing context says about THIS card — the same slice the server hands its worker.
- *
- * It lived in exactly one place a person could read (the context modal) and nowhere near the work:
- * you could open a card and have no idea what the project had already settled about it, while the
- * agent holding it had been handed precisely that. Now both read the same answer, from the same
- * call (`usecases.context_for`, over `GET /api/task/context`).
- *
- * ABOVE the spec, which is the same argument as the file order at the top of this module: a reader
- * stops early, and something already settled read AFTER the plan it should have shaped is a
- * decision re-litigated in the diff.
- *
- * ONE list and no categories. The server decides what reaches this card — a fact scoped to labels
- * or to an edit surface reaches only what it overlaps, an unscoped one reaches everything — and
- * what the reader needs is that result, not a taxonomy to reconcile against their card. Whatever
- * the slice carries under either heading is merged, so a sort that empties out changes nothing
- * here and a card whose slice is empty renders nothing at all.
+/* The card's slice: what the standing context says about THIS card, exactly as the server hands it
+ * to the worker holding it (`usecases.context_for`, over `GET /api/task/context`).
  *
  * ONE fetch per card. Not per render and deliberately not on socket events: a standing fact
  * changes about once a week, while a board event arrives every few seconds. */
-function Applies({ task }: { task: Task }): JSX.Element | null {
+function useSlice(id: string): ContextSlice | null {
   const [slice, setSlice] = useState<ContextSlice | null>(null);
-
   useEffect(() => {
     let alive = true;
     /* Cleared first: the drawer stays mounted when you follow a link to another card, so without
      * this the new card would show the previous card's context until its own answer landed. */
     setSlice(null);
-    api.taskContext(task.id).then((got) => { if (alive) setSlice(got); }).catch(() => {});
+    api.taskContext(id).then((got) => { if (alive) setSlice(got); }).catch(() => {});
     return () => { alive = false; };
-  }, [task.id]);
+  }, [id]);
+  return slice;
+}
 
-  const facts = slice?.decisions ?? [];
+/* WHICH CHAPTER this card belongs to, under the title — and it is one line because it is one fact
+ * with consequences: the rules below are that chapter's, they end when it does, and a card whose
+ * milestone somebody misread is a card working under somebody else's rules invisibly.
+ *
+ * A card written before this model has none, and it says so rather than showing nothing: those
+ * cards are real, they are in somebody's queue, and a blank where every other card names a chapter
+ * reads as a bug in the drawer instead of as a card nobody has attached yet.
+ *
+ * Nothing at all while the slice is in flight — the alternative is a placeholder that flashes on
+ * every card open, for a line that is already there a moment later. */
+function Belongs({ slice }: { slice: ContextSlice | null }): JSX.Element | null {
+  if (!slice) return null;
+  const chapter = slice.milestone;
+  const counts = chapter ? countLine(slice.counts[chapter.id]) : "";
+  return (
+    <p className="meta dim">
+      <span className="context-mark">◎</span>{" "}
+      {chapter ? chapter.text : <em>(sin milestone)</em>}
+      {chapter?.horizon ? <> · <span className="context-horizon">by {chapter.horizon}</span></> : null}
+      {counts ? <> · {counts}</> : null}
+      {chapter?.state === "review" ? <> · <Waiting /></> : null}
+    </p>
+  );
+}
+
+/* What applies HERE, in the order a reader must meet it: the project's rules, then this chapter's,
+ * then what was settled about this card's subject.
+ *
+ * It lived in exactly one place a person could read (the context modal) and nowhere near the work:
+ * you could open a card and have no idea what the project had already settled about it, while the
+ * agent holding it had been handed precisely that. Now both read the same answer.
+ *
+ * ABOVE the spec, which is the same argument as the file order at the top of this module: a reader
+ * stops early, and something already settled read AFTER the plan it should have shaped is a
+ * decision re-litigated in the diff.
+ *
+ * THE ORDER IS THE MEANING, and it is why this is three sections and not one flat list. A project
+ * rule is true in a year; a chapter's rule dies when the chapter ships; a decision about this
+ * card's labels is an answer somebody already gave to the question in front of you. A worker
+ * deciding whether it may reconsider something needs to know which of the three it is holding, and
+ * a merged list makes the first kind look like the third — which is how a permanent rule got
+ * re-litigated in a diff. The server decides what REACHES the card; this decides nothing, it only
+ * keeps the levels apart. */
+function Applies({ slice }: { slice: ContextSlice | null }): JSX.Element | null {
+  if (!slice) return null;
+  /* Everything settled that reaches this card, whatever its level: the project's decisions are
+   * permanent and its chapter's are not, but both are answers to "has this been decided", which is
+   * the question a reader is asking here. The chapter's notes join them for the same reason — the
+   * server already narrowed all three by this card's subject. */
+  const settled = [...slice.project_decisions, ...slice.decisions, ...slice.notes];
+  const blocks: [string, string, typeof settled][] = [
+    ["Rules", "the project's — every card, every milestone, no exceptions", slice.project_rules],
+    ["This milestone's rules", "true until this chapter ships", slice.rules],
+    ["Settled for this card", "decisions and notes that name its labels or its files", settled],
+  ];
+  const shown = blocks.filter(([, , facts]) => facts.length > 0);
   /* Nothing in force for this card renders NOTHING — no heading, no "(none)", the same way the
    * context modal omits an empty group. A card the project has said nothing about is not doing
    * anything wrong, and an empty section on every card is a feature announcing itself. */
-  if (!facts.length) return null;
+  if (!shown.length) return null;
   return (
-    <section>
-      <h3>
-        What applies here{" "}
-        <span className="dim">what this project has settled that reaches this card</span>
-      </h3>
-      <ul className="ctx-list">
-        {facts.map((fact) => <FactBlock key={fact.id} fact={fact} />)}
-      </ul>
-    </section>
+    <>
+      {shown.map(([title, note, facts]) => (
+        <section key={title}>
+          <h3>{title} <span className="dim">{note}</span></h3>
+          <ul className="ctx-list">
+            {facts.map((fact) => <FactBlock key={fact.id} fact={fact} />)}
+          </ul>
+        </section>
+      ))}
+    </>
   );
 }
 

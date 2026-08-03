@@ -15,6 +15,7 @@ import pytest
 
 from taskops._errors import BadRequest
 from taskops.contracts.context import CONTEXT_KIND, CONTEXT_TASK
+from taskops.contracts.slice import Chapters
 from taskops.engine.log import build
 from taskops.storage import Store
 from taskops.storage.context import facts
@@ -27,13 +28,22 @@ from taskops.usecases.session import brief
 
 NEVER = "never Co-Authored-By in a commit"
 
+NO_CHAPTERS = Chapters(active=[], planned=[], counts={})
+"""The milestone side of a slice, empty. The pure tests below are about the OTHER two dimensions
+of scope — subject and owner — so they hand the chapter dimension nothing rather than a board."""
+
 
 def test_a_new_objective_supersedes_without_erasing(root: Path) -> None:
     """Superseding is a NEWER event, never an edit of the old one. `show` moves on; the log
-    remembers — which is the whole reason this is a log and not a config file."""
-    first = state(root, "objective", "ship the context layer")
-    second = state(root, "objective", "ship 0.4")
-    current = show(root)["objective"]
+    remembers — which is the whole reason this is a log and not a config file.
+
+    Read from `yours` and stated with an OWNER, because 0.5.0 has no such thing as the project's
+    objective: the project's north is a milestone, and an objective belongs to one person. What is
+    asserted is unchanged — the newer of two supersedes, and the older is still in the log.
+    """
+    first = state(root, "objective", "ship the context layer", owner="dev:ana")
+    second = state(root, "objective", "ship 0.4", owner="dev:ana")
+    current = show(root, actor="dev:ana", mine=True)["yours"]
     assert current is not None and current["id"] == second["id"]
     assert [f["text"] for f in history(root)] == [first["text"], second["text"]]
 
@@ -104,12 +114,17 @@ def test_two_clones_break_a_tie_the_same_way(root: Path, tmp_path: Path) -> None
 
 
 def _winner_after(where: Path, events: list[dict]) -> str:  # type: ignore[type-arg]
-    """Apply a log in one arrival order and report which objective is in force."""
+    """Apply a log in one arrival order and report which objective is in force.
+
+    Read from `objectives` — one entry per owner, and these two events carry none, so the tie is
+    broken inside the same (empty) owner exactly as it was. The key `objective` is gone: an
+    objective is somebody's now, and there is no single one for a board.
+    """
     with Store(where) as store:
         for event in events:
             store.events.append(event)          # type: ignore[arg-type]
-        current = in_force(facts(store))["objective"]
-    return "" if current is None else current["text"]
+        elected = in_force(facts(store), NO_CHAPTERS)["objectives"]
+    return elected[0]["text"] if elected else ""
 
 
 def test_the_slice_is_pure_and_survives_a_card_with_no_scope() -> None:
@@ -119,8 +134,8 @@ def test_the_slice_is_pure_and_survives_a_card_with_no_scope() -> None:
     # `assignee` too: the slice now asks who holds the card, to hand them THEIR objective. A
     # literal standing in for a Task has to carry the fields a Task has — a hand-made one that
     # did not is a scar this repository already has.
-    bare = {"labels": [], "files": [], "assignee": ""}
-    view = for_task(live, bare)                 # type: ignore[arg-type]
+    bare = {"labels": [], "files": [], "assignee": "", "milestone": ""}
+    view = for_task(live, bare, NO_CHAPTERS)    # type: ignore[arg-type]
     assert [f["text"] for f in view["decisions"]] == ["i"]
 
 
@@ -137,8 +152,12 @@ def test_an_unknown_sort_is_refused_before_anything_is_written(root: Path) -> No
 
 def _fact(name: str, sort: str, *, labels: list[str] | None = None, owner: str = "",
           ts: float = 1.0) -> dict:  # type: ignore[type-arg]
+    # `level`/`milestone` are fields of `Fact`, so a literal standing in for one carries them.
+    # `milestone=""` at the default level is the shape a fact written before chapters existed has,
+    # and it reads as standing — which is what these tests need, since they hand no chapters.
     return {"id": name, "sort": sort, "text": name, "labels": labels or [], "files": [],
-            "horizon": "", "owner": owner, "actor": "dev:a", "ts": ts, "retired": False}
+            "horizon": "", "owner": owner, "actor": "dev:a", "ts": ts, "retired": False,
+            "milestone": "", "level": "milestone"}
 
 
 # ---- the second dimension of scope: a fact can belong to ONE developer
@@ -149,20 +168,24 @@ def _owned(text: str, sort: str = "objective", *, owner: str = "", ts: float = 1
 
 
 def _card(assignee: str) -> dict:  # type: ignore[type-arg]
-    """A Task literal carrying the fields the slice reads — `assignee` among them now."""
-    return {"labels": [], "files": [], "assignee": assignee}
+    """A Task literal carrying the fields the slice reads — `assignee` and `milestone` among them
+    now. Empty chapter: these are about the OWNER dimension, not about which chapter a card is in."""
+    return {"labels": [], "files": [], "assignee": assignee, "milestone": ""}
 
 
-def test_a_worker_reads_the_projects_objective_AND_its_own() -> None:
-    """Both, never one instead of the other. "The team is shipping the importer" and "I am on
-    the parser this week" are both true, and a worker that only read the second lost the north
-    the first one gave it — which is the thing every card is ultimately for.
+def test_a_worker_reads_an_UNOWNED_objective_AND_its_own() -> None:
+    """Both, never one instead of the other — and the unowned one is a board written before 0.5.0.
+
+    Nothing can write one now (`state` refuses an objective with no owner, because the project's
+    north is a milestone), and that is exactly why this is worth pinning: an old board's facts may
+    not vanish because a version changed. It arrives in `objectives`, where the renderer marks it
+    `project`, and the reader's own still arrives in `yours`.
     """
     live = [_owned("ship the importer"), _owned("the parser", owner="dev:ana")]
 
-    slice_ = for_task(live, _card("agent:ana/w1"))               # type: ignore[arg-type]
+    slice_ = for_task(live, _card("agent:ana/w1"), NO_CHAPTERS)  # type: ignore[arg-type]
 
-    assert slice_["objective"]["text"] == "ship the importer"
+    assert "ship the importer" in [f["text"] for f in slice_["objectives"]]
     assert slice_["yours"]["text"] == "the parser"
 
 
@@ -173,19 +196,18 @@ def test_a_slice_grows_by_ONE_however_many_developers_there_are() -> None:
     live = [_owned("ship it"), *[_owned(f"{who}'s week", owner=f"dev:{who}")
                                  for who in ("ana", "juan", "mirna")]]
 
-    slice_ = for_task(live, _card("agent:ana/w1"))               # type: ignore[arg-type]
+    slice_ = for_task(live, _card("agent:ana/w1"), NO_CHAPTERS)  # type: ignore[arg-type]
 
-    assert slice_["objective"]["text"] == "ship it"
     assert slice_["yours"]["text"] == "ana's week"
-    assert len(slice_["objectives"]) == 2, "the project's and mine — not four"
+    assert len(slice_["objectives"]) == 2, "the unowned one and mine — not four"
 
 
 def test_an_agent_reads_what_the_person_who_spawned_it_set() -> None:
     """`agent:ana/w1` and `dev:ana` are one person with two hands — the same comparison
     `reviewer: peer` makes, and the reason a worker inherits its developer's objective."""
     live = [_owned("the parser", owner="dev:ana")]
-    assert for_task(live, _card("agent:ana/w3"))["yours"] is not None   # type: ignore[arg-type]
-    assert for_task(live, _card("dev:ana"))["yours"] is not None        # type: ignore[arg-type]
+    assert for_task(live, _card("agent:ana/w3"), NO_CHAPTERS)["yours"] is not None  # type: ignore[arg-type]
+    assert for_task(live, _card("dev:ana"), NO_CHAPTERS)["yours"] is not None       # type: ignore[arg-type]
 
 
 def test_somebody_elses_fact_is_not_in_your_slice() -> None:
@@ -196,7 +218,7 @@ def test_somebody_elses_fact_is_not_in_your_slice() -> None:
             _owned("also mine", "decision", owner="dev:ana"),
             _owned("everyone's", "decision")]
 
-    juan = for_task(live, _card("agent:juan/w1"))                # type: ignore[arg-type]
+    juan = for_task(live, _card("agent:juan/w1"), NO_CHAPTERS)   # type: ignore[arg-type]
 
     assert juan["notes"] == []
     assert [f["text"] for f in juan["decisions"]] == ["everyone's"]
@@ -208,15 +230,15 @@ def test_the_overview_shows_everybody_because_that_is_what_it_is_for() -> None:
     live = [_owned("ship it"), _owned("the parser", owner="dev:ana"),
             _owned("the migration", owner="dev:juan")]
 
-    assert len(in_force(live)["objectives"]) == 3
-    assert in_force(live)["yours"] is None, "an overview belongs to nobody"
+    assert len(in_force(live, NO_CHAPTERS)["objectives"]) == 3
+    assert in_force(live, NO_CHAPTERS)["yours"] is None, "an overview belongs to nobody"
 
 
 def test_your_own_page_is_yours_alone() -> None:
     live = [_owned("ship it"), _owned("the parser", owner="dev:ana"),
             _owned("the migration", owner="dev:juan")]
 
-    mine = in_force(live, mine="ana")
+    mine = in_force(live, NO_CHAPTERS, mine="ana")
 
     assert [f["text"] for f in mine["objectives"]] == ["ship it", "the parser"]
     assert mine["yours"]["text"] == "the parser"
@@ -230,9 +252,8 @@ def test_one_objective_per_owner_and_the_latest_wins_within_each() -> None:
             _owned("ana old", owner="dev:ana", ts=1.0),
             _owned("ana new", owner="dev:ana", ts=2.0)]
 
-    whole = in_force(live)
+    whole = in_force(live, NO_CHAPTERS)
 
-    assert whole["objective"]["text"] == "new north"
     assert [f["text"] for f in whole["objectives"]] == ["new north", "ana new"]
 
 
@@ -278,7 +299,6 @@ def test_a_review_slice_carries_the_AUTHORS_objective_and_not_the_REVIEWERS(root
     the slice for a card in review is the project's facts plus ANA's, even though by then the
     card is assigned to the dev the review was routed to.
     """
-    state(root, "objective", "ship 0.4")
     state(root, "objective", "the parser", owner="dev:ana")
     state(root, "objective", "the importer", owner="dev:dos")
 
@@ -286,9 +306,10 @@ def test_a_review_slice_carries_the_AUTHORS_objective_and_not_the_REVIEWERS(root
     assert routed == "dev:dos", "the fixture must reach the state where `assignee` is a REVIEWER"
     slice_ = context_for(root, card)
 
-    assert slice_["objective"]["text"] == "ship 0.4"
     assert slice_["yours"]["text"] == "the parser", "the author's, not the reviewer's"
-    assert {f["text"] for f in slice_["objectives"]} == {"ship 0.4", "the parser"}
+    # ONE objective and it is the author's. The project no longer has one to sit beside it — that
+    # is the milestone, which this slice carries in `milestone`.
+    assert {f["text"] for f in slice_["objectives"]} == {"the parser"}
 
 
 def test_a_review_slice_still_grows_by_ONE_and_never_reaches_a_third_developer(
@@ -333,11 +354,15 @@ def test_a_fact_written_as_an_invariant_is_read_as_a_decision(root: Path) -> Non
                      "labels": ["core"], "files": [], "horizon": "", "owner": ""})
 
     seen = show(root)
-    assert [f["text"] for f in seen["decisions"]] == ["no dependencies outside the stdlib"]
+    # PROJECT-level, and that is the mapping doing its job twice over: a body written before 0.5.0
+    # carries no `level`, and the level it is read at decides the fact's LIFETIME. Reading it as
+    # this chapter's would retire an old board's standing rules the moment somebody closed a
+    # milestone they predate — so an unlevelled fact stands forever, which is what an invariant was.
+    assert [f["text"] for f in seen["project_decisions"]] == ["no dependencies outside the stdlib"]
     # And its SCOPE is dropped. An invariant reached every card whatever its labels said, so a
     # remapped one that kept `core` would quietly stop reaching everything else — the meaning to
     # preserve is "reaches everything", not the field.
-    assert seen["decisions"][0]["labels"] == []
+    assert seen["project_decisions"][0]["labels"] == []
 
 
 def test_a_remapped_invariant_still_reaches_a_card_it_shares_nothing_with(root: Path) -> None:
@@ -354,7 +379,9 @@ def test_a_remapped_invariant_still_reaches_a_card_it_shares_nothing_with(root: 
 
     view = context_for(root, task["created"][0]["id"])
 
-    assert [f["text"] for f in view["decisions"]] == [NEVER]
+    # `project_decisions`: an unlevelled body is the project's — see the test above for why that
+    # is the only reading that does not silently retire an old board's rules.
+    assert [f["text"] for f in view["project_decisions"]] == [NEVER]
 
 
 def test_a_sort_a_NEWER_taskops_invented_is_still_skipped(root: Path) -> None:

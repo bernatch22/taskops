@@ -36,10 +36,18 @@ __all__ = ["capture"]
 
 def capture(start: Path | str, title: str, *, spec: str = "", files: str = "",
             labels: str = "", acceptance: object = None, priority: object = None,
-            claim: bool = True, assign: str = "", actor: str = "",
+            claim: bool = True, assign: str = "", milestone: str = "", actor: str = "",
             session: str = "") -> dict[str, Any]:
-    """Create one card and, unless told otherwise, hold it. Returns the card and its branch."""
+    """Create one card and, unless told otherwise, hold it. Returns the card and its branch.
+
+    `milestone` names the chapter, and it is needed for the same reason `plan` needs it: a card
+    belongs to exactly one, and with several active nothing may guess which — a card in the wrong
+    chapter is judged against somebody else's rules with nothing saying so. With exactly one
+    active it is resolved and the caller need not know it exists.
+    """
     entry: dict[str, Any] = {"title": title, "spec": spec, "files": files, "labels": labels}
+    if milestone:
+        entry["milestone"] = milestone
     if acceptance is not None:
         entry["acceptance"] = acceptance
     if priority is not None:

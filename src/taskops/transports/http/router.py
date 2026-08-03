@@ -7,53 +7,15 @@ appearing in a list somebody can read.
 
 from __future__ import annotations
 
-from functools import partial
 from pathlib import Path
 
 from ...usecases.journal import journal
-from . import agentapi, api, assigning, exchange, invites, live, reports, rpc, static, unlock
+from . import static, unlock
+from ._routes import table
 from ._wire import Reply, Request, Route, error_reply
-
-# Bound by NAME rather than through the module, unlike every row above: `from . import …, context`
-# does not fit the line and the split form costs this module twelve lines of its code budget.
-from .context import get_context, get_task_context
 from .policy import Policy
 
 __all__ = ["build"]
-
-
-def _table(root: Path, policy: Policy) -> dict[tuple[str, str], Route]:
-    """THE surface, as data. Its own function so `build` stays a dispatcher and the table can
-    grow a row without the closure around it growing with it."""
-    return {
-        ("GET", "/api/config"): partial(_config, root, policy),
-        ("GET", "/api/board"): partial(api.get_board, root),
-        ("GET", "/api/fleet"): partial(api.get_fleet, root),
-        ("GET", "/api/standup"): partial(api.get_standup, root),
-        ("GET", "/api/task"): partial(api.get_task, root),
-        ("GET", "/api/search"): partial(api.get_search, root),
-        ("GET", "/api/activity"): partial(api.get_activity, root),
-        ("GET", "/api/context"): partial(get_context, root),
-        # The slice for ONE card — what its worker was handed — under `/api/task/` because that
-        # is what it is about: a card, read when a person opens it, not a second board-wide read.
-        ("GET", "/api/task/context"): partial(get_task_context, root),
-        ("POST", "/api/invite"): partial(invites.post_invite, root),
-        ("GET", "/api/report"): partial(reports.get_report, root),
-        ("GET", "/api/reports"): partial(reports.get_reports, root),
-        ("POST", "/api/report/digest"): partial(reports.post_digest, root),
-        ("POST", "/api/comment"): partial(api.post_comment, root),
-        ("POST", "/api/status"): partial(api.post_status, root),
-        ("GET", "/api/agents"): partial(assigning.get_agents, root),
-        ("POST", "/api/assign"): partial(assigning.post_assign, root),
-        ("GET", "/api/live"): partial(live.stream, root),
-        ("POST", "/api/sync"): partial(exchange.post_sync, root),
-        ("GET", "/api/sync"): partial(exchange.get_sync, root),
-        ("GET", "/api/report/file"): partial(exchange.get_report_file, root),
-        ("PUT", "/api/report/file"): partial(exchange.put_report_file, root),
-        ("POST", "/api/next"): partial(agentapi.post_next, root),
-        ("POST", "/api/update"): partial(agentapi.post_update, root),
-        ("POST", "/api/rpc"): partial(rpc.post_rpc, root),
-    }
 
 
 def build(root: Path, policy: Policy, base: str = "/") -> Route:
@@ -63,7 +25,7 @@ def build(root: Path, policy: Policy, base: str = "/") -> Route:
     for one board inside `taskops serve`. It never reaches a route: paths arrive already
     trimmed, and the only thing that needs it is the `<base>` tag in `index.html`.
     """
-    routes = _table(root, policy)
+    routes = table(root, policy)
 
     def dispatch(request: Request) -> Reply:
         if refusal := policy.check(request):
@@ -92,15 +54,6 @@ def build(root: Path, policy: Policy, base: str = "/") -> Route:
         return _no_route(request, routes)
 
     return dispatch
-
-
-def _config(root: Path, policy: Policy, request: Request) -> Reply:
-    """`readonly` reaches the UI through the request rather than through module state, so the
-    endpoint stays a pure function of what it was given."""
-    marked = Request(method=request.method, path=request.path,
-                     query={**request.query, "_readonly": "1" if policy.readonly else "0"},
-                     headers=request.headers, body=request.body)
-    return api.config(root, marked)
 
 
 def _no_route(request: Request, routes: dict[tuple[str, str], Route]) -> Reply:

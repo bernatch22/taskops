@@ -34,6 +34,7 @@ constraint would reject exactly the events that make the project converge.
 _LATE_COLUMNS: tuple[tuple[str, str], ...] = (
     ("tasks", "assignee TEXT NOT NULL DEFAULT ''"),
     ("tasks", "reviewer TEXT NOT NULL DEFAULT ''"),
+    ("tasks", "milestone TEXT NOT NULL DEFAULT ''"),
     ("presence", "session TEXT NOT NULL DEFAULT ''"),
 )
 """Columns added after a table shipped, applied with ALTER on every open so a database written by an
@@ -43,6 +44,15 @@ older taskops keeps working with no migration step anyone has to remember.
 before dispatch existed gains the column on its next open, and every row defaults to the open pool —
 which is what those rows meant."""
 
+_LATE_INDEXES: tuple[str, ...] = (
+    # A milestone's counts are read on every opening, statusline and board refresh, so the column
+    # they group by is indexed. It cannot live in `DDL`: `executescript` runs BEFORE the ALTERs, so
+    # on a database written by an older taskops the index would name a column that does not exist
+    # yet — and one failing statement aborts the rest of the script, leaving the schema half
+    # applied. An index over a late column is therefore itself late.
+    "CREATE INDEX IF NOT EXISTS idx_tasks_milestone ON tasks(milestone)",
+)
+
 
 def apply(db: sqlite3.Connection) -> None:
     """Create everything missing and backfill late columns. Idempotent."""
@@ -51,6 +61,8 @@ def apply(db: sqlite3.Connection) -> None:
     db.executescript(DDL)
     for table, column in _LATE_COLUMNS:
         _add_column(db, table, column)
+    for statement in _LATE_INDEXES:
+        db.execute(statement)
 
 
 def _add_column(db: sqlite3.Connection, table: str, column: str) -> None:

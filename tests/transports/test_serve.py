@@ -18,6 +18,7 @@ from taskops.transports.cli.commands._serve_init import create
 from taskops.transports.http._wire import Request
 from taskops.transports.http.projects import mount
 from taskops.usecases import init, plan
+from taskops.usecases.milestone import open_chapter
 
 TOKENS = {"alpha": "", "beta": ""}
 
@@ -32,9 +33,15 @@ def bearer(token: str) -> dict[str, str]:
 
 @pytest.fixture
 def server(tmp_path: Path) -> Any:
-    """A root with two projects, each with its own minted token."""
+    """A root with two projects, each with its own minted token.
+
+    Every card belongs to a chapter, and these are two SEPARATE boards, so each opens its own —
+    a chapter is a fact of one project's log and nothing crosses between them here.
+    """
     for name in ("alpha", "beta"):
         TOKENS[name] = _token_of(create(tmp_path / "srv", name))
+        open_chapter(tmp_path / "srv" / name, "the chapter these tests plan into",
+                     actor="dev:berna")
         plan(tmp_path / "srv" / name, [{"title": f"a task for {name}", "spec": "."}],
              actor="dev:berna")
     return mount(tmp_path / "srv")
@@ -122,7 +129,11 @@ def test_a_missing_project_is_a_bare_404_that_names_nothing(server: Any) -> None
 def test_a_directory_without_a_project_is_not_served(tmp_path: Path) -> None:
     """`resolve_root` walks UP, so a bare directory under the root would otherwise resolve to
     an ancestor project and serve somebody else's board under its name."""
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     (tmp_path / "srv" / "empty").mkdir(parents=True)
     assert mount(tmp_path / "srv")(get("/empty/api/board")).status == 404
 

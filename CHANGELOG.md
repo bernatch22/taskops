@@ -1,6 +1,107 @@
 # Changelog
 
-## Sin publicar
+## 0.5.0 — milestones: un tablero tiene capítulos, y un humano los cierra
+
+### El objetivo del proyecto no era un hecho, era un capítulo
+
+`objective` era un hecho como cualquier otro y salía de vigencia por ser **superseded**: escribías
+uno nuevo y el viejo dejaba de inyectarse. Nada registraba si alguna vez se había alcanzado, así que
+un tablero con ocho objetivos superados no podía contestar la única pregunta que el registro existe
+para contestar — *qué shippeamos*.
+
+Ahora la norte del proyecto es un **milestone**: un capítulo con estado
+(`planned · in_force · review · reached · abandoned`), que un agente abre, trabaja y **reporta**
+terminado, y que **solo una persona** puede dar por alcanzado. Es el mismo argumento que `done` en
+una card, un nivel arriba: ningún conteo de cards cerradas significa "lo shippeamos".
+
+- **Toda card pertenece a exactamente un milestone**, y un tablero sin ninguno **refusa** planificar.
+  Esa es la regla sobre la que se apoya todo lo demás.
+- **Varios activos a la vez** es el caso normal: un equipo shippea dos cosas en dos semanas, y un
+  tablero que se negara a registrar la segunda estaría en desacuerdo con lo que está pasando. El
+  límite no es "un capítulo por tablero", es "un capítulo por card" — así que `plan` **pregunta**
+  cuál cuando hay más de uno abierto, en vez de adivinar. Una card en el capítulo equivocado se
+  juzga contra las reglas de otra gente y nada lo dice.
+- `taskops milestone done <id> --carry tk-…,tk-… --into <id>` mueve lo que quedó abierto al capítulo
+  siguiente, porque un capítulo alcanzado con cards abiertas adentro es una de dos mentiras.
+- Cancelar **conserva el motivo**. No hay delete: "paramos" no es "shippeamos", y el motivo es lo
+  que alguien quiere tres semanas después cuando la misma idea vuelve.
+
+### Un hecho ahora tiene VIDA, y es lo único que impedía que el contexto creciera para siempre
+
+Un hecho declara su `level` al escribirse: `project` vive para siempre, y cualquier otro pertenece al
+capítulo en vigencia y **se va de todas las rebanadas** cuando una persona lo da por alcanzado. Nadie
+lo retira a mano.
+
+El alcance ya tenía dos dimensiones y ahora son tres, y cada una protege algo distinto:
+
+    labels/files   ──▶ RELEVANCIA: una decisión sobre la base no llega a una card del parser
+    owner          ──▶ TAMAÑO con el EQUIPO: una rebanada crece de UNO, sean tres o treinta
+    milestone      ──▶ TAMAÑO con el AÑO: lo decidido en marzo no se inyecta en diciembre
+
+La segunda ya estaba; la tercera es nueva y es la que no se podía arreglar con alcance por tema.
+
+### Tres sustantivos donde había dos comandos y un flag
+
+`--mine` decía dos cosas distintas en el mismo comando — "archivá esto bajo mí" al escribir y
+"mostrame mi página" al leer — y tenía que decirlas, porque `objective` podía significar la norte del
+proyecto **o** la de un dev. Ya no puede: la norte es un milestone.
+
+```sh
+taskops milestone …          # el capítulo: new, start, edit, review, done, reject, cancel, show, list
+taskops context …            # lo del PROYECTO y del capítulo: rule, decision, note, log, retire
+taskops me …                 # lo tuyo: objective, decision, note, retire
+```
+
+- **Se fueron**: `context objective`, `context show`, `--mine`, `--owner`. Tipear la forma vieja
+  contesta con el reemplazo, porque la refusa de argparse lista las opciones y nunca dice a dónde se
+  mudó el verbo.
+- **`rule` es su propio sort** y se imprime aparte: una decisión sin `labels` ni `files` alcanza toda
+  card — eso *es* una regla, mecánicamente — y en una lista plana la más fuerte del tablero quedaba
+  entre dos notas sobre la base de datos.
+- Un `objective` **sin dueño está refusado**. Antes se aceptaba y no lo leía nadie: quedaba archivado
+  bajo un dev que no existe. Los tableros viejos que tienen alguno lo siguen mostrando, marcado
+  `project` — un hecho no puede desaparecer porque cambió una versión.
+- Un `note` no puede ser `--project`: si es permanente es un `rule` o una `decision`, y una nota que
+  sobrevive a su capítulo es el scratchpad que hizo crecer la rebanada para siempre.
+
+### El prompt que lee una sesión, en cuatro bloques
+
+Lo que es verdad **independientemente del trabajo** va antes del trabajo: las reglas del proyecto,
+después los settings que el engine **refusa**, después el capítulo con sus counts y sus hechos, y al
+final lo que espera a una persona. Un lector que aprende el capítulo antes que las reglas juzga las
+reglas por el capítulo, que es al revés.
+
+`taskops attention` gana un grupo **CONFIRM**: un milestone reportado terminado espera a una persona,
+y es lo más grande del tablero que nada más destraba. Un sweep que lo omitiera reportaría un tablero
+tranquilo con un capítulo entero esperando que lo cierren. El saludo y la barra de abajo leen el
+capítulo en vez de un objetivo — la misma frase, con una fuente que no se supersedea en silencio.
+
+### Un capítulo creado desde un clon no existía en el servidor
+
+Un bug de una línea y del peor tipo posible: la fila rpc de `milestone_create` nombraba una función
+que no existe (`ms.open_wrapped`), así que abrir un capítulo desde un clon reventaba **en el
+servidor**. Toda la suite pasaba, porque cada test corría un solo store — la misma clase de bug que
+ya costó doce en tres días. `tests/e2e/test_milestone_over_the_wire.py` es el arreglo: un servidor
+real, un clon real, y las cinco cosas que tienen que pasar allá y no acá. Cada una mutada a mano.
+
+Y `need()` iteraba un `Store` en el camino de la refusa (`matching(store, …)`), así que un id
+ambiguo daba `TypeError` en vez de la frase que dice cuál es.
+
+### Herramientas y superficies
+
+- **`taskops_milestone`** (la décima): sin argumentos, **todos** los capítulos activos con sus
+  counts; con `milestone=<id>`, ese capítulo **y sus cards** — que es "cómo llego a sus cards" en una
+  llamada y no en dos.
+- **`taskops_context`** gana `level` y `milestone`, y **pierde `mine`**: `state=objective` es el del
+  que llama, siempre, sin flag. `taskops_plan` y `taskops_capture` ganan `milestone`.
+- `GET /api/milestones`, y `/api/context` + `/api/task/context` contestan la rebanada v2. La UI
+  agrupa por capítulo, muestra los counts y la lista de capítulos terminados.
+- Un turno de dos módulos nuevos por presupuesto de arquitectura, y cada corte era una costura real:
+  `contracts/slice.py`, `contracts/_factfields.py`, `usecases/_moving.py`, `usecases/_joins.py`,
+  `usecases/_planinto.py`, `usecases/_stating.py`, `usecases/_whose.py`, `render/_blocks.py`,
+  `render/_moves.py`, `transports/http/_routes.py`, `transports/http/_verbms.py`.
+
+Lo que sigue salió después de 0.4.0 y sale con esta versión.
 
 ### El worker de una persona no podía tomar la card de esa persona
 

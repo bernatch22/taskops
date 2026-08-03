@@ -17,7 +17,9 @@ from tests.conftest import CLOCK
 
 
 def a_task(status: Status) -> Task:
-    return Task(id="tk-aaaaaa", title="t", spec="s", status=status, priority=2,
+    # `milestone=""` only completes a field `Task` gained in 0.5.0. No rendered byte below
+    # changes: nothing here reads the chapter.
+    return Task(id="tk-aaaaaa", title="t", spec="s", status=status, priority=2, milestone="",
                 parent=None, labels=[], files=[], created_by="dev:berna", assignee="", reviewer="",
                 created=CLOCK, updated=CLOCK)
 

@@ -11,14 +11,14 @@ from ._rows import dumps, to_task
 
 __all__ = ["TaskTable"]
 
-_COLUMNS = ("id", "title", "spec", "status", "priority", "parent", "labels",
+_COLUMNS = ("id", "title", "spec", "status", "priority", "milestone", "parent", "labels",
             "files", "created_by", "assignee", "reviewer", "created", "updated")
 
 
 def _values(task: Task) -> tuple[object, ...]:
     """A task in `_COLUMNS` order. One function, so the two orders cannot drift."""
     return (task["id"], task["title"], task["spec"], task["status"],
-            task["priority"], task["parent"], dumps(task["labels"]),
+            task["priority"], task["milestone"], task["parent"], dumps(task["labels"]),
             dumps(task["files"]), task["created_by"], task["assignee"], task["reviewer"],
             task["created"], task["updated"])
 

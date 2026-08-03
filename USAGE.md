@@ -773,7 +773,11 @@ taskops attention [--wait] [--every N]     what the board is waiting for, and th
 taskops status                             the git-status of a project, in one screen
 taskops recover [--apply]                  release cards held by silent workers
 
-taskops context [show|objective|decision|note|log|retire]        prose a worker weighs
+taskops milestone [new|start|edit|review|done|reject|cancel|show|list]   the chapter this board
+                                           is in. Every card belongs to one; only a PERSON may
+                                           say one was reached
+taskops context [rule|decision|note|log|retire] [--project]      what the project settled
+taskops me [objective|decision|note|retire]                      what YOU are chasing
 taskops policy [show|reviewer] [<value>]   settings the ENGINE obeys, validated when written
 
 taskops report [board|standup|day|range|all|fleet|sweep] [--since 24h] [--digest]

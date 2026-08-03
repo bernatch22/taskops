@@ -5,8 +5,20 @@
 
 import type {
   Activity, AgentEntry, Board, Config, ContextSlice, ContextView, DigestStarted, Event,
-  ReportEntry, ReportFile, Task, TaskView, WireMessage,
+  Milestone, ReportEntry, ReportFile, Task, TaskView, WireMessage,
 } from "./contracts";
+
+/* What `GET /api/milestones` answers: EVERY chapter this board has had, whatever its state, plus
+ * the per-chapter card counts. An object and not a bare array, like every other payload here —
+ * the rpc decoder on the Python side drops a non-object silently, and a route that answered a list
+ * would be a second shape for the same idea.
+ *
+ * Declared HERE rather than in `contracts.ts` because it is not a shape the Python side has a
+ * TypedDict for: it is this route's envelope, and the things inside it are already mirrored. */
+export interface MilestoneList {
+  milestones: Milestone[];
+  counts: Record<string, Record<string, number>>;
+}
 
 /* The token arrives in the URL (`taskops ui` prints a link that carries it) and is kept in
  * localStorage so a reload does not lose it. Read once at module load: it cannot change without
@@ -79,6 +91,11 @@ export const api = {
    * the worker holding it was injected with. Read once when a drawer opens, and never on a socket
    * event: a standing fact changes about once a week and the card is on screen for a minute. */
   taskContext: (id: string) => call<ContextSlice>(`/api/task/context?id=${encodeURIComponent(id)}`),
+  /* Every chapter, including the CLOSED ones — which is the only thing this adds over
+   * `/api/context`, whose slice carries the active ones and the planned titles because a reader
+   * deciding something needs those and nothing else. So it is read when somebody asks to see the
+   * ones that ended, not on load: a reached milestone changes never. */
+  milestones: () => call<MilestoneList>("/api/milestones"),
   activity: (since: string) => call<Activity>(`/api/activity?since=${encodeURIComponent(since)}`),
   task: (id: string) => call<TaskView>(`/api/task?id=${encodeURIComponent(id)}`),
   reports: () => call<ReportEntry[]>("/api/reports"),

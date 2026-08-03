@@ -36,8 +36,8 @@ function App(): JSX.Element {
               onOpen={studio.openTask} />
 
       {/* Under the header and OUTSIDE `main`, so it is on screen whichever view is chosen —
-        * which is the whole point. Filing it as a fourth tab would put the objective behind a
-        * click that nobody makes twice. */}
+        * which is the whole point. Filing it as a fourth tab would put the chapter in force
+        * behind a click that nobody makes twice. */}
       <Context context={studio.context} open={context} onToggle={() => setContext(!context)} />
 
       {studio.error ? (

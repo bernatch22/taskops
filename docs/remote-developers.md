@@ -192,7 +192,7 @@ sets up the Claude Code scheduled task for the unattended path.
 ## 6 · Where the project is heading
 
 ```sh
-taskops context show        # the objective in force, the decisions, the notes
+taskops context             # the milestone in force, the rules, the decisions, the notes
 taskops context log         # …and what we used to believe
 ```
 

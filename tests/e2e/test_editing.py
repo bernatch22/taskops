@@ -17,6 +17,7 @@ from taskops._errors import BadRequest
 from taskops.engine import build, replay
 from taskops.storage import Store, all_events
 from taskops.usecases import ask, edit, init, next_task, plan, sync, update
+from taskops.usecases.milestone import open_chapter
 
 
 def git(root: Path, *args: str) -> str:
@@ -27,7 +28,11 @@ def git(root: Path, *args: str) -> str:
 
 @pytest.fixture
 def carded(tmp_path: Path) -> tuple[Path, str]:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     created = plan(tmp_path, [{"title": "Parse the header", "spec": "old brief"}],
                    actor="dev:berna")["created"][0]
     return tmp_path, created["id"]
@@ -110,6 +115,8 @@ def test_an_edit_travels_to_another_clone_and_both_converge(tmp_path: Path) -> N
         git(who, "config", "user.email", email)
         git(who, "config", "user.name", who.name)
         init(who)
+        open_chapter(who, "the chapter these tests plan into",
+                     actor="dev:berna")
 
     task_id = plan(ana, [{"title": "Parse the header", "spec": "old brief"}],
                    actor="dev:ana")["created"][0]["id"]

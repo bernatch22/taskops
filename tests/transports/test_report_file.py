@@ -21,13 +21,18 @@ from taskops.transports.http.router import build
 from taskops.usecases import board as ask_board
 from taskops.usecases import init, plan, read_report, report_path, update, write_report
 from taskops.usecases._ignorerules import BOARD_NOTE, REPORTS_NOTE
+from taskops.usecases.milestone import open_chapter
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(repo, install_git_hooks=False)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(repo, [{"title": "A day's work", "spec": "x"}], actor="dev:berna")
     return repo
 
@@ -228,7 +233,11 @@ def test_init_is_idempotent_about_the_notes(project: Path) -> None:
     indistinguishable to it, and the duplicate is the failure this exists to catch.
     """
     init(project, install_git_hooks=False)
+    open_chapter(project, "the chapter these tests plan into",
+                 actor="dev:berna")
     init(project, install_git_hooks=False)
+    open_chapter(project, "the chapter these tests plan into",
+                 actor="dev:berna")
     ignored = (project / ".gitignore").read_text(encoding="utf-8")
 
     for note in (REPORTS_NOTE, BOARD_NOTE):
@@ -242,4 +251,6 @@ def test_an_older_project_gains_the_note_on_re_init(tmp_path: Path) -> None:
     repo.mkdir()
     (repo / ".gitignore").write_text("# taskops\n.taskops/db.sqlite\n", encoding="utf-8")
     init(repo, install_git_hooks=False)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     assert "is COMMITTED" in (repo / ".gitignore").read_text(encoding="utf-8")

@@ -37,6 +37,7 @@ from taskops.usecases import (
     sync,
     update,
 )
+from taskops.usecases.milestone import open_chapter
 
 TOKEN = "s3cr3t-token"
 
@@ -59,7 +60,11 @@ class Serving:
 def hub(tmp_path: Path) -> Iterator[Serving]:
     """The shared board: one card, ready, and nobody on it."""
     root = tmp_path / "hub"
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(root, install_git_hooks=False)
+    open_chapter(root, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(root, [{"title": "the one card"}], actor="dev:berna")
     running = Serving(root)
     try:
@@ -71,6 +76,8 @@ def hub(tmp_path: Path) -> Iterator[Serving]:
 def machine(where: Path, url: str) -> Path:
     """A developer's checkout that writes through `url`."""
     init(where, install_git_hooks=False)
+    open_chapter(where, "the chapter these tests plan into",
+                 actor="dev:berna")
     add_remote(where, url, TOKEN)
     return where
 
@@ -370,6 +377,8 @@ def test_join_is_the_whole_onboarding(tmp_path: Path, hub: Serving) -> None:
     plan(hub.root, [{"title": "already on the board", "spec": "s"}], actor="dev:berna")
     where = tmp_path / "newcomer"
     init(where, install_git_hooks=False)     # a fresh clone's state, minus git
+    open_chapter(where, "the chapter these tests plan into",
+                 actor="dev:berna")
 
     done = join(where, f"{hub.url}?token={TOKEN}")
 
@@ -414,6 +423,8 @@ def test_a_write_never_falls_back_to_local_when_the_server_is_down(tmp_path: Pat
     URL, exactly as a claim always has."""
     where = tmp_path / "mine"
     init(where, install_git_hooks=False)
+    open_chapter(where, "the chapter these tests plan into",
+                 actor="dev:berna")
     add_remote(where, "http://127.0.0.1:1", "t0k3n")
 
     with pytest.raises(Exception, match="could not reach"):

@@ -21,6 +21,7 @@ import pytest
 
 from taskops.transports.mcp.dispatch import call_tool
 from taskops.usecases import ask, init, next_task, plan, update
+from taskops.usecases.milestone import open_chapter
 
 AGENT = "agent:berna/one"
 
@@ -57,7 +58,11 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "README.md").write_text("start\n", encoding="utf-8")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "initial")
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     return tmp_path
 
 
@@ -152,6 +157,8 @@ def test_an_existing_pre_commit_hook_keeps_running(tmp_path: Path) -> None:
     hook.write_text("#!/bin/sh\ntouch lint-ran\n", encoding="utf-8")
     hook.chmod(0o755)
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
 
     assert "touch lint-ran" in hook.read_text(encoding="utf-8")
     stage(tmp_path)
@@ -165,6 +172,8 @@ def test_re_running_init_is_idempotent(repo: Path) -> None:
     hook = repo / ".git" / "hooks" / "pre-commit"
     before = hook.read_text(encoding="utf-8")
     init(repo)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     after = hook.read_text(encoding="utf-8")
     assert after == before
     assert after.count("precommit") == 1
@@ -201,6 +210,8 @@ def test_a_repository_taskops_cannot_read_still_commits(tmp_path: Path) -> None:
     git(tmp_path, "config", "user.email", "berna@example.com")
     git(tmp_path, "config", "user.name", "Berna")
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     (tmp_path / ".taskops" / "db.sqlite").write_text("not a database", encoding="utf-8")
     stage(tmp_path)
     done = git(tmp_path, "commit", "-m", "x", env=as_agent(), check=False)
@@ -315,6 +326,8 @@ def test_a_task_branch_publishes_itself(tmp_path: Path) -> None:
     git_init(repo)
     subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=repo, check=True)
     init(repo)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     card = plan(repo, [{"title": "work", "spec": "x"}], actor="dev:berna")["created"][0]["id"]
     claimed = next_task(repo, task=card, actor="agent:berna/w1")["claim"]
     git(repo, "switch", "-c", claimed["branch"])
@@ -388,6 +401,8 @@ def _landing_repo(tmp_path: Path) -> tuple[Path, str]:
     subprocess.run(["git", "remote", "add", "origin", str(repo.parent / "origin")],
                    cwd=repo, check=True)
     init(repo)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     # The log is committed ON THE TRUNK first, which is what a real project does — and has to.
     # A `.taskops/events.jsonl` that exists only on a card branch is deleted the moment anybody
     # switches away from it, and the next call cannot find the project at all.
@@ -453,6 +468,8 @@ def test_a_board_that_predates_landing_is_not_filled_with_history(tmp_path: Path
     from taskops.usecases import attention
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     card = plan(tmp_path, [{"title": "old", "spec": "x"}],
                 actor="dev:berna")["created"][0]["id"]
     next_task(tmp_path, task=card, actor="agent:berna/w1")
@@ -477,6 +494,8 @@ def test_a_card_worktree_is_never_mistaken_for_its_own_project(tmp_path: Path) -
 
     git_init(tmp_path)
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "chore: the log lives on the trunk")
     card = plan(tmp_path, [{"title": "work", "spec": "x"}],
@@ -499,6 +518,8 @@ def test_a_commit_made_inside_a_worktree_binds_to_its_card(tmp_path: Path) -> No
 
     git_init(tmp_path)
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "chore: taskops")
     card = plan(tmp_path, [{"title": "work", "spec": "x"}],

@@ -56,6 +56,10 @@ def to_task(row: sqlite3.Row) -> Task:
         spec=str(row["spec"]),
         status=row["status"],
         priority=int(row["priority"]),
+        # `or ""` for the third time and the third reason: every card planned before milestones
+        # existed reads NULL here after the ALTER, and "" is exactly what those cards mean — no
+        # chapter, grouped under "(sin milestone)". `str(None)` would invent a chapter id.
+        milestone=str(row["milestone"] or ""),
         parent=str(row["parent"]) if row["parent"] else None,
         labels=as_list(row["labels"]),
         files=as_list(row["files"]),

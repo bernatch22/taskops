@@ -27,10 +27,12 @@ class Holding(TypedDict):
 
 
 class Bar(TypedDict):
-    objective: str
-    """What the project is for, as text. Here rather than left to the greeting because a greeting
-    scrolls away: this is the row that is still on screen an hour later, which is the only place
-    a standing fact can actually stand."""
+    milestone: str
+    """The chapter being worked on, as text — and the count of them when several are active, so
+    the row says `+2 more` rather than pretending there is one.
+
+    Here rather than left to the greeting because a greeting scrolls away: this is the row still
+    on screen an hour later, which is the only place a standing fact can actually stand."""
 
     board: str
     """The board's name — the project directory, which is what a person calls it out loud."""

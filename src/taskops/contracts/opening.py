@@ -15,10 +15,10 @@ from __future__ import annotations
 from typing import TypedDict
 
 from .attention import Waiting
-from .context import ContextSlice
 from .event import Event
 from .lease import Lease
 from .policy import Policy
+from .slice import ContextSlice
 from .team import Team
 
 __all__ = ["Opening"]

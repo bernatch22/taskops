@@ -21,6 +21,7 @@ from taskops.transports.cli.commands import login as login_cli
 from taskops.transports.cli.main import main
 from taskops.usecases import add_remote, init, login, logout, plan, push, read_remote
 from taskops.usecases._sessionfile import sessions_path
+from taskops.usecases.milestone import open_chapter
 from tests.e2e.fakeserver import GITHUB_TOKEN, SESSION, TOKEN, Fake, running
 
 
@@ -72,7 +73,11 @@ def test_the_session_file_lives_in_the_home_not_in_a_repository(base: str, home:
                                                                 tmp_path: Path) -> None:
     """A file that never enters a work tree can never enter a commit — which is the failure
     the 0600 mode exists to make survivable and this one makes impossible."""
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path / "project", install_git_hooks=False)
+    open_chapter(tmp_path / "project", "the chapter these tests plan into",
+                 actor="dev:berna")
     login(base, GITHUB_TOKEN)
     assert sessions_path() == home / ".taskops" / "sessions.json"
     assert not (tmp_path / "project" / ".taskops" / "sessions.json").exists()
@@ -138,6 +143,8 @@ def test_a_403_is_relayed_verbatim(base: str, fake: Fake) -> None:
 
 def test_remote_add_without_a_token_or_a_session_names_both_ways_out(tmp_path: Path) -> None:
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     with pytest.raises(Exception) as raised:
         add_remote(tmp_path, "https://taskops.example.com/axion")
     told = str(raised.value)
@@ -152,6 +159,8 @@ def test_remote_add_with_no_token_uses_the_session_and_push_works(base: str, fak
     """THE end-to-end. Log in once, point a checkout at a project, push — no secret handled."""
     login(base, GITHUB_TOKEN)
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "a card that has to cross the wire"}])
     added = add_remote(tmp_path, f"{base}/axion")
     assert added["token"] == f"session:{SESSION}"
@@ -164,6 +173,8 @@ def test_an_expired_session_says_to_log_in_again(base: str, fake: Fake, tmp_path
     a network, a token, or a permission; the shape of the stored credential says which it is."""
     login(base, GITHUB_TOKEN)
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     add_remote(tmp_path, f"{base}/axion")
     fake.session_valid = False
     with pytest.raises(Exception) as raised:
@@ -177,6 +188,8 @@ def test_a_project_token_still_gets_the_plain_401(base: str, tmp_path: Path) -> 
     """The other half of the same rule: a wrong TOKEN is not an expired session, and telling
     its owner to log in would send them down a road that does not lead anywhere."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     add_remote(tmp_path, f"{base}/axion", "not-the-token")
     with pytest.raises(Exception) as raised:
         push(tmp_path)
@@ -191,6 +204,8 @@ def test_logging_in_to_a_second_server_does_not_disturb_the_first(base: str, sec
     login(base, GITHUB_TOKEN)
     login(second, GITHUB_TOKEN)
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     add_remote(tmp_path, f"{base}/axion")
     assert read_remote(tmp_path) is not None
     assert sorted(k for k in _stored()) == sorted([base, second])
@@ -213,6 +228,8 @@ def test_the_project_token_path_is_untouched(base: str, tmp_path: Path) -> None:
     """Sessions are an ADDITION. A team that issues tokens by hand keeps working exactly as
     before, and nothing about `remote add --token` changed."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "still the old way"}])
     add_remote(tmp_path, base, TOKEN)
     assert push(tmp_path).accepted > 0

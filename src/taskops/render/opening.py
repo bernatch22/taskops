@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._blocks import chapters_block, project_block
 from ._text import truncate
 from .attention import HEADINGS
-from .context import render_context
 
 __all__ = ["render_opening", "ROLE"]
 
@@ -32,8 +32,11 @@ conversation ONLY — sub-agents never see it — so the event is the proof of w
 def render_opening(view: dict[str, Any]) -> str:
     """`Opening` -> the injection. Never empty: the role is worth stating on a quiet board."""
     lines = [f"taskops — {ROLE}", f"You are `{view['actor']}` in this project.", ""]
-    lines += ["## The project", render_context(view["context"]), ""]
+    # The order is the argument, and it is stated once in `_blocks`: what holds whatever we do
+    # (rules, then the settings that REFUSE) before what we are doing now (the chapter).
+    lines += project_block(view["context"])
     lines += _settings(view.get("policies") or [])
+    lines += chapters_block(view["context"])
     lines += _team(view.get("team") or {})
     lines += _waiting(view["waiting"])
     if view["held"]:

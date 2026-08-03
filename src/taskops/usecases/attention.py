@@ -20,6 +20,7 @@ from typing import cast
 from ..contracts.attention import Attention
 from ..engine import unblock
 from ..engine.attention import waiting_on
+from ..storage.milestone import active
 from ._project import caller, heartbeat, project
 from ._routing import read_remote_first, whoami
 from .view import inbox_for
@@ -44,5 +45,10 @@ def attention(start: Path | str, *, actor: str = "") -> Attention:
         unblock(store)
         waiting = waiting_on(store, actor=who)
         mail = len(inbox_for(store, who, mark=False)["messages"])
-        return Attention(repo=str(store.root), waiting=waiting, mail=mail,
-                         quiet=not waiting and not mail)
+        # Chapters an agent reported finished. Read from the SAME store as the cards, in the same
+        # call, because "the board is waiting on a person" is one question: a milestone sitting in
+        # review is the largest thing on a board that only a person can clear, and a sweep that
+        # left it out would report a quiet board with a whole chapter waiting to be closed.
+        confirm = [m for m in active(store) if m["state"] == "review"]
+        return Attention(repo=str(store.root), waiting=waiting, mail=mail, confirm=confirm,
+                         quiet=not waiting and not mail and not confirm)

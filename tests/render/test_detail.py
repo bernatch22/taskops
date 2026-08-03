@@ -25,8 +25,11 @@ FILES = [f"src/taskops/f{n}.py" for n in range(9)]
 
 
 def _task() -> Task:
+    # `milestone=""` only completes a field `Task` gained in 0.5.0. No rendered byte below
+    # changes: nothing here reads the chapter.
     return Task(id="tk-1", title="The work", spec=SPEC, status="done", priority=2,
-                parent=None, labels=[], files=[], assignee="", reviewer="", created_by="dev:berna",
+                milestone="", parent=None, labels=[], files=[], assignee="", reviewer="",
+                created_by="dev:berna",
                 created=1.0, updated=1.0)
 
 

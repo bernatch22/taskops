@@ -23,38 +23,61 @@ disagreement is upstream of the coordination.
 The fix both point to is the same: treat context as **infrastructure** — versioned, owned, and
 delivered per task in slices — rather than as prose that accumulates.
 
-## 2 · Four kinds of fact
+## 2 · The MILESTONE, and the facts under it
+
+The project's north is not a fact. It is a **milestone**: a chapter with a state, which a person
+closes. That is the difference the model turns on — an objective was superseded by a newer sentence
+and nothing recorded whether it was ever reached, so a board with eight of them could not answer
+"what have we shipped".
 
 ```sh
-taskops context objective  "ship the refund flow before the audit"
-taskops context decision   "never a Co-Authored-By trailer in a commit"   # sin alcance → toda card
-taskops context decision   "queues over cron: retries are the whole reason, see tk-9c1e02"
-taskops context note       "I run pytest -x, not the whole suite" --mine
+taskops milestone new "ship the refund flow before the audit" --horizon 2026-09-01
+taskops milestone review 31b0b89a -m "las tres cards cerradas"    # an agent REPORTS
+taskops milestone done   31b0b89a                                 # a PERSON verifies
+```
+
+Everything else is a fact filed under a chapter, or under a person, or over the whole project.
+
+```sh
+taskops context rule     "never a Co-Authored-By trailer in a commit" --project
+taskops context decision "queues over cron: retries are the whole reason, see tk-9c1e02"
+taskops context note     "el importador tiene tres etapas: leer, validar, cargar"
+taskops me objective     "the date parser, no regex"       # yours, and nobody types their own id
+taskops me note          "I run pytest -x, not the whole suite"
 ```
 
 | | What it is | Lifetime |
 |---|---|---|
-| **objective** | what we are chasing now | one **per owner** — a new one supersedes the last with the same owner |
-| **decision** with no `--labels`/`--files` | what must never break | long-lived; **every** agent gets **every** unscoped decision |
-| **decision** | what was decided and *why* | permanent; exists to stop agents re-litigating settled questions |
-| **note** | standing, and neither of those | a habit, a warning. Usually somebody's own |
+| **milestone** | what we are shipping now | until a PERSON says it was reached. Several active at once |
+| **rule** | what must never break | `--project` makes it outlive every chapter; **every** agent gets it |
+| **decision** | what was decided and *why* | its chapter's, unless `--project`. Stops agents re-litigating |
+| **note** | standing, and neither of those | always its chapter's — a permanent note is a rule |
+| **me objective** | what one PERSON is chasing | one each, and a newer one supersedes theirs alone |
 
 ```sh
-taskops context show     # the OVERVIEW — everybody's objectives, so you can see who is on what
-taskops context --mine   # …your page instead
-taskops context log      # …and everything we ever believed, retired ones marked
-taskops context retire 0829cfb9      # a prefix is enough — the eight characters `show` prints
+taskops context                      # what is in force: the project's rules, then each chapter
+taskops me                           # your page
+taskops context --milestone c5df2915 # what ONE chapter settled — including a closed one
+taskops context log                  # …and everything we ever believed, retired ones marked
+taskops context retire 0829cfb9      # a prefix is enough — the eight characters printed
 ```
 
-## 2b · Two dimensions of scope
+## 2b · Three dimensions of scope
 
-`--labels` / `--files` narrow a fact by SUBJECT. `--owner` (or `--mine`) narrows it by PERSON:
-a fact somebody stated for themselves reaches their sessions and nobody else's.
+`--labels` / `--files` narrow a fact by SUBJECT. The noun narrows it by PERSON: `taskops me` files
+it under whoever ran it, and it reaches their sessions and nobody else's. And the chapter narrows it
+by TIME: a fact belongs to the milestone open when it was written.
 
-    the project's north          ──▶ everybody
+    a project rule               ──▶ everybody, forever
+    a decision in this chapter   ──▶ every card in it — and NOBODY once it is reached
+    a decision  [db]             ──▶ cards in its chapter that touch the database
     ana's own objective          ──▶ ana's sessions and her agents
-    a decision  [db]             ──▶ cards that touch the database
     ana's note                   ──▶ ana
+
+**The chapter is what stops a context growing with the YEAR.** A decision taken in March leaves
+every slice the day somebody verifies the March chapter, and nobody had to retire it. That is the
+one form of decay a per-card slice could not fix on its own: subject scope keeps a context
+relevant, and only a lifetime keeps it small.
 
 A worker is handed the project's facts **plus its own developer's**, so a slice grows by ONE
 whatever the size of the team — which is the whole reason `owner` is a filter rather than a
@@ -75,22 +98,25 @@ Because everything else follows for free:
 
 - **They replicate.** Facts travel with `push`/`pull` and through git, like cards and reports. A
   teammate's new decision arrives with their work.
-- **They have history.** `context log` shows the objective from three weeks ago, and when it changed.
+- **They have history.** `context log` shows what we believed three weeks ago, and when it changed;
+  `taskops milestone list --all` shows every chapter this board has ever had, reached or abandoned.
 - **They converge deterministically.** The current objective is the latest by `(ts, id)`. The `id` is
   a content hash, identical on every machine, so **a same-timestamp tie elects the same winner
   everywhere**. The test feeds two clones the same two events in *opposite order* and asserts they
   agree — a tie that resolved differently per machine would be a split brain nobody would notice
   until the two sides were pursuing different objectives.
-- **They show up where you already look.** `taskops status` prints the objective in force.
+- **They show up where you already look.** `taskops status` and the session's bottom bar print the
+  milestone in force.
 
 ## 4 · The slice is the point
 
 An agent does not receive the whole book. `taskops_context` returns, for a specific card:
 
 ```
-unscoped decisions       ← never narrowed. Your RULE 0 reaches every worker, always.
-the current objective    ← so a worker knows what the work is FOR
-the decisions that match its labels or its edit surface
+the project's rules      ← never narrowed. Your RULE 0 reaches every worker, always.
+its MILESTONE            ← one chapter — the card's own, never all of the active ones
+the facts under it       ← the decisions and notes matching its labels or its edit surface
+your own objective       ← whose? the card's AUTHOR's. See below
 ```
 
 That is the whole mechanism against decay: the file stops growing because nothing has to be in one
@@ -109,15 +135,14 @@ still grows by one person, never by the reader as well.
 ```markdown
 # what a worker actually receives with its card
 
-## objective
-ship the refund flow before the audit
+## Rules — the project's. Every card, every milestone, no exceptions.
+· never a Co-Authored-By trailer in a commit
+· migrations are forward-only
 
-## decisions
-- never a Co-Authored-By trailer in a commit
-- migrations are forward-only
-
-## decisions (matching this card)
-- queues over cron: retries are the whole reason, see tk-9c1e02
+## ◆ Milestone in force — ship the refund flow before the audit      by 2026-09-01
+   4 card(s) · 1 done · 2 ready
+   decisions   queues over cron: retries are the whole reason, see tk-9c1e02
+   yours       the date parser, no regex
 ```
 
 ## 5 · Context vs. acceptance criteria

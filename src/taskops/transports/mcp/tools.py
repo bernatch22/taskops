@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...contracts._toolctx import ContextParams
+from ...contracts._toolms import MilestoneParams
 from ...contracts.tools import (
     AskParams,
     CaptureParams,
@@ -51,6 +52,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool("taskops_update", text.UPDATE, UpdateParams),
     Tool("taskops_ask", text.ASK, AskParams),
     Tool("taskops_context", text.CONTEXT, ContextParams),
+    Tool("taskops_milestone", text.MILESTONE, MilestoneParams),
     Tool("taskops_capture", text.CAPTURE, CaptureParams),
     Tool("taskops_plan", text.PLAN, PlanParams),
     Tool("taskops_dispatch", text.DISPATCH, DispatchParams),

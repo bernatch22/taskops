@@ -15,12 +15,17 @@ from taskops._clock import now
 from taskops.storage import Store
 from taskops.usecases import capture, init, plan
 from taskops.usecases._project import attributed, project
+from taskops.usecases.milestone import open_chapter
 
 AGENT = "agent:berna/api"
 
 
 def _card(root: Path, *, assign: str) -> str:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(root, install_git_hooks=False)
+    open_chapter(root, "the chapter these tests plan into",
+                 actor="dev:berna")
     made = capture(root, "Wire the tool", spec="x", assign=assign, actor="dev:berna")
     return str(made["task"]["id"])
 
@@ -61,6 +66,8 @@ def test_a_human_assignee_is_never_impersonated(tmp_path: Path) -> None:
 
 def test_a_pool_call_names_no_card_and_infers_nothing(tmp_path: Path) -> None:
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     assert attributed(tmp_path, "", "") == ""
 
 
@@ -68,6 +75,8 @@ def test_an_unknown_card_falls_through_rather_than_raising(tmp_path: Path) -> No
     """The real call is about to raise `NoSuchTask` with a message that names the fix;
     failing here first would replace it with one about identity."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     assert attributed(tmp_path, "tk-nope", "") == ""
 
 

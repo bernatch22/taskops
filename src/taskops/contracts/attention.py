@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict
 
+from .milestone import Milestone
 from .task import Task
 
 __all__ = ["Move", "Waiting", "Attention", "MOVES"]
@@ -43,6 +44,15 @@ class Waiting(TypedDict):
 class Attention(TypedDict):
     repo: str
     waiting: list[Waiting]
+
+    confirm: list[Milestone]
+    """Milestones an agent reported finished, waiting for a person to verify or send back.
+
+    A separate list from `waiting` because every entry there is a CARD, and a reader that had to
+    tell them apart by shape would eventually not. It is the same kind of fact though — something
+    only a person can clear — which is why it belongs in this projection at all rather than in a
+    notification nobody is listening for.
+    """
 
     mail: int
     """Messages addressed to this actor and not yet delivered to it.

@@ -21,6 +21,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from ._moves import moved as _moved
+
 __all__ = ["render_greeting"]
 
 BOLD, DIM, OFF = "\x1b[1m", "\x1b[2m", "\x1b[0m"
@@ -66,8 +68,13 @@ def _north(view: dict[str, Any]) -> str:
     One real session killed that: you open a project you have not touched in a week.
     """
     seen: dict[str, Any] = view.get("context") or {}
-    goal, mine = seen.get("objective"), seen.get("yours")
+    # The MILESTONE is the team's north now, and it is the same sentence with a truer source: an
+    # objective was superseded silently, a chapter is closed by a person who says it was reached.
+    active = seen.get("active") or ([seen["milestone"]] if seen.get("milestone") else [])
+    goal, mine = active[0] if active else None, seen.get("yours")
     said = f"the team is working towards {BOLD}{_fact(goal, GOAL)}{OFF}" if goal else ""
+    if len(active) > 1:
+        said += f" (and {len(active) - 1} more milestone(s))"
     if mine:
         said += f"{', and ' if said else ''}you are on {_fact(mine, MINE)}"
     return f"{said}." if said else ""
@@ -94,42 +101,6 @@ def _waiting(view: dict[str, Any]) -> str:
     if unread := view.get("messages"):
         clauses.append(f"{BOLD}{len(unread)}{OFF} unread message(s) for you")
     return f"Right now: {_and(clauses)}." if clauses else ""
-
-
-def _moved(view: dict[str, Any]) -> str:
-    """The last thing each of the last two PEOPLE did, in words.
-
-    Per person and not per event: the question a first screen answers is "what changed while I
-    was away", and nine commits by one worker answer it worse than two names do.
-    """
-    mine, seen, out = _dev(str(view.get("actor", ""))), set(), []
-    for event in reversed(view.get("recent") or []):
-        who, said = _dev(str(event.get("actor", ""))), _said(event)
-        if not who or not said or who in seen:
-            continue
-        seen.add(who)
-        out.append(f"{'you' if who == mine else who} {said}")
-        if len(out) == FACES:
-            break
-    return f"{DIM}Since yesterday, {_and(out)}.{OFF}" if out else ""
-
-
-def _said(event: dict[str, Any]) -> str:
-    """One event as a PHRASE. An ALLOW-list, not a filter of the noisy kinds: a teammate on a
-    newer taskops writes kinds this version has never heard of, and a deny-list's failure mode
-    is a first screen filling with something nobody chose to put there."""
-    kind, body = str(event.get("kind", "")), event.get("body") or {}
-    # WHOLE, never abbreviated. A taskops id is `tk-` and six hex — nine characters — so the
-    # obvious `[:8]` shaves the last digit off and prints a handle that resolves to nothing.
-    task = str(event.get("task", ""))
-    said = {"status": lambda: f"moved {task} to {body.get('to', '?')}",
-            "claimed": lambda: f"picked up {task}",
-            "commit": lambda: f"committed on {task}",
-            "released": lambda: f"handed {task} back",
-            "created": lambda: f"planned {_short(str(body.get('title', '')), MINE)}",
-            "comment": lambda: f"commented on {task}",
-            "message": lambda: f"wrote about {task}"}.get(kind)
-    return said() if said else ""
 
 
 def _and(parts: list[str]) -> str:

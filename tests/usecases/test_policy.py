@@ -21,6 +21,7 @@ from taskops._types import EVENT_KINDS, PEER
 from taskops.contracts.policy import NAMES, POLICY_KIND
 from taskops.storage import Store, all_events
 from taskops.usecases import init, plan, policy_show, rebuild, set_policy, sync
+from taskops.usecases.milestone import open_chapter
 from taskops.usecases.policy import _VALIDATORS
 from tests.usecases.test_agents import COLLECTORS, write_agent
 
@@ -28,7 +29,11 @@ from tests.usecases.test_agents import COLLECTORS, write_agent
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     """A project that has ONE registered specialist, `taskops-collectors`."""
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     write_agent(tmp_path, "taskops-collectors", COLLECTORS)
     return tmp_path
 

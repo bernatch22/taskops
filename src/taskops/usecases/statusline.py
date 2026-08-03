@@ -24,7 +24,7 @@ from .._clock import now
 from ..contracts.bar import Bar, Holding
 from ..engine.attention import waiting_on
 from ..storage import Store
-from ._contextviews import show as context_show
+from ._contextviews import chapters
 from ._project import caller, project
 from .remote import read_remote
 from .view import inbox_for
@@ -43,8 +43,14 @@ def statusline(start: Path | str, *, actor: str = "") -> Bar:
         counted: dict[str, int] = {}
         for item in waiting_on(store, actor=who):
             counted[item["move"]] = counted.get(item["move"], 0) + 1
-        goal = context_show(store.root)["objective"]
-        return Bar(objective=goal["text"] if goal else "",
+        # The CHAPTER, not an objective: an objective belongs to one dev and the bar belongs to
+        # the screen. With several active it says the oldest and counts the rest — the row has one
+        # slot and the one a session is most likely to be closing is the one it opened first.
+        open_now = chapters(store).active
+        said = open_now[0]["text"] if open_now else ""
+        if len(open_now) > 1:
+            said += f" +{len(open_now) - 1}"
+        return Bar(milestone=said,
                    board=store.root.name, local=shared is None,
                    holding=_holding(store, who), waiting=counted,
                    # `mark=False`: delivery is a fact about an AGENT having read something,

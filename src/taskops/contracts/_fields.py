@@ -15,7 +15,7 @@ __all__ = ["Repo", "Actor", "Session", "TaskId", "TASKS", "DRY_RUN", "STATUS", "
            "MENTIONS", "BLOCKED_ON", "NO_CODE", "LABELS", "CLAIM_ONE", "ASK_TASK",
            "ASK_QUERY", "DISPATCH_TASKS", "DISPATCH_COUNT", "PREFIX",
            "RECOVER_FORCE", "RECOVER_GRACE", "REPORT_KIND", "REPORT_ACTOR", "SINCE", "DATE",
-           "EVIDENCE", "NO_EVIDENCE", "CONTEXT_TASK"]
+           "EVIDENCE", "NO_EVIDENCE"]
 
 Repo = Annotated[str, "path to the repository root; a path INSIDE it also works — "
                       "the root is found from .taskops"]
@@ -71,9 +71,6 @@ NO_EVIDENCE = ("close a card with criteria WITHOUT proving them, giving the reas
                "criterion turned out to be wrong, or the work moved. The reason is written into "
                "the done event, so this is an argued exemption and not a way around the rule")
 
-CONTEXT_TASK = ("a task id: returns the slice that applies to THAT card — the objective, plus the "
-                "decisions that are project-wide or match its labels or files. Omit for the "
-                "whole project context")
 
 LABELS = "comma-separated labels to restrict the pick to"
 
@@ -141,20 +138,6 @@ CLAIM_IT = ("claim it immediately (default true) — pass false only when record
 ASSIGN = ("give it to another actor (`agent:dev/name` or `dev:name`) instead of claiming it: "
           "it lands in their inbox and stays pickable")
 
-STATE = ("state a standing fact instead of reading: `objective` (a new one supersedes the last "
-         "WITH THE SAME OWNER), `decision` (settled, so it is not re-litigated) or `note` "
-         "(standing, and neither). Needs `text`. A decision with NO labels and NO files reaches "
-         "EVERY card — that is how a rule that must never break is written, and scoping one "
-         "narrows it. A worker is REFUSED: this is what it is judged against.")
 
-MINE = ("file it under YOU rather than the project. A worker then reads the project's facts and "
-        "its own developer's and nobody else's, which is what keeps a slice from growing with "
-        "the team. Usual for an objective: the team's north and your week are both true.")
 
 TEXT = "the fact itself, with its reason — one sentence a worker can act on"
-
-RETIRE = ("a standing fact's id, or the first eight characters of it. It leaves `show` and stays "
-          "in the log, because an append-only log has no eraser.")
-
-SCOPE = ("comma-separated labels a DECISION applies to; omit for project-wide. Scope is what "
-         "keeps the slice a worker reads from growing until nobody follows it.")

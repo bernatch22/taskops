@@ -8,6 +8,8 @@ the contract says — run on what came back from real SQLite, not on a literal.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from taskops._ids import event_id, new_task_id
 from taskops.contracts import Event, Lease, Task
 from taskops.storage import Store
@@ -17,7 +19,10 @@ from tests.contracts.shape import assert_shape
 
 def a_task(**over: object) -> Task:
     base = Task(id=new_task_id(), title="Add the lease sweep", spec="Full brief.",
-                status="backlog", priority=1, parent=None, labels=["storage"],
+                # A fixture GAINING a field the contract gained: `Task.milestone` is not optional,
+                # so a literal standing in for a row has to carry it. Nothing about what this file
+                # pins changes — `assert_shape` is the reason it is here rather than defaulted.
+                status="backlog", priority=1, milestone="", parent=None, labels=["storage"],
                 files=["src/taskops/storage/_leases.py"], created_by="dev:berna", assignee="", reviewer="",
                 created=CLOCK, updated=CLOCK)
     return Task(**{**base, **over})          # type: ignore[typeddict-item]
@@ -85,6 +90,38 @@ def test_appending_the_same_event_twice_is_a_no_op(store: Store) -> None:
     assert store.events.append(event) is True
     assert store.events.append(event) is False
     assert len(store.events.of_task("tk-1")) == 1
+
+
+def test_a_card_carries_its_milestone_through_the_row(store: Store) -> None:
+    """The column, not the fold: a card belongs to exactly ONE chapter, and that is what bounds
+    the facts its worker reads — so it is stored rather than derived."""
+    written = a_task(milestone="7c1a44b2")
+    store.tasks.insert(written)
+    assert store.tasks.need(written["id"])["milestone"] == "7c1a44b2"
+
+
+def test_a_database_written_before_the_column_existed_still_opens(root: Path) -> None:
+    """`milestone` is a LATE column, like `assignee` and `reviewer` before it: a database written
+    by an older taskops gains it by ALTER on the next open, with no migration step anybody has to
+    remember, and every existing card reads "" — no chapter, which is exactly what those cards
+    mean.
+
+    The old shape is produced by taking the column back OUT, which is the only honest way to get
+    it: nothing this version can do would write such a database. The INDEX has to go first, and
+    that is the reason it lives in `_LATE_INDEXES` rather than in `DDL` — `executescript` runs
+    before the ALTERs, so an index over a late column would name a column that does not exist yet
+    and abort the whole script.
+    """
+    with Store(root) as older:
+        task = a_task()
+        older.tasks.insert(task)
+        older.db.execute("DROP INDEX idx_tasks_milestone")
+        older.db.execute("ALTER TABLE tasks DROP COLUMN milestone")
+
+    with Store(root) as reopened:
+        assert reopened.tasks.need(task["id"])["milestone"] == ""
+        # And it is usable again: the index came back too, so the counts read stays indexed.
+        reopened.tasks.insert(a_task(milestone="7c1a44b2"))
 
 
 def test_a_malformed_json_column_degrades_instead_of_raising(store: Store) -> None:

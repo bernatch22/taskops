@@ -296,32 +296,72 @@ That value is normally not typed per card: `taskops policy reviewer peer` sets w
 card is created with. The engine still reads the CARD, so changing the policy never rewrites
 who was allowed to close work planned last week.
 
+## Milestones: the chapter your card belongs to
+
+A board is not a flat pile of cards. **Every card belongs to exactly one MILESTONE** — a chapter
+with a text, a horizon, and an end. Several are active at once, which is normal: a team ships two
+things in the same fortnight.
+
+```
+taskops_milestone                   every ACTIVE chapter, its counts, and what is planned next
+taskops_milestone milestone=<id>    ONE chapter: its facts AND ITS CARDS
+```
+
+A chapter moves exactly like a card, and for the same reason — **whoever did the work does not get
+to say it is done**:
+
+```
+   planned ──start──▶ in_force ──review──▶ review ──done──▶ reached
+                          ▲                   │
+                          └──── reject ───────┘        cancel ──▶ abandoned
+```
+
+You may `create`, `start`, `update` and `review` one. You may **not** `done`, `reject` or `cancel`:
+`done` on a card already needs somebody who is not its author, and this is that rule one level up.
+No count of closed cards can mean "we shipped it".
+
+When you believe a chapter is finished, report it and stop:
+
+```
+taskops_milestone review=<id> m="what is finished, and what shows it"
+```
+
+It stays ACTIVE while it waits. Nothing is archived on your word, so its cards keep their home and
+its rules keep applying until a person verifies or sends it back.
+
 ## What this project has already decided
 
 Before you design anything, read the standing facts:
 
 ```
-taskops_context                     the objective, the decisions, the notes
-taskops_context task=tk-4f2a9c      …the SLICE that applies to one card
+taskops_context                     what applies: the project's, your chapter's, and yours
+taskops_context task=tk-4f2a9c      …the SLICE that applies to ONE card
+taskops_context milestone=<id>      …what a given chapter has settled, including a closed one
 ```
 
-Four kinds, and they are not advice:
+Four kinds, and they are not advice. What differs between them is LIFETIME, and it is written
+where the fact was stated:
 
-- **objective** — what the project is chasing now. You get TWO: the project's, and your own
-  developer's if they set one. If your card serves neither, say so rather than doing it well.
-- **decision with no scope** — what must never break. Every agent receives every unscoped decision, always;
-  there is no card whose slice leaves one out.
-- **decision** — what was already decided, and *why*. This exists so you do not re-propose a
-  thing that was tried and rejected. If you think a decision is wrong, argue with it in a
-  comment; do not quietly do the other thing.
-- **note** — standing, and neither a goal nor a rule. A habit, a warning, a thing worth
-  remembering. Usually your developer's own.
+- **rule** — never broken. A `project` rule is true whatever anybody is working on and outlives
+  every chapter; a `milestone` rule is true until that chapter is reached. Both reach every card
+  in their scope — there is no card whose slice leaves one out.
+- **decision** — what was already decided, and *why*. This exists so you do not re-propose a thing
+  that was tried and rejected. If you think one is wrong, argue with it in a comment; do not
+  quietly do the other thing.
+- **note** — standing, and neither a goal nor a rule. Always the chapter's.
+- **objective** — what ONE developer is chasing inside a chapter. You get your own developer's if
+  they set one. The project's north is not here: it is the milestone.
 
-You never see another developer's own facts, and that is deliberate: a slice grows by ONE
-whatever the size of the team, so three people each stating an objective does not make you
-read four. **You may not state one either** — an objective is what you are judged against, and
-a worker that could restate it could move its own goalposts. Say it on the card with
+**You may not state a rule, a decision or a note** — those are what you are judged against, and a
+worker that could restate them could move its own goalposts. Say it on the card with
 `taskops_update`; the session that planned the work decides whether it becomes standing.
+
+**You MAY state your own developer's objective** (`taskops_context state=objective text="…"`),
+because it is your own person's and there is nobody else it could belong to.
+
+You never see another developer's facts, and you never see another chapter's. That is what bounds
+what you read: the project's block, plus your card's chapter, plus your own — and it grows with
+neither the size of the team, nor the age of the project, nor the number of chapters running.
 
 ## The specialist you may be
 

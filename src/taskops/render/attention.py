@@ -8,6 +8,7 @@ call that does it. Pure, like everything in this layer.
 from __future__ import annotations
 
 from ..contracts.attention import MOVES, Attention, Waiting
+from ..contracts.milestone import Milestone
 
 __all__ = ["render_attention", "HEADINGS"]
 
@@ -30,7 +31,7 @@ def render_attention(view: Attention) -> str:
         return ("nothing is waiting on a decision — every open card is being worked on.\n"
                 "To be woken when that changes: run `taskops attention --wait` in the "
                 "background and keep working; when it returns, sweep again.")
-    lines: list[str] = _mail(view.get("mail", 0))
+    lines: list[str] = _mail(view.get("mail", 0)) + _confirm(view.get("confirm") or [])
     for move in MOVES:
         group = [item for item in view["waiting"] if item["move"] == move]
         if not group:
@@ -51,6 +52,25 @@ def _mail(mail: int) -> list[str]:
         return []
     return [f"ADDRESSED TO YOU — {mail} message(s). `taskops ask` reads them, and they are the "
             f"only lines here nobody else is also being shown"]
+
+
+def _confirm(chapters: list[Milestone]) -> list[str]:
+    """Milestones reported finished, above every card group.
+
+    Above them because it is the biggest thing on the list and the one nothing else unblocks: no
+    count of closed cards can mean "we shipped it", so until a person says so the chapter stays
+    open and nothing new starts under it. Both ways out are named — a sweep that only said
+    "waiting" would leave a reader to guess whether they were meant to verify or to reject.
+    """
+    if not chapters:
+        return []
+    lines = ["CONFIRM — a milestone was reported finished and waits for a PERSON"]
+    for chapter in chapters:
+        said = f" — “{chapter['note']}”" if chapter["note"] else ""
+        lines.append(f"  {chapter['id'][:8]}  {chapter['text'][:52]:<52}{said}")
+        lines.append(f"            → `taskops milestone done {chapter['id'][:8]}`  ·  send back: "
+                     f"`taskops milestone reject {chapter['id'][:8]} -m \"…\"`")
+    return lines
 
 
 def _row(item: Waiting) -> str:

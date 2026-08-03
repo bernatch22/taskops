@@ -20,7 +20,11 @@ from tests.conftest import CLOCK
 
 def make(store: Store, task_id: str, **over: object) -> Task:
     base: dict[str, object] = {"id": task_id, "title": f"task {task_id}", "spec": "s",
-                               "status": "ready", "priority": 2, "parent": None,
+                               # `milestone` is a required field of `Task` now; a fixture that
+                               # omitted it would fail on the INSERT, not on anything this file
+                               # is about. Scheduling ignores the chapter — the pool is bounded
+                               # by dependencies and labels, and that is unchanged.
+                               "status": "ready", "priority": 2, "milestone": "", "parent": None,
                                "labels": [], "files": [], "created_by": "dev:berna", "assignee": "",
                                "reviewer": "", "created": CLOCK, "updated": CLOCK}
     task = Task(**{**base, **over})           # type: ignore[typeddict-item]

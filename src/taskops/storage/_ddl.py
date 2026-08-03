@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     spec TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
     priority INTEGER NOT NULL DEFAULT 2,
+    milestone TEXT NOT NULL DEFAULT '',      -- the chapter; '' for a card planned before they existed
     parent TEXT,
     labels TEXT NOT NULL DEFAULT '[]',      -- JSON array
     files TEXT NOT NULL DEFAULT '[]',       -- JSON array
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+-- The index on `milestone` is NOT here: see `_LATE_INDEXES` in schema.py.
 
 -- `task` must finish before `blocks` can start. Queried from BOTH ends, so both
 -- directions are indexed: the primary key covers one, idx_deps_blocks the other.

@@ -32,6 +32,7 @@ from taskops.usecases import (
     remove_remote,
     write_report,
 )
+from taskops.usecases.milestone import open_chapter
 from tests.e2e.fakeserver import TOKEN, Fake, running
 
 
@@ -46,7 +47,11 @@ def base(fake: Fake) -> Iterator[str]:
 
 
 def make(where: Path, url: str = "") -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(where, install_git_hooks=False)
+    open_chapter(where, "the chapter these tests plan into",
+                 actor="dev:berna")
     if url:
         add_remote(where, url, TOKEN)
     return where
@@ -57,6 +62,8 @@ def planned(where: Path, url: str, title: str) -> Path:
     contract, so a plan on an already-connected project — which executes on the real server —
     is the real server's test (`test_agentwire`), never this one's."""
     init(where, install_git_hooks=False)
+    open_chapter(where, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(where, [{"title": title}], actor="dev:berna")
     add_remote(where, url, TOKEN)
     return where
@@ -119,6 +126,8 @@ def test_a_board_that_predates_the_remote_is_carried_up_by_push(tmp_path: Path, 
     arrive whole. (A plan made AFTER the remote exists never touches this path — it executes
     on the server via rpc, which is the real server's test, not this contract fake's.)"""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "wire the client"}], actor="dev:berna")
     add_remote(tmp_path, base, TOKEN)
     assert push(tmp_path).accepted > 0
@@ -130,6 +139,8 @@ def test_a_second_push_sends_nothing_and_the_server_grows_by_nothing(
     """Idempotency, asserted where it matters: not "the second call succeeded" but "the log
     on the server is the same length"."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "wire the client"}], actor="dev:berna")
     add_remote(tmp_path, base, TOKEN)
     push(tmp_path)
@@ -142,6 +153,8 @@ def test_nothing_is_marked_exported_when_the_push_never_lands(tmp_path: Path) ->
     """A push cut off mid-flight must re-send. Marking first and posting after is how an
     event that never left the machine becomes an event nothing will ever send again."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "unsent"}], actor="dev:berna")
     add_remote(tmp_path, "http://127.0.0.1:1", TOKEN)
     with pytest.raises(Exception, match="could not reach"):
@@ -155,6 +168,8 @@ def test_a_pull_puts_the_card_on_the_board(tmp_path: Path, base: str) -> None:
     table and the board empty, which is precisely what a teammate saw and reported."""
     mine = tmp_path / "mine"
     init(mine, install_git_hooks=False)
+    open_chapter(mine, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(mine, [{"title": "wire the client"}], actor="dev:berna")
     add_remote(mine, base, TOKEN)
     push(mine)
@@ -273,6 +288,8 @@ def test_push_sends_a_board_the_git_path_already_exported(
     # No remote yet, so the plan lands locally exactly as a git-only project's would; the
     # remote arrives AFTER, which is precisely the adoption case this test pins.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "Ya exportada por git"}], actor="dev:t")
     sync(tmp_path)                       # marks everything exported, as a git project would be
     add_remote(tmp_path, base, TOKEN)

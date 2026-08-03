@@ -27,9 +27,11 @@ from ..contracts import Dep, PlanResult, Task
 from ..engine import record, unblock
 from ..storage import Store
 from . import _entry as field
+from ._planinto import chapter_to_plan_into
 from ._project import caller, heartbeat, project
 from ._refs import resolve_after, resolve_parent
 from ._routing import call_remote, whoami
+from ._snapshot import snapshot
 from .acceptance import attach, criteria_in
 from .reviewer import for_new
 
@@ -47,12 +49,13 @@ def plan(start: Path | str, entries: list[dict[str, Any]], *,
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
+        chapter = chapter_to_plan_into(store, entries)
         # Every id MINTED BEFORE the first insert, which is the whole mechanism behind
         # `parent: 0`: the parent goes into the `created` event, and an event is the log's final
         # word — so a second pass that fixed it up would leave the log describing a tree the
         # board does not have. Ids are random, so minting them early costs nothing.
         ids = [new_task_id() for _ in entries]
-        created = [_create(store, entry, who, ids, index)
+        created = [_create(store, {**entry, "milestone": chapter}, who, ids, index)
                    for index, entry in enumerate(entries)]
         deps = _wire(store, entries, created)
         return PlanResult(created=created, deps=deps, unblocked=unblock(store))
@@ -70,7 +73,10 @@ def _create(store: Store, entry: dict[str, Any], who: str, ids: list[str],
     if not title:
         raise BadRequest("every task needs a `title`")
     when = now()
-    task = Task(id=ids[mine], title=title,
+    # RESOLVED by the caller — `chapter_to_plan_into` — and never guessed here: with several
+    # chapters active there is a real question of which, and a card in the wrong one is a card
+    # whose rules are somebody else's while nothing anywhere says so.
+    task = Task(id=ids[mine], title=title, milestone=str(entry.get("milestone") or "").strip(),
                 spec=str(entry.get("spec", "")).strip(), status="backlog",
                 priority=field.priority_of(entry),
                 parent=resolve_parent(store, entry.get("parent"), ids, mine),
@@ -86,20 +92,12 @@ def _create(store: Store, entry: dict[str, Any], who: str, ids: list[str],
     # machine rebuilds from, so an event that omits the spec is an event that cannot reconstruct
     # the task — which is exactly what happened: a teammate's `git pull` imported the events and
     # left them with an empty board. `engine.replay` is the reader.
-    record(store, task=task["id"], actor=who, kind="created", body=_snapshot(task), ts=when)
+    record(store, task=task["id"], actor=who, kind="created", body=snapshot(task), ts=when)
     # Its own event, never a field of the snapshot: criteria are rewritten far more often than a
     # card is created, and one kind for "what this card promises" is what lets the latest
     # statement win without replay having to reason about a partially updated `created` body.
     attach(store, task["id"], criteria_in(entry.get("acceptance")), who)
     return task
-
-
-def _snapshot(task: Task) -> dict[str, Any]:
-    """Everything needed to recreate this task elsewhere. `id` and `created_by` are already on the
-    event, so repeating them would be two places to keep in step."""
-    return {"title": task["title"], "spec": task["spec"], "priority": task["priority"],
-            "parent": task["parent"], "labels": task["labels"], "files": task["files"],
-            "assignee": task["assignee"], "reviewer": task["reviewer"]}
 
 
 def _wire(store: Store, entries: list[dict[str, Any]],

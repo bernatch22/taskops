@@ -19,12 +19,13 @@ from typing import Any, cast
 
 from .._errors import BadRequest
 from .._types import EventKind
-from ..contracts.context import CONTEXT_KIND, CONTEXT_TASK, SORTS, Fact
+from ..contracts.context import CONTEXT_KIND, CONTEXT_TASK, Fact
 from ..engine import identity, record
 from ..storage.context import fact_of, facts, matching
+from ._joins import chapter_for
 from ._project import caller, heartbeat, locate, project
 from ._routing import call_remote, whoami
-from .policy import refuse_if_policy
+from ._stating import refuse_an_ownerless_objective, refuse_the_shape
 
 __all__ = ["state", "retire"]
 
@@ -35,23 +36,26 @@ and forwards one it has never heard of, untouched."""
 
 
 def state(start: Path | str, sort: str, text: str, *, labels: Sequence[str] = (),
-          files: Sequence[str] = (), horizon: str = "", owner: str = "",
+          files: Sequence[str] = (), horizon: str = "", owner: str = "", level: str = "milestone",
           actor: str = "") -> Fact:
     """Record one fact. An objective supersedes the previous one by being NEWER, not by
-    touching it — the old one stays in the log, which is what `context log` reads."""
-    if sort not in SORTS:
-        raise BadRequest(f"`{sort}` is not a context fact — expected {', '.join(SORTS)}")
-    if not text.strip():
-        raise BadRequest(f"an {sort} needs text — a fact with no statement states nothing")
-    refuse_if_policy(text)
-    identity.a_person(locate(start), actor, f"state an {sort}")
-    if owner:
-        # Parsed, not trusted. `dev_of` answers "" for anything it cannot read, so an owner
-        # nothing can parse would file the fact as the PROJECT's — and a newer one supersedes
-        # the team's objective. A typo must not be able to erase the north.
-        identity.parse(owner)
+    touching it — the old one stays in the log, which is what `context log` reads.
+
+    `level` is the LIFETIME, and `milestone` is the default deliberately: a fact that dies with
+    its chapter is recovered by restating it, and one that lives forever accumulates silently —
+    which is the failure the whole model exists to end. The default falls on the recoverable side.
+
+    The chapter is resolved HERE, from what is in force, and never taken from the caller. Several
+    are active at once, so there is a real question of which — and the answer is not the caller's
+    to guess: a fact filed under the wrong chapter is a fact that reaches the wrong cards and
+    nothing says so. `owner` picks it: a dev's own fact joins the chapter their own objective is
+    in, which is the one they are working under.
+    """
+    refuse_the_shape(sort, text, level)
+    _refuse_the_caller(locate(start), sort, owner, actor)
     body: dict[str, Any] = {"sort": sort, "text": text.strip(), "labels": list(labels),
-                            "files": list(files), "horizon": horizon, "owner": owner}
+                            "files": list(files), "horizon": horizon, "owner": owner,
+                            "level": level}
     # The WHOLE body crosses. It used to send four of the seven fields, so on a board with a
     # remote `--files`, `--horizon` and `--owner` were accepted, echoed back and dropped — and
     # `--files` is how a decision scopes to an edit surface, so a decision written on a remote
@@ -62,10 +66,32 @@ def state(start: Path | str, sort: str, text: str, *, labels: Sequence[str] = ()
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
+        body["milestone"] = "" if level == "project" else chapter_for(store, owner or who)
         stated = fact_of(record(store, task=CONTEXT_TASK, actor=who, kind=_KIND, body=body))
         if stated is None:                      # unreachable: `sort` was checked above
             raise BadRequest(f"`{sort}` produced no fact")
         return stated
+
+
+def _refuse_the_caller(where: Path, sort: str, owner: str, actor: str) -> None:
+    """WHO may state this, and whether it is filed under anybody.
+
+    An OWN fact needs no person: `agent:ana/w1` is ana with another pair of hands, and there is
+    nobody else it could be filing under. Everything else is what a worker is JUDGED against, so a
+    worker that could state one could move its own goalposts.
+
+    The ownership check is LAST. An agent stating an unowned objective is refused for who it is,
+    and a message about ownership would send it to fix the wrong half — it would fix it, and it
+    would still be refused.
+    """
+    if not owner:
+        identity.a_person(where, actor, f"state a project or chapter {sort}")
+    else:
+        # Parsed, not trusted. `dev_of` answers "" for anything it cannot read, so an owner nothing
+        # can parse would file the fact as the PROJECT's. A typo must not erase the north.
+        identity.parse(owner)
+    if sort == "objective":
+        refuse_an_ownerless_objective(owner)
 
 
 def retire(start: Path | str, fact_id: str, *, actor: str = "") -> Fact:

@@ -17,6 +17,7 @@ from taskops._clock import HEARTBEAT_GRACE, now
 from taskops.contracts import Lease
 from taskops.storage import Store
 from taskops.usecases import ask, dispatch, init, next_task, plan, recover, update
+from taskops.usecases.milestone import open_chapter
 
 
 def git(root: Path, *args: str) -> None:
@@ -32,7 +33,11 @@ def project(tmp_path: Path) -> Path:
     (tmp_path / "README.md").write_text("x\n", encoding="utf-8")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "init")
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "A", "spec": "a"}, {"title": "B", "spec": "b"}],
          actor="dev:berna")
     return tmp_path
@@ -270,6 +275,8 @@ def test_recover_never_reopens_a_card_that_was_already_closed(tmp_path: Path) ->
     lease behind on any clone whose mirror missed it, which is exactly how this was found.
     """
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     card = plan(tmp_path, [{"title": "t", "spec": "s"}], actor="dev:berna")["created"][0]["id"]
     next_task(tmp_path, task=card, actor="agent:berna/one")
     update(tmp_path, card, status="done", no_code=True, comment="shipped", actor="agent:berna/one")
@@ -290,6 +297,8 @@ def test_recovering_a_verifier_leaves_the_card_in_review(tmp_path: Path) -> None
     disagreed with it: it walked the card back to `ready`, erasing a handover because somebody's
     reviewer crashed — and handing the worker its own finished card again."""
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     card = plan(tmp_path, [{"title": "t", "spec": "s"}], actor="dev:berna")["created"][0]["id"]
     next_task(tmp_path, task=card, actor="agent:berna/w1")
     update(tmp_path, card, status="review", comment="over", actor="agent:berna/w1")

@@ -20,6 +20,7 @@ import pytest
 
 from taskops.usecases import ask, init, next_task, plan
 from taskops.usecases.hooks import MARKER
+from taskops.usecases.milestone import open_chapter
 
 MODULE = "taskops.transports.hooks"
 """The one string this whole file exists to protect. It appears in `usecases.hooks.runner`,
@@ -39,7 +40,11 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "README.md").write_text("start\n", encoding="utf-8")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "initial")
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     return tmp_path
 
 
@@ -98,6 +103,8 @@ def test_init_repairs_a_hook_left_pointing_at_the_old_command(repo: Path) -> Non
     hook.write_text(stale, encoding="utf-8")
 
     init(repo)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
 
     after = hook.read_text(encoding="utf-8")
     assert f"-m {MODULE} ingest commit HEAD" in after
@@ -111,6 +118,8 @@ def test_repairing_keeps_the_repositorys_own_hook(repo: Path) -> None:
     hook.write_text(f"#!/bin/sh\necho mine\n\n{MARKER}\nold-command || true\n",
                     encoding="utf-8")
     init(repo)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     after = hook.read_text(encoding="utf-8")
     assert "echo mine" in after
     assert "old-command" not in after

@@ -23,6 +23,7 @@ import pytest
 from taskops.engine.transcript import ENV_HOME, slug_for
 from taskops.engine.worker import worktree_for
 from taskops.usecases import init, plan, session_log
+from taskops.usecases.milestone import open_chapter
 
 
 def entry(kind: str, content: Any, *, branch: str = "", when: str = "2026-07-27T19:00:00Z",
@@ -48,7 +49,11 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setenv(ENV_HOME, str(tmp_path / "claude-home"))
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(repo, install_git_hooks=False)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(repo, [{"title": "Watched work", "spec": "x"}], actor="dev:berna")
     return repo
 

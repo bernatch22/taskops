@@ -18,8 +18,10 @@ SPEC = "What done looks like, in the ask's own words."
 
 
 def _task(task_id: str, status: str = "ready", **over: object) -> Task:
+    # `milestone=""` only completes a field `Task` gained in 0.5.0. No rendered byte below
+    # changes: nothing here reads the chapter.
     base = Task(id=task_id, title=f"Card {task_id}", spec=SPEC, status=status,  # type: ignore[typeddict-item]
-                priority=1, parent=None, labels=["backend"], files=["db/schema.sql"],
+                priority=1, milestone="", parent=None, labels=["backend"], files=["db/schema.sql"],
                 assignee="", reviewer="", created_by="dev:berna", created=1.0, updated=1.0)
     base.update(over)  # type: ignore[typeddict-item]
     return base

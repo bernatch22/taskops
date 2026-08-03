@@ -38,6 +38,19 @@ export interface Studio {
  * a person perceives delay, and it collapses a burst into one request. */
 const COALESCE_MS = 120;
 
+/* Events that CANNOT change the standing context, so they do not refetch it.
+ *
+ * A deny-list and not an allow-list, which is the opposite of what this was: it used to refetch
+ * only on `context` and `policy`, because facts change weekly and a heartbeat arrives every few
+ * seconds. Then the slice grew CARD COUNTS — `7 cards · 3 done` per chapter, which is what makes a
+ * milestone a todo-list — and those are derived from the board, so they go stale the moment a card
+ * moves. A strip with yesterday's count is the one thing this panel exists not to be.
+ *
+ * So the rule inverted: anything that can move a card refetches, and the volume — heartbeats,
+ * comments, commits — is named here and skipped. `activity` alone is most of the traffic on a live
+ * board, and it is the one kind that says nothing about where a card is. */
+const QUIET = new Set(["activity", "comment", "message", "commit", "branch", "edited"]);
+
 export function useStudio(): Studio {
   const [config, setConfig] = useState<Config | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
@@ -54,6 +67,11 @@ export function useStudio(): Studio {
    * change — tearing down and reopening the SSE stream each time somebody clicks a card. */
   const openId = useRef<string | null>(null);
   const timer = useRef<number | null>(null);
+  /* Its OWN timer and not the board's: the two are coalesced on the same window but fired by
+   * different rules — every event refetches the board, and only the ones that could have changed
+   * the standing context refetch that. One shared timer would either drag one of them along or
+   * cancel the other's pending call, which is the shape of a refetch that never happens. */
+  const ctxTimer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -84,10 +102,18 @@ export function useStudio(): Studio {
     });
   }, []);
 
-  /* Its own loader, not folded into `load`: that one runs on every event and on every reconnect,
-   * and this reads three tables to answer a question whose answer changed last Tuesday. */
+  /* Its own loader, not folded into `load`: that one refetches on every event, and this one is read
+   * by the strip and the modal, which are about the chapter rather than about the cards.
+   *
+   * COALESCED like the board, and that is not decoration: `plan` writes N events in one
+   * transaction, and every one of them changes a chapter's counts, so an uncoalesced refetch here
+   * would be N requests for one call — which is exactly the burst `COALESCE_MS` exists for. */
   const loadContext = useCallback(() => {
-    api.context().then(setContext).catch(() => {});
+    if (ctxTimer.current !== null) window.clearTimeout(ctxTimer.current);
+    ctxTimer.current = window.setTimeout(() => {
+      ctxTimer.current = null;
+      api.context().then(setContext).catch(() => {});
+    }, COALESCE_MS);
   }, []);
 
   useEffect(() => {
@@ -99,9 +125,7 @@ export function useStudio(): Studio {
         setLast(event);
         setPulse((n) => n + 1);
         refresh();
-        /* The two kinds that CAN change it. Anything else moves a card, and a card cannot
-         * restate a settled decision. */
-        if (event.kind === "context" || event.kind === "policy") loadContext();
+        if (!QUIET.has(event.kind)) loadContext();
       },
       () => {
         /* Refetch on every OPEN, not just the first. A reconnect after a dropped stream has an

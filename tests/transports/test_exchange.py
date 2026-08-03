@@ -18,6 +18,7 @@ from taskops.transports.http._wire import Reply, Request
 from taskops.transports.http.policy import Policy
 from taskops.transports.http.router import build
 from taskops.usecases import init, plan
+from taskops.usecases.milestone import open_chapter
 
 
 def get(path: str, **query: str) -> Request:
@@ -35,7 +36,11 @@ def body_of(reply: Reply) -> Any:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "Ship the exchange", "spec": "Events over HTTP.", "files": ["x.py"]}],
          actor="dev:berna")
     return tmp_path
@@ -277,6 +282,8 @@ def test_a_pushed_card_appears_on_the_servers_board(tmp_path: Path) -> None:
     from taskops.usecases.exchange import accept_events
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     created = build(task="tk-9press", actor="dev:x", kind="created",
                     body={"title": "Pushed from afar", "spec": ""})
     result = accept_events(tmp_path, [dict(created)])

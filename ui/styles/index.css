@@ -636,10 +636,10 @@ ol.md-list li { list-style: decimal; }
 
 .context-mark { color: var(--lime); flex: none; }
 
-/* The objective takes the room and truncates; everything else keeps its size. A wrapped strip
+/* The chapter's text takes the room and truncates; everything else keeps its size. A wrapped strip
  * would change the page height as the text changes, which on a live board is the layout moving
- * under somebody's cursor. */
-.context-objective {
+ * under somebody's cursor — and with several chapters active the text is the part that varies. */
+.context-milestone {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -651,6 +651,17 @@ ol.md-list li { list-style: decimal; }
 .context-horizon,
 .context-counts { flex: none; font-size: 12px; }
 .context-horizon { color: var(--amber); }
+
+/* AMBER, and it is the only chip in the app that is not lime. Lime means live, ready, fine; this
+ * one means a machine cannot clear it — a chapter whose agent reported it finished, waiting on a
+ * person to verify or send it back. It is the one state where a session must not start new work
+ * under the milestone, so it must not read like the accent everything else uses. */
+.chip.waiting {
+  color: var(--amber);
+  border-color: color-mix(in oklab, var(--amber) 40%, transparent);
+  background: color-mix(in oklab, var(--amber) 10%, transparent);
+  flex: none;
+}
 
 .context-scope,
 .context-id,
@@ -817,6 +828,31 @@ ol.md-list li { list-style: decimal; }
 .ctx-meta:empty { display: none; }
 
 .ctx-goal { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* ── a chapter, in the milestone tab ────────────────────────────────────────── */
+
+/* A CHAPTER is a group of groups — its rules, its decisions, its notes — and that is the one shape
+ * `.ctx-group` cannot carry, because nesting a group inside a group leaves nothing saying where one
+ * milestone ends and the next begins. Several are active at once on a real board, so that boundary
+ * is not decoration: read without it, one chapter's rules look like the next one's.
+ *
+ * A left edge and not a card: the facts inside are already cards on `--bg`, and a card of cards
+ * reads as a nesting level nobody meant. */
+.ctx-chapter {
+  display: flex; flex-direction: column; gap: 14px;
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in oklab, var(--lime) 35%, transparent);
+}
+
+/* The header WRAPS, unlike the strip. Different constraint: the strip is one permanent line under
+ * the header and must never change the page height, while this is inside a scrolling modal where a
+ * chapter's whole sentence is worth two lines. */
+.ctx-chapter-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  margin: 0;
+  font-size: 13.5px;
+}
+.ctx-chapter-text { color: var(--ink); overflow-wrap: anywhere; }
 
 .ctx-empty {
   margin: 0; color: var(--ink-dim); font-size: 13px; line-height: 1.6;

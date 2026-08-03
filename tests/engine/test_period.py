@@ -179,7 +179,10 @@ def test_ONE_days_dossier_is_BYTE_identical_to_what_it_always_was() -> None:
 
     Byte for byte, from a literal report — which is only possible because `render` is pure.
     """
-    task = Task(id="tk-1", title="The work", spec="", status="done", priority=2, parent=None,
+    # `milestone=""` completes the contract's new required field; the rendered bytes below are
+    # unchanged, which is the point — a report is about what closed, not about which chapter.
+    task = Task(id="tk-1", title="The work", spec="", status="done", priority=2, milestone="",
+                parent=None,
                 labels=[], files=[], assignee="", reviewer="", created_by="dev:berna", created=1.0,
                 updated=1.0)
     card = ClosedCard(task=task, actor="agent:berna/v22", claimed_ts=0.0, done_ts=600.0,

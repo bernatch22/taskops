@@ -15,11 +15,26 @@ from pathlib import Path
 
 from ...usecases._contextviews import context_for
 from ...usecases._contextviews import show as context_show
+from ...usecases.milestone import listing
 from ...usecases.policy import show as policy_show
 from ._wire import Reply, Request, error_reply, json_reply
 from .api import guarded
 
-__all__ = ["get_context", "get_task_context"]
+__all__ = ["get_context", "get_task_context", "get_milestones"]
+
+
+def get_milestones(root: Path, request: Request) -> Reply:
+    """Every chapter the board has had, with the cards of each.
+
+    ALL of them, not only the active ones, and that is what separates this from the slice: a slice
+    is what applies now, and this is the record. "What have we shipped" is the question the whole
+    model exists to answer, and it cannot be answered from the chapters still open.
+
+    An OBJECT with the list inside it, never a bare array: the wire decoder returns `{}` for
+    anything that is not an object, so an endpoint answering a list decodes to nothing on a remote
+    board with no error anywhere — which three verbs did at once, silently.
+    """
+    return guarded(lambda: json_reply(listing(root)))
 
 
 def get_context(root: Path, request: Request) -> Reply:

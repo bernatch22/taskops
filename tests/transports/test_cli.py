@@ -53,8 +53,10 @@ def test_the_help_lists_what_a_person_does_and_nothing_else() -> None:
     hook and by nothing else, so a person scanning this page for their task list should
     never have to decide whether one of them is what they wanted."""
     listed = _listed_commands()
+    # `milestone` and `me` arrived in 0.5.0: three nouns over one log, split by whose fact it is
+    # and how long it lives. They are a person's, like everything else on this page.
     assert listed == {"init", "join", "board", "setup", "ui", "serve", "tasks", "attention", "statusline",
-                      "context", "policy", "status",
+                      "milestone", "context", "me", "policy", "status",
                       "report", "schedule", "recover", "sync", "login", "open", "publish", "land", "remote",
                       "push", "pull"}
 

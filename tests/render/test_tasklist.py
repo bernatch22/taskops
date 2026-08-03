@@ -25,9 +25,12 @@ def a_board(**counts: int) -> Board:
 
 def _task(status: str, index: int) -> Task:
     """`updated` walks backwards with the index, so card 0 is the most recent one."""
+    # `milestone=""` only completes a field `Task` gained in 0.5.0. No rendered byte below
+    # changes: nothing here reads the chapter.
     return Task(id=f"tk-{index:06d}", title=f"card {index}", spec="s",
                 status=status,               # type: ignore[typeddict-item]
-                priority=2, parent=None, labels=[], files=[], created_by="dev:berna",
+                priority=2, milestone="", parent=None, labels=[], files=[],
+                created_by="dev:berna",
                 assignee="", reviewer="", created=CLOCK, updated=CLOCK - index)
 
 

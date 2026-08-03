@@ -18,6 +18,7 @@ import pytest
 
 from taskops.render.opening import render_opening
 from taskops.usecases import init, next_task, plan, team_now, update
+from taskops.usecases.milestone import open_chapter
 from taskops.usecases.opening import opening
 from taskops.usecases.session import brief
 
@@ -27,7 +28,11 @@ def repo(tmp_path: Path) -> Path:
     for args in (("init", "-q", "-b", "main"), ("config", "user.email", "b@example.com"),
                  ("config", "user.name", "Berna")):
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     return tmp_path
 
 

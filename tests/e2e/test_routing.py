@@ -22,6 +22,7 @@ import pytest
 from taskops._errors import GuardFailed
 from taskops.engine.routereview import ROUTE_TTL
 from taskops.usecases import attention, init, next_task, plan, update
+from taskops.usecases.milestone import open_chapter
 from taskops.usecases.session import brief
 
 CRITERIA = ["WHEN a review is routed THE SYSTEM SHALL offer it to exactly one developer"]
@@ -32,7 +33,11 @@ def repo(tmp_path: Path) -> Path:
     for args in (("init", "-q", "-b", "main"), ("config", "user.email", "b@example.com"),
                  ("config", "user.name", "Berna")):
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that. As `dev:uno` and not a fourth name, because routing here is
+    # about WHO the board knows — a stranger in the log is an extra candidate nothing asked for.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into", actor="dev:uno")
     return tmp_path
 
 

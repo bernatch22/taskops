@@ -17,6 +17,7 @@ from taskops.transports.http._wire import Reply, Request
 from taskops.transports.http.policy import Policy
 from taskops.transports.http.router import build
 from taskops.usecases import init, next_task, plan
+from taskops.usecases.milestone import open_chapter
 
 
 def get(path: str, **query: str) -> Request:
@@ -34,7 +35,11 @@ def body_of(reply: Reply) -> Any:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "Write the router", "spec": "A table.", "files": ["r.py"]},
                     {"title": "Then the UI", "spec": "React.", "after": [0]}],
          actor="dev:berna")
@@ -715,8 +720,10 @@ def test_the_context_endpoint_carries_the_facts_and_the_settings_in_one_call(
     """
     from taskops.usecases import context_state, set_policy
 
+    # An objective belongs to one person (0.5.0): the project's north is a milestone, and one
+    # filed under nobody was read by nothing.
     context_state(project, "objective", "ship the importer", horizon="2026-08-15",
-                  actor="dev:ana")
+                  owner="dev:ana", actor="dev:ana")
     # Una SIN alcance y una CON: es la distincion que quedo cuando `invariant` se fue — una
     # decision sin labels ni files llega a toda card, que es como se escribe una regla que no se
     # rompe, y ponerle alcance la angosta.
@@ -726,8 +733,8 @@ def test_the_context_endpoint_carries_the_facts_and_the_settings_in_one_call(
 
     seen = body_of(route(get("/api/context")))
 
-    assert seen["objective"]["text"] == "ship the importer"
-    assert seen["objective"]["horizon"] == "2026-08-15"
+    assert seen["objectives"][0]["text"] == "ship the importer"
+    assert seen["objectives"][0]["horizon"] == "2026-08-15"
     assert {f["text"] for f in seen["decisions"]} == {"no dependencies outside the stdlib",
                                                      "sqlite, not postgres"}
     assert sorted(f["labels"] for f in seen["decisions"]) == [[], ["db"]]
@@ -779,5 +786,14 @@ def test_a_project_that_has_stated_nothing_answers_with_empty_lists(route: Any) 
     """Not a 404 and not an error: "nothing decided yet" is a legal state, and the strip renders
     nothing at all for it rather than nagging on every screen forever."""
     seen = body_of(route(get("/api/context")))
-    assert seen == {"objective": None, "yours": None, "objectives": [],
-                    "decisions": [], "notes": [], "policies": []}
+    # The KEYS are asserted whole, because the UI reads every one of them unconditionally and a
+    # missing key is a crash rather than a quiet nothing. `active` is not empty — this board has a
+    # chapter open, since without one nothing could be planned into it — and that is the honest
+    # shape of "nothing decided": a chapter exists, and nobody has stated a fact under it.
+    assert set(seen) == {"milestone", "active", "counts", "planned", "project_rules",
+                         "project_decisions", "rules", "decisions", "notes", "yours",
+                         "objectives", "policies"}
+    assert all(seen[key] == [] for key in ("project_rules", "project_decisions", "rules",
+                                           "decisions", "notes", "objectives", "planned",
+                                           "policies"))
+    assert seen["milestone"] is None and seen["yours"] is None

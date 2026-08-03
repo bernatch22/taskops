@@ -4,14 +4,20 @@ Handing a worker the whole context book reproduces the problem the context layer
 solve — past ~150-200 standing instructions compliance decays, so a book that grows makes
 every agent slightly worse. A slice is a card plus exactly the facts that bear on it.
 
-**Two dimensions of scope, one rule each.** `labels`/`files` narrow by SUBJECT: a decision about
+**THREE dimensions of scope, one rule each.** `labels`/`files` narrow by SUBJECT: a decision about
 the database does not reach a card about the parser. `owner` narrows by PERSON: a fact somebody
-stated for themselves reaches their sessions and nobody else's. A fact may carry both, and one
-carrying neither is the project's and reaches everything.
+stated for themselves reaches their sessions and nobody else's. And `milestone` narrows by
+CHAPTER: a fact belongs to the one open when it was written, and leaves every slice when that
+chapter is reached.
 
-What the second protects is SIZE. Three developers each stating an objective must not make every
-worker read four — everybody reads the project's and their own, so a slice grows by ONE whatever
-the size of the team. That is why `owner` is a filter and not a label.
+The three protect different things, and the last two protect SIZE from the two directions it
+grows. `owner` stops it growing with the TEAM — everybody reads the project's facts and their own,
+so a slice grows by one whether three people are on the board or thirty. `milestone` stops it
+growing with the YEAR: a decision taken in March is no longer injected in December, and nobody had
+to retire it by hand.
+
+Several chapters are active at once, so "the chapter" is not a property of the board. It is a
+property of the READER: a card belongs to exactly one, and that is the one whose facts it gets.
 
 Pure: facts in, facts out, no store. That is what makes the rules below testable from literals —
 every project-wide fact survives the filter, and a tie between two machines resolves the same
@@ -21,28 +27,56 @@ way on both.
 from __future__ import annotations
 
 from ..contracts import Task
-from ..contracts.context import ContextSlice, Fact
+from ..contracts.context import Fact
+from ..contracts.slice import Chapters, ContextSlice
+from ._whose import by_owner, dev_of, for_me
 
-__all__ = ["in_force", "for_task", "winner", "dev_of"]
+__all__ = ["in_force", "for_task"]
 
 
-def in_force(live: list[Fact], *, mine: str = "") -> ContextSlice:
+def in_force(live: list[Fact], chapters: Chapters, *, mine: str = "") -> ContextSlice:
     """Everything standing, as `mine` may read it. `mine` is a DEV name, "" for the overview.
 
     With no `mine` this is the OVERVIEW — every objective, everybody's facts — which is what
     `context show` and the board want: who is on what, when you are deciding who to hand a card
     to. With one, it is a person's own page and nobody else's private note is in it.
+
+    A fact of a CLOSED chapter is in neither: it left the slice when that chapter was reached,
+    which is the whole point of attaching it to one. `context log` and an explicit `milestone=<id>`
+    read are where it stays visible.
     """
-    ours = [f for f in live if _for_me(f, mine)]
-    goals = _by_owner([f for f in ours if f["sort"] == "objective"])
-    return ContextSlice(objective=goals.get(""),
-                        yours=goals.get(mine) if mine else None,
-                        objectives=[goals[owner] for owner in sorted(goals)],
-                        decisions=[f for f in ours if f["sort"] == "decision"],
-                        notes=[f for f in ours if f["sort"] == "note"])
+    ids = {m["id"] for m in chapters.active}
+    ours = [f for f in live if for_me(f, mine) and _standing(f, ids)]
+    project = [f for f in ours if f["level"] == "project"]
+    chapter = [f for f in ours if f["level"] != "project"]
+    goals = by_owner([f for f in chapter if f["sort"] == "objective"])
+    return ContextSlice(
+        milestone=None, active=chapters.active, counts=chapters.counts,
+        planned=chapters.planned,
+        project_rules=[f for f in project if f["sort"] == "rule"],
+        project_decisions=[f for f in project if f["sort"] == "decision"],
+        rules=[f for f in chapter if f["sort"] == "rule"],
+        decisions=[f for f in chapter if f["sort"] == "decision"],
+        notes=[f for f in chapter if f["sort"] == "note"],
+        yours=goals.get(mine) if mine else None,
+        objectives=[goals[owner] for owner in sorted(goals)])
 
 
-def for_task(live: list[Fact], task: Task, *, entered_review_by: str = "") -> ContextSlice:
+def _standing(fact: Fact, active: set[str]) -> bool:
+    """Is this fact still in force? Project-level always; chapter-level only while its chapter is.
+
+    A fact with no `milestone` and `level="milestone"` cannot happen going forward — `state`
+    resolves the chapter at write time — but it CAN arrive from a board written before milestones
+    existed. Those read as standing, the same rule the `invariant` mapping keeps: a board's facts
+    may not vanish because a version changed.
+    """
+    if fact["level"] == "project" or not fact["milestone"]:
+        return True
+    return fact["milestone"] in active
+
+
+def for_task(live: list[Fact], task: Task, chapters: Chapters, *,
+             entered_review_by: str = "") -> ContextSlice:
     """The slice for one card: the project's facts plus its AUTHOR's, narrowed by subject.
 
     Subject narrows DECISIONS, and there is nothing left it does not narrow. There used to be:
@@ -67,49 +101,22 @@ def for_task(live: list[Fact], task: Task, *, entered_review_by: str = "") -> Co
     size property is what the owner filter exists for, and a review is the moment the person
     whose objective matters is the author rather than the reader.
     """
-    whole = in_force(live, mine=dev_of(entered_review_by) or dev_of(task["assignee"]))
+    whole = in_force(live, chapters, mine=dev_of(entered_review_by) or dev_of(task["assignee"]))
+    mine = task["milestone"]
+    # ONE chapter — its own. Several are active, and handing a worker all of them would put the
+    # bound back where it was before: on the board rather than on the reader.
+    whole["milestone"] = next((m for m in chapters.active if m["id"] == mine), None)
+    whole["active"] = []
+    for key in ("rules", "decisions", "notes", "objectives"):
+        whole[key] = [f for f in whole[key] if not f["milestone"] or f["milestone"] == mine]
+    # Subject narrows decisions and notes, and NOT rules: a decision that misses a card costs a
+    # re-litigation, a rule that misses one costs the breakage it existed to prevent. Notes were
+    # not narrowed until 0.5.0, so a note scoped to `[importador]` was reaching cards about the
+    # parser — the scope somebody bothered to write meant nothing.
     whole["decisions"] = [d for d in whole["decisions"] if _applies(d, task)]
+    whole["notes"] = [n for n in whole["notes"] if _applies(n, task)]
+    whole["project_decisions"] = [d for d in whole["project_decisions"] if _applies(d, task)]
     return whole
-
-
-def _for_me(fact: Fact, mine: str) -> bool:
-    """A fact with no owner is the project's and reaches everybody; one with an owner reaches
-    that dev alone. `mine` of "" is the OVERVIEW and sees everything, because "who is on what"
-    is the question it exists to answer."""
-    owner = dev_of(fact["owner"])
-    return not owner or not mine or owner == mine
-
-
-def _by_owner(objectives: list[Fact]) -> dict[str, Fact]:
-    """The latest objective for each owner, keyed by DEV — `""` for the project's own."""
-    picked = {who: winner([f for f in objectives if dev_of(f["owner"]) == who])
-              for who in {dev_of(f["owner"]) for f in objectives}}
-    return {who: found for who, found in picked.items() if found is not None}
-
-
-def dev_of(actor: str) -> str:
-    """The person behind an actor id, or "" for anything else.
-
-    `agent:ana/w1` answers `ana`, so a worker reads what the person who spawned it set — an
-    agent and its developer are one person with two hands, which is the comparison
-    `reviewer: peer` already makes. Never raises: an owner typed by hand on another machine
-    must not make a slice unreadable.
-    """
-    kind, _, rest = actor.strip().partition(":")
-    if kind == "dev" and rest and "/" not in rest:
-        return rest
-    return rest.partition("/")[0] if kind == "agent" and "/" in rest else ""
-
-
-def winner(objectives: list[Fact]) -> Fact | None:
-    """The current objective: the latest by `(ts, id)`.
-
-    The tiebreak is the point, not the decoration. Two machines adding an objective offline
-    can produce the same timestamp, and `id` is the CONTENT hash — identical on both — so
-    both clones elect the same winner without talking. Comparing on arrival order instead
-    would give each machine its own answer, which is a split brain nobody would notice.
-    """
-    return max(objectives, key=lambda f: (f["ts"], f["id"]), default=None)
 
 
 def _applies(fact: Fact, task: Task) -> bool:

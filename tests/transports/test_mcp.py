@@ -18,6 +18,7 @@ import pytest
 from taskops.transports.mcp import PROTOCOL, listing, respond, serve
 from taskops.transports.mcp.dispatch import HANDLERS
 from taskops.transports.mcp.tools import TOOLS
+from taskops.usecases.milestone import open_chapter
 
 
 def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +124,11 @@ def test_the_whole_loop_over_the_wire(tmp_path: Path) -> None:
     """
     from taskops.usecases import init
 
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     planned = call("taskops_plan", {"repo_path": str(tmp_path),
                                     "tasks": [{"title": "Write the parser",
                                                "spec": "Full brief."}]})
@@ -143,6 +148,8 @@ def test_a_stringly_typed_task_list_is_accepted(tmp_path: Path) -> None:
     from taskops.usecases import init
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     result = call("taskops_plan", {"repo_path": str(tmp_path),
                                    "tasks": '[{"title": "From a string", "spec": "x"}]'})
     assert "isError" not in result
@@ -177,6 +184,8 @@ def test_dispatch_over_mcp_returns_briefs_and_starts_nothing(tmp_path: Path) -> 
     from taskops.usecases import init, plan
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "Parallel work", "spec": "x"}], actor="dev:berna")
 
     result = call("taskops_dispatch", {"repo_path": str(tmp_path), "count": 1,
@@ -224,11 +233,18 @@ def test_the_context_tool_answers_project_wide_and_per_card(tmp_path: Path) -> N
 
     It sat in the use cases with no way for an agent to reach it, which is the failure this
     checks: a capability nothing advertises is a capability nobody has.
+
+    `owner` on the objective is 0.5.0 and not a detail: an objective belongs to one person now,
+    because the PROJECT's north is a milestone. An ownerless one is refused at the write door —
+    it used to be accepted and then read by nothing, filed under a dev that does not exist.
     """
     from taskops.usecases import context_state, init, plan
 
     init(tmp_path, install_git_hooks=False)
-    context_state(tmp_path, "objective", "ship 0.4 by Friday", actor="dev:berna")
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
+    context_state(tmp_path, "objective", "ship 0.4 by Friday", owner="dev:berna",
+                  actor="dev:berna")
     context_state(tmp_path, "decision", "never break the frozen contract", actor="dev:berna")
     created = plan(tmp_path, [{"title": "Wire the tool", "spec": "x"}],
                    actor="dev:berna")["created"]
@@ -252,12 +268,19 @@ def test_the_context_tool_carries_its_write_half() -> None:
     holds for every transport; the test that this surface stays read-only is gone with it, and
     `test_a_worker_may_not_state_a_standing_fact` below is what replaced it.
 
-    Four write fields and not seven: `--horizon`, `--owner` and `--files` stay CLI-only,
-    because every field here costs every connected agent context on every call.
+    Five write fields and not eight: `--horizon` and `--files` stay CLI-only, because every field
+    here costs every connected agent context on every call.
+
+    `mine` is GONE and `level`/`milestone` arrived with it — 0.5.0, and the change is the model
+    rather than the surface. `mine` said "file this under me", and it had to, because `objective`
+    could mean the project's north OR one dev's. The project's north is a MILESTONE now, so
+    `state=objective` is unambiguously the caller's own and the flag had nothing left to say.
+    What replaced it is `level`: whether a fact dies with its chapter or stands forever, which is
+    the question the caller is the only one who can answer.
     """
     schema = next(t["inputSchema"] for t in listing() if t["name"] == "taskops_context")
-    assert set(schema["properties"]) == {"repo_path", "task", "actor",
-                                         "state", "text", "labels", "mine", "retire"}
+    assert set(schema["properties"]) == {"repo_path", "task", "actor", "state", "text", "labels",
+                                        "retire", "level", "milestone"}
 
 
 def test_a_worker_may_not_state_a_standing_fact(tmp_path: Path) -> None:
@@ -267,6 +290,8 @@ def test_a_worker_may_not_state_a_standing_fact(tmp_path: Path) -> None:
     from taskops.usecases import context_state, init
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
 
     with pytest.raises(BadRequest) as refused:
         context_state(tmp_path, "objective", "ship it by Friday", actor="agent:ana/w1")
@@ -274,8 +299,14 @@ def test_a_worker_may_not_state_a_standing_fact(tmp_path: Path) -> None:
     # resolve from git config and arrive as the developer, and the fence would never fire.
     assert "actor" in next(t["inputSchema"] for t in listing()
                            if t["name"] == "taskops_context")["properties"]
-    assert "may not state an objective" in str(refused.value)
-    assert context_state(tmp_path, "objective", "ship it", actor="dev:ana")["text"] == "ship it"
+    # The wording carries the level now ("a project or chapter objective"), because that is the
+    # distinction 0.5.0 added: the refusal is about facts nobody owns, and a worker MAY state its
+    # own dev's objective. What is asserted is the rule, not the sentence.
+    assert "may not state a project or chapter objective" in str(refused.value)
+    # The positive control carries an OWNER, because 0.5.0 has no unowned objective: the project's
+    # north is a milestone, and one filed under nobody was read by nothing.
+    assert context_state(tmp_path, "objective", "ship it", owner="dev:ana",
+                         actor="dev:ana")["text"] == "ship it"
 
 
 def test_update_advertises_evidence_and_its_argued_exemption() -> None:
@@ -292,6 +323,8 @@ def test_planning_a_card_with_acceptance_criteria_over_the_wire(tmp_path: Path) 
     from taskops.usecases.acceptance import acceptance_for
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     criterion = "WHEN the card is closed, THE SYSTEM SHALL demand evidence"
     planned = call("taskops_plan", {"repo_path": str(tmp_path),
                                     "tasks": [{"title": "Evidence", "spec": "x",
@@ -315,6 +348,8 @@ def test_a_specialist_that_forgets_its_actor_is_not_refused_its_own_card(
     from taskops.usecases._project import project
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     task = str(capture(tmp_path, "Wire it", spec="x", assign="agent:berna/api",
                        actor="dev:berna")["task"]["id"])
 
@@ -363,19 +398,32 @@ def test_the_update_schema_declares_the_actor() -> None:
     assert "evidence" in fields
 
 
-def test_the_context_tool_can_state_a_note_and_file_it_under_the_caller(tmp_path: Path) -> None:
-    """`note` is the fourth sort — standing, and neither a goal nor a rule — and `mine` is what
-    makes an owned fact typable: nobody writes their own id to say "this is mine"."""
+def test_the_context_tool_files_an_objective_under_its_caller_with_no_flag(
+        tmp_path: Path) -> None:
+    """WHOSE fact it is, decided by the SORT and never by a flag. `mine` is gone (0.5.0).
+
+    It said two different things on one tool — "file this under me" on a write, "show my page" on
+    a read — and it had to, because `objective` could mean the project's north OR one dev's. The
+    north is a MILESTONE now, so `state=objective` is unambiguously the caller's own and the flag
+    had nothing left to say. What this pins is the consequence: ana's objective reaches ana's page
+    and not juan's, with nobody typing an owner.
+
+    A `note` goes the other way and that is the same decision read from the other side: through
+    this tool it is the CHAPTER's, so both of them see it. A note of one's own is `taskops me
+    note` — a person's command, at a terminal, which is where a private scratchpad belongs.
+    """
     from taskops.transports.mcp._context import context_
     from taskops.usecases import init
 
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     args = {"repo_path": str(tmp_path), "actor": "dev:ana"}
 
-    context_({**args, "state": "note", "text": "I run pytest -x", "mine": True})
-    context_({**args, "state": "objective", "text": "ship it"})
+    context_({**args, "state": "note", "text": "the CSV is latin-1"})
+    context_({**args, "state": "objective", "text": "ship the importer"})
 
-    assert "I run pytest -x" in context_({**args, "mine": True}), "my page has my note"
-    assert "I run pytest -x" not in context_({"repo_path": str(tmp_path), "actor": "dev:juan",
-                                              "mine": True}), "and juan's does not"
-    assert "ship it" in context_({"repo_path": str(tmp_path), "actor": "dev:juan", "mine": True})
+    assert "ship the importer" in context_(args), "ana's page carries ana's objective"
+    juan = context_({"repo_path": str(tmp_path), "actor": "dev:juan"})
+    assert "ship the importer" not in juan, "and juan's does not"
+    assert "the CSV is latin-1" in juan, "but the chapter's note reaches both"

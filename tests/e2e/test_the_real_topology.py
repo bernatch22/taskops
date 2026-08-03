@@ -39,6 +39,7 @@ from taskops.usecases.attention import attention
 from taskops.storage import Store
 from taskops.usecases import locate
 from taskops.usecases.join import join
+from taskops.usecases.milestone import open_chapter
 from taskops.usecases.opening import opening
 
 # ruff: noqa: I001
@@ -72,6 +73,9 @@ class Team:
 def team(tmp_path: Path) -> Iterator[Team]:
     server_home = tmp_path / "servidor"
     create(server_home, BOARD)
+    # Every card belongs to a chapter, and with a remote there is ONE board that holds them: the
+    # server's. The clones route their writes there, so this is the only place it can be opened.
+    open_chapter(server_home / BOARD, "the chapter these tests plan into", actor="dev:berna")
     token = (server_home / BOARD / "token").read_text(encoding="utf-8").strip()
 
     server = serve_route("127.0.0.1", 0, mount(server_home))

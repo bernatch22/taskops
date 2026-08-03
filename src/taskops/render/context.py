@@ -1,63 +1,46 @@
-"""A context slice as text: the objective, then the decisions, then the notes.
+"""A context slice as text — the blocks, plus the OBJECTIVES the injection has no room for.
 
-That order is the reading order, not an alphabet. The objective is what everything else exists
-to serve, so it leads; a decision is settled and constrains what a worker may reconsider, so it
-comes next; a note is standing and neither, so it comes last.
+The blocks live in `_blocks` because three surfaces render them (this, the MCP reply, the
+SessionStart injection) and none of the three may own the shape. What is here is the part only a
+person reads: who on the team is working towards what, which is the question "who do I hand this
+card to" and is asked at a terminal rather than by an agent mid-task.
 
-Pure text, like everything in `render/`, which is what lets the same three lists serve the CLI
-and the MCP reply without either surface growing its own formatter — the shape has been
-settling in `transports/cli/commands/context.py` and this is where it lands.
+**Rules and decisions are the same SORT, split by their scope, and the split is why the fourth
+sort could go.** A decision with no `labels` and no `files` reaches every card — that is a rule,
+mechanically — and one with a scope reaches only the cards that share it. Printed as one flat
+list they read identically, which made the strongest facts on a board look like the weakest.
 """
 
 from __future__ import annotations
 
-from ..contracts.context import ContextSlice, Fact
+from ..contracts.slice import ContextSlice
+from ._blocks import chapters_block, dev, fact_line, project_block
 
 __all__ = ["render_context"]
 
 
 def render_context(view: ContextSlice) -> str:
-    """The project's north first, then yours, then the rules, then anything else standing.
+    """The project's rules, then the chapter(s) with their facts, then who is on what.
 
-    That order is the argument: a worker reads top to bottom and the first thing it learns is
-    what the TEAM is for. Its own objective second, because "I am on the parser this week" only
-    means something against a north somebody already stated.
+    Never empty: a board that has stated nothing and opened no chapter still answers with the
+    block that says so and names the command that fixes it.
     """
-    lines = ["# objective", *_goals(view)]
-    if view["yours"]:
-        lines += ["", f"# yours ({_dev(view['yours']['owner'])})", _line(view["yours"])]
-    lines += ["", "# decisions"]
-    lines += [_line(f) for f in view["decisions"]] or ["(none)"]
-    if view["notes"]:
-        lines += ["", "# notes", *[_line(f) for f in view["notes"]]]
-    return "\n".join(lines)
+    lines = [*project_block(view), *chapters_block(view), *_who(view)]
+    return "\n".join(lines).rstrip() or "\n".join(chapters_block(view)).rstrip()
 
 
-def _goals(view: ContextSlice) -> list[str]:
-    """The objectives, the project's first and each dev's under it.
+def _who(view: ContextSlice) -> list[str]:
+    """Everybody's objective, one line each — the OVERVIEW only.
 
-    A SLICE carries one — that is what a worker reads — so when `objectives` holds nothing more
-    than the one already shown, this prints one line and looks exactly as it always did. The
-    list appears only where there is something a single line would have hidden, which is the
-    overview: who is on what, when you are deciding who to hand a card to.
+    A card's slice carries one objective (`yours`, printed under its chapter) and that is
+    deliberate: the slice grows by one whether three people are on the board or thirty. This list
+    is the other question, and it is only ever asked by somebody deciding who to dispatch to.
     """
-    theirs = [f for f in view["objectives"]
-              if f["owner"] and f is not view["objective"] and f is not view["yours"]]
-    if not view["objective"] and not theirs:
-        return ["(none set)"]
-    lines = [_line(view["objective"])] if view["objective"] else ["(none set — project-wide)"]
-    return lines + [f"  {_dev(f['owner'])}: {_line(f)}" for f in theirs]
-
-
-def _dev(owner: str) -> str:
-    return owner.partition(":")[2] or owner
-
-
-def _line(fact: Fact) -> str:
-    """The id first and truncated to eight: it is what `context retire` takes, and a full
-    event hash on every line would push the text — the part anybody reads — off the screen."""
-    scope = ", ".join(fact["labels"] + fact["files"])
-    tail = f"  [{scope}]" if scope else ""
-    if fact["horizon"]:
-        tail += f"  by {fact['horizon']}"
-    return f"{'~' if fact['retired'] else '·'} {fact['id'][:8]}  {fact['text']}{tail}"
+    theirs = view["objectives"]
+    if not theirs or view["milestone"]:
+        return []
+    # An UNOWNED objective is marked rather than dropped. It cannot be written any more (`state`
+    # refuses one), but a board written before milestones has them, and a fact that vanishes
+    # because a version changed is the one thing an append-only log must never do.
+    return ["## Who is working towards what",
+            *[f"  {dev(f['owner']) or 'project':<10} {fact_line(f)}" for f in theirs], ""]

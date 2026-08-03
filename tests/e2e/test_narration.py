@@ -30,6 +30,7 @@ from taskops.transports.http.policy import Policy
 from taskops.transports.http.router import build
 from taskops.usecases import Selector, digest, follow, init, narration, plan, report_path
 from taskops.usecases._narrating import FLUSH_CHARS
+from taskops.usecases.milestone import open_chapter
 
 LABEL = "2026-01-02"
 ELSEWHERE = "/somewhere/else"
@@ -42,7 +43,11 @@ def _message(root: str, kind: str = "narration.delta",
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(tmp_path, [{"title": "Something happened", "spec": "It did."}], actor="dev:berna")
     # RESOLVED, because that is what `follow` compares a message's `root` against — and on
     # macOS `tmp_path` is a symlink into `/private`, so the unresolved form never matches.
@@ -86,6 +91,8 @@ def _second_project(factory: pytest.TempPathFactory) -> Path:
     """Another board on the same server — the neighbour whose screen must stay clean."""
     home = factory.mktemp("other-project")
     init(home, install_git_hooks=False)
+    open_chapter(home, "the chapter these tests plan into",
+                 actor="dev:berna")
     return home
 
 

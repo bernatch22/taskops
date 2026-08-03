@@ -152,7 +152,11 @@ function Profile({ dev, person, context, onOpen, onClose }: {
 
         {own.objective ? (
           <section className="ctx-group">
-            <h4>Objective <span className="dim">theirs, across the whole project</span></h4>
+            {/* Theirs, and INSIDE the open chapter — which is a change of wording and not of
+              * shape. A dev's objective used to sit beside the project's north and outlive
+              * everything; the north is a milestone now, and an objective is what this person is
+              * chasing while that chapter is open. */}
+            <h4>Objective <span className="dim">theirs, inside the chapter in force</span></h4>
             <p className="ctx-goal">
               {own.objective.text}
               {own.objective.horizon
@@ -164,8 +168,15 @@ function Profile({ dev, person, context, onOpen, onClose }: {
         {/* Their standing calls, and the framing is the point: this is context they hold while
           * working on ANYTHING, not a note about one card. A hundred characters about a fixture
           * belongs in that card's thread, which is a click away on the card itself. */}
-        <Standing title="Technical decisions" note="they hold these on every card, not one"
-                  facts={own.decisions} />
+        {/* Split by LEVEL, which is where the split moved: it used to be by scope — unscoped means
+          * "every card they touch" — and that is still true, but it is the smaller difference now.
+          * A project-level fact of theirs is true in a year; a milestone-level one leaves every
+          * slice the day the chapter closes, and one list would have the second read as the first
+          * on exactly the day it stopped applying. */}
+        <Standing title="Their standing calls" note="project level — they outlive every chapter"
+                  facts={own.decisions.filter((f) => f.level === "project")} />
+        <Standing title="In this chapter" note="theirs while it is open, and no longer"
+                  facts={own.decisions.filter((f) => f.level !== "project")} />
 
         <section className="ctx-group">
           <h4>Cards <span className="dim">what they touched, last {WINDOW}</span></h4>
@@ -255,6 +266,9 @@ function ownFacts(context: ContextView | null, dev: string): {
   const his = (facts: Fact[]): Fact[] => facts.filter((f) => devOf(f.owner) === dev);
   return {
     objective: (context?.objectives ?? []).find((f) => devOf(f.owner) === dev) ?? null,
-    decisions: his(context?.decisions ?? []),
+    /* BOTH levels, kept apart by the caller: a person's own calls exist at project level and inside
+     * the chapter, and reading only one array would drop half of somebody's own context depending
+     * on where they wrote it. */
+    decisions: [...his(context?.project_decisions ?? []), ...his(context?.decisions ?? [])],
   };
 }

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from ..storage import Store
 from ..storage.context import facts
-from ._contextslice import winner
+from ._whose import winner
 
 __all__ = ["objective_of"]
 

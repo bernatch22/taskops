@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
+from . import _factfields as g
 from . import _fields as f
 from .tools import Target
 
@@ -24,17 +25,23 @@ class ContextParams(Target, total=False):
     the use case instead, where `Bash` cannot walk around it: an `agent:` actor is refused, a
     `dev:` one is not, which is the line between a worker and the session that planned its work.
 
-    `--horizon`, `--owner` and `--files` stay CLI-only; every field here costs every connected
-    agent context on every call. `mine` stands in for the only one a session reaches for —
-    nobody types their own id to say "this is mine".
+    `--horizon` and `--files` stay CLI-only; every field here costs every connected agent context
+    on every call.
+
+    **`mine` is gone and needed no replacement.** It used to say "file this under me rather than
+    the project", and it was the field that erased the team's north twice: resolved wrongly it
+    wrote the fact as the PROJECT's, and a newer objective supersedes by owner, so "my objective
+    is X" deleted everybody's. With the project's north now being a MILESTONE, `state=objective`
+    can only mean the caller's own — the ambiguity is gone by construction rather than guarded.
     """
 
-    task: Annotated[str, f.CONTEXT_TASK]
+    task: Annotated[str, g.CONTEXT_TASK]
+    milestone: Annotated[str, g.CONTEXT_MILESTONE]
     # WITHOUT this the fence could never fire: a caller that cannot name itself resolves from
     # git config, so every worker would arrive as the developer and state whatever it liked.
     actor: f.Actor
-    state: Annotated[Literal["objective", "decision", "note"], f.STATE]
+    state: Annotated[Literal["rule", "decision", "note", "objective"], g.STATE]
     text: Annotated[str, f.TEXT]
-    labels: Annotated[str, f.SCOPE]
-    mine: Annotated[bool, f.MINE]
-    retire: Annotated[str, f.RETIRE]
+    labels: Annotated[str, g.SCOPE]
+    level: Annotated[Literal["project", "milestone"], g.LEVEL]
+    retire: Annotated[str, g.RETIRE]

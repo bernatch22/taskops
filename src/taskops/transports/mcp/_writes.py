@@ -32,8 +32,19 @@ __all__ = ["plan_", "capture_", "next_", "update_", "dispatch_", "recover_"]
 
 
 def plan_(args: dict[str, Any]) -> str:
-    return render_plan(plan(arg.repo(args), arg.entries(args),
+    return render_plan(plan(arg.repo(args), _into(arg.entries(args), args),
                             actor=arg.optional(args, "actor")))
+
+
+def _into(entries: list[dict[str, Any]], args: dict[str, Any]) -> list[dict[str, Any]]:
+    """A tool-level `milestone` reaches every entry, so a caller says which chapter ONCE.
+
+    Per-entry still wins where it is written: one `plan` call is one decomposition and the use case
+    refuses a batch naming two chapters, so this only fills what the caller left open.
+    """
+    if not (chapter := arg.optional(args, "milestone")):
+        return entries
+    return [{**entry, "milestone": entry.get("milestone") or chapter} for entry in entries]
 
 
 def capture_(args: dict[str, Any]) -> str:
@@ -42,6 +53,7 @@ def capture_(args: dict[str, Any]) -> str:
         files=arg.optional(args, "files"), labels=arg.optional(args, "labels"),
         acceptance=args.get("acceptance"), priority=args.get("priority"),
         claim=bool(args.get("claim", True)), assign=arg.optional(args, "assign"),
+        milestone=arg.optional(args, "milestone"),
         actor=arg.optional(args, "actor"), session=arg.optional(args, "session")))
 
 

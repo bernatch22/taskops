@@ -16,6 +16,7 @@ import pytest
 
 from taskops.transports.hooks.__main__ import main
 from taskops.usecases import ask, check_commit, init, next_task, plan, update
+from taskops.usecases.milestone import open_chapter
 
 
 def git(root: Path, *args: str) -> str:
@@ -33,7 +34,11 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "README.md").write_text("start\n", encoding="utf-8")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-q", "-m", "initial")
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     return tmp_path
 
 
@@ -52,6 +57,8 @@ def test_init_chains_onto_an_existing_hook(tmp_path: Path) -> None:
     hook = tmp_path / ".git" / "hooks" / "post-commit"
     hook.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
     init(tmp_path)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     after = hook.read_text(encoding="utf-8")
     assert "echo mine" in after
     assert "-m taskops.transports.hooks ingest commit HEAD" in after

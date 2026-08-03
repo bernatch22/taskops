@@ -37,6 +37,16 @@ class Task(TypedDict):
     """0 urgent … 3 someday. Lower sorts first, which is why it is not a Literal:
     a project that wants five bands should not need an engine change."""
 
+    milestone: str
+    """The chapter this card belongs to, or `""` for one planned before milestones existed.
+
+    Every NEW card names one — `plan` and `capture` refuse without a chapter, and that refusal is
+    what makes a milestone a todo-list rather than a slogan: its cards ARE its items, so "how far
+    along is it" is a count. It is also the bound on a worker's slice, which is why it is on the
+    row and not derived: several milestones are active at once, and the facts a worker reads are
+    the ones belonging to ITS card's chapter.
+    """
+
     parent: str | None
     """An epic's id. The TREE is here; the DAG is `deps` — they answer different
     questions ("what is this part of" vs "what must happen first")."""

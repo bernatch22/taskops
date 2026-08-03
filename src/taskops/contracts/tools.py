@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, TypedDict
 
+from . import _factfields as g
 from . import _fields as f
 
 __all__ = ["PlanParams", "NextParams", "UpdateParams", "AskParams", "ReportParams",
@@ -34,6 +35,7 @@ class _PlanRequired(Target):
 
 class PlanParams(_PlanRequired, total=False):
     actor: f.Actor
+    milestone: Annotated[str, g.PLAN_MILESTONE]
 
 
 class NextParams(Target, total=False):
@@ -80,6 +82,7 @@ class CaptureParams(_CaptureRequired, total=False):
     priority: Annotated[int, f.PRIORITY]
     claim: Annotated[bool, f.CLAIM_IT]
     assign: Annotated[str, f.ASSIGN]
+    milestone: Annotated[str, g.PLAN_MILESTONE]
     actor: f.Actor
     session: f.Session
 

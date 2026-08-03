@@ -73,7 +73,7 @@ taskops ui        # the live board → http://127.0.0.1:2140
 
 ## The CLI — for people
 
-Twenty-three commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
+Twenty-five commands, all of them yours. Agents never use the CLI (they have MCP), and the hook wiring is a separate module nobody types.
 
 Grouped by what they are FOR, which is the only grouping that helps: the board, the standing
 facts, git, and the server. Every command and every subcommand is here.
@@ -186,62 +186,101 @@ taskops tasks cancel  tk-4f2a9c -m "superseded by tk-8b31d0"
 `tasks done` goes through the same guard an agent faces: no commit bound, no close. And
 `reject` demands its findings — a card bounced with nothing to act on goes round twice.
 
-### What this project has already decided
+### Milestones — the chapter a board is in
 
-Two things, and the split is the point: a **decision** is prose a worker weighs, a **policy** is
-a value the engine obeys and refuses to be wrong about.
+**Every card belongs to exactly one milestone**, and a board with none refuses to plan. That is the
+one hard rule of the model, and it buys the thing a context layer cannot buy any other way: a fact
+attached to a chapter LEAVES every slice when a person says the chapter was reached. Nobody has to
+retire it. A decision taken in March stops being injected in December on its own.
+
+An agent may open one, start it, work under it and REPORT it finished. Only a person may say it was
+reached — the same argument as `done` on a card, one level up: no count of closed cards can mean
+"we shipped it".
 
 ```sh
-taskops context objective "ship the importer" --horizon 2026-08-20
-taskops context decision "no dependencies outside the stdlib"    # no scope: reaches every card
-taskops context decision  "sqlite, not postgres — one file, zero setup" --labels db --files src/db.py
+taskops milestone new "que una clienta suba su CSV y reciba el reporte" --horizon 2026-09-01
+taskops milestone new "que pueda facturar desde el CRM" --planned   # written down, not started
+taskops milestone start 31b0b89a                                    # a planned one becomes active
 
-taskops context objective "the parser, no regex" --mine --horizon 2026-08-08   # YOURS
-taskops context note      "I run pytest -x, not the whole suite" --mine
+taskops milestone                        # every ACTIVE chapter, its counts, then what is planned
+taskops milestone show a2d96841          # one chapter WITH its cards
+taskops milestone list --all             # the record: reached and abandoned too
 
-taskops context                       # what is in force  (`taskops context show` spelled out)
-taskops context --mine                # …your page, rather than the overview
-taskops context log                   # …and what we used to believe, retired ones marked `~`
-taskops context retire 0829cfb9       # withdraw one. The eight characters `show` prints are enough
-taskops context --task tk-4f2a9c      # the SLICE that card's worker receives
+taskops milestone review a2d96841 -m "las tres cards cerradas, el import anda"   # an agent reports
+taskops milestone done   a2d96841        # a PERSON verifies
+taskops milestone reject a2d96841 -m "falta el encoding latin-1"                 # …or sends it back
+taskops milestone cancel a2d96841 -m "la clienta se fue"    # kept, with the reason. No delete
 ```
 
-**Scope has two dimensions, and one rule each.** `--labels` / `--files` narrow by SUBJECT;
-`--owner` (or `--mine`) narrows by PERSON: a fact somebody stated for themselves reaches their
-sessions and nobody else's.
+**Several at once is normal.** A team ships two things in a fortnight, and a board that refused to
+record the second would disagree with what is happening. The bound is not "one chapter per board",
+it is "one chapter per card" — so `plan` asks which when more than one is active:
+
+```
+$ taskops milestone
+# active — 2
+◐ c5df2915  que una clienta suba su CSV y reciba el reporte  by 2026-09-01
+   3 card(s) · 2 done · 1 in review
+   REPORTED FINISHED — "las tres cards cerradas, el import anda"
+   A person verifies: `taskops milestone done c5df2915` — or sends it back with `reject`.
+◆ 5217f040  que pueda facturar desde el CRM
+   4 card(s) · 1 done · 2 ready · 1 blocked
+
+# planned — written down, not started
+○ 31b0b89a  que la clienta exporte a Excel
+```
+
+### What this project has already decided
+
+Three nouns over one log, split by WHOSE fact it is and how long it lives. A **decision** is prose
+a worker weighs; a **policy** is a value the engine obeys and refuses to be wrong about.
+
+```sh
+taskops context rule     "cero dependencias fuera de la stdlib" --project   # outlives every chapter
+taskops context decision "el CSV se lee en streaming, nunca entero en memoria"
+taskops context decision "sqlite, not postgres" --labels db --files src/db.py
+taskops context note     "el importador tiene tres etapas: leer, validar, cargar"
+
+taskops me objective "terminar el parser esta semana" --horizon 2026-08-08   # YOURS
+taskops me note      "corro pytest -x, no la suite entera"
+taskops me                            # your page
+
+taskops context                       # what is in force right now
+taskops context --task tk-4f2a9c      # the SLICE that card's worker receives
+taskops context --milestone c5df2915  # what ONE chapter settled — a closed one too
+taskops context log                   # and what we used to believe, retired ones marked `~`
+taskops context retire 0829cfb9       # withdraw one. The eight characters printed are enough
+```
+
+`--project` is the LIFETIME. Without it a fact belongs to the chapter in force and leaves every
+slice when that chapter is reached; with it, it stands forever. The default falls on the
+recoverable side deliberately: a fact that died with its chapter is restated in one command, and
+one that lives forever accumulates until nobody reads any of them.
+
+**Scope has three dimensions, one rule each.** `--labels` / `--files` narrow by SUBJECT; the
+noun you used narrows by PERSON (`taskops me` files it under you); and the chapter narrows by TIME.
 
 | | how many | who receives it |
 |---|---|---|
-| `objective` | **one per owner** — the project's, and one each | the project's, plus your own |
-| `decision` with NO labels/files | as many as you like | **everybody, always** — an unscoped decision is how a rule that must never break is written |
+| `rule` | few — that is the point | **everybody, always**, and `--project` makes it outlive the chapter |
+| `decision` with NO labels/files | as many as you like | every card in its chapter |
 | `decision` | as many as you like | cards sharing its `--labels` / `--files` |
-| `note` | as many as you like | standing, and neither a goal nor a rule. Usually somebody's own |
+| `note` | as many as you like | its chapter's cards. Never `--project`: a permanent note is a rule |
+| `me objective` | **one per person** — the latest wins | that person's sessions, and nobody else's |
 
-So a team of three reads this, and a worker reads two of those objectives — never four:
-
-```
-$ taskops context show                      ← the overview: who is on what
-
-# objective
-· 57682fb0  ship the importer                     by 2026-08-20
-  ana:   · 761f604b  the parser, no regex          by 2026-08-08
-  juan:  · c8731030  the migration to sqlite       by 2026-08-12
-  mirna: · b285aa48  the reports, narrated
-
-# decisions
-· e443c559  no dependencies outside the stdlib
-```
+So a worker on ana's card reads the project's rules, ITS chapter, and ana's objective — never
+juan's, and never a chapter that shipped:
 
 ```
                                             ← what ana's worker is INJECTED with
-# objective
-· 57682fb0  ship the importer                     by 2026-08-20
-# yours (ana)
-· 761f604b  the parser, no regex                  by 2026-08-08
-# decisions
-· e443c559  no dependencies outside the stdlib
-# decisions
-· c9d1fffe  the parser goes without regex  [parser]
+## Rules — the project's. Every card, every milestone, no exceptions.
+· 03ff2ef1  cero dependencias fuera de la stdlib
+
+## ◆ Milestone in force — que una clienta suba su CSV y reciba el reporte      by 2026-09-01
+   3 card(s) · 2 done · 1 in review
+   decisions   36b8de72  el CSV se lee en streaming, nunca entero en memoria  [importador]
+   notes       79c06207  el importador tiene tres etapas: leer, validar, cargar
+   yours       4055c4a0  terminar el parser esta semana  by 2026-08-08
 ```
 
 **A slice grows by ONE, whatever the size of the team**, and that is why `owner` is a filter

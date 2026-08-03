@@ -17,6 +17,9 @@ export const STATUSES: Status[] = [
 ];
 
 export interface Task {
+  /* The chapter it belongs to, or "" for one planned before milestones existed. Every new card
+   * names one — that is what makes a chapter a todo-list, and what bounds a worker's slice. */
+  milestone: string;
   id: string;
   title: string;
   spec: string;
@@ -198,17 +201,38 @@ export interface ReportFile {
  * content hash — which is why it is the same string on every machine and what `retire` takes. */
 export interface Fact {
   id: string;
-  sort: "objective" | "decision" | "note";
+  sort: "objective" | "rule" | "decision" | "note";
   text: string;
-  /* The scope. Empty means project-wide — which is how a rule that must reach every card is
-   * written, now that there is no `invariant` sort that skipped this filter. Scoping narrows. */
+  /* The scope: which cards this reaches. Empty means every card in its chapter. Rules are never
+   * narrowed by it — a decision that misses a card costs a re-litigation, a rule that misses one
+   * costs the breakage it existed to prevent. */
   labels: string[];
   files: string[];
   horizon: string;
   owner: string;
+  /* WHERE it lives, and therefore how long. `project` outlives every milestone; `milestone`
+   * belongs to the chapter open when it was written and leaves every slice when that closes. */
+  level: "project" | "milestone";
+  milestone: string;
   actor: string;
   ts: number;
   retired: boolean;
+}
+
+/* A chapter — the thing that ends. Several are active at once on any real board, which is why the
+ * slice is bounded by a CARD's chapter rather than by there being only one. `review` still counts
+ * as active: an agent reported it finished, and nothing archives on an agent's word. */
+export interface Milestone {
+  id: string;
+  text: string;
+  horizon: string;
+  state: "planned" | "in_force" | "review" | "reached" | "abandoned";
+  created_by: string;
+  created: number;
+  updated: number;
+  /* Who VERIFIED it, "" until somebody did. Never the reporter. */
+  closed_by: string;
+  note: string;
 }
 
 /* A project SETTING: a value the engine obeys, validated when it was written. Beside the facts
@@ -226,16 +250,33 @@ export interface Policy {
  * narrowed to what reaches it. Same shape on purpose, because the card drawer has to show what the
  * worker holding it was handed rather than a second filter over the same facts. */
 export interface ContextSlice {
-  /* The PROJECT's north — what everybody reads whatever they are holding. */
-  objective: Fact | null;
-  /* Every objective in force, the project's and one per dev. This is the OVERVIEW, and it is
-   * what answers "who is on what" when you are deciding who to hand a card to. */
-  objectives: Fact[];
-  /* Whoever asked, when they have one of their own. Null in the board's view, which belongs
-   * to nobody. */
-  yours: Fact | null;
+  /* The chapter THIS slice is for: a card's own, or null for the board's overview and for a
+   * project that has none yet — a state the UI names rather than hides, since planning refuses
+   * without one. Singular even though several may be active: that is the bound. */
+  milestone: Milestone | null;
+  /* Every chapter being worked on. Read by the board and by an orchestrator, which are the only
+   * readers that choose between them; a card's drawer shows `milestone` instead. */
+  active: Milestone[];
+  /* Cards by status, keyed by milestone id. With several running, "how far along" is a question
+   * per chapter. */
+  counts: Record<string, Record<string, number>>;
+  /* Written down, not started. Titles only — a planned chapter carries no facts and no cards, and
+   * showing more of it would let it read as something to work on. */
+  planned: Milestone[];
+  /* `level: "project"` — permanent, outside every chapter, true whatever anybody is working on.
+   * Rendered BEFORE the chapter for that reason: inside it they would look like they expire. */
+  project_rules: Fact[];
+  project_decisions: Fact[];
+  /* The chapter's own. In a CARD slice, `decisions` and `notes` are narrowed by subject and
+   * `rules` are not. */
+  rules: Fact[];
   decisions: Fact[];
   notes: Fact[];
+  /* Whoever asked, when they have an objective of their own. Null in the board's view, which
+   * belongs to nobody. */
+  yours: Fact | null;
+  /* Every dev's objective in the open chapters — the OVERVIEW, never a worker's slice. */
+  objectives: Fact[];
 }
 
 /* `GET /api/context`. One call, because the panel that shows it is open all the time and two

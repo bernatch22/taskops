@@ -29,12 +29,14 @@ from ._verbargs import assigned as _assigned
 from ._verbargs import recovered as _recovered
 from ._verbargs import span as _span
 from ._verbargs import strings as _strings
+from ._verbms import MILESTONE_VERBS
 
 __all__ = ["VERBS", "Verb"]
 
 Verb = Callable[[Path, dict[str, Any]], Any]
 
 VERBS: dict[str, Verb] = {
+    **MILESTONE_VERBS,
 
     # writes — the reason this endpoint exists
     "plan": lambda root, a: uc.plan(root, list(a.get("entries", [])), actor=str(a.get("actor", ""))),
@@ -55,7 +57,8 @@ VERBS: dict[str, Verb] = {
     "context_state": lambda root, a: uc.context_state(
         root, str(a.get("sort", "")), str(a.get("text", "")), labels=_strings(a, "labels"),
         files=_strings(a, "files"), horizon=str(a.get("horizon", "")),
-        owner=str(a.get("owner", "")), actor=str(a.get("actor", ""))),
+        owner=str(a.get("owner", "")), level=str(a.get("level", "milestone")),
+        actor=str(a.get("actor", ""))),
     "context_retire": lambda root, a: uc.context_retire(root, str(a.get("id", "")),
                                                      actor=str(a.get("actor", ""))),
     "policy_set": lambda root, a: uc.set_policy(root, str(a.get("name", "")),

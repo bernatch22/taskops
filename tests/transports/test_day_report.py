@@ -18,6 +18,7 @@ from taskops.contracts.tools import ReportParams
 from taskops.transports.cli.main import main
 from taskops.transports.mcp import listing, respond
 from taskops.usecases import init, plan
+from taskops.usecases.milestone import open_chapter
 
 
 def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -30,7 +31,11 @@ def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 def project(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(repo, install_git_hooks=False)
+    open_chapter(repo, "the chapter these tests plan into",
+                 actor="dev:berna")
     plan(repo, [{"title": "A day's work", "spec": "x"}], actor="dev:berna")
     return repo
 

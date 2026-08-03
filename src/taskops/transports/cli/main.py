@@ -25,6 +25,8 @@ from .commands import (
     join,
     land,
     login,
+    me,
+    milestone,
     open_,
     policy,
     publish,
@@ -44,10 +46,16 @@ from .commands import (
 
 __all__ = ["main", "build_parser"]
 
-_COMMANDS = (init, join, board, setup, ui, serve, tasks, attention, context, policy, status,
+_COMMANDS = (init, join, board, setup, ui, serve, tasks, attention, milestone, context, me,
+             policy, status,
              statusline, report, schedule, recover, sync, login, open_, publish, land, remote,
              pushpull)
-"""Every command there is. Twenty-three, and `--help` lists all twenty-three.
+"""Every command there is. Twenty-five, and `--help` lists all twenty-five.
+
+`milestone`, `context` and `me` are three nouns over one log, split by WHOSE fact it is and how
+long it lives: a chapter the board is in, what the project settled, and what one person is
+chasing. They were two commands with a `--mine` flag, and the flag meant "file it under me" on a
+write and "show my page" on a read — one word for two things nobody could keep straight.
 
 `statusline` is the odd one and belongs here anyway: it is not for a person to type, it is what
 `settings.json` runs to paint the bottom row of a Claude Code session. It sits beside `status`

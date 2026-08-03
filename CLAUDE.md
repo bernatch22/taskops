@@ -25,11 +25,20 @@ If you are about to edit code, one of these is true. Do the matching thing:
 | Situation | What to do |
 |---|---|
 | A card exists for it | `taskops_next task=tk-…` — claim it first |
+| There is no MILESTONE open | `taskops milestone new "<what this is for>"` — `plan` refuses without one |
 | No card exists | `taskops_capture title=… spec=…` — creates it AND claims it in one call |
 | It is several pieces with dependencies | `taskops_plan` once, with the whole tree |
 | It is somebody else's specialty | dispatch it — do not do it yourself |
 
 And when it ships: `taskops_update status=review` with what you did. Somebody else closes it.
+
+**Every card belongs to exactly one milestone, and only a person may say one was reached.** Several
+are active at once — `taskops milestone` lists them and `plan` asks which when there is a choice,
+because a card in the wrong chapter is judged against somebody else's rules and nothing says so.
+Reporting a chapter finished is `taskops milestone review <id> -m "…"`; the engine refuses `done`
+from an agent, which is `done`-on-a-card one level up. A chapter in `review` shows up in
+`taskops attention` under CONFIRM and nothing new starts under it until a person closes or
+returns it.
 
 **A card you shipped and did not close is a lie with a timestamp.** If you find yourself
 closing a batch of them at the end of a day, that is the smell — you were not using the board,

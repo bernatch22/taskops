@@ -19,11 +19,16 @@ from taskops.engine import commitline
 from taskops.transports.hooks import _door
 from taskops.transports.hooks import events as _events
 from taskops.usecases import init, next_task, plan
+from taskops.usecases.milestone import open_chapter
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
+    # Every card belongs to a chapter: the fixture opens one so the test can be about its own
+    # subject rather than about that.
     init(tmp_path, install_git_hooks=False)
+    open_chapter(tmp_path, "the chapter these tests plan into",
+                 actor="dev:berna")
     return tmp_path
 
 
