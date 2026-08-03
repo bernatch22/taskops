@@ -119,19 +119,20 @@ class EventTable:
                                "WHERE kind=? GROUP BY task", (kind,)).fetchall()
         return {str(row["task"]): int(row["n"]) for row in rows}
 
-    def stamps_by_task(self) -> dict[str, list[tuple[str, float]]]:
-        """Every event as `(actor, ts)`, grouped by task, ordered. ONE query for a whole board.
+    def stamps_by_task(self) -> list[tuple[str, str, str, float]]:
+        """Every event as `(task, actor, kind, ts)`, ordered by task. ONE query for a whole board.
 
-        Same shape and same reason as `count_by_task`: the board needs a per-card number folded from
-        every event, and asking per task is what turns a page that is fine at fifty cards into one
-        that stalls at five hundred. Three columns and not whole events, because the fold that reads
-        this only ever needs who and when — pulling bodies would be reading the log to throw it away.
+        Same bargain `count_by_task` makes: the board needs a per-card number folded from every
+        event, and asking per task is what turns a page that is fine at fifty cards into one that
+        stalls at five hundred. Four columns and not whole events, because the fold that reads this
+        only needs who, what and when — pulling bodies would be reading the log to throw it away.
+
+        A flat list and not a dict: grouping is the fold's job, and doing it here made this module
+        the second place that knows how the number is built. The budget said so.
         """
-        rows = self.db.execute("SELECT task, actor, ts FROM events ORDER BY task, ts").fetchall()
-        out: dict[str, list[tuple[str, float]]] = {}
-        for row in rows:
-            out.setdefault(str(row["task"]), []).append((str(row["actor"]), float(row["ts"])))
-        return out
+        rows = self.db.execute(
+            "SELECT task, actor, kind, ts FROM events ORDER BY task, ts").fetchall()
+        return [(str(r["task"]), str(r["actor"]), str(r["kind"]), float(r["ts"])) for r in rows]
 
     def latest_by_task(self, kind: str) -> dict[str, Event]:
         """The most recent event of one kind, per task — the fleet view's read.

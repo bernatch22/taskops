@@ -151,8 +151,9 @@ def test_a_card_worked_by_TWO_actors_adds_both_stretches() -> None:
     one and report half the work."""
     from taskops.engine.timespent import on_card
 
-    stamps = [("agent:berna/one", BASE), ("agent:berna/one", BASE + 10 * MINUTE),
-              ("agent:ana/one", BASE + 2 * MINUTE), ("agent:ana/one", BASE + 8 * MINUTE)]
+    stamps = [("agent:berna/one", "commit", BASE), ("agent:berna/one", "comment", BASE + 10 * MINUTE),
+              ("agent:ana/one", "comment", BASE + 2 * MINUTE),
+              ("agent:ana/one", "commit", BASE + 8 * MINUTE)]
     assert on_card(stamps) == 16 * MINUTE
 
 
@@ -160,7 +161,7 @@ def test_a_card_nobody_touched_twice_is_zero_and_not_a_guess() -> None:
     """Same rule as `attended`, and it has to be the same rule: one event is a moment."""
     from taskops.engine.timespent import on_card
 
-    assert on_card([("dev:berna", BASE)]) == 0.0
+    assert on_card([("dev:berna", "comment", BASE)]) == 0.0
     assert on_card([]) == 0.0
 
 
@@ -169,5 +170,41 @@ def test_a_card_s_time_does_not_depend_on_the_order_rows_arrive() -> None:
     would break the day somebody adds an index or a UNION."""
     from taskops.engine.timespent import on_card
 
-    forwards = [("dev:berna", BASE), ("dev:berna", BASE + 5 * MINUTE)]
+    forwards = [("dev:berna", "comment", BASE), ("dev:berna", "commit", BASE + 5 * MINUTE)]
     assert on_card(list(reversed(forwards))) == on_card(forwards) == 5 * MINUTE
+
+
+# ---- bookkeeping is not work, and that is what running it found
+
+
+def test_a_PLAN_of_many_cards_is_not_many_cards_worked_at_once() -> None:
+    """The bug the live board showed. A `plan` of twenty-four cards is ONE call, and a
+    `tasks edit --milestone` over sixty-two of them is one loop — every one writing an event, in the
+    same second, on a different card. Unfiltered, the sitting fold called that "sixty-two cards at the
+    same time", which is a sentence about a script and not about anybody's attention."""
+    from taskops.engine.timespent import stretches
+
+    batch = [ev(f"tk-{n}", n, kind="created") for n in range(24)]
+    batch += [ev(f"tk-{n}", 100 + n, kind="edited") for n in range(24)]
+    assert stretches(batch) == []
+    assert attended(batch) == []
+
+
+def test_the_kinds_that_DO_mean_work_still_group() -> None:
+    """The other direction: filtering must not empty the feature out. A commit and two comments in
+    one stretch is exactly what a sitting is for."""
+    from taskops.engine.timespent import stretches
+
+    real = [ev("tk-a", 0, kind="claimed"), ev("tk-b", 3 * MINUTE, kind="comment"),
+            ev("tk-a", 7 * MINUTE, kind="commit")]
+    (found,) = stretches(real)
+    assert found["tasks"] == ["tk-a", "tk-b"]
+
+
+def test_a_cards_own_time_ignores_its_bookkeeping_too() -> None:
+    """Same filter on the card's number, because the two must not disagree: a card whose only events
+    are its creation and a bulk re-filing was never worked, and its row has to say so."""
+    from taskops.engine.timespent import on_card
+
+    assert on_card([("dev:berna", "created", BASE),
+                    ("dev:berna", "edited", BASE + 20 * MINUTE)]) == 0.0

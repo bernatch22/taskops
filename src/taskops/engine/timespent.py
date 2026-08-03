@@ -20,7 +20,26 @@ from ..contracts import Event
 # budget, and one more re-export would push it over for the sake of a shorter import line.
 from ..contracts.spent import Attended, Stretch
 
-__all__ = ["attended", "stretches", "on_card", "GAP"]
+__all__ = ["attended", "stretches", "on_card", "per_card", "worked", "GAP", "WORK"]
+
+WORK: frozenset[str] = frozenset({
+    "claimed", "released", "status", "comment", "commit", "branch", "blocked", "unblocked",
+    "handoff", "review", "eval", "done", "message", "activity", "landed", "inferred",
+})
+"""The kinds that mean somebody was ON a card, and the filter every fold here applies first.
+
+Found by running it. A `plan` of twenty-four cards is ONE call, and a `tasks edit --milestone` over
+sixty-two of them is one loop — but every one of those writes an event, in the same second, on a
+different card. Unfiltered, the sitting fold read that as *sixty-two cards worked at the same time*,
+which is a sentence about a script.
+
+So `created`, `edited`, `acceptance`, `context`, `milestone` and `policy` are out: they record that
+the BOARD changed, not that somebody was working. The difference is not cosmetic — a batch write is
+exactly the shape that inflates both numbers here, and both numbers exist to be trusted.
+
+`activity` stays in, and it is the strongest evidence there is: it is a session's heartbeat, written
+when a tool ran or a file was touched.
+"""
 
 GAP = 30 * 60.0
 """The most a single gap may contribute, in seconds.
@@ -30,6 +49,12 @@ to a few minutes apart, so a gap past half an hour is somebody having left rathe
 thinking. It is deliberately ONE number and not a per-kind table — a rule a reader can hold is worth
 more here than a fit, since the output is a bound and not an estimate.
 """
+
+
+def worked(events: list[Event]) -> list[Event]:
+    """Only the events that mean somebody was on a card. See `WORK` for why, and for what it cost
+    to find out. Applied by every fold in this module, so the two numbers cannot disagree."""
+    return [event for event in events if event["kind"] in WORK]
 
 
 def attended(events: list[Event]) -> list[Attended]:
@@ -43,7 +68,7 @@ def attended(events: list[Event]) -> list[Attended]:
     difference backwards and count nothing.
     """
     per: dict[str, list[float]] = {}
-    for event in events:
+    for event in worked(events):
         per.setdefault(event["task"], []).append(event["ts"])
     out = [_one(task, sorted(stamps)) for task, stamps in per.items()]
     return sorted(out, key=lambda a: (-a["seconds"], -a["events"], a["task"]))
@@ -75,7 +100,7 @@ def stretches(events: list[Event]) -> list[Stretch]:
     sittings, not one: merging them would invent simultaneity nobody had, since the whole point of
     an agent is that a developer has several pairs of hands that do NOT share attention.
     """
-    ordered = sorted(events, key=lambda e: e["ts"])
+    ordered = sorted(worked(events), key=lambda e: e["ts"])
     runs: list[list[Event]] = []
     for event in ordered:
         if runs and event["ts"] - runs[-1][-1]["ts"] <= GAP:
@@ -95,7 +120,7 @@ def _sitting(run: list[Event]) -> Stretch:
     return Stretch(started=run[0]["ts"], ended=run[-1]["ts"], tasks=seen, events=len(run))
 
 
-def on_card(stamps: list[tuple[str, float]]) -> float:
+def on_card(stamps: list[tuple[str, str, float]]) -> float:
     """One CARD's attended time, over every actor that ever touched it. Seconds, a floor.
 
     Summed PER ACTOR and then added, which is the whole of the arithmetic and the one thing a naive
@@ -109,6 +134,19 @@ def on_card(stamps: list[tuple[str, float]]) -> float:
     happens to be looking at a profile through.
     """
     per: dict[str, list[float]] = {}
-    for actor, ts in stamps:
-        per.setdefault(actor, []).append(ts)
+    for actor, kind, ts in stamps:
+        if kind in WORK:
+            per.setdefault(actor, []).append(ts)
     return sum(_one("", sorted(times))["seconds"] for times in per.values())
+
+
+def per_card(rows: list[tuple[str, str, str, float]]) -> dict[str, float]:
+    """Every card's attended time, from one flat read of the log. `(task, actor, kind, ts)` in.
+
+    The grouping is HERE and not in the query it comes from: how this number is built is one
+    decision, and a `GROUP BY` upstream would make the storage layer the second place that knows it.
+    """
+    per: dict[str, list[tuple[str, str, float]]] = {}
+    for task, actor, kind, ts in rows:
+        per.setdefault(task, []).append((actor, kind, ts))
+    return {task: on_card(stamps) for task, stamps in per.items()}

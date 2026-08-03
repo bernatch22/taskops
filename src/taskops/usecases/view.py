@@ -44,7 +44,7 @@ def view(store: Store, task_id: str) -> TaskView:
         commits=[_commit(e) for e in history if e["kind"] == "commit"],
         # From THIS card's events, which are already in hand: the same number the board
         # folds per card, so a card cannot say two different things in two places.
-        seconds=on_card([(e["actor"], e["ts"]) for e in history]),
+        seconds=on_card([(e["actor"], e["kind"], e["ts"]) for e in history]),
         history=history)
 
 
