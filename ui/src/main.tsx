@@ -94,7 +94,7 @@ function App(): JSX.Element {
                         onClose={() => setDashboard(false)} />
       ) : null}
       {project && studio.context ? (
-        <ProjectModal context={studio.context} repo={studio.config?.repo ?? ""}
+        <ProjectModal context={studio.context}
                       onClose={() => setProject(false)} />
       ) : null}
     </>

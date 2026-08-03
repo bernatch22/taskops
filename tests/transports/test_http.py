@@ -63,7 +63,7 @@ def test_the_board_serialises_to_the_shape_the_ui_expects(route: Any) -> None:
     payload = body_of(route(get("/api/board")))
     assert set(payload) == {"repo", "columns", "ready", "total"}
     card = next(c for column in payload["columns"] for c in column["cards"])
-    assert set(card) == {"task", "lease", "blocked_by", "blocks", "commits"}
+    assert set(card) == {"task", "lease", "blocked_by", "blocks", "commits", "seconds"}
     assert set(card["task"]) >= {"id", "title", "spec", "status", "priority", "files"}
 
 

@@ -13,6 +13,7 @@ from .._types import Status
 from .event import Event
 from .gitstate import BranchState
 from .lease import Lease
+from .spent import Attended, Stretch
 from .task import Task
 
 __all__ = ["Card", "Column", "Board", "Standup", "Burndown", "FleetMember", "Fleet",
@@ -27,6 +28,12 @@ class Card(TypedDict):
     blocked_by: int
     blocks: int
     commits: int
+
+    seconds: float
+    """How long this card was ATTENDED, summed over every actor that touched it. A floor, and
+    `contracts.spent.Attended` is where that word is argued. On the card and not only in a person's
+    profile because it is the card's own number: it must not depend on the window somebody happens
+    to be reading a profile through, and a card carries it wherever it is drawn."""
 
 
 class Column(TypedDict):
@@ -58,19 +65,6 @@ class Standup(TypedDict):
     blocked: list[Task]
 
 
-class Attended(TypedDict):
-    """One actor's time on one card: a LOWER BOUND, and `engine.timespent` argues why.
-
-    `seconds` sums the gaps between that actor's consecutive events on that card, each gap capped, so
-    it under-reports on purpose. Every surface drawing it has to SAY so — the alternative invents the
-    one thing the log does not record, which is when somebody stopped.
-    """
-
-    task: str
-    seconds: float
-    events: int
-
-
 class ActorRoll(TypedDict):
     """One actor's whole record in the window — what they touched, not whether they are free.
 
@@ -88,6 +82,9 @@ class ActorRoll(TypedDict):
     done: int
     first_seen: float
     last_seen: float
+
+    sittings: list[Stretch]
+    """Newest first. What was open at the same time, which no count above can show."""
 
     on: list[Attended]
     """How long this actor was ON each card, busiest first. See `Attended` for what the number is

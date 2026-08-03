@@ -26,23 +26,32 @@ import { Overlay } from "./Overlay";
 
 const ENDED = ["reached", "abandoned"];
 
-export function ProjectModal({ context, repo, onClose }: {
+export function ProjectModal({ context, onClose }: {
   context: ContextView;
-  repo: string;
   onClose: () => void;
 }): JSX.Element {
   const nothing = !context.project_rules.length && !context.project_decisions.length;
   return (
     <Overlay label="what this project has decided" onClose={onClose}>
+      {/* No repo path here. It used to be the heading, so the panel was titled
+        * `/home/berna/taskops-server/axion` — where the board's files happen to sit on somebody
+        * else's box, forty characters of it, saying nothing to whoever opened this. What the panel
+        * is about is the answer instead. */}
       <header className="ms-head">
         <span className="ms-mark">◎</span>
-        <h2>{repo || "this project"}</h2>
+        <h2>The project</h2>
         <span className="ms-horizon dim">what holds whatever we are shipping</span>
         <button className="close" onClick={onClose} title="close (Esc)">✕</button>
       </header>
 
+      {/* ONE scrolling region, header pinned — the same shape as the chapter's panel, and it belongs
+        * to both of them rather than to `.ms-body`. When the chapter modal got its scroller the
+        * overflow moved off `.ms-body`, and THIS panel read it too: nine rules then ran straight out
+        * the bottom with nowhere to scroll. A shared container quietly changed for one of its two
+        * readers, which is a class of bug this repository has already paid for once. */}
+      <div className="ms-scroll">
       <div className="ms-body">
-        <Group title="Rules" note="every card, every milestone, no exceptions">
+        <Group title="Rules" note="every card, every milestone, no exceptions" kind="rules">
           {context.project_rules.map((fact) => <FactBlock key={fact.id} fact={fact} />)}
         </Group>
         <Group title="Decisions" note="the project's — not a chapter's">
@@ -58,6 +67,7 @@ export function ProjectModal({ context, repo, onClose }: {
 
         <Policies policies={context.policies} />
         <Ended />
+      </div>
       </div>
     </Overlay>
   );

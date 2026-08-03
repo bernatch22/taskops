@@ -76,6 +76,9 @@ export interface Card {
   blocked_by: number;
   blocks: number;
   commits: number;
+  /* How long this card was ATTENDED, over every actor that touched it. A floor — see `Attended`.
+   * On the card, so it does not depend on the window somebody happens to read a profile through. */
+  seconds: number;
 }
 
 export interface Column {
@@ -99,6 +102,17 @@ export interface Attended {
   events: number;
 }
 
+/* One SITTING: a run of an actor's events with no gap past the cap. Several cards in one is the
+ * answer to "what was open at the same time" — alternated between in one stretch of attention,
+ * rather than on the same calendar day, which says nothing about either. */
+export interface Stretch {
+  started: number;
+  ended: number;
+  /* In the order they were FIRST touched. */
+  tasks: string[];
+  events: number;
+}
+
 export interface ActorRoll {
   actor: string;
   /* Distinct tasks, not events: forty comments on one card is less work than four cards closed,
@@ -108,6 +122,8 @@ export interface ActorRoll {
   comments: number;
   done: number;
   /* Longest first. Folded over the same events every count above it comes from. */
+  /* Newest first. */
+  sittings: Stretch[];
   on: Attended[];
   first_seen: number;
   last_seen: number;
@@ -145,6 +161,8 @@ export interface TaskView {
   neighbours: Task[];
   thread: Event[];
   commits: CommitRef[];
+  /* How long this card was ATTENDED, over everybody who touched it. A floor — see `Attended`. */
+  seconds: number;
   history: Event[];
 }
 

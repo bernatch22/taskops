@@ -91,3 +91,83 @@ def test_the_roll_up_carries_it_over_the_SAME_events_it_counts() -> None:
     assert roll["tasks"] == 2 and roll["commits"] == 1
     assert sum(a["events"] for a in roll["on"]) == 3
     assert sum(a["seconds"] for a in roll["on"]) == 7 * MINUTE
+
+
+# ---- sittings: what was open AT THE SAME TIME
+
+
+def test_cards_alternated_in_one_sitting_come_back_TOGETHER() -> None:
+    """The whole point. Two cards touched inside one run of events with no gap past the cap were
+    being worked at the same time — alternated between, in one stretch of attention. Grouping by
+    calendar day would say nothing: a day says two cards were touched, not that either was open
+    while the other was."""
+    from taskops.engine.timespent import stretches
+
+    found = stretches([ev("tk-a", 0), ev("tk-b", 4 * MINUTE), ev("tk-a", 9 * MINUTE)])
+    assert len(found) == 1
+    assert found[0]["tasks"] == ["tk-a", "tk-b"], "in the order they were first touched"
+    assert found[0]["events"] == 3
+
+
+def test_a_gap_past_the_cap_ENDS_the_sitting() -> None:
+    """Cut on the same `GAP` the time is capped at, because it is the same claim made twice: past
+    the cap, somebody had left. Two cards on either side of a night are not simultaneous work, and a
+    fold that joined them would report a whole day as one sitting."""
+    from taskops.engine.timespent import stretches
+
+    found = stretches([ev("tk-a", 0), ev("tk-b", 9 * 3600)])
+    assert [s["tasks"] for s in found] == [["tk-b"], ["tk-a"]], "newest sitting first"
+
+
+def test_a_sitting_carries_its_SPAN() -> None:
+    """A group with no span is a claim a reader cannot check — "these three at once" is worth
+    nothing without when and for how long."""
+    from taskops.engine.timespent import stretches
+
+    (found,) = stretches([ev("tk-a", 0), ev("tk-b", 6 * MINUTE)])
+    assert found["started"] == BASE
+    assert found["ended"] == BASE + 6 * MINUTE
+
+
+def test_two_agents_of_one_dev_are_never_ONE_sitting() -> None:
+    """Per actor, and the caller must respect it. Two of a dev's agents running in parallel do not
+    share attention — that is the entire point of having several — so merging them would invent a
+    simultaneity nobody had."""
+    from taskops.engine.history import rolls
+
+    events = [ev("tk-a", 0, actor="agent:berna/one"), ev("tk-a", 3 * MINUTE, actor="agent:berna/one"),
+              ev("tk-b", 1 * MINUTE, actor="agent:berna/two")]
+    per = {roll["actor"]: roll["sittings"] for roll in rolls(events)}
+    assert [s["tasks"] for s in per["agent:berna/one"]] == [["tk-a"]]
+    assert [s["tasks"] for s in per["agent:berna/two"]] == [["tk-b"]]
+
+
+# ---- a CARD's own time, over everybody who touched it
+
+
+def test_a_card_worked_by_TWO_actors_adds_both_stretches() -> None:
+    """The one thing a naive version gets wrong. A card two agents worked in the same hour was
+    attended twice, so the two add — subtracting consecutive events of the CARD would fold them into
+    one and report half the work."""
+    from taskops.engine.timespent import on_card
+
+    stamps = [("agent:berna/one", BASE), ("agent:berna/one", BASE + 10 * MINUTE),
+              ("agent:ana/one", BASE + 2 * MINUTE), ("agent:ana/one", BASE + 8 * MINUTE)]
+    assert on_card(stamps) == 16 * MINUTE
+
+
+def test_a_card_nobody_touched_twice_is_zero_and_not_a_guess() -> None:
+    """Same rule as `attended`, and it has to be the same rule: one event is a moment."""
+    from taskops.engine.timespent import on_card
+
+    assert on_card([("dev:berna", BASE)]) == 0.0
+    assert on_card([]) == 0.0
+
+
+def test_a_card_s_time_does_not_depend_on_the_order_rows_arrive() -> None:
+    """It comes out of SQL grouped by task and ordered by ts today, and a fold that relied on that
+    would break the day somebody adds an index or a UNION."""
+    from taskops.engine.timespent import on_card
+
+    forwards = [("dev:berna", BASE), ("dev:berna", BASE + 5 * MINUTE)]
+    assert on_card(list(reversed(forwards))) == on_card(forwards) == 5 * MINUTE

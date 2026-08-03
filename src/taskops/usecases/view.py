@@ -13,6 +13,7 @@ from typing import cast
 
 from .._clock import now
 from ..contracts import CommitRef, Event, Inbox, Task, TaskView
+from ..engine.timespent import on_card
 from ..storage import Store
 
 __all__ = ["view", "inbox_for", "THREAD_KINDS"]
@@ -41,6 +42,9 @@ def view(store: Store, task_id: str) -> TaskView:
         neighbours=_neighbours(store, task),
         thread=[e for e in history if e["kind"] in THREAD_KINDS],
         commits=[_commit(e) for e in history if e["kind"] == "commit"],
+        # From THIS card's events, which are already in hand: the same number the board
+        # folds per card, so a card cannot say two different things in two places.
+        seconds=on_card([(e["actor"], e["ts"]) for e in history]),
         history=history)
 
 

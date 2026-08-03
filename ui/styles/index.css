@@ -916,7 +916,12 @@ ol.md-list li { list-style: decimal; }
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
 }
-.ctx-fact + .ctx-fact { margin-top: 6px; }
+/* Ten and not six: nine project rules of two sentences each read as one mass at six, and the
+   whole job of this list is being scannable — a reader is looking for WHICH rule, not reading them
+   all. The left accent says what kind of thing it is at a glance. */
+.ctx-fact + .ctx-fact { margin-top: 10px; }
+.ctx-fact { border-left: 2px solid var(--line); }
+.ctx-group.rules .ctx-fact { border-left-color: var(--amber); }
 .ctx-fact .context-text {
   margin: 0;
   font-size: 13.5px; line-height: 1.55;
@@ -981,3 +986,21 @@ ol.md-list li { list-style: decimal; }
   margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-dim);
   white-space: nowrap;
 }
+
+/* A SITTING of somebody's work. Only a group of two or more gets a frame, because the frame IS the
+   claim — "these were alternated between in one stretch" — and one around a single card would make
+   that claim about nothing. */
+.sittings > .sitting + .sitting { margin-top: 10px; }
+.sitting.together {
+  padding: 8px 8px 4px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid var(--violet);
+  border-radius: var(--r);
+}
+.sitting-head { margin: 0 0 6px; font-size: 11px; }
+.sitting-when { font-family: var(--mono); }
+
+/* The time a CARD took, in the drawer that reads it. Beside the commits, because both answer "how
+   much went into this" and a reader comparing them should not have to look in two places. */
+.card-spent { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }

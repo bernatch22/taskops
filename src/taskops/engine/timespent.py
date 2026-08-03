@@ -18,9 +18,9 @@ from ..contracts import Event
 
 # From the module that defines it rather than the barrel: `contracts/__init__` is at its code
 # budget, and one more re-export would push it over for the sake of a shorter import line.
-from ..contracts.board import Attended
+from ..contracts.spent import Attended, Stretch
 
-__all__ = ["attended", "GAP"]
+__all__ = ["attended", "stretches", "on_card", "GAP"]
 
 GAP = 30 * 60.0
 """The most a single gap may contribute, in seconds.
@@ -57,3 +57,58 @@ def _one(task: str, stamps: list[float]) -> Attended:
     # offset by one is n-1 pairs, and the last stamp has no successor to be paired with.
     seconds = sum(min(later - earlier, GAP) for earlier, later in zip(stamps, stamps[1:], strict=False))
     return Attended(task=task, seconds=seconds, events=len(stamps))
+
+
+def stretches(events: list[Event]) -> list[Stretch]:
+    """One actor's events cut into SITTINGS, newest first. A sitting with several cards in it is
+    work that happened at the same time.
+
+    Cut on the same `GAP` the time is capped at, and that is not a coincidence — it is the same
+    claim made twice. A gap past the cap is somebody having left, so it ends the sitting; anything
+    closer is one continuous stretch of attention, and the distinct cards inside it were being
+    alternated between rather than worked one after the other on different days.
+
+    "At the same time" and not "the same day": a day groups by the calendar, which says nothing
+    about whether somebody had two things open. This groups by the log's own evidence of continuity.
+
+    Per ACTOR, and the caller must respect that. Two of a dev's agents running in parallel are two
+    sittings, not one: merging them would invent simultaneity nobody had, since the whole point of
+    an agent is that a developer has several pairs of hands that do NOT share attention.
+    """
+    ordered = sorted(events, key=lambda e: e["ts"])
+    runs: list[list[Event]] = []
+    for event in ordered:
+        if runs and event["ts"] - runs[-1][-1]["ts"] <= GAP:
+            runs[-1].append(event)
+        else:
+            runs.append([event])
+    return [_sitting(run) for run in reversed(runs)]
+
+
+def _sitting(run: list[Event]) -> Stretch:
+    """A run's span and the cards in it, in the order they were first touched — which is the order
+    somebody actually opened them, and the only ordering here that carries information."""
+    seen: list[str] = []
+    for event in run:
+        if event["task"] not in seen:
+            seen.append(event["task"])
+    return Stretch(started=run[0]["ts"], ended=run[-1]["ts"], tasks=seen, events=len(run))
+
+
+def on_card(stamps: list[tuple[str, float]]) -> float:
+    """One CARD's attended time, over every actor that ever touched it. Seconds, a floor.
+
+    Summed PER ACTOR and then added, which is the whole of the arithmetic and the one thing a naive
+    version gets wrong: a card two agents worked in the same hour was attended twice, so the two
+    stretches add. Subtracting consecutive events of the CARD instead would fold them into one and
+    report half the work — the same mistake, mirrored, as billing a switch between two cards as time
+    on both.
+
+    Lives beside `attended` rather than in it because the question is the card's and not a person's:
+    this is what a card carries wherever it is drawn, so it does not depend on which window somebody
+    happens to be looking at a profile through.
+    """
+    per: dict[str, list[float]] = {}
+    for actor, ts in stamps:
+        per.setdefault(actor, []).append(ts)
+    return sum(_one("", sorted(times))["seconds"] for times in per.values())

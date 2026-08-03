@@ -119,6 +119,20 @@ class EventTable:
                                "WHERE kind=? GROUP BY task", (kind,)).fetchall()
         return {str(row["task"]): int(row["n"]) for row in rows}
 
+    def stamps_by_task(self) -> dict[str, list[tuple[str, float]]]:
+        """Every event as `(actor, ts)`, grouped by task, ordered. ONE query for a whole board.
+
+        Same shape and same reason as `count_by_task`: the board needs a per-card number folded from
+        every event, and asking per task is what turns a page that is fine at fifty cards into one
+        that stalls at five hundred. Three columns and not whole events, because the fold that reads
+        this only ever needs who and when — pulling bodies would be reading the log to throw it away.
+        """
+        rows = self.db.execute("SELECT task, actor, ts FROM events ORDER BY task, ts").fetchall()
+        out: dict[str, list[tuple[str, float]]] = {}
+        for row in rows:
+            out.setdefault(str(row["task"]), []).append((str(row["actor"]), float(row["ts"])))
+        return out
+
     def latest_by_task(self, kind: str) -> dict[str, Event]:
         """The most recent event of one kind, per task — the fleet view's read.
 

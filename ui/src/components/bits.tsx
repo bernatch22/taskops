@@ -57,3 +57,25 @@ export function Counts({ up, down, commits }: { up: number; down: number; commit
     </span>
   );
 }
+
+/* `5400` -> `1h 30m`, `240` -> `4m`, `0` -> "". Zero prints NOTHING rather than `0m`: a card touched
+ * once has no span between its one event and nothing, and `0m` beside it reads as a measurement that
+ * came out empty instead of a question that cannot be asked. */
+export function spell(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  if (!minutes) return "";
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
+}
+
+/* The cards somebody touched, GROUPED BY SITTING — a run of their events with no gap past the cap,
+ * which is the log's own evidence that two cards were open at once rather than on the same day.
+ *
+ * A sitting of one card draws as a plain row; only a group of two or more is worth a frame, because
+ * the frame is the CLAIM ("these were alternated between") and putting one around a single card
+ * would make the claim about nothing.
+ *
+ * Paged rather than cut: it used to stop at six with no way to see the rest, so a dev with fifteen
+ * cards had nine that did not exist as far as this panel was concerned. The rest is already loaded —
+ * "more" costs no request, which is why it is a count and not a fetch.
+ */

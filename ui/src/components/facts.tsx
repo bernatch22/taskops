@@ -31,16 +31,19 @@ export function FactBlock({ fact }: { fact: Fact }): JSX.Element {
   );
 }
 
-export function Group({ title, note, children }: {
+export function Group({ title, note, kind, children }: {
   title: string;
   note: string;
+  /* An optional class on the section, for the ONE distinction worth drawing: a rule binds and a
+   * decision was settled, and a reader scanning for "am I allowed to" is looking for the first. */
+  kind?: string;
   children: JSX.Element[];
 }): JSX.Element | null {
   /* An empty group is omitted rather than shown empty. Four headings over four "(none)"s is a
    * panel that looks like a form somebody abandoned. */
   if (!children.length) return null;
   return (
-    <section className="ctx-group">
+    <section className={kind ? `ctx-group ${kind}` : "ctx-group"}>
       <h4>{title} <span className="dim">{note}</span></h4>
       <ul className="ctx-list">{children}</ul>
     </section>
