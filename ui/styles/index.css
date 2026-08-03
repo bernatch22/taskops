@@ -760,8 +760,16 @@ ol.md-list li { list-style: decimal; }
 .ms-note { margin-top: 5px; font-size: 12.5px; color: var(--ink); }
 .ms-how { margin-top: 6px; font-size: 11.5px; color: var(--ink-dim); line-height: 1.6; }
 
-.ms-body {
+/* THE scroll region of this modal — everything below the header. It used to be `.ms-body` alone,
+   which left the goal outside it: a goal longer than a sentence then grew the panel past the
+   viewport and took the progress bar and the chapter's facts with it, unreachable. One scroller, and
+   the header pinned above it. */
+.ms-scroll {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+
+.ms-body {
   padding: 0 var(--pad) var(--pad);
   display: flex; flex-direction: column; gap: 18px;
 }
@@ -952,3 +960,8 @@ ol.md-list li { list-style: decimal; }
   margin: 0; color: var(--ink-dim); font-size: 13px; line-height: 1.6;
 }
 .ctx-empty code { color: var(--lime); }
+
+/* The permanent rules, as a POINTER and not as a block. Drawing all of them above the spec of every
+   card put the same wall in front of the brief sixty-three times; a card's own sections are what
+   differ, so those are what get the room. */
+.applies-project { margin: 0; font-size: 11.5px; }
