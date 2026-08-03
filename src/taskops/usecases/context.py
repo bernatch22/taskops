@@ -19,21 +19,19 @@ from typing import Any, cast
 
 from .._errors import BadRequest
 from .._types import EventKind
-from ..contracts import Task
-from ..contracts.context import CONTEXT_KIND, CONTEXT_TASK, SORTS, ContextSlice, Fact
-from ..engine import record
-from ..storage.context import fact_of, facts
-from ._contextslice import for_task, in_force
-from ._project import caller, heartbeat, project
-from ._routing import call_remote, read_remote_first, whoami
+from ..contracts.context import CONTEXT_KIND, CONTEXT_TASK, SORTS, Fact
+from ..engine import identity, record
+from ..storage.context import fact_of, facts, matching
+from ._project import caller, heartbeat, locate, project
+from ._routing import call_remote, whoami
+from .policy import refuse_if_policy
 
-__all__ = ["state", "retire", "show", "history", "context_for"]
+__all__ = ["state", "retire"]
 
 _KIND = cast("EventKind", CONTEXT_KIND)
 """`EventKind` is a Literal in layer 0 and this module may not widen it, so the cast names the
-one place the new kind enters the log. Nothing validates kinds at runtime — a reader that does
-not know one stores and forwards it untouched, which is what lets an older taskops on a
-teammate's machine carry these events without understanding them."""
+one place this kind enters the log. Nothing validates kinds at runtime: an older taskops stores
+and forwards one it has never heard of, untouched."""
 
 
 def state(start: Path | str, sort: str, text: str, *, labels: Sequence[str] = (),
@@ -45,11 +43,21 @@ def state(start: Path | str, sort: str, text: str, *, labels: Sequence[str] = ()
         raise BadRequest(f"`{sort}` is not a context fact — expected {', '.join(SORTS)}")
     if not text.strip():
         raise BadRequest(f"an {sort} needs text — a fact with no statement states nothing")
+    refuse_if_policy(text)
+    identity.a_person(locate(start), actor, f"state an {sort}")
+    if owner:
+        # Parsed, not trusted. `dev_of` answers "" for anything it cannot read, so an owner
+        # nothing can parse would file the fact as the PROJECT's — and a newer one supersedes
+        # the team's objective. A typo must not be able to erase the north.
+        identity.parse(owner)
     body: dict[str, Any] = {"sort": sort, "text": text.strip(), "labels": list(labels),
                             "files": list(files), "horizon": horizon, "owner": owner}
-    if (answer := call_remote(start, "context_state", {"sort": sort, "text": text,
-                                                       "labels": list(labels),
-                                                       "actor": whoami(start, actor)})) is not None:
+    # The WHOLE body crosses. It used to send four of the seven fields, so on a board with a
+    # remote `--files`, `--horizon` and `--owner` were accepted, echoed back and dropped — and
+    # `--files` is how a decision scopes to an edit surface, so a decision written on a remote
+    # board reached every card instead of the ones it was about.
+    if (answer := call_remote(start, "context_state",
+                              {**body, "actor": whoami(start, actor)})) is not None:
         return cast("Fact", answer)
     with project(start) as store:
         who = caller(store, actor)["id"]
@@ -61,41 +69,26 @@ def state(start: Path | str, sort: str, text: str, *, labels: Sequence[str] = ()
 
 
 def retire(start: Path | str, fact_id: str, *, actor: str = "") -> Fact:
-    """Withdraw a fact. It leaves `show` and stays in `log`, because there is no eraser."""
+    """Withdraw a fact. It leaves `show` and stays in `log`, because there is no eraser.
+
+    A PREFIX is accepted, and it had to be: `show` and `log` print the id shortened to eight
+    characters, so the string a person can see was the one string this refused — and the error
+    sent them to `log`, which shows the same eight. The one action a fact supports could not be
+    reached from anything the CLI displayed. Git's answer, for the same reason.
+    """
+    identity.a_person(locate(start), actor, "retire a standing fact")
     if (answer := call_remote(start, "context_retire", {"id": fact_id,
                                                         "actor": whoami(start, actor)})) is not None:
         return cast("Fact", answer)
     with project(start) as store:
-        known = {f["id"]: f for f in facts(store, retired=True)}
-        if fact_id not in known:
-            raise BadRequest(f"no context fact `{fact_id}` — `taskops context log` lists them")
+        known = facts(store, retired=True)
+        hits = matching(known, fact_id.strip())
+        if len(hits) != 1:
+            raise BadRequest(f"`{fact_id}` names {len(hits)} context facts — "
+                             f"`taskops context log` lists them, and the eight characters it "
+                             f"prints are enough to name one")
+        gone = next(f for f in known if f["id"] == hits[0])
         who = caller(store, actor)["id"]
         heartbeat(store, who)
-        record(store, task=CONTEXT_TASK, actor=who, kind=_KIND, body={"retires": fact_id})
-        return {**known[fact_id], "retired": True}
-
-
-def show(start: Path | str) -> ContextSlice:
-    if (answer := read_remote_first(start, "context_show", {})) is not None:
-        return cast("ContextSlice", answer)
-    """What is in force, project-wide."""
-    with project(start) as store:
-        return in_force(facts(store))
-
-
-def history(start: Path | str) -> list[Fact]:
-    if (answer := read_remote_first(start, "context_history", {})) is not None:
-        return cast("list[Fact]", answer)
-    """Everything ever stated, retired ones included and marked."""
-    with project(start) as store:
-        return facts(store, retired=True)
-
-
-def context_for(start: Path | str, task_id: str) -> ContextSlice:
-    """The slice one card gets: every invariant, the current objective, and the decisions
-    that match its labels or its files. This is what a worker is handed instead of the book."""
-    if (answer := read_remote_first(start, "context_for", {"task": task_id})) is not None:
-        return cast("ContextSlice", answer)
-    with project(start) as store:
-        task: Task = store.tasks.need(task_id)
-        return for_task(facts(store), task)
+        record(store, task=CONTEXT_TASK, actor=who, kind=_KIND, body={"retires": gone["id"]})
+        return {**gone, "retired": True}

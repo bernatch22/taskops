@@ -36,8 +36,11 @@ TASKS = ("the tasks to create: a list of {title, spec, priority?, labels?, files
          "close it, or the name of a registered specialist to spawn; omit it and the project's "
          "own default applies. `spec` is the brief a FRESH agent reads to do the work "
          "with no other context — what done looks like, what must not change, where to start. "
-         "`after` lists what must finish BEFORE this card, each an existing id or the 0-based "
-         "INDEX of an earlier entry in this same list. `blocks` is the inverse: existing cards "
+         "`parent` is the epic this card is PART OF — an existing id, or the 0-based INDEX of an "
+         "earlier entry in this same list, so a whole tree lands in one call. An epic cannot "
+         "be closed while any child of it is open, which is what makes a checklist mean "
+         "something. `after` is the other question — what must finish BEFORE this card — and "
+         "takes the same two forms: an existing id or the 0-based INDEX of an earlier entry. `blocks` is the inverse: existing cards "
          "that must wait for this one — that is how an agent mid-task creates the prerequisite it "
          "just discovered and makes its own task wait, in one call. `files` is the edit surface: "
          "name it and no two agents get the same file. `acceptance` is the list of EARS criteria "
@@ -138,3 +141,20 @@ CLAIM_IT = ("claim it immediately (default true) — pass false only when record
             "LATER that you are not about to start")
 ASSIGN = ("give it to another actor (`agent:dev/name` or `dev:name`) instead of claiming it: "
           "it lands in their inbox and stays pickable")
+
+STATE = ("state a standing fact instead of reading: `objective` (a new one supersedes the last "
+         "WITH THE SAME OWNER), `invariant` (never broken — every worker gets it), `decision` "
+         "(settled; reaches only cards sharing its labels) or `note` (standing, and none of "
+         "those). Needs `text`. A worker is REFUSED: these are what it is judged against.")
+
+MINE = ("file it under YOU rather than the project. A worker then reads the project's facts and "
+        "its own developer's and nobody else's, which is what keeps a slice from growing with "
+        "the team. Usual for an objective: the team's north and your week are both true.")
+
+TEXT = "the fact itself, with its reason — one sentence a worker can act on"
+
+RETIRE = ("a standing fact's id, or the first eight characters of it. It leaves `show` and stays "
+          "in the log, because an append-only log has no eraser.")
+
+SCOPE = ("comma-separated labels a DECISION applies to; omit for project-wide. Scope is what "
+         "keeps the slice a worker reads from growing until nobody follows it.")

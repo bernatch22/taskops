@@ -16,16 +16,19 @@ from typing import Annotated, Any, Literal, TypedDict
 from . import _fields as f
 
 __all__ = ["PlanParams", "NextParams", "UpdateParams", "AskParams", "ReportParams",
-           "DispatchParams", "RecoverParams", "ContextParams", "CaptureParams"]
+           "DispatchParams", "RecoverParams", "CaptureParams", "Target"]
 
 
-class _Target(TypedDict):
-    """Which repository. Every tool needs it; none of them guesses it."""
+class Target(TypedDict):
+    """Which repository. Every tool needs it; none of them guesses it.
+
+    Public because `_toolctx` builds on it — the one parameter class that lives elsewhere,
+    because it is the one carrying an argument rather than a field list."""
 
     repo_path: f.Repo
 
 
-class _PlanRequired(_Target):
+class _PlanRequired(Target):
     tasks: Annotated[list[dict[str, Any]], f.TASKS]
 
 
@@ -33,14 +36,14 @@ class PlanParams(_PlanRequired, total=False):
     actor: f.Actor
 
 
-class NextParams(_Target, total=False):
+class NextParams(Target, total=False):
     actor: f.Actor
     session: f.Session
     labels: Annotated[str, f.LABELS]
     task: Annotated[str, f.CLAIM_ONE]
 
 
-class _UpdateRequired(_Target):
+class _UpdateRequired(Target):
     task: f.TaskId
 
 
@@ -62,7 +65,7 @@ class UpdateParams(_UpdateRequired, total=False):
     no_evidence: Annotated[str, f.NO_EVIDENCE]
 
 
-class _CaptureRequired(_Target):
+class _CaptureRequired(Target):
     title: Annotated[str, f.TITLE]
 
 
@@ -81,20 +84,12 @@ class CaptureParams(_CaptureRequired, total=False):
     session: f.Session
 
 
-class ContextParams(_Target, total=False):
-    """Reading the standing facts. There is no WRITE half on this surface on purpose: an
-    objective or an invariant is a human's call about the project, and a worker that could
-    restate one could quietly rewrite the rules it is judged against."""
-
-    task: Annotated[str, f.CONTEXT_TASK]
-
-
-class AskParams(_Target, total=False):
+class AskParams(Target, total=False):
     task: Annotated[str, f.ASK_TASK]
     query: Annotated[str, f.ASK_QUERY]
 
 
-class DispatchParams(_Target, total=False):
+class DispatchParams(Target, total=False):
     """Prepare worker agents for cards. The caller spawns them as its own sub-agents.
 
     There is no `spawn` field, and there is no longer anything for one to reach: the detached path
@@ -112,7 +107,7 @@ class DispatchParams(_Target, total=False):
     actor: f.Actor
 
 
-class RecoverParams(_Target, total=False):
+class RecoverParams(Target, total=False):
     """Hand back the cards of workers that died. The other half of dispatching a fleet."""
 
     force: Annotated[bool, f.RECOVER_FORCE]
@@ -120,7 +115,7 @@ class RecoverParams(_Target, total=False):
     actor: f.Actor
 
 
-class ReportParams(_Target, total=False):
+class ReportParams(Target, total=False):
     """The five views a model may ask for, and no more.
 
     `fleet` and `burndown` were advertised here and are not any more. One answered a question

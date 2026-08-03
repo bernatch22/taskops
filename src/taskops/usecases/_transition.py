@@ -37,7 +37,7 @@ def move(store: Store, task: Task, who: str, asked: str, comment: str,
     if target == "done" and task["status"] == "review":
         _reserve_the_review(store, task, who)
     facts = facts_for(store, task, who, no_code=no_code, justification=comment,
-                      evidence=evidence, no_evidence=no_evidence)
+                      comment=comment, evidence=evidence, no_evidence=no_evidence)
     check_move(facts, target)
     if asked == RELEASE:
         hand_back(store, task["id"])          # the lease AND the assignment — see the engine

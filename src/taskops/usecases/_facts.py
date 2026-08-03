@@ -20,8 +20,15 @@ __all__ = ["facts_for", "unpushed_on", "entered_review_by"]
 
 
 def facts_for(store: Store, task: Task, actor: str, *, no_code: bool,
-              justification: str, evidence: str = "", no_evidence: str = "") -> Facts:
-    """Everything the guards may ask about, read once."""
+              justification: str, comment: str = "", evidence: str = "",
+              no_evidence: str = "") -> Facts:
+    """Everything the guards may ask about, read once.
+
+    `comment` and `justification` are the same string at every call site today, and they are
+    still two parameters: one is "the reasoning that earns a `no_code` close", the other is
+    "the findings a rejection must carry". Passing one for both reads as a coincidence, and the
+    day either grows a rule of its own the coincidence is what nobody would notice.
+    """
     lease = store.leases.get(task["id"])
     return Facts(
         evidence=Evidence(criteria=tuple(criteria_of(store, task["id"])),
@@ -30,7 +37,8 @@ def facts_for(store: Store, task: Task, actor: str, *, no_code: bool,
         has_live_lease=store.leases.held_by(task["id"], actor, now()),
         commits=len(store.events.of_task(task["id"], kinds=("commit",))),
         open_children=open_children(store, task["id"]),
-        no_code=no_code, justification=justification, reviewer=str(task.get("reviewer", "")),
+        no_code=no_code, justification=justification, comment=comment,
+        reviewer=str(task.get("reviewer", "")),
         entered_review_by=entered_review_by(store, task["id"]),
         unpushed=unpushed_on(store, lease["branch"] if lease else ""))
 

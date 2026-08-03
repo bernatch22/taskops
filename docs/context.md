@@ -23,25 +23,47 @@ disagreement is upstream of the coordination.
 The fix both point to is the same: treat context as **infrastructure** — versioned, owned, and
 delivered per task in slices — rather than as prose that accumulates.
 
-## 2 · Three kinds of fact
+## 2 · Four kinds of fact
 
 ```sh
 taskops context objective  "ship the refund flow before the audit"
 taskops context invariant  "never a Co-Authored-By trailer in a commit"
 taskops context decision   "queues over cron: retries are the whole reason, see tk-9c1e02"
+taskops context note       "I run pytest -x, not the whole suite" --mine
 ```
 
 | | What it is | Lifetime |
 |---|---|---|
-| **objective** | what we are chasing now | one at a time — a new one **supersedes** the old |
-| **invariant** | what must never break | long-lived; **every** agent gets **every** invariant |
+| **objective** | what we are chasing now | one **per owner** — a new one supersedes the last with the same owner |
+| **invariant** | what must never break | long-lived; **every** agent gets **every** project invariant |
 | **decision** | what was decided and *why* | permanent; exists to stop agents re-litigating settled questions |
+| **note** | standing, and neither of those | a habit, a warning. Usually somebody's own |
 
 ```sh
-taskops context show     # what is in force
+taskops context show     # the OVERVIEW — everybody's objectives, so you can see who is on what
+taskops context --mine   # …your page instead
 taskops context log      # …and everything we ever believed, retired ones marked
-taskops context retire <id>
+taskops context retire 0829cfb9      # a prefix is enough — the eight characters `show` prints
 ```
+
+## 2b · Two dimensions of scope
+
+`--labels` / `--files` narrow a fact by SUBJECT. `--owner` (or `--mine`) narrows it by PERSON:
+a fact somebody stated for themselves reaches their sessions and nobody else's.
+
+    the project's north          ──▶ everybody
+    ana's own objective          ──▶ ana's sessions and her agents
+    a decision  [db]             ──▶ cards that touch the database
+    ana's note                   ──▶ ana
+
+A worker is handed the project's facts **plus its own developer's**, so a slice grows by ONE
+whatever the size of the team — which is the whole reason `owner` is a filter rather than a
+label. Three developers each with an objective does not make every agent read four; past
+~150-200 standing instructions compliance decays, and a page that grew with the team would make
+every agent slightly worse each time somebody joined.
+
+An agent reads what the person who spawned it set: `agent:ana/w1` inherits `dev:ana`'s, the same
+"one person with two hands" comparison `reviewer: peer` makes.
 
 `retire` **appends**; it does not delete. An event log has no eraser, and a superseding event is the
 honest way to say "we changed our mind" — which is also the only way the log stays a record of how

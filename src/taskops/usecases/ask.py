@@ -42,7 +42,9 @@ def search(start: Path | str, query: str, *, limit: int = 20) -> list[Task]:
     """
     if (answer := read_remote_first(start, "search", {"query": query,
                                                       "limit": limit})) is not None:
-        return cast("list[Task]", answer)
+        # A LIST inside an object: the wire decoder drops a bare array, so this used to come
+        # back as `{}` and every remote search found nothing, with no error — see `_verbs`.
+        return cast("list[Task]", answer.get("tasks", []))
     if not query.strip():
         raise BadRequest("`query` is required — a non-empty string")
     with project(start) as store:

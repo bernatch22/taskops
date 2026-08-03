@@ -12,6 +12,9 @@ async and calls in from a threadpool, but there is no async twin of the engine.
 from __future__ import annotations
 
 from . import narration
+from ._contextviews import context_for
+from ._contextviews import history as context_log
+from ._contextviews import show as context_show
 from ._ghlink import links, read_link, remove_link, write_link
 from ._project import locate
 from ._range import Selector, parse_date
@@ -24,10 +27,7 @@ from .attention import attention
 from .browse import board_url, root_url
 from .capture import capture
 from .claim import next_task
-from .context import context_for
-from .context import history as context_log
 from .context import retire as context_retire
-from .context import show as context_show
 from .context import state as context_state
 from .dispatch import DispatchResult, dispatch
 from .dossier import digest, read_report, report_path, write_report
@@ -43,6 +43,8 @@ from .log import session_log
 from .login import is_session, login, logins, logout, session_of
 from .notelanding import note_landing
 from .plan import plan
+from .policy import set_policy
+from .policy import show as policy_show
 from .pushpull import Exchange, pull, push
 from .recover import Recovered, recover
 from .remote import add_remote, read_remote, remove_remote, require_remote
@@ -79,6 +81,8 @@ __all__ = [
     "login", "logout", "logins", "session_of", "is_session", "board_url", "root_url",
     # the standing facts: what we are chasing, what may not break, what was decided
     "context_state", "context_retire", "context_show", "context_log", "context_for",
+    # the standing settings: values the engine acts on, validated when they are written
+    "set_policy", "policy_show",
     # the live narration: started in the background, watched on the wire
     "narration", "is_wire", "parse_date",
     # who you are: a GitHub login, the sessions it mints, the repository a board is linked to

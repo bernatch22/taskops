@@ -85,6 +85,11 @@ class TaskView(TypedDict):
     """What is waiting on this one — the argument for finishing it today."""
 
     children: list[Task]
+    epic: Task | None
+    """The card this one is PART OF, resolved. `task.parent` is only an id, and an id is not
+    something a worker can read — so a child never learned it belonged to anything while its
+    parent had listed it all along. One direction of a tree is not a tree."""
+
     neighbours: list[Task]
     """Tasks whose `files` intersect this one's. The collision warning: an agent
     that reads this knows who to message before it starts, not after the merge."""

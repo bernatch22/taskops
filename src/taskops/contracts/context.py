@@ -20,10 +20,13 @@ from typing import Literal, TypedDict, get_args
 
 __all__ = ["Sort", "SORTS", "Fact", "ContextSlice", "CONTEXT_TASK", "CONTEXT_KIND"]
 
-Sort = Literal["objective", "invariant", "decision"]
+Sort = Literal["objective", "invariant", "decision", "note"]
 """objective — what we are chasing now; superseded, never deleted.
 invariant — what must never break; long-lived, and what EVERY worker gets.
-decision — what was decided and why (ADR-lite), so a settled question is not re-litigated."""
+decision — what was decided and why (ADR-lite), so a settled question is not re-litigated.
+note — anything standing that is none of those: a habit, a warning, a thing worth remembering.
+Usually somebody's OWN, which is what it is for — the other three are statements about the
+project and this is the one that does not have to be."""
 
 SORTS: tuple[Sort, ...] = get_args(Sort)
 """Derived, not retyped: a second hand-written list is how a sort becomes legal to the type
@@ -63,8 +66,19 @@ class Fact(TypedDict):
     surface reaches only the cards that share them."""
 
     horizon: str
+    """When an objective expires. Only an objective usually fills it."""
+
     owner: str
-    """Only an objective usually fills these — when it expires and whose call it is."""
+    """Whose fact this is — `dev:ana` — or "" for the project's.
+
+    The SECOND dimension of scope, and it works the same for all four sorts: a fact with an
+    owner reaches that dev and nobody else, one without reaches everybody. `labels`/`files`
+    narrow by SUBJECT, this narrows by PERSON, and a fact can carry both.
+
+    What it protects is the size of a slice. Three developers each stating their own objective
+    must not make every worker read four: everybody reads the project's and their own, so the
+    page grows by one no matter how many people are on the board.
+    """
 
     actor: str
     ts: float
@@ -78,5 +92,17 @@ class ContextSlice(TypedDict):
     """What one worker is handed: not the book, the page that applies to its card."""
 
     objective: Fact | None
+    """The PROJECT's — the north, which everybody reads whatever they are holding."""
+
+    yours: Fact | None
+    """The objective of whoever holds this card, when they have set one. Beside the project's
+    and not instead of it: "the team is shipping the importer" and "I am on the parser this
+    week" are both true, and a worker that only read the second lost the first."""
+
+    objectives: list[Fact]
+    """Every objective in force, the project's and one per dev. For the OVERVIEW — `context
+    show`, the board — never for a worker's slice: it is what answers "who is on what" when you
+    are deciding who to hand a card to."""
     invariants: list[Fact]
     decisions: list[Fact]
+    notes: list[Fact]

@@ -27,8 +27,8 @@ from ..contracts import Dep, PlanResult, Task
 from ..engine import record, unblock
 from ..storage import Store
 from . import _entry as field
-from ._after import resolve_after
 from ._project import caller, heartbeat, project
+from ._refs import resolve_after, resolve_parent
 from ._routing import call_remote, whoami
 from .acceptance import attach, criteria_in
 from .reviewer import for_new
@@ -47,12 +47,19 @@ def plan(start: Path | str, entries: list[dict[str, Any]], *,
     with project(start) as store:
         who = caller(store, actor)["id"]
         heartbeat(store, who)
-        created = [_create(store, entry, who) for entry in entries]
+        # Every id MINTED BEFORE the first insert, which is the whole mechanism behind
+        # `parent: 0`: the parent goes into the `created` event, and an event is the log's final
+        # word — so a second pass that fixed it up would leave the log describing a tree the
+        # board does not have. Ids are random, so minting them early costs nothing.
+        ids = [new_task_id() for _ in entries]
+        created = [_create(store, entry, who, ids, index)
+                   for index, entry in enumerate(entries)]
         deps = _wire(store, entries, created)
         return PlanResult(created=created, deps=deps, unblocked=unblock(store))
 
 
-def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
+def _create(store: Store, entry: dict[str, Any], who: str, ids: list[str],
+            mine: int) -> Task:
     """One entry -> a stored task. Starts in `backlog`; `unblock` promotes it.
 
     Deliberately never created `ready`: whether a task is pickable is a property of the
@@ -63,10 +70,10 @@ def _create(store: Store, entry: dict[str, Any], who: str) -> Task:
     if not title:
         raise BadRequest("every task needs a `title`")
     when = now()
-    task = Task(id=new_task_id(), title=title,
+    task = Task(id=ids[mine], title=title,
                 spec=str(entry.get("spec", "")).strip(), status="backlog",
                 priority=field.priority_of(entry),
-                parent=field.optional(entry, "parent"),
+                parent=resolve_parent(store, entry.get("parent"), ids, mine),
                 labels=field.strings(entry, "labels"),
                 files=field.strings(entry, "files"),
                 created_by=who, assignee=field.optional(entry, "assignee") or "",

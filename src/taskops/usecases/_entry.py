@@ -87,12 +87,12 @@ def references(entry: dict[str, Any]) -> list[object]:
 def stated(entry: dict[str, Any], name: str) -> str | None:
     """What the entry SAYS about a field, or None when it said nothing.
 
-    Three states, not two: absent (fall back to whatever the project decides), stated, and
-    stated-as-empty. Collapsing the last two is how a project-wide `reviewer: human` ended up
-    on a card that had explicitly asked for nobody to review it.
+    Three states, not two: absent (fall back to whatever the project's policy says), stated,
+    and stated-as-empty. Collapsing the last two is how a project-wide `reviewer: human` ended
+    up on a card that had explicitly asked for nobody to review it.
     """
     said = entry.get(name)
     # `None` reads as ABSENT, not as "explicitly nothing": an argparse flag nobody passed
     # arrives as None, and treating that as a statement would make every CLI card opt out of
-    # the project's default. To say nobody, say `none` — which `reviewer.named` normalises.
+    # the project's policy. To say nobody, say `none` — which `reviewer.named` normalises.
     return None if said is None else str(said).strip()

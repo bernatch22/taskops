@@ -132,11 +132,16 @@ def test_no_match_routes_to_nothing(project: Path) -> None:
 
 
 def test_the_stock_specialists_route_nothing_by_label(project: Path) -> None:
-    """`init` now writes taskops-worker and taskops-verifier into every project, so "no
-    registry" no longer exists — this pins what replaced it: the stock pair carries no
-    labels, so label routing still resolves to nothing until a project defines its own."""
+    """`init` writes our specialists into every project, so "no registry" no longer exists —
+    this pins what replaced it: none of the stock ones carries labels, so label routing still
+    resolves to nothing until a project defines its own.
+
+    The SET is asserted, not a count: each of these is a role the engine or a hook names by
+    hand somewhere, so one appearing or disappearing is a thing to notice rather than a number
+    to update.
+    """
     assert {a["name"] for a in specialists(project)} == {
-        "taskops-verifier", "taskops-worker", "taskops-fixer"}
+        "taskops-verifier", "taskops-worker", "taskops-fixer", "taskops-lead"}
     assert agent_for(project, ["etl"]) == ""
 
 

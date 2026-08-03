@@ -37,6 +37,7 @@ def view(store: Store, task_id: str) -> TaskView:
         blocked_by=_tasks(store, store.deps.open_blockers_of(task_id)),
         blocks=_tasks(store, store.deps.dependents_of(task_id)),
         children=store.tasks.children(task_id),
+        epic=store.tasks.get(task["parent"]) if task["parent"] else None,
         neighbours=_neighbours(store, task),
         thread=[e for e in history if e["kind"] in THREAD_KINDS],
         commits=[_commit(e) for e in history if e["kind"] == "commit"],
