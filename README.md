@@ -114,7 +114,7 @@ facts, git, and the server. Every command and every subcommand is here.
 | | |
 |---|---|
 | `taskops publish` | Push every `tk/` branch to origin, so a reviewer can see the diff. |
-| `taskops land <task>` | Merge a done card's branch into the trunk. |
+| `taskops land <task>` | Merge a done card's branch into the trunk. Finds it by the card's COMMITS, so a branch name that drifted between two clones still lands. `--no-push` merges and stops — the card stays unlanded until a plain `land` publishes it, which is how you run the suite in between. |
 | `taskops sync` | The board **through git**, for a project with no server: import, replay, unblock, export. |
 
 **The server**

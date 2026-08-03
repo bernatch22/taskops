@@ -184,7 +184,7 @@ shared trunk had never seen the work.
 would strand finished work behind something nobody is looking at — and the outcome is recorded on
 the board, so `taskops attention` lists it under `LAND`. From there it is a job for a
 `taskops-worker` sub-agent — a conflict is a card whose work happens to be a merge — and
-`taskops land <id>` is the retry once it is resolved.
+`taskops land <id>` is the retry once it is resolved — and it finds the branch by the card's commits rather than by the name `branch_for` computes, because two clones on two versions truncated that name one character apart and the trunk went without finished work. `--no-push` merges without publishing, for when the suite runs in between.
 
 A card that never carried code is silent here rather than reported as unlanded: filling a sweep
 with cards nobody can act on is how a sweep stops being read.

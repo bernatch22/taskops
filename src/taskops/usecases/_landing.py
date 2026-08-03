@@ -34,13 +34,17 @@ def landed(start: Path | str, answer: UpdateResult, status: str, who: str) -> Up
     from .notelanding import note_landing
 
     with project(start) as store:
-        if not store.events.of_task(answer["task"]["id"], kinds=("commit",)):
-            # Nothing to land, and saying so would be noise: a `no_code` close, a research
-            # card, a decision — real work that never produced a branch. Reporting those as
-            # "not in the trunk" would fill the sweep with cards nobody can act on.
-            return answer
+        commits = store.events.of_task(answer["task"]["id"], kinds=("commit",))
+    if not commits:
+        # Nothing to land, and saying so would be noise: a `no_code` close, a research card, a
+        # decision — real work that never produced a branch. Reporting those as "not in the
+        # trunk" would fill the sweep with cards nobody can act on.
+        return answer
     root = locate(start)
-    done = land(root, branch_for(answer["task"]))
+    shas = tuple(str(e["body"].get("sha", "")) for e in commits if e["body"].get("sha"))
+    # The NAME is a guess and the shas are not — see `_whichbranch`. Both, because the name is
+    # still the fast path and the right thing to print when it works.
+    done = land(root, branch_for(answer["task"]), shas=shas)
     # Recorded through the verb, so it reaches the BOARD. Written straight into this store it
     # reached the local cache and stopped there — on a project with a remote that is nobody's
     # board, so a card could sit unlanded for a week with every sweep reporting nothing.

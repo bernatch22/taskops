@@ -18,7 +18,14 @@ from .land import Landing, land
 __all__ = ["land_task"]
 
 
-def land_task(start: Path | str, task_id: str) -> tuple[str, Landing]:
-    """The card, and what happened when its branch met the trunk."""
-    card = ask(start, task_id)["task"]
-    return card["id"], land(locate(start), branch_for(card))
+def land_task(start: Path | str, task_id: str, *, push: bool = True) -> tuple[str, Landing]:
+    """The card, and what happened when its branch met the trunk.
+
+    The card's COMMITS travel with the guessed name, because this is the retry — the path a person
+    reaches after the automatic landing failed, and the one where a name computed by a different
+    clone is most likely to be why. `ask` already read the card's thread, so the shas cost nothing.
+    """
+    view = ask(start, task_id)
+    card = view["task"]
+    shas = tuple(commit["sha"] for commit in view["commits"] if commit["sha"])
+    return card["id"], land(locate(start), branch_for(card), shas=shas, push=push)

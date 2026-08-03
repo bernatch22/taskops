@@ -787,7 +787,7 @@ taskops open                               this board — or all of yours — in
 
 taskops sync                               reconcile with the committed log (the git path)
 taskops publish                            push every tk/ branch — the repair for stranded work
-taskops land <task>                        merge a done card's branch into the trunk
+taskops land <task> [--no-push]            merge a done card's branch into the trunk
 
 taskops serve [--root] [--port] [--readonly] [--no-create]   many boards on one port
 taskops serve init <name> · serve link <name> --github owner/repo   the no-GitHub path
