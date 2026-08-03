@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { Board } from "../src/components/Board";
 import { MilestoneModal } from "../src/components/MilestoneModal";
-import { peopleOf } from "../src/components/People";
+import { peopleOf, spell } from "../src/components/People";
 import { Menu, Picker } from "../src/components/Picker";
 import { ProjectModal } from "../src/components/ProjectModal";
 import type { Board as BoardData, ContextView } from "../src/contracts";
@@ -143,6 +143,13 @@ check("with nothing in anybody's hands, the board still names who is on it",
 check("and it is the developers, folded from their agents",
       quietFaces.every((person) => [...creators].some((id) => id.includes(person.dev))),
       quietFaces.map((p) => p.dev).join(", "));
+
+/* The time on a card is folded server-side (see tests/engine/test_timespent.py); what this pins is
+ * how it READS. Zero prints nothing on purpose: a card touched once has no span between its one event
+ * and nothing, and `0m` beside it reads as a measurement that came out empty. */
+check("time reads as hours and minutes", spell(5400) === "1h 30m" && spell(3600) === "1h"
+      && spell(240) === "4m", `${spell(5400)} · ${spell(3600)} · ${spell(240)}`);
+check("and zero prints NOTHING rather than 0m", spell(0) === "" && spell(20) === "", `"${spell(20)}"`);
 
 console.log("the project panel");
 const proj = renderToStaticMarkup(

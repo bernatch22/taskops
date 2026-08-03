@@ -22,7 +22,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
-import type { Activity, Board, ContextView, Event, Fact } from "../contracts";
+import type { Activity, Attended, Board, ContextView, Event, Fact } from "../contracts";
 import { ago } from "./bits";
 import { Overlay } from "./Overlay";
 
@@ -147,9 +147,22 @@ function Profile({ dev, person, context, onOpen, onClose }: {
     return () => { alive = false; };
   }, [dev]);
 
+  const [tab, setTab] = useState<"work" | "context">("work");
   const mine = (activity?.events ?? []).filter((e) => devOf(e.actor) === dev);
   const roll = (activity?.actors ?? []).filter((a) => devOf(a.actor) === dev);
   const own = ownFacts(context, dev);
+  /* Their agents' cards, MERGED per card: a dev works through several pairs of hands and two rows for
+   * one card would read as two cards. Same fold as every number in `Numbers`. */
+  const on = new Map<string, Attended>();
+  for (const roll_ of roll) {
+    for (const each of roll_.on) {
+      const into = on.get(each.task);
+      on.set(each.task, into
+        ? { task: each.task, seconds: into.seconds + each.seconds, events: into.events + each.events }
+        : each);
+    }
+  }
+  const hasContext = Boolean(own.objective) || own.decisions.length > 0;
   return (
     /* Through `Overlay`, which PORTALS to the body — and that is load-bearing here rather than
      * decorative: this is rendered inside the header, the header blurs its own backdrop, and an
@@ -163,49 +176,71 @@ function Profile({ dev, person, context, onOpen, onClose }: {
         <button className="close" onClick={onClose} title="close (Esc)">✕</button>
       </header>
 
+      {/* TWO TABS, because the modal answers two questions and stacking them made the second one
+        * something you scroll past: what has this person DONE, and what are they working under. The
+        * `context` tab is only offered when there is any — a tab that is always empty on a board
+        * where nobody writes their own facts is a control teaching people not to click. */}
+      {hasContext ? (
+        <div className="ctx-tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "work"}
+                  className={tab === "work" ? "on" : ""} onClick={() => setTab("work")}>Work</button>
+          <button role="tab" aria-selected={tab === "context"}
+                  className={tab === "context" ? "on" : ""}
+                  onClick={() => setTab("context")}>Context</button>
+        </div>
+      ) : null}
+
       <div className="ctx-body">
-        <Numbers roll={roll} />
+        {tab === "work" || !hasContext ? (
+          <>
+            <Numbers roll={roll} />
+            <section className="ctx-group">
+              <h4>Cards <span className="dim">what they touched, last {WINDOW}</span></h4>
+              {failed ? <p className="ctx-empty">could not read the log just now.</p>
+                : activity === null ? <p className="ctx-empty">reading…</p>
+                : <Cards events={mine} titles={activity.titles} holding={person?.holding ?? []}
+                         on={on} onOpen={onOpen} />}
+              {/* The bound, stated where the numbers are. A window capped at 600 events makes every
+                * total on this tab a partial one, and a partial number that does not say so is the
+                * exact failure this project keeps paying for. */}
+              {activity?.truncated
+                ? <p className="ctx-empty">The window hit its limit, so these totals are partial.</p>
+                : null}
+            </section>
+          </>
+        ) : (
+          <>
+            {own.objective ? (
+              <section className="ctx-group">
+                {/* Theirs, and INSIDE the open chapter — a change of wording and not of shape. A
+                  * dev's objective used to sit beside the project's north and outlive everything;
+                  * the north is a milestone now, and an objective is what this person is chasing
+                  * while that chapter is open. */}
+                <h4>Objective <span className="dim">theirs, inside the chapter in force</span></h4>
+                <p className="ctx-goal">
+                  {own.objective.text}
+                  {own.objective.horizon
+                    ? <span className="context-horizon"> by {own.objective.horizon}</span> : null}
+                </p>
+                {/* WHICH chapter, by title: an objective belongs to one, and "terminar el parser"
+                  * means two different things under the importer and under invoicing. */}
+                {chapterOf(context, own.objective.milestone)
+                  ? <p className="ctx-meta dim">in ◆ {chapterOf(context, own.objective.milestone)}</p>
+                  : null}
+              </section>
+            ) : null}
 
-        {own.objective ? (
-          <section className="ctx-group">
-            {/* Theirs, and INSIDE the open chapter — which is a change of wording and not of
-              * shape. A dev's objective used to sit beside the project's north and outlive
-              * everything; the north is a milestone now, and an objective is what this person is
-              * chasing while that chapter is open. */}
-            <h4>Objective <span className="dim">theirs, inside the chapter in force</span></h4>
-            <p className="ctx-goal">
-              {own.objective.text}
-              {own.objective.horizon
-                ? <span className="context-horizon"> by {own.objective.horizon}</span> : null}
-            </p>
-            {/* WHICH chapter, by title. An objective belongs to one, and "terminar el parser" means
-              * two different things under the importer and under invoicing. */}
-            {chapterOf(context, own.objective.milestone)
-              ? <p className="ctx-meta dim">in ◆ {chapterOf(context, own.objective.milestone)}</p>
-              : null}
-          </section>
-        ) : null}
-
-        {/* Their standing calls, and the framing is the point: this is context they hold while
-          * working on ANYTHING, not a note about one card. A hundred characters about a fixture
-          * belongs in that card's thread, which is a click away on the card itself. */}
-        {/* Split by LEVEL, which is where the split moved: it used to be by scope — unscoped means
-          * "every card they touch" — and that is still true, but it is the smaller difference now.
-          * A project-level fact of theirs is true in a year; a milestone-level one leaves every
-          * slice the day the chapter closes, and one list would have the second read as the first
-          * on exactly the day it stopped applying. */}
-        <Standing title="Their standing calls" note="project level — they outlive every chapter"
-                  facts={own.decisions.filter((f) => f.level === "project")} />
-        <Standing title="In this chapter" note="theirs while it is open, and no longer"
-                  facts={own.decisions.filter((f) => f.level !== "project")} />
-
-        <section className="ctx-group">
-          <h4>Cards <span className="dim">what they touched, last {WINDOW}</span></h4>
-          {failed ? <p className="ctx-empty">could not read the log just now.</p>
-            : activity === null ? <p className="ctx-empty">reading…</p>
-            : <Cards events={mine} titles={activity.titles} holding={person?.holding ?? []}
-                     onOpen={onOpen} />}
-        </section>
+            {/* Their standing calls, and the framing is the point: context they hold while working
+              * on ANYTHING, not a note about one card. Split by LEVEL — a project-level fact of
+              * theirs is true in a year, a milestone-level one leaves every slice the day the
+              * chapter closes, and one list would have the second read as the first on exactly the
+              * day it stopped applying. */}
+            <Standing title="Their standing calls" note="project level — they outlive every chapter"
+                      facts={own.decisions.filter((f) => f.level === "project")} />
+            <Standing title="In this chapter" note="theirs while it is open, and no longer"
+                      facts={own.decisions.filter((f) => f.level !== "project")} />
+          </>
+        )}
       </div>
     </Overlay>
   );
@@ -252,10 +287,21 @@ function Standing({ title, note, facts }: {
 
 /* The last cards they touched, newest first, deduplicated. Cards and not EVENTS: nine commits on
  * one card is one thing they worked on, and a feed would rank it above three cards they closed. */
-function Cards({ events, titles, holding, onOpen }: {
+/* `5400` -> `1h 30m`, `240` -> `4m`, `0` -> "". Zero prints NOTHING rather than `0m`: a card touched
+ * once has no span between its one event and nothing, and `0m` beside it reads as a measurement that
+ * came out empty instead of a question that cannot be asked. */
+export function spell(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  if (!minutes) return "";
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
+}
+
+function Cards({ events, titles, holding, on, onOpen }: {
   events: Event[];
   titles: Record<string, string>;
   holding: string[];
+  on: Map<string, Attended>;
   onOpen: (id: string) => void;
 }): JSX.Element {
   const order: string[] = [];
@@ -272,6 +318,16 @@ function Cards({ events, titles, holding, onOpen }: {
           <button className="ctx-card" onClick={() => onOpen(id)}>
             <code className="context-id">{id}</code>
             <span className="ctx-card-title">{titles[id] ?? "…"}</span>
+            {/* At least this long — the measure caps every gap, so it under-reports on purpose. The
+              * title says which it is, because a bound drawn as if it were the answer is worse than
+              * no number: nothing in the log records when somebody stopped. */}
+            {spell(on.get(id)?.seconds ?? 0) ? (
+              <span className="ctx-card-time"
+                    title={`at least this long: the gaps between ${on.get(id)?.events} events, `
+                           + "each capped at 30m, so it under-reports rather than guessing"}>
+                {spell(on.get(id)?.seconds ?? 0)}
+              </span>
+            ) : null}
             {holding.includes(id) ? <span className="context-horizon">now</span> : null}
           </button>
         </li>

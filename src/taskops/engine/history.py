@@ -14,6 +14,7 @@ from ..contracts import Activity, ActorRoll, Event
 from ..contracts.context import CONTEXT_TASK
 from ..storage import Store
 from .activity import tasks_of
+from .timespent import attended
 
 __all__ = ["activity", "rolls", "MAX_EVENTS"]
 
@@ -80,4 +81,8 @@ def _roll(actor: str, events: list[Event]) -> ActorRoll:
                      # This is the only place the fact lives: the task row shows the state, never
                      # who moved it there.
                      done=kinds.count("done"),
+                     # Over the SAME events as every count above it. A time roll-up computed on its
+                     # own window would summarise something the reader cannot see beside it, which
+                     # is the mistake this module's docstring already argues against once.
+                     on=attended(events),
                      first_seen=min(stamps), last_seen=max(stamps))
