@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.16 — un hueco mas largo que el umbral aporta cero
+
+La reconciliacion nueva de 0.5.15 atrapo al propio fold: la suma per-card corria adelante de la suma
+de spans por exactamente 30m x fronteras de tanda. El fold "capaba" el hueco largo en vez de tirarlo —
+cada noche facturaba media hora de atencion que nadie atestiguo, una estimacion con nombre de piso. Y
+el corte de tandas usa el MISMO umbral con el significado contrario. Un umbral, un significado: pasado
+el umbral, la tanda termino y el tiempo es cero. Ahora las dos descomposiciones del header suman el
+mismo numero, que es como un lector chequea cualquiera de las dos.
+
 ## 0.5.15 — una vista por pregunta: la timeline de tandas, o el total por card
 
 Tres quejas del mismo lector, las tres del mismo diseño: grupos y contabilidad per-card interleaved
