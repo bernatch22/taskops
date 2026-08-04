@@ -89,6 +89,24 @@ def test_a_setting_this_version_does_not_know_is_refused_naming_the_ones_it_has(
     assert "reviewer" in str(caught.value)
 
 
+def test_a_day_zone_that_is_not_a_zone_is_refused_with_the_name_it_meant(project: Path) -> None:
+    """`Madrid` is the mistake people make, and a zone the tz database does not know would
+    otherwise be stored, read back by every report, and raise in the middle of an unrelated
+    command. Naming `Europe/Madrid` back is the whole answer."""
+    with pytest.raises(BadRequest) as caught:
+        set_policy(project, "day_zone", "Madrid", actor="dev:berna")
+    assert "Europe/Madrid" in str(caught.value)
+    assert policy_show(project) == [], "nothing was written"
+
+
+def test_the_day_zone_reads_back_and_can_be_cleared(project: Path) -> None:
+    """Empty means "each machine's own", which is what every project says before anybody decides
+    whose midnight the day starts at — and how a project goes back to that."""
+    assert set_policy(project, "day_zone", "Europe/Madrid",
+                      actor="dev:berna")["value"] == "Europe/Madrid"
+    assert set_policy(project, "day_zone", "", actor="dev:berna")["value"] == ""
+
+
 def test_every_name_has_a_validator() -> None:
     """The lookup IS the registration: a name with no validator is a setting nothing checks,
     which is the state this whole module exists to leave behind. Adding a `Name` without a

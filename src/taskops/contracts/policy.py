@@ -20,9 +20,15 @@ from .context import CONTEXT_TASK
 
 __all__ = ["Name", "NAMES", "Policy", "POLICY_KIND", "POLICY_TASK"]
 
-Name = Literal["reviewer"]
-"""The settings that exist. One so far, and the Literal is the point: a name this version does
-not know is refused at the door instead of stored as a setting nothing will ever read."""
+Name = Literal["reviewer", "day_zone"]
+"""The settings that exist. The Literal is the point: a name this version does not know is
+refused at the door instead of stored as a setting nothing will ever read.
+
+`day_zone` is where a project's DAY starts — the IANA zone every dossier's midnight is cut at.
+A setting rather than a constant because it is a fact about a TEAM: one machine has no
+disagreement to settle, and a board rendered from two machines three hours apart has nothing
+else that can settle it. Empty means each machine uses its own, which is what every project had
+before this existed."""
 
 NAMES: tuple[Name, ...] = get_args(Name)
 """Derived, never retyped — the same rule `EVENT_KINDS` and `SORTS` keep. A second hand-written

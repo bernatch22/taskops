@@ -17,7 +17,8 @@ from ._acceptance import Evidence, evidenced
 from .activity import fleet, standup
 from .attention import waiting_on
 from .bus import BUS, EventBus
-from .day import date_of, day_report, first_date, label_of, period_report, shift
+from .calendar import date_of, day_zone, offset_of, shift, window
+from .day import day_report, first_date, label_of, period_report
 from .gitstate import branch_state, branch_states
 from .history import activity
 from .identity import parse, resolve
@@ -25,7 +26,15 @@ from .log import build, record, relay
 from .machine import Facts, allowed_from, check_move
 from .narrate import OnPass, OnText, narrate
 from .project import board, counts
-from .reports import NO_STAMP, missing_events, stamp, stamped_seq
+from .reports import (
+    NO_OFFSET,
+    NO_STAMP,
+    missing_events,
+    stamp,
+    stamp_for,
+    stamped_offset,
+    stamped_seq,
+)
 from .scheduler import branch_for, claim, hand_back, open_children, ready_tasks, sweep_dead, unblock
 from .team import team
 from .wire import WIRE, Broadcast, is_wire
@@ -35,4 +44,6 @@ __all__ = ["Facts", "Evidence", "evidenced", "check_move", "allowed_from", "reso
            "build", "relay", "BUS", "EventBus", "unblock", "hand_back", "ready_tasks", "claim",
            "branch_for", "sweep_dead", "open_children", "board", "standup", "waiting_on",
     "team", "fleet", "activity", "day_report", "period_report", "first_date", "label_of", "shift", "date_of",
-           "counts", "replay", "narrate", "OnPass", "OnText", "stamp", "stamped_seq", "NO_STAMP", "missing_events", "branch_state", "branch_states", "Launched", "WIRE", "Broadcast", "is_wire"]
+           "day_zone", "offset_of", "window",
+           "counts", "replay", "narrate", "OnPass", "OnText", "stamp", "stamp_for", "stamped_seq", "stamped_offset",
+           "NO_STAMP", "NO_OFFSET", "missing_events", "branch_state", "branch_states", "Launched", "WIRE", "Broadcast", "is_wire"]

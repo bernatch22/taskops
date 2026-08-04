@@ -15,7 +15,8 @@ import pytest
 from taskops._errors import BadRequest
 from taskops.contracts import Task
 from taskops.engine import record
-from taskops.engine.day import day_report, window
+from taskops.engine.calendar import window
+from taskops.engine.day import day_report
 from taskops.engine.diffstat import numstats, parse
 from taskops.storage import Store
 
@@ -73,7 +74,7 @@ def test_a_card_closed_after_midnight_belongs_to_the_CLOSING_day(store: Store) -
 
 
 def _next_date(midnight: float) -> str:
-    from taskops.engine.day import date_of
+    from taskops.engine.calendar import date_of
 
     return date_of(midnight + 3600.0)
 
@@ -118,6 +119,37 @@ def test_the_day_counts_commits_and_shows_what_is_still_open(store: Store) -> No
     assert report["commits_total"] == 1
     assert [t["id"] for t in report["in_flight"]] == ["tk-1"]
     assert [t["id"] for t in report["blocked"]] == ["tk-2"]
+
+
+def test_a_card_created_here_and_closed_LATER_stays_in_this_day_s_plan(store: Store) -> None:
+    """The regression that made a regenerated dossier report less than the original.
+
+    `opened` filtered on the card's status AS OF NOW, so a card planned on Tuesday and finished
+    on Thursday disappeared from Tuesday's report — and Tuesday's `closed` never held it either,
+    because it closed on Thursday. On the axion board 2026-07-30 fell from `5 opened` to `3` to
+    `2` over three regenerations, one line of that day's planning lost per card that closed.
+    """
+    start, _ = window(DATE)
+    _task(store, "tk-1", status="done")            # closed two days after this window
+    _log(store, "tk-1", "dev:berna", "created", start + 10.0, title="Work tk-1")
+    _log(store, "tk-1", "dev:berna", "done", start + 200_000.0, to="done")
+
+    report = day_report(store, DATE)
+    assert [c["task"]["id"] for c in report["opened"]] == ["tk-1"]
+    assert [c["task"]["id"] for c in report["closed"]] == [], "it did not close on this day"
+
+
+def test_a_card_created_AND_closed_here_is_only_in_the_closed_section(store: Store) -> None:
+    """`closed` already tells that card's whole story with its commits and its conversation.
+    Printing it under `Abierto` too invites a reader to count it twice."""
+    start, _ = window(DATE)
+    _task(store, "tk-1", status="done")
+    _log(store, "tk-1", "dev:berna", "created", start + 10.0, title="Work tk-1")
+    _log(store, "tk-1", "dev:berna", "done", start + 20.0, to="done")
+
+    report = day_report(store, DATE)
+    assert [c["task"]["id"] for c in report["closed"]] == ["tk-1"]
+    assert report["opened"] == []
 
 
 def test_a_closed_card_carries_its_commits_with_their_sizes(store: Store) -> None:

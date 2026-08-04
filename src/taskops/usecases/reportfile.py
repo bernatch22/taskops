@@ -9,9 +9,16 @@ The rule, in the order it is applied:
 
 1. The server does not have the file → store it.
 2. Byte-identical to what we have → store it (a no-op, so a re-push is quiet).
-3. Both sides carry a stamp and theirs is HIGHER → store it. A higher `max_seq` means that
+3. The two were cut at DIFFERENT UTC offsets → `ReportConflict`, before `max_seq` is even
+   looked at. They are accounts of two different windows that share a name, so neither is the
+   later version of the other and the seq comparison in rule 4 would be answering a question
+   nobody asked. This is the axion 2026-07-30 case: a copy generated in UTC-3 held 8 commits
+   and 5 opened cards, the copy generated in UTC+2 held 5 and 3, and the second had the higher
+   seq. Fix it by deciding whose midnight the project uses — `taskops policy day_zone <zone>` —
+   and regenerating both.
+4. Both sides carry a stamp and theirs is HIGHER → store it. A higher `max_seq` means that
    copy was generated over more of the log, so it is the later account of the same day.
-4. Anything else → `ReportConflict`, carrying both stamps. That covers theirs being older,
+5. Anything else → `ReportConflict`, carrying both stamps. That covers theirs being older,
    the two being equal but different, and either side being UNSTAMPED — an unstamped file was
    written or edited outside taskops, which is precisely the copy nobody may clobber.
 
@@ -36,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from .._errors import BadRequest, ReportConflict
-from ..engine import NO_STAMP, stamped_seq
+from ..engine import NO_OFFSET, NO_STAMP, stamped_offset, stamped_seq
 from ._project import project
 from .dossier import report_path
 
@@ -73,18 +80,29 @@ def write_report_file(start: Path | str, label: str, content: str, *,
             path.write_text(content, encoding="utf-8")
             return {"stored": True}
         ours, theirs = stamped_seq(current), stamped_seq(content)
+        here, there = stamped_offset(current), stamped_offset(content)
+        if NO_OFFSET not in (here, there) and here != there:
+            raise _conflict(label, ours=ours, theirs=theirs, why=_zones(here, there))
         if ours != NO_STAMP and theirs > ours:
             path.write_text(content, encoding="utf-8")
             return {"stored": True}
         raise _conflict(label, ours=ours, theirs=theirs)
 
 
-def _conflict(label: str, *, ours: int, theirs: int) -> ReportConflict:
+def _conflict(label: str, *, ours: int, theirs: int, why: str = "") -> ReportConflict:
     """The refusal, with the sentence that names what the caller is actually looking at."""
-    clash = ReportConflict(f"{label}: {_why(ours, theirs)} — read this server's copy first, "
-                           f"or push again with force (its narration is then lost)")
+    clash = ReportConflict(f"{label}: {why or _why(ours, theirs)} — read this server's copy "
+                           f"first, or push again with force (its narration is then lost)")
     clash.ours, clash.theirs = ours, theirs
     return clash
+
+
+def _zones(here: str, there: str) -> str:
+    """Why a higher seq settles nothing here. Named in the message because the action is not
+    "pick one" — it is to decide whose midnight the project cuts days at."""
+    return (f"this server's copy cuts the day at {here} and yours at {there}, so they are two "
+            f"different windows with one name and neither is newer — set "
+            f"`taskops policy day_zone <IANA zone>` and regenerate both")
 
 
 def _why(ours: int, theirs: int) -> str:

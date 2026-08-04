@@ -27,6 +27,7 @@ from ..storage import Store
 from ..storage.policy import policies
 from ._project import caller, heartbeat, project
 from ._routing import call_remote, read_remote_first, whoami
+from .dayzone import named as _day_zone
 from .reviewer import named as _reviewer
 
 __all__ = ["set_policy", "show", "refuse_if_policy"]
@@ -35,7 +36,8 @@ _KIND = cast("EventKind", POLICY_KIND)
 """`EventKind` is a Literal in layer 0 and this module may not widen it — the cast names the one
 place this kind enters the log."""
 
-_VALIDATORS: dict[str, Callable[[Store, str], str]] = {"reviewer": _reviewer}
+_VALIDATORS: dict[str, Callable[[Store, str], str]] = {"reviewer": _reviewer,
+                                                       "day_zone": _day_zone}
 """What each setting accepts. A name with no validator is a name nothing checks, so the lookup
 is also the registration: `NAMES` and this table are asserted to agree in the tests."""
 

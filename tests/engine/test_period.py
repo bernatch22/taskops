@@ -12,7 +12,8 @@ import pytest
 
 from taskops._errors import BadRequest
 from taskops.contracts import ActorRoll, ClosedCard, CommitStat, PeriodReport, Task
-from taskops.engine.day import MAX_CLOSED, first_date, label_of, period_report, shift, window
+from taskops.engine.calendar import shift, window
+from taskops.engine.day import MAX_CLOSED, first_date, label_of, period_report
 from taskops.render import render_day
 from taskops.storage import Store
 from taskops.usecases._range import Selector, resolve

@@ -27,7 +27,7 @@ from ..engine import (
     missing_events,
     narrate,
     period_report,
-    stamp,
+    stamp_for,
     stamped_seq,
 )
 from ..render import is_pending, render_day, render_report
@@ -151,5 +151,5 @@ def _generate(store: Store, span: tuple[str, str, str]) -> str:
     commit. The terminal keeps the short form — this is the copy somebody reads INSTEAD of the
     git log a month later, and a truncation it cannot expand is a fact permanently lost.
     """
-    return render_report(stamp(_label(span), store.events.max_seq(), now()),
+    return render_report(stamp_for(store, _label(span), span[0], now()),
                          render_day(period_report(store, *span), detail="full"))

@@ -19,7 +19,7 @@ from taskops._clock import now
 from taskops._errors import AlreadyNarrating, BadRequest, NarrationFailed, Unreachable
 from taskops._ids import event_id
 from taskops.contracts import Event
-from taskops.engine.day import date_of, shift, window
+from taskops.engine.calendar import date_of, shift, window
 from taskops.render import NARRATION
 from taskops.storage import Store
 from taskops.usecases.dossier import report_path

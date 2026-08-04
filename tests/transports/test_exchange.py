@@ -251,6 +251,41 @@ def test_an_unstamped_file_is_never_clobbered_by_a_stamped_one(route: Any, proje
     assert "by hand" in body_of(reply)["error"]
 
 
+def zoned(seq: int, offset: str, prose: str) -> str:
+    """A narration whose stamp says which midnight the window was cut at."""
+    return f"{stamp('2026-07-28', seq, 0.0, offset)}\n\n# 2026-07-28\n\n{prose}\n"
+
+
+def test_two_copies_cut_at_different_offsets_conflict_however_high_the_stamp(
+        route: Any, project: Path) -> None:
+    """The axion 2026-07-30 case, and the reason `max_seq` cannot arbitrate it. The copy with
+    the HIGHER seq held 5 commits and 3 opened cards; the earlier one held 8 and 5, because it
+    was cut at UTC-3 and the other at UTC+2. They are two windows with one name, so "later,
+    therefore fuller" is false and rule 3 must never be reached.
+    """
+    written(project, "2026-07-28", zoned(20, "-0300", "Juan's day."))
+    reply = route(put("2026-07-28", zoned(99, "+0200", "Berna's day.")))
+    assert reply.status == 409
+    assert body_of(reply)["code"] == "report_conflict"
+    assert "day_zone" in body_of(reply)["error"], "and it names the decision that fixes it"
+    assert "Juan's day." in (project / ".taskops" / "reports" / "2026-07-28.md").read_text()
+
+
+def test_the_same_offset_still_lets_a_higher_stamp_win(route: Any, project: Path) -> None:
+    """The guard is about DIFFERENT windows. Two accounts of the same one are ordered by how
+    much of the log each saw, exactly as before."""
+    written(project, "2026-07-28", zoned(10, "+0200", "Half a day."))
+    assert route(put("2026-07-28", zoned(20, "+0200", "The whole day."))).status == 200
+
+
+def test_a_report_from_before_the_offset_existed_is_not_treated_as_a_clash(
+        route: Any, project: Path) -> None:
+    """Every dossier ever committed predates the field. Reading their silence as disagreement
+    would make all of them unpushable, which is a bigger outage than the bug."""
+    written(project, "2026-07-28", narration(10, "Half a day."))
+    assert route(put("2026-07-28", zoned(20, "+0200", "The whole day."))).status == 200
+
+
 def test_a_put_without_content_is_a_400(route: Any) -> None:
     assert route(send("PUT", "/api/report/file", {"label": "2026-07-28"})).status == 400
 

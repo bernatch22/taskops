@@ -14,7 +14,7 @@ from ..contracts import Activity, ActorRoll, Event
 from ..contracts.context import CONTEXT_TASK
 from ..storage import Store
 from .activity import tasks_of
-from .timespent import attended, stretches
+from .timespent import attended, stretches, worked
 
 __all__ = ["activity", "rolls", "MAX_EVENTS"]
 
@@ -76,10 +76,17 @@ def rolls(events: list[Event]) -> list[ActorRoll]:
 
 def _roll(actor: str, events: list[Event]) -> ActorRoll:
     """Tasks, not events: an actor that commented forty times on one card has done less than one
-    that closed four, and counting events would rank them the other way round."""
+    that closed four, and counting events would rank them the other way round.
+
+    Counted over the WORKED events, the same universe every other number here is folded from. It
+    used to count every event, and the two halves of one header disagreed: a bulk
+    `tasks edit --milestone` over sixty-two cards read as "81 cards" beside "2h 31m at least" —
+    sixty-one of them touched by bookkeeping only, with no time on any. Two numbers side by side
+    must count the same thing, or the reader's first sum indicts them both.
+    """
     stamps = [event["ts"] for event in events]
     kinds = [event["kind"] for event in events]
-    return ActorRoll(actor=actor, tasks=len({event["task"] for event in events}),
+    return ActorRoll(actor=actor, tasks=len({event["task"] for event in worked(events)}),
                      commits=kinds.count("commit"),
                      comments=kinds.count("comment") + kinds.count("message"),
                      # A close is its OWN kind — `update` writes `done` rather than `status` when

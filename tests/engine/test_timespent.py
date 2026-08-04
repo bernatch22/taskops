@@ -242,3 +242,16 @@ def test_a_sitting_s_rows_ADD_UP_to_its_span() -> None:
     assert {e["task"]: e["seconds"] for e in found["spent"]} == {
         "tk-a": 6 * MINUTE, "tk-b": 2 * MINUTE, "tk-c": 3 * MINUTE}
     assert sum(e["seconds"] for e in found["spent"]) == found["ended"] - found["started"]
+
+
+def test_the_header_s_card_count_and_its_time_count_the_SAME_universe() -> None:
+    """A bulk `tasks edit --milestone` over sixty-two cards read as "81 cards" beside "2h 31m at
+    least" — sixty-one touched by bookkeeping only, no time on any. The reader's first sum indicts
+    both numbers. So `tasks` folds over the same worked events every other number does: a batch of
+    `created` and `edited` counts zero cards, and one real comment counts its one."""
+    from taskops.engine.history import rolls
+
+    batch = [ev(f"tk-{n}", n, kind="edited") for n in range(62)]
+    batch.append(ev("tk-real", 100, kind="comment"))
+    (roll,) = rolls(batch)
+    assert roll["tasks"] == 1, "the sixty-two bookkeeping touches are not cards worked"
