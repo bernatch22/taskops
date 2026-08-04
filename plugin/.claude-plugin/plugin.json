@@ -1,7 +1,7 @@
 {
   "name": "taskops",
   "displayName": "taskops — shared tasks for agents",
-  "version": "0.5.13",
+  "version": "0.5.14",
   "description": "Persistent tasks with a dependency DAG, atomic claims that survive a crashed agent, every commit bound to the work that motivated it, and agent-to-agent messaging.",
   "author": {
     "name": "Bernardo Castro",

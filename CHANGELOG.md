@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.14 — un dossier regenerado no puede contar MENOS pasado
+
+Dos defectos del mismo dia, encontrados diffeando las dos generaciones del 2026-07-30 del board de
+axion: la primera (max_seq 450, escrita el 07-31) decia `5 opened · 8 commits`, la segunda (max_seq
+556, escrita el 08-03) decia `3 opened · 5 commits`. Un evento es un hecho del pasado; una
+regeneracion posterior no puede ver menos.
+
+**Las cards que se perdieron: `opened` filtraba por el estado de HOY.** Una card planeada el martes y
+cerrada el jueves desaparecia del dossier del martes — ya no estaba abierta, y el `closed` del martes
+tampoco la tenia porque cerro el jueves. Perdida silenciosa y permanente: el 07-30 bajo de 5 a 3 a 2
+en tres regeneraciones, una linea de la planificacion de ese dia por cada card que cerraba. Ahora la
+unica condicion que se lee es lo que hizo la propia ventana — el set de eventos `done` que cayeron
+dentro, el mismo del que sale `closed` — y la card se imprime con su estado actual, que es un hecho
+("planeada ese dia, terminada despues") y no una reconstruccion adivinada.
+
+**Los commits no se perdieron: se movieron, y eso es un defecto distinto.** El 450 se genero en UTC-3
+y el 556 en UTC+2, asi que tres commits del 07-30 en Argentina son del 07-31 en Madrid. Sumados los
+dos dias, los dos renders dan 15: la particion cambia, nada se pierde. Pero el dossier es un ARCHIVO
+committeado, asi que el segundo pisa al primero sin conflicto que ver, y `max_seq` no puede arbitrar
+— la copia mas pobre tenia el seq mas alto porque se genero sobre mas log Y sobre otra ventana.
+
+Entonces: el corte del dia es una **policy del proyecto**, `taskops policy day_zone Europe/Madrid`,
+sin setear equivale al comportamiento anterior (la zona de cada maquina). El offset que uso la
+ventana va en el stamp (`tz=+0200`), y dos copias cortadas a offsets distintos se refusan con un 409
+que nombra `day_zone`, en vez de decidirse por seq.
+
+`engine/day.py` se partio: `engine/calendar.py` es la regla (donde empieza el dia), `day.py` es la
+proyeccion.
+
 ## 0.5.13 — las filas del perfil vuelven a sumar el header
 
 El header decia 7h 21m y las filas visibles sumaban una: el dedupe que evitaba filas duplicadas tiraba
