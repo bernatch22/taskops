@@ -1035,3 +1035,9 @@ ol.md-list li { list-style: decimal; }
 .cards-head { margin: 12px 0 6px; font-size: 11px; font-weight: 600;
               letter-spacing: .05em; text-transform: uppercase; }
 .cards-head .cards-note { font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* The sub-toggle inside the Cards section, smaller than the modal's own tabs, with the
+   reconciliation note beside it — the check every wrong version of this panel failed. */
+.ctx-tabs.subtabs { padding: 2px 0 8px; }
+.ctx-tabs.subtabs button { font-size: 10.5px; padding: 2px 8px; }
+.ctx-tabs.subtabs .cards-note { margin-left: auto; font-size: 10.5px; align-self: center; }

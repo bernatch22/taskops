@@ -352,25 +352,29 @@ function Standing({ title, note, facts }: {
 
 /* The last cards they touched, newest first, deduplicated. Cards and not EVENTS: nine commits on
  * one card is one thing they worked on, and a feed would rank it above three cards they closed. */
-/* Exported for the smoke, like `Menu`: the bug this section fixes was caught by a reader summing
- * the visible rows against the header, so the smoke has to be able to do the same sum. */
-export function Cards({ sittings, titles, holding, on, onOpen }: {
+/* Exported for the smoke, like `Menu`: every shape this section has had was caught wrong by a
+ * reader doing a sum the static render could not do, so the smoke has to be able to do the sums.
+ *
+ * ONE VIEW PER QUESTION, behind a toggle — the previous shape interleaved them and could not be
+ * reconciled against anything. "By sitting" is the timeline: EVERY sitting, solo ones included,
+ * newest first, each with its date, its span, and its cards' in-sitting minutes — so the when of
+ * solo work is finally visible, and the spans add up to the header. "By card" is the accounting:
+ * one row per card with its period total, and those add up to the header too. Same total, two
+ * decompositions, and neither list repeats the other's rows.
+ */
+export function Cards({ sittings, titles, holding, on, onOpen, view: opening = "sittings" }: {
   sittings: Stretch[];
   titles: Record<string, string>;
   holding: string[];
   on: Map<string, Attended>;
   onOpen: (id: string) => void;
+  view?: "sittings" | "cards";
 }): JSX.Element {
+  const [view, setView] = useState<"sittings" | "cards">(opening);
   const [shown, setShown] = useState(PAGE);
-  /* TWO sections, because they answer two different questions and a first version tried to make one
-   * list do both jobs and lied doing it. The groups answer "what was open at the same time", and
-   * their minutes are the SITTING's. The card list answers "where did the period's time go", and its
-   * rows are period totals — it is the section that must add up to the header above, exactly,
-   * because a reader summed the visible rows against the header and got one seventh of it: every
-   * card that appeared in some group had lost its own row, so all its solo work was drawn nowhere. */
-  const groups = sittings
+  const real = sittings
     .map((s) => ({ ...s, spent: s.spent.filter((e) => e.task && e.task !== "project") }))
-    .filter((s) => s.spent.length > 1);
+    .filter((s) => s.spent.length);
   const totals = [...on.values()].filter((e) => e.task && e.task !== "project")
     .sort((a, b) => b.seconds - a.seconds || b.events - a.events);
   if (!totals.length) return <p className="ctx-empty">nothing in this period.</p>;
@@ -380,8 +384,7 @@ export function Cards({ sittings, titles, holding, on, onOpen }: {
         <code className="context-id">{id}</code>
         <span className="ctx-card-title">{titles[id] ?? "…"}</span>
         {/* At least this long — the measure caps every gap, so it under-reports on purpose. The
-          * tooltip says which it is: a bound drawn as if it were the answer is worse than no
-          * number, since nothing in the log records when somebody stopped. */}
+          * tooltip says which number this is: a bound drawn as the answer is worse than none. */}
         {spell(seconds) ? (
           <span className={`ctx-card-time ${heat(seconds)}`}
                 title={`${note}: ${events} event(s), the gaps between them each capped at 30m — `
@@ -393,46 +396,72 @@ export function Cards({ sittings, titles, holding, on, onOpen }: {
       </button>
     </li>
   );
+  const pick = (next: "sittings" | "cards"): void => { setView(next); setShown(PAGE); };
   return (
     <>
-      {groups.length ? (
-        <ul className="ctx-list sittings">
-          {groups.map((sitting) => (
-            <li key={`${sitting.started}`} className="sitting together">
-              <p className="sitting-head dim">
-                {sitting.spent.length} at the same time
-                <span className="sitting-when"> · {when(sitting)}</span>
-                {/* The span, beside rows that PARTITION it — what makes the group checkable, and
-                  * how a reader caught the previous version being wrong. */}
-                <span className="sitting-span"> · {spell(sitting.ended - sitting.started)}</span>
-              </p>
-              <ul className="ctx-list">
-                {sitting.spent.map((e) => row(e.task, e.seconds, e.events, "in this sitting"))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <p className="cards-head dim">Per card <span className="cards-note">whole period — these add
-        up to the total above</span></p>
-      <ul className="ctx-list">
-        {totals.slice(0, shown).map((e) => row(e.task, e.seconds, e.events, "over the period"))}
-      </ul>
-      {totals.length > shown ? (
-        <button className="linkish" onClick={() => setShown(shown + PAGE)}>
-          {totals.length - shown} more →
-        </button>
-      ) : null}
+      <div className="ctx-tabs subtabs" role="tablist">
+        <button role="tab" aria-selected={view === "sittings"}
+                className={view === "sittings" ? "on" : ""}
+                onClick={() => pick("sittings")}>By sitting</button>
+        <button role="tab" aria-selected={view === "cards"}
+                className={view === "cards" ? "on" : ""}
+                onClick={() => pick("cards")}>By card</button>
+        {/* The reconciliation, stated: it is the check every wrong version of this panel failed. */}
+        <span className="cards-note dim">
+          {view === "sittings" ? "the spans add up to the total above"
+                               : "whole period — these add up to the total above"}
+        </span>
+      </div>
+      {view === "sittings" ? (
+        <>
+          <ul className="ctx-list sittings">
+            {real.slice(0, shown).map((sitting) => (
+              <li key={`${sitting.started}`}
+                  className={sitting.spent.length > 1 ? "sitting together" : "sitting"}>
+                {/* EVERY sitting gets its header — the solo ones used to be folded away, so the
+                  * WHEN of anything worked alone was drawn nowhere. Dated, because "all time"
+                  * spans months and two sittings ten days apart both said 10:08. */}
+                <p className="sitting-head dim">
+                  {sitting.spent.length > 1 ? `${sitting.spent.length} at the same time · ` : ""}
+                  <span className="sitting-when">{when(sitting)}</span>
+                  <span className="sitting-span"> · {spell(sitting.ended - sitting.started) || "<1m"}</span>
+                </p>
+                <ul className="ctx-list">
+                  {sitting.spent.map((e) => row(e.task, e.seconds, e.events, "in this sitting"))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+          {real.length > shown ? (
+            <button className="linkish" onClick={() => setShown(shown + PAGE)}>
+              {real.length - shown} more sittings →
+            </button>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <ul className="ctx-list">
+            {totals.slice(0, shown).map((e) => row(e.task, e.seconds, e.events, "over the period"))}
+          </ul>
+          {totals.length > shown ? (
+            <button className="linkish" onClick={() => setShown(shown + PAGE)}>
+              {totals.length - shown} more →
+            </button>
+          ) : null}
+        </>
+      )}
     </>
   );
 }
 
-/* A sitting's span, as a person reads it: `14:20 → 15:05`. The DATE is not repeated per group — the
- * list is fourteen days at most and the profile says so above it. */
+/* A sitting's place in time, as a person reads it: `Aug 4, 10:08 → 10:12`. The date is IN the
+ * header because "all time" spans months, and two sittings ten days apart both read 10:08. */
 function when(sitting: Stretch): string {
+  const day = new Date(sitting.started * 1000)
+    .toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const clock = (at: number): string => new Date(at * 1000)
     .toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  return `${clock(sitting.started)} → ${clock(sitting.ended)}`;
+  return `${day}, ${clock(sitting.started)} → ${clock(sitting.ended)}`;
 }
 
 function ownFacts(context: ContextView | null, dev: string): {
