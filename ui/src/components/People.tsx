@@ -352,7 +352,9 @@ function Standing({ title, note, facts }: {
 
 /* The last cards they touched, newest first, deduplicated. Cards and not EVENTS: nine commits on
  * one card is one thing they worked on, and a feed would rank it above three cards they closed. */
-function Cards({ sittings, titles, holding, on, onOpen }: {
+/* Exported for the smoke, like `Menu`: the bug this section fixes was caught by a reader summing
+ * the visible rows against the header, so the smoke has to be able to do the same sum. */
+export function Cards({ sittings, titles, holding, on, onOpen }: {
   sittings: Stretch[];
   titles: Record<string, string>;
   holding: string[];
@@ -360,89 +362,65 @@ function Cards({ sittings, titles, holding, on, onOpen }: {
   onOpen: (id: string) => void;
 }): JSX.Element {
   const [shown, setShown] = useState(PAGE);
-  const clean = sittings
+  /* TWO sections, because they answer two different questions and a first version tried to make one
+   * list do both jobs and lied doing it. The groups answer "what was open at the same time", and
+   * their minutes are the SITTING's. The card list answers "where did the period's time go", and its
+   * rows are period totals — it is the section that must add up to the header above, exactly,
+   * because a reader summed the visible rows against the header and got one seventh of it: every
+   * card that appeared in some group had lost its own row, so all its solo work was drawn nowhere. */
+  const groups = sittings
     .map((s) => ({ ...s, spent: s.spent.filter((e) => e.task && e.task !== "project") }))
-    .filter((s) => s.spent.length);
-  /* GROUPS first, then one row per remaining card — and that split is what stops the list reading as
-   * duplicates. A card worked in six separate sittings produced six identical-looking rows, which is
-   * six answers to a question ("which cards did they touch") that has one. So only a sitting with
-   * SEVERAL cards keeps its own rows, because there the claim is about the sitting; a card worked
-   * alone is folded to one row carrying its total for the period, and a card that already appears
-   * inside a group is not repeated below. */
-  const groups = clean.filter((s) => s.spent.length > 1);
-  const grouped = new Set(groups.flatMap((s) => s.spent.map((e) => e.task)));
-  const singles = new Map<string, number>();
-  for (const sitting of clean) {
-    if (sitting.spent.length > 1) continue;
-    for (const each of sitting.spent) {
-      if (grouped.has(each.task)) continue;
-      singles.set(each.task, (singles.get(each.task) ?? 0) + each.seconds);
-    }
-  }
-  const real = [
-    ...groups,
-    ...[...singles].map(([task, seconds]) => ({
-      started: 0, ended: 0, events: 0,
-      spent: [{ task, seconds, events: on.get(task)?.events ?? 0 }],
-    })),
-  ];
-  if (!real.length) return <p className="ctx-empty">nothing in this period.</p>;
-  const cards = real.reduce((n, s) => n + s.spent.length, 0);
-  /* Cut on SITTINGS and count in CARDS: a group is one claim and half of it is not a smaller
-   * claim, it is a wrong one. So the page grows to the sitting that crosses the line. */
-  const upto: typeof real = [];
-  let counted = 0;
-  for (const sitting of real) {
-    if (counted >= shown) break;
-    upto.push(sitting);
-    counted += sitting.spent.length;
-  }
+    .filter((s) => s.spent.length > 1);
+  const totals = [...on.values()].filter((e) => e.task && e.task !== "project")
+    .sort((a, b) => b.seconds - a.seconds || b.events - a.events);
+  if (!totals.length) return <p className="ctx-empty">nothing in this period.</p>;
+  const row = (id: string, seconds: number, events: number, note: string): JSX.Element => (
+    <li key={id}>
+      <button className="ctx-card" onClick={() => onOpen(id)}>
+        <code className="context-id">{id}</code>
+        <span className="ctx-card-title">{titles[id] ?? "…"}</span>
+        {/* At least this long — the measure caps every gap, so it under-reports on purpose. The
+          * tooltip says which it is: a bound drawn as if it were the answer is worse than no
+          * number, since nothing in the log records when somebody stopped. */}
+        {spell(seconds) ? (
+          <span className={`ctx-card-time ${heat(seconds)}`}
+                title={`${note}: ${events} event(s), the gaps between them each capped at 30m — `
+                       + "a floor, never an estimate"}>
+            {spell(seconds)}
+          </span>
+        ) : null}
+        {holding.includes(id) ? <span className="context-horizon">now</span> : null}
+      </button>
+    </li>
+  );
   return (
     <>
-      <ul className="ctx-list sittings">
-        {/* Keyed by the sitting's start AND its first card: every folded single row carries
-          * `started: 0`, so the timestamp alone is not unique among them. */}
-        {upto.map((sitting) => (
-          <li key={`${sitting.started}-${sitting.spent[0]?.task ?? ""}`}
-              className={sitting.spent.length > 1 ? "sitting together" : "sitting"}>
-            {sitting.spent.length > 1 ? (
+      {groups.length ? (
+        <ul className="ctx-list sittings">
+          {groups.map((sitting) => (
+            <li key={`${sitting.started}`} className="sitting together">
               <p className="sitting-head dim">
                 {sitting.spent.length} at the same time
                 <span className="sitting-when"> · {when(sitting)}</span>
-                {/* The span, beside the rows that partition it — which is what makes the group
-                  * checkable, and what a reader used to catch it being wrong. */}
+                {/* The span, beside rows that PARTITION it — what makes the group checkable, and
+                  * how a reader caught the previous version being wrong. */}
                 <span className="sitting-span"> · {spell(sitting.ended - sitting.started)}</span>
               </p>
-            ) : null}
-            <ul className="ctx-list">
-              {sitting.spent.map(({ task: id, seconds, events }) => (
-                <li key={id}>
-                  <button className="ctx-card" onClick={() => onOpen(id)}>
-                    <code className="context-id">{id}</code>
-                    <span className="ctx-card-title">{titles[id] ?? "…"}</span>
-                    {/* At least this long — the measure caps every gap, so it under-reports on
-                      * purpose. The tooltip says which it is, because a bound drawn as if it were
-                      * the answer is worse than no number: nothing in the log records when
-                      * somebody stopped. */}
-                    {spell(seconds) ? (
-                      <span className={`ctx-card-time ${heat(seconds)}`}
-                            title={`in this sitting: ${events} event(s), and the gaps between them `
-                                   + `each capped at 30m. Over the whole period: `
-                                   + `${spell(on.get(id)?.seconds ?? 0) || "—"}`}>
-                        {spell(seconds)}
-                      </span>
-                    ) : null}
-                    {holding.includes(id) ? <span className="context-horizon">now</span> : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
+              <ul className="ctx-list">
+                {sitting.spent.map((e) => row(e.task, e.seconds, e.events, "in this sitting"))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="cards-head dim">Per card <span className="cards-note">whole period — these add
+        up to the total above</span></p>
+      <ul className="ctx-list">
+        {totals.slice(0, shown).map((e) => row(e.task, e.seconds, e.events, "over the period"))}
       </ul>
-      {counted < cards ? (
+      {totals.length > shown ? (
         <button className="linkish" onClick={() => setShown(shown + PAGE)}>
-          {cards - counted} more →
+          {totals.length - shown} more →
         </button>
       ) : null}
     </>

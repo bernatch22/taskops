@@ -1029,3 +1029,9 @@ ol.md-list li { list-style: decimal; }
 /* The tabs get their selected state in the accent too, not just a lighter grey: they switch what the
    whole panel is about, and a control that changes the subject should look like it did something. */
 .ctx-tabs button.on { color: var(--lime); border-color: color-mix(in srgb, var(--lime) 28%, transparent); }
+
+/* The heading of the per-card accounting. It NAMES the reconciliation — these rows add up to the
+   header total — because that check is how the previous shape was caught lying. */
+.cards-head { margin: 12px 0 6px; font-size: 11px; font-weight: 600;
+              letter-spacing: .05em; text-transform: uppercase; }
+.cards-head .cards-note { font-weight: 400; text-transform: none; letter-spacing: 0; }

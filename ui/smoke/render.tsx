@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Board } from "../src/components/Board";
 import { MilestoneModal } from "../src/components/MilestoneModal";
 import { heat, spell } from "../src/components/bits";
-import { peopleOf } from "../src/components/People";
+import { Cards, peopleOf } from "../src/components/People";
 import { Menu, Picker } from "../src/components/Picker";
 import { ProjectModal } from "../src/components/ProjectModal";
 import type { Board as BoardData, ContextView } from "../src/contracts";
@@ -161,6 +161,25 @@ check("and a CHAPTER's rule is not — it dies with its chapter",
       !context.rules.some((f) => proj.includes(f.text)));
 check("what the engine enforces is drawn apart", proj.includes("Engine"));
 
+
+/* The per-card section is the ACCOUNTING: one row per card with its period total, so the rows sum
+ * to the header. A previous shape dropped the row of any card that appeared inside a group, so six
+ * hours of solo work were drawn nowhere and a reader caught the header disagreeing with the list. */
+const onMap = new Map([
+  ["tk-solo", { task: "tk-solo", seconds: 7200, events: 9 }],
+  ["tk-grouped", { task: "tk-grouped", seconds: 5400, events: 7 }],
+]);
+const cardsHtml = renderToStaticMarkup(
+  <Cards sittings={[{ started: 1, ended: 601, events: 3,
+                      spent: [{ task: "tk-grouped", seconds: 300, events: 2 },
+                              { task: "tk-solo", seconds: 300, events: 1 }] }]}
+         titles={{ "tk-solo": "solo", "tk-grouped": "grouped" }} holding={[]}
+         on={onMap} onOpen={() => {}} />);
+check("every card gets a period-total row, grouped or not",
+      (cardsHtml.match(/tk-grouped/g) ?? []).length >= 2
+      && (cardsHtml.match(/tk-solo/g) ?? []).length >= 2
+      && cardsHtml.includes("2h") && cardsHtml.includes("1h 30m"),
+      cardsHtml.slice(0, 300));
 
 console.log("durations");
 /* The heat is DERIVED from the value, so a row cannot be labelled wrong by a caller. Three steps and
