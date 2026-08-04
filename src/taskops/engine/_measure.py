@@ -5,8 +5,8 @@ too many — and it was right: below is arithmetic that has to be argued once, a
 readers that must not each argue it again.
 
 Nothing records when somebody stopped working. What the log has is WHEN each thing happened, so the
-only defensible answer is built out of the gaps between one actor's consecutive events — each gap
-capped, and each attributed to exactly ONE card: the card of the event that CLOSES it, because the
+only defensible answer is built out of the gaps between one actor's consecutive events — each gap under the
+threshold attributed to exactly ONE card: the card of the event that CLOSES it, because the
 work inside a gap is the work that produced the next event.
 
 One card per gap is what makes every number here reconcile with every other — see `_attribute`.
@@ -49,12 +49,19 @@ when a tool ran or a file was touched.
 """
 
 GAP = 30 * 60.0
-"""The most a single gap may contribute, in seconds.
+"""The gap that means somebody LEFT, in seconds. Past it, a gap contributes NOTHING.
 
 Thirty minutes because of how the events actually arrive: an agent's calls on one card land seconds
-to a few minutes apart, so a gap past half an hour is somebody having left rather than somebody
-thinking. It is deliberately ONE number and not a per-kind table — a rule a reader can hold is worth
-more here than a fit, since the output is a bound and not an estimate.
+to a few minutes apart, so a gap past half an hour is a departure rather than somebody thinking.
+
+It DROPS rather than caps, and the first version got this wrong: it added `min(gap, GAP)`, billing
+thirty minutes of "attention" for every overnight gap — an estimate wearing a floor's name, since
+nothing says anybody stayed a single second after that last event. It was caught by arithmetic: the
+sitting fold cuts on this same threshold, so every sitting BOUNDARY added an invisible half hour and
+the per-card totals ran ahead of the sum of the sitting spans by exactly 30m × boundaries (measured:
+−90m, −300m, −510m on one board, all multiples of 30). One threshold must mean one thing: past it,
+the sitting ends and the time is zero. That is what makes the two decompositions of the header —
+by sitting and by card — add up to the same number, which is how a reader checks any of it.
 """
 
 
@@ -82,7 +89,10 @@ def attribute(ordered: list[tuple[float, str]]) -> tuple[dict[str, float], dict[
     seconds: dict[str, float] = {}
     counts: dict[str, int] = {}
     for (earlier, _), (later, task) in zip(ordered, ordered[1:], strict=False):
-        seconds[task] = seconds.get(task, 0.0) + min(later - earlier, GAP)
+        # DROPPED past the threshold, never capped — see `GAP` for the arithmetic that caught the
+        # capped version lying. A gap that ended the sitting contributes nothing to any card.
+        if later - earlier <= GAP:
+            seconds[task] = seconds.get(task, 0.0) + (later - earlier)
     for _, task in ordered:
         counts[task] = counts.get(task, 0) + 1
     return seconds, counts

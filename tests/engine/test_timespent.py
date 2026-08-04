@@ -29,12 +29,18 @@ def test_gaps_under_the_cap_are_added_whole() -> None:
     assert found[0]["events"] == 3
 
 
-def test_a_gap_over_the_cap_contributes_the_CAP_and_no_more() -> None:
-    """The whole honesty of the measure. Two events eight hours apart are not eight hours of work —
-    somebody went home. Uncapped, this fold would report a night's sleep as effort on whatever card
-    was open when it started."""
+def test_a_gap_past_the_threshold_contributes_NOTHING() -> None:
+    """Two events eight hours apart are not eight hours of work — somebody went home. The first
+    version "capped" the gap instead, billing thirty minutes of attention nothing witnessed: an
+    estimate wearing a floor's name, and it made the two decompositions of one header disagree by
+    exactly 30m per sitting boundary. One threshold, one meaning — past it the sitting ended, and
+    the time is zero. (This test used to pin the capped sum; that pinned the inconsistency.)"""
     found = attended([ev("tk-a", 0), ev("tk-a", 8 * 3600)])
-    assert found[0]["seconds"] == GAP
+    assert found[0]["seconds"] == 0.0
+    assert found[0]["events"] == 2
+
+    under = attended([ev("tk-a", 0), ev("tk-a", GAP)])
+    assert under[0]["seconds"] == GAP, "exactly AT the threshold still counts — it cuts past it"
 
 
 def test_one_event_on_a_card_scores_ZERO_and_not_a_floor() -> None:
