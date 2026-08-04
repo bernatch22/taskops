@@ -14,10 +14,12 @@ some states, and everything else falling through it.
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from ..contracts import Event, OpenedCard, Task
 from ..storage import Store
 
-__all__ = ["opened_cards", "waiting_tasks"]
+__all__ = ["opened_cards", "still_open"]
 
 
 def opened_cards(store: Store, events: list[Event]) -> list[OpenedCard]:
@@ -39,9 +41,14 @@ def opened_cards(store: Store, events: list[Event]) -> list[OpenedCard]:
     same set `closed_cards` renders from.
 
     The card is still printed with its status TODAY, and that is deliberate: a `✓ done` under
-    `## Abierto` says "planned that day, since finished", which is a fact, whereas a status
-    reconstructed as-of-then would be a guess — `scheduler.unblock` moves a card between
-    `backlog` and `ready` without recording an event, so the log cannot rebuild those two.
+    `## Abierto` says "planned that day, since finished", which is a fact the reader wants, and
+    the section it sits in already says what the window did. Two facts side by side, not one
+    guess — so this holds for every section, and `_asof` is used for MEMBERSHIP only.
+
+    (The original reason given here was that an as-of status could not be rebuilt at all,
+    because `scheduler.unblock` moved cards between `backlog` and `ready` without recording an
+    event. It records now, so that half is no longer true and the convention stands on the
+    argument above instead. `_asof` documents what is still unrecoverable.)
     """
     closed_here = {event["task"] for event in events if event["kind"] == "done"}
     out: list[OpenedCard] = []
@@ -54,13 +61,23 @@ def opened_cards(store: Store, events: list[Event]) -> list[OpenedCard]:
     return out
 
 
-def waiting_tasks(touched: list[Task], opened: list[OpenedCard]) -> list[Task]:
-    """Open cards nobody has started — minus the ones this window created.
+def still_open(touched: list[Task], opened: list[OpenedCard], held: dict[str, str],
+               statuses: Collection[str]) -> list[Task]:
+    """Cards the window HELD in one of `statuses` and did not create. The three moving sections.
 
-    Those are in `opened`, where they carry their dependencies as well, and a card printed in
-    both sections reads as two cards to anybody scanning. So every open card the window touched
-    appears exactly once, and which section it is in says whether it is new.
+    ONE function for `in_flight`, `blocked` and `waiting` because the rule that decides all three
+    is one rule, and it was only obeyed by one of them. The exclusion of the window's own new
+    cards lived here (as `waiting_tasks`) while `in_flight` and `blocked` filtered `touched`
+    directly — so a card planned AND claimed on the same day was printed under `## Abierto` and
+    again under `## Sigue abierto`, reading as two cards to anybody scanning. `render/day` states
+    "EVERY open card lands in exactly one section" as an invariant; this is what makes it true.
+
+    `held` is what each card's status WAS when the window closed (`_asof.statuses_at`), and it is
+    a required argument rather than a default: the whole defect this fixes is a projection that
+    read the present, and a parameter that quietly falls back to it is the same bug with a longer
+    signature. Note that both UNSTARTED statuses land in one section, which is why the era of
+    unrecorded `unblock` moves cannot put a card in the WRONG section — only under the wrong
+    glyph. See `_asof` for that boundary in full.
     """
     new = {card["task"]["id"] for card in opened}
-    return [t for t in touched
-            if t["status"] in ("ready", "backlog") and t["id"] not in new]
+    return [t for t in touched if held.get(t["id"]) in statuses and t["id"] not in new]

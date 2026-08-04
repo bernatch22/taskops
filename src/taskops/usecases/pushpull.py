@@ -30,7 +30,7 @@ from typing import Any, cast
 
 from .._types import LOCAL_ONLY_KINDS
 from ..contracts import Event
-from ..engine import relay, replay, unblock
+from ..engine import pickable, relay, replay, unblock
 from ._project import locate, project
 from ._reportsync import ReportSwap, exchange
 from ._wireclient import PAGE, Wire
@@ -101,9 +101,14 @@ def _receive(start: Path | str, wire: Wire, cursor: int) -> Exchange:
     The cursor is the server's `seq` and is never compared with a local one. A server that
     forgot it — a store rebuilt from scratch — answers from 0, and re-importing the whole log
     is a no-op rather than a repair job: `relay` accepts each content-hashed id once.
+
+    `unblocked` is a before/after diff of the pickable set and not `unblock`'s return, for the
+    reason `sync` gives at length: a promotion the SERVER already derived arrives as a replayed
+    event, so the local re-derivation has nothing left to do and would report nothing freed.
     """
     fresh: list[Event] = []
     with project(start) as store:
+        was_pickable = pickable(store)
         while True:
             page = wire.get_events(cursor, PAGE)
             arrived = [cast("Event", row) for row in page.get("events", [])
@@ -113,7 +118,9 @@ def _receive(start: Path | str, wire: Wire, cursor: int) -> Exchange:
             if not page.get("more") or not arrived:
                 break
         # Replay is not optional. Without it the events landed and the board stays empty.
-        done = Exchange(events_in=len(fresh), applied=replay.apply(store, fresh),
-                        unblocked=unblock(store))
+        applied = replay.apply(store, fresh)
+        unblock(store)
+        done = Exchange(events_in=len(fresh), applied=applied,
+                        unblocked=sorted(pickable(store) - was_pickable))
     save_cursor(start, cursor)
     return done

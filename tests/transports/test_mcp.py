@@ -344,6 +344,7 @@ def test_a_specialist_that_forgets_its_actor_is_not_refused_its_own_card(
     was holding. Here the second call carries no actor at all and still works, because the
     card names its own worker.
     """
+    from taskops.engine.scheduler import MACHINE
     from taskops.usecases import capture, init
     from taskops.usecases._project import project
 
@@ -362,7 +363,14 @@ def test_a_specialist_that_forgets_its_actor_is_not_refused_its_own_card(
 
     with project(tmp_path) as store:
         events = store.events.of_task(task)
-    actors = {e["actor"] for e in events if e["kind"] in ("claimed", "status", "comment")}
+    # The ENGINE's own moves are excluded, not the assertion loosened. `unblock` records the
+    # promotion that made this card pickable, under `MACHINE` — the same actor `sweep_dead` has
+    # always used — so a bookkeeping row now sits beside the agent's. What this test guards is
+    # narrower and unchanged: an agent that sends no actor must not have its identity resolved
+    # to its DEVELOPER's, because that is what cost it the lease it was holding. A `taskops`
+    # row is the engine saying so about itself, and cannot be the bug.
+    actors = {e["actor"] for e in events
+              if e["kind"] in ("claimed", "status", "comment") and e["actor"] != MACHINE}
     assert actors == {"agent:berna/api"}
     assert "inferred" in {e["kind"] for e in events}
 

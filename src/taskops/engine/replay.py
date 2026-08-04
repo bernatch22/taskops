@@ -15,9 +15,10 @@ contradicts newer local state loses.
 
 from __future__ import annotations
 
-from .._types import EDITABLE_FIELDS, STATUSES
+from .._types import EDITABLE_FIELDS
 from ..contracts import Event, Task
 from ..storage import Store
+from ._stated import SAYS_STATUS, stated_status
 
 __all__ = ["apply", "REPLAYED"]
 
@@ -33,10 +34,6 @@ replica turns that into "dispatch this". The LEASE is still never replayed: it b
 process alive on one machine.
 """
 
-_IMPLIED: dict[str, str] = {"claimed": "claimed", "released": "ready"}
-"""What a kind says about status when the body does not. These two predate `status` events and
-their bodies carry a session and a branch instead of a target, so the kind IS the statement."""
-
 
 def apply(store: Store, events: list[Event]) -> int:
     """Materialise state from events. Returns how many actually changed something."""
@@ -46,7 +43,7 @@ def apply(store: Store, events: list[Event]) -> int:
             changed += int(_create(store, event))
         elif event["kind"] == "blocked":
             changed += int(_block(store, event))
-        elif event["kind"] in ("status", "done", "claimed", "released"):
+        elif event["kind"] in SAYS_STATUS:
             changed += int(_status(store, event))
         elif event["kind"] == "edited":
             changed += int(_edited(store, event))
@@ -127,23 +124,19 @@ def _status(store: Store, event: Event) -> bool:
 
     A lease is never replayed. Leases are live local state about a process on one machine, and
     importing one would mean claiming a task on behalf of an agent that is not running here.
+
+    WHAT the event says is `_stated`'s job, not this module's any more. It moved out when
+    `_asof` began asking the same question about a past moment: one reader deciding that
+    `in_progress` means `claimed` and the other not is history disagreeing with the board.
     """
     task = store.tasks.get(event["task"])
-    stated = event["body"].get("to", _IMPLIED.get(event["kind"]))
-    target: object = _RETIRED.get(stated, stated)
-    if task is None or not isinstance(target, str) or target not in STATUSES:
+    target = stated_status(event)
+    if task is None or target is None:
         return False
     if event["ts"] <= task["updated"]:
         return False
-    store.tasks.set_status(event["task"], target, when=event["ts"])  # type: ignore[arg-type]
+    store.tasks.set_status(event["task"], target, when=event["ts"])
     return True
-
-
-# Retired statuses map to what they always meant: replay is the one reader that may never
-# refuse history, and a teammate's log can still carry `in_progress`.
-_RETIRED = {"in_progress": "claimed"}
-# Membership is tested against `STATUSES` itself — seven values, so a frozenset copy bought
-# nothing and was one more name to keep in step with layer 0.
 
 
 def _int(value: object, fallback: int) -> int:

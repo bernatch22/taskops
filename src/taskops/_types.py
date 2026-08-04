@@ -42,9 +42,12 @@ splits attention and answers nothing. A log that still carries it replays as `cl
 `engine.replay` — because that is what it always was.
 
 `ready` is a stored status and not a derived view, so that "what can I pick up"
-is one indexed read rather than a graph walk per caller. `engine.machine.unblock`
+is one indexed read rather than a graph walk per caller. `engine.scheduler.unblock`
 is the ONE writer that moves a task between `backlog` and `ready`, which is what
-keeps the stored value from drifting from the dependency graph.
+keeps the stored value from drifting from the dependency graph — and it RECORDS the
+move, so a past day's dossier can say which of the two a card was in. It did not for
+a long time, and that silence is why every window before 0.5.17 reconstructs a card
+sitting between those two states as `backlog`. See `engine._asof`.
 """
 
 ActorKind = Literal["dev", "agent"]

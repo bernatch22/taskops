@@ -65,6 +65,42 @@ A day report contains: every card closed with who closed it and how long it was 
 with its files and diff size, every card opened, every card still waiting and what on, and the
 **whole conversation** — comments, handoffs, messages between agents.
 
+### A window says what it DID, not what is true now
+
+Every card is filed into its section — `opened`, in flight, blocked, waiting — by the status it
+held **when that window closed**, read back out of the event log. Never by the status it holds
+today. That is what makes a dossier worth diffing against yesterday's copy: regenerate 2026-07-30
+next year and you get the same four sections you got on the 31st.
+
+It did not always work that way, and the failure is the reason this section exists. Filing on the
+CURRENT status meant a card planned on Tuesday and finished on Thursday belonged to no Tuesday
+section at all by Friday — not "in flight" (it is done now) and not in Tuesday's `closed` either
+(it closed on Thursday). On the axion board 2026-07-30 fell from `5 opened` to `3` to `2` over
+three regenerations: **the report got shorter every time it was rebuilt**, silently, and one line
+of that day's planning was lost per card that closed.
+
+The **glyph** beside a card is still its status today, in every section. Two facts side by side:
+the section says what the window did, the glyph says where the card ended up. So a `✓` under
+`## Sigue abierto` reads "was in flight that day, since finished", which is what a reader wants.
+
+### The one thing no dossier can recover — windows before 0.5.17
+
+`scheduler.unblock` is the only writer that moves a card between `backlog` and `ready`, and until
+0.5.17 it moved them **without recording an event**. Those transitions are gone. Events are facts
+about the past and taskops will not invent one to fill a gap, so for any window that closed before
+0.5.17 a card sitting between those two states reconstructs as `backlog` — the status its `created`
+event states — whatever it actually was on the day.
+
+**What that costs is the glyph, not the section.** The `waiting` section holds `ready` and
+`backlog` together, so the card is filed correctly either way; only the mark beside it can be wrong
+for an old window. Every other status — `claimed`, `review`, `blocked`, `done`, `cancelled` — has
+always been recorded by whoever moved it, so those sections are exact for windows of any age.
+
+Stated here rather than left to be discovered because the failure this whole thread is about was a
+report mixing reconstructed history with present state and saying nothing. A limit written down is
+a different thing from a limit nobody mentions. `engine/_asof.py` carries the same boundary beside
+the code, and `tests/engine/test_asof.py` pins it.
+
 ## 3 · The narration — `--digest`
 
 ```sh

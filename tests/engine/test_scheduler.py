@@ -170,3 +170,49 @@ def test_fifty_threads_claiming_one_task_produce_one_winner(root: Path) -> None:
         thread.join()
 
     assert len(wins) == 1, f"{len(wins)} agents claimed one task: {wins}"
+
+
+def test_unblock_RECORDS_the_promotion_it_makes(store: Store) -> None:
+    """The hole this card was opened for: the one writer of `ready` wrote nothing down.
+
+    Every other transition in the package records — `sweep_dead` right beside it, `move`,
+    `_take`, `release_lease` — and this one moved cards between `backlog` and `ready` in
+    silence. The append-only log is what every dossier is projected from, so a promotion that
+    left no trace meant no report could ever say whether a card was pickable on a past day. No
+    amount of care in the generator could fix that: the generator was downstream of a hole.
+    """
+    make(store, "tk-blocker", status="backlog")
+    make(store, "tk-waiter", status="backlog")
+    store.deps.add("tk-blocker", "tk-waiter")
+    scheduler.unblock(store, at=CLOCK)                  # tk-blocker is free, tk-waiter is not
+
+    promoted = store.events.of_task("tk-blocker", kinds=("status",))
+    assert [e["body"]["to"] for e in promoted] == ["ready"]
+    assert promoted[0]["body"]["from"] == "backlog"
+    assert promoted[0]["actor"] == scheduler.MACHINE, "the engine moved it, not a person"
+    assert promoted[0]["ts"] == CLOCK, "the event is stamped with the move's own clock"
+    assert store.events.of_task("tk-waiter", kinds=("status",)) == [], "it did not move"
+
+
+def test_unblock_records_the_DEMOTION_too(store: Store) -> None:
+    """A `ready` card that gains a blocker goes back, and that direction is a fact as well.
+
+    Recording only promotions would leave a card that was demoted on Tuesday reading `ready`
+    for Tuesday for ever — the same lossy asymmetry, one direction down.
+    """
+    make(store, "tk-late-dep", status="backlog")
+    make(store, "tk-was-ready", status="ready")
+    store.deps.add("tk-late-dep", "tk-was-ready")
+    assert scheduler.unblock(store, at=CLOCK) == ["tk-late-dep"], "only promotions are returned"
+
+    demoted = store.events.of_task("tk-was-ready", kinds=("status",))
+    assert [(e["body"]["from"], e["body"]["to"]) for e in demoted] == [("ready", "backlog")]
+
+
+def test_unblock_writes_NOTHING_when_it_moves_nothing(store: Store) -> None:
+    """It runs at the start of every claim. Recording the no-ops would put a row in the log
+    every time anybody asked for work, which is a log nobody can read a diff of."""
+    make(store, "tk-already", status="ready")
+    scheduler.unblock(store, at=CLOCK)
+    scheduler.unblock(store, at=CLOCK + 10)
+    assert store.events.of_task("tk-already", kinds=("status",)) == []

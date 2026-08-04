@@ -11,12 +11,19 @@ from .._clock import now
 
 __all__ = ["ago", "span", "bullet", "table", "truncate", "STATUS_MARK"]
 
-STATUS_MARK = {"backlog": "·", "ready": "◐",
+STATUS_MARK = {"backlog": "·", "ready": "◐", "claimed": "◑",
                "blocked": "✕", "review": "◆", "done": "✓", "cancelled": "—"}
 """One glyph per status, so a board scans vertically without reading words.
 
 ASCII-ish and deliberately not emoji: this is read in a terminal by a human and in a
 context window by a model, and emoji cost several tokens each for the same information.
+
+`claimed` was MISSING, and it crashed a real command: it went in when `in_progress` was retired
+and this dict was not brought along. Every other reader spells `.get(status, "?")`, so the board
+quietly printed `?` for every card in hand for weeks — while `_opened` subscripts it, so
+`taskops report day` raised `KeyError: 'claimed'` on any day that planned a card and claimed it.
+A default everywhere would have hidden it for longer, which is why the SUBSCRIPT stays and
+`tests/render` pins that every status in `STATUSES` has a glyph here instead.
 """
 
 

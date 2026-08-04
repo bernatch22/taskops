@@ -194,6 +194,13 @@ def test_a_status_change_travels_and_unblocks_on_the_other_side(tmp_path: Path) 
 
     assert ask(berna, first)["task"]["status"] == "cancelled"
     # A cancelled dependency stops blocking, so `sync` must hand Berna a pickable task.
+    #
+    # This assertion caught a real regression the moment `unblock` started recording. Ana's own
+    # sync derived the promotion first and now LOGS it, so it reaches Berna as a replayed event
+    # and Berna's local re-derivation has nothing left to do. Reading `unblock`'s return meant
+    # `unblocked` came back empty while the queue really had changed — the report going silent
+    # about the one thing sync exists to announce. So it is a before/after diff of the pickable
+    # set instead, which cannot tell the two routes apart. See `scheduler.pickable`.
     assert second in report.unblocked
     assert ask(berna, second)["task"]["status"] == "ready"
 
