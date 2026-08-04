@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.13 — las filas del perfil vuelven a sumar el header
+
+El header decia 7h 21m y las filas visibles sumaban una: el dedupe que evitaba filas duplicadas tiraba
+la fila propia de toda card que apareciera en algun grupo, asi que su trabajo a solas no se dibujaba en
+ningun lado. Una lista intentaba contestar dos preguntas y mentia en las dos.
+
+Ahora son dos secciones. Los grupos contestan "que estuvo abierto a la vez" y sus minutos son los de
+esa tanda; **Per card** contesta "a donde se fue el tiempo del periodo" y es la contabilidad — sus
+filas suman exacto el total del header, y el encabezado lo dice, porque sumar filas contra header es
+como se atraparon las dos versiones anteriores de este numero.
+
 ## 0.5.12 — `land` encuentra la branch por sus commits, y puede no pushear
 
 Los dos salieron de un dia en que cinco cards quedaron `done` y fuera del trunk.
