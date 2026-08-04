@@ -2,6 +2,16 @@
 
 ## 0.5.14 — un dossier regenerado no puede contar MENOS pasado
 
+> Este release lleva DOS arreglos de dos sesiones que compartian un checkout, y el segundo quedo
+> fuera del changelog al momento de deployar — esta nota lo repara:
+>
+> **Las dos mitades del header del perfil cuentan el mismo universo.** "81 cards" al lado de
+> "2h 31m at least", y la suma de las filas daba exacto 2h 31m — el que no cuadraba era el contador
+> de cards: de las 73 de un dev solo 12 tenian tiempo, y las otras eran un bulk edit en loop,
+> bookkeeping. `tasks` se pliega ahora sobre los mismos worked events que el tiempo: un batch de
+> `created` + `edited` cuenta cero cards, un comment real cuenta la suya.
+
+
 Dos defectos del mismo dia, encontrados diffeando las dos generaciones del 2026-07-30 del board de
 axion: la primera (max_seq 450, escrita el 07-31) decia `5 opened · 8 commits`, la segunda (max_seq
 556, escrita el 08-03) decia `3 opened · 5 commits`. Un evento es un hecho del pasado; una
