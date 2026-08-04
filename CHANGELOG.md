@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.15 — una vista por pregunta: la timeline de tandas, o el total por card
+
+Tres quejas del mismo lector, las tres del mismo diseño: grupos y contabilidad per-card interleaved
+en una lista, asi que nada cerraba contra nada, el trabajo a solas no mostraba su horario, y el
+per-card repetia cards ya agrupadas arriba — se leia como conteo doble sin serlo.
+
+Ahora es un toggle. **By sitting** es la timeline: TODAS las tandas, las solitarias incluidas, cada
+una con su fecha, su span y los minutos de sus cards dentro de esa tanda — y la suma de los spans es
+el total del header. **By card** es la contabilidad: una fila por card con su total del periodo, que
+tambien suma el header. El mismo total, dos descomposiciones, y ninguna lista repite filas de la otra.
+
 ## 0.5.14 — un dossier regenerado no puede contar MENOS pasado
 
 > Este release lleva DOS arreglos de dos sesiones que compartian un checkout, y el segundo quedo
