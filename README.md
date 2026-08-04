@@ -97,7 +97,7 @@ facts, git, and the server. Every command and every subcommand is here.
 | | |
 |---|---|
 | `taskops context …` | `show · objective · decision · note · log · retire` — **prose a worker weighs** |
-| `taskops policy {show\|reviewer} [value]` | **Values the engine obeys**, validated when written |
+| `taskops policy {show\|reviewer\|day_zone} [value]` | **Values the engine obeys**, validated when written |
 
 **Setting up, and the team**
 
@@ -309,6 +309,7 @@ person: the verifier's own context is not added on top.
 taskops policy reviewer peer          # what every NEW card is created with
 taskops policy reviewer               # read it
 taskops policy reviewer none          # turn it off
+taskops policy day_zone Europe/Madrid # whose midnight a daily report is cut at
 taskops policy show
 ```
 

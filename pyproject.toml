@@ -113,6 +113,11 @@ known-first-party = ["taskops"]
 "src/taskops/transports/http/reports.py" = ["ARG001"]
 "src/taskops/transports/http/assigning.py" = ["ARG001"]
 "src/taskops/transports/http/chat.py" = ["ARG001"]
+# Every policy validator implements `(store, value) -> str`, because the table in
+# `usecases.policy` is what REGISTERS a setting — two call shapes there is how one of
+# them stops being called. `reviewer` asks the store for the project's specialists;
+# `day_zone` has nothing to ask it, and the parameter is the contract, not a leftover.
+"src/taskops/usecases/dayzone.py" = ["ARG001"]
 # T201 exists to keep the LIBRARY silent — a function that writes to stdout
 # cannot be called from a server. The two transports whose product IS a stream of
 # bytes on stdout are the exception: the CLI writes to a terminal, and the wiring

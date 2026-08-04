@@ -40,8 +40,26 @@ taskops report range --last 7d       # a week, grouped by day
 taskops report all                   # the whole project, from the first event
 ```
 
-A **day** is a calendar day in local time, not a rolling 24 hours — computed through `mktime`,
-because a DST day is 23 or 25 hours and never 24.
+A **day** is a calendar day, not a rolling 24 hours, and it is 23 or 25 hours long on the days the
+clocks change rather than a flat 86 400.
+
+Whose midnight, though, is a decision a **shared** board has to make, and it is one setting:
+
+```sh
+taskops policy day_zone Europe/Madrid   # the project's day, on every machine
+taskops policy day_zone                 # read it · `none` goes back to each machine's own
+```
+
+Unset, every machine uses its own zone — which is right while there is one machine and quietly
+wrong as soon as there are two. Two developers three hours apart file the same events under
+different dates, so they render one closed day into two different documents, and a dossier is a
+committed *file*: the second one replaces the first with nothing to see in the diff. It has
+happened, and the measurement is in `engine/calendar.py` — one day counted 8 commits at UTC-3 and
+5 at UTC+2, the other three sitting in the next day's file.
+
+The offset the window was cut at is written into the report's stamp (`tz=+0200`), so a copy cut at
+one offset can never overwrite a copy cut at another: that is a `409` naming both, because they are
+two windows sharing a name and neither is the newer version of the other.
 
 A day report contains: every card closed with who closed it and how long it was held, each commit
 with its files and diff size, every card opened, every card still waiting and what on, and the
@@ -81,6 +99,11 @@ refuses to overwrite an existing file unless `--force`, and `--force` says out l
 narration is lost. When two machines have narrated the same day, the sync rule is: **newest stamp
 wins, equal-but-different is always a `409` naming both**, and an unstamped file is never clobbered
 by a stamped one. A hand-written narration can never be silently replaced by a generated one.
+
+One thing the stamp cannot order, and it is checked before the stamp is: two copies whose windows
+were cut at **different UTC offsets**. The higher `max_seq` there is not the fuller account, it is
+the account of a different day — so that pair conflicts on sight and the message names `day_zone`,
+which is the decision that ends it.
 
 ## 4 · `sweep` — the report that writes itself
 
