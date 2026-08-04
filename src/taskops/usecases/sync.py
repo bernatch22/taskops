@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..engine import replay, unblock
+from ..engine import pickable, replay, unblock
 from ..storage import all_events, export_events, import_events
 from ._project import project
 from .pushpull import pull
@@ -54,6 +54,11 @@ def sync(start: Path | str) -> SyncReport:
     `unblock` at the end is the point of the whole operation: a teammate finishing a task is only
     useful here once the tasks waiting on it become pickable, and that promotion happens now rather
     than at the next `next` call — so somebody who just ran `git pull` sees the real queue.
+
+    What it REPORTS as freed is a before/after diff of the pickable set, not `unblock`'s return.
+    Since `unblock` records its moves, a promotion can arrive already made — replayed from the
+    clone that derived it first — and reading only the local re-derivation then said "nothing
+    became pickable" while handing the developer a pickable card. See `scheduler.pickable`.
     """
     if read_remote(start) is not None:
         # A remote project's truth is the SERVER, not a committed log — so "sync" means
@@ -64,11 +69,13 @@ def sync(start: Path | str) -> SyncReport:
         return SyncReport(imported=got.events_in, applied=got.applied,
                           exported=0, unblocked=got.unblocked)
     with project(start) as store:
+        was_pickable = pickable(store)          # BEFORE the import, or the diff says nothing
         fresh = import_events(store)
         applied = replay.apply(store, fresh)
-        freed = unblock(store)
+        unblock(store)
         return SyncReport(imported=len(fresh), applied=applied,
-                          exported=export_events(store), unblocked=freed)
+                          exported=export_events(store),
+                          unblocked=sorted(pickable(store) - was_pickable))
 
 
 def rebuild(start: Path | str) -> SyncReport:
@@ -82,7 +89,10 @@ def rebuild(start: Path | str) -> SyncReport:
     reconcile anyway.
     """
     with project(start) as store:
+        was_pickable = pickable(store)
         imported = len(import_events(store))
         applied = replay.apply(store, all_events(store.root))
+        unblock(store)
         return SyncReport(imported=imported, applied=applied,
-                          exported=export_events(store), unblocked=unblock(store))
+                          exported=export_events(store),
+                          unblocked=sorted(pickable(store) - was_pickable))

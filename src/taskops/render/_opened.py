@@ -50,11 +50,16 @@ def _tags(task: Task) -> str:
 
 
 def moving_section(day: PeriodReport) -> list[str]:
-    """Every OPEN card the window touched and did not create, marked by status.
+    """Every card the window HAD open and did not create, marked by its status today.
 
     One section and not three, ordered blocked -> working -> unstarted: they are all "open,
     not new", the glyph already says which, and the order puts the row that needs a human at
     the top. `waiting` is the half that used to be dropped on the floor.
+
+    "Had open" and not "is open": which of the three lists a card is in comes from the status it
+    held when the window CLOSED, so a card claimed on Tuesday and finished on Thursday stays in
+    Tuesday's dossier instead of vanishing from it. The glyph is still today's status — the same
+    convention `## Abierto` uses — so a `✓` here reads "was in flight that day, since finished".
     """
     rows = day["blocked"] + day["in_flight"] + day["waiting"]
     if not rows:

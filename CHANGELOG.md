@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.5.17 — una transicion que nadie escribio es un dia que nadie puede reconstruir
+
+La otra mitad de lo que arreglo 0.5.14, y no estaba solo sin arreglar: estaba **imposible de
+arreglar**. `opened` ya leia lo que hizo la ventana, pero `in_flight`, `blocked` y `waiting` seguian
+filtrando por el estado de HOY — una card tomada el martes y cerrada el jueves no estaba en ninguna
+seccion del martes para el viernes: ni en vuelo (ya esta done) ni en el `closed` del martes (cerro el
+jueves).
+
+**Y el generador era el lugar equivocado para arreglarlo.** `scheduler.unblock` es el unico escritor
+que mueve una card entre `backlog` y `ready`, y lo hacia SIN registrar evento — a diferencia de
+`sweep_dead`, que esta al lado y siempre registro. La transicion no dejaba rastro en el log
+append-only, asi que ninguna proyeccion, por cuidadosa que fuera, podia reconstruir que era
+agarrable un martes pasado. Primero el registro, despues la proyeccion: una proyeccion que pliega un
+log incompleto es una forma nueva de estar mal, disfrazada de respuesta.
+
+Entonces, en ese orden:
+
+1. **`unblock` registra.** Solo los movimientos reales (corre en cada claim; registrar los no-ops
+   seria una fila de log cada vez que alguien pide trabajo), con `from`/`to`/`why` y actor
+   `MACHINE` — el mismo que usa `sweep_dead`. Auditados los ocho `set_status` del paquete: los otros
+   siete ya escribian su evento o son el propio replay aplicandolo.
+2. **Las secciones se deciden por el estado que la card tenia al CERRAR la ventana** (`engine/_asof.py`),
+   nunca por el de hoy. El glyph sigue siendo el estado actual, en todas las secciones: la seccion
+   dice que hizo la ventana, el glyph donde termino la card. Dos hechos, no una adivinanza.
+3. **El limite escrito, no tapado** (`docs/reports.md`, `engine/_asof.py`, `tests/engine/test_asof.py`):
+   toda transicion que ya paso sin evento se perdio para siempre. Un evento es un hecho del pasado y
+   no se inventa uno para rellenar un hueco, asi que en cualquier ventana anterior a 0.5.17 una card
+   entre esos dos estados reconstruye como `backlog`. Lo que eso cuesta es el GLYPH, no la seccion:
+   `waiting` contiene `ready` y `backlog` juntos, y todos los demas estados siempre se registraron.
+
+Un efecto que aparecio al registrar, y que el suite atrapo: `sync` reportaba `unblocked` vacio
+mientras entregaba una card agarrable. La promocion ahora puede llegar ya hecha, replicada del clone
+que la derivo primero, asi que leer el retorno de `unblock` deja al reporte callado sobre lo unico
+que sync existe para anunciar. Pasa a ser un diff antes/despues del set agarrable
+(`scheduler.pickable`), que no distingue las dos rutas — que es exactamente la propiedad que ese
+call site quiere.
+
+Extraido `engine/_stated.py`: que dice UN evento sobre el estado, en un solo lugar. Lo tenia `replay`
+y ahora hay dos lectores (el board de hoy y todo dossier regenerado); dos copias de "un
+`in_progress` significa `claimed`" es la historia contradiciendose a si misma.
+
+Y dos defectos que aparecieron al CORRER `report day` en un board de scratch, ninguno de los dos
+visible leyendo el codigo:
+
+- **`taskops report day` crasheaba con `KeyError: 'claimed'`.** `STATUS_MARK` perdio ese estado
+  cuando se retiro `in_progress` y nadie lo trajo de vuelta. Todos los demas lectores escriben
+  `.get(status, "?")`, asi que el board imprimia `?` para toda card en mano y solo se veia raro —
+  pero `render/_opened` lo indexa directo, asi que cualquier dia que planeara una card y la tomara
+  el mismo dia no producia dossier, producia un traceback. El glyph vuelve (`◑`), el indexado se
+  queda, y un test lo pinea contra `STATUSES` en vez de contra una lista escrita a mano.
+- **Una card planeada Y tomada el mismo dia se imprimia dos veces**, en `## Abierto` y otra vez en
+  `## Sigue abierto`. La exclusion de las cards nuevas vivia solo en `waiting`; `in_flight` y
+  `blocked` filtraban `touched` directo. `render/day` declara como invariante que "EVERY open card
+  lands in exactly one section" — ahora las tres secciones salen de una sola funcion
+  (`_opened.still_open`) y el invariante es cierto.
+
 ## 0.5.16 — un hueco mas largo que el umbral aporta cero
 
 La reconciliacion nueva de 0.5.15 atrapo al propio fold: la suma per-card corria adelante de la suma

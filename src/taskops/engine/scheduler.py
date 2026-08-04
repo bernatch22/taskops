@@ -5,7 +5,8 @@ Three jobs, in the order they matter:
 **Unblock.** `ready` is a stored status, so something has to move a task there when
 its last dependency closes. `unblock` is that one writer — nothing else in the
 package may set `ready` — which is what keeps the column from drifting away from the
-dependency graph.
+dependency graph. It RECORDS the move, like every other transition in the package:
+a promotion nobody wrote down is a day whose dossier cannot say what was pickable.
 
 **Score.** Priority first, then the anti-collision term, and who a card is assigned to —
 all of it in `_pool`, which this module re-exports so the choosing and the claiming
@@ -25,7 +26,13 @@ from ..storage import Store
 from ._pool import ready_tasks, score
 from .log import record
 
-__all__ = ["unblock", "ready_tasks", "score", "claim", "branch_for", "sweep_dead"]
+__all__ = ["unblock", "ready_tasks", "score", "claim", "branch_for", "sweep_dead", "pickable",
+           "MACHINE"]
+
+MACHINE = "taskops"
+"""The actor on a move NOBODY asked for: an expired lease swept, a card promoted by the graph.
+Named because both writers live in this module and a third literal is a third thing to rename —
+and because a reader of the log needs to tell "the engine did this" from "a person did this"."""
 
 
 def sweep_dead(store: Store, *, at: float | None = None) -> list[str]:
@@ -47,7 +54,7 @@ def sweep_dead(store: Store, *, at: float | None = None) -> list[str]:
         store.tasks.set_status(task_id, "ready", when=when)
         # RECORDED: a `claimed` replays onto other clones now, so an expiry that stayed
         # local would leave every teammate showing a card held by an agent that died.
-        record(store, task=task_id, actor="taskops", kind="status",
+        record(store, task=task_id, actor=MACHINE, kind="status",
                body={"to": "ready", "why": "the lease expired"}, ts=when)
         freed.append(task_id)
     return freed
@@ -58,6 +65,20 @@ def unblock(store: Store, *, at: float | None = None) -> list[str]:
 
     Also demotes: a `ready` task that gained a dependency goes back to `backlog`, so
     a mid-flight discovery cannot leave pickable work that is not actually pickable.
+
+    RECORDED, for the same reason `sweep_dead` records: this is the only writer that moves a
+    card between `backlog` and `ready`, and for its whole life it moved them SILENTLY. So the
+    append-only log — which every dossier is projected from — could not say whether a card was
+    pickable on a past Tuesday, and the day report had no choice but to print the status the
+    card holds today. Regenerating an old day then reported less than the same day generated at
+    the time, and no care in the generator could have fixed it: the fact was never written down.
+
+    Only an ACTUAL move is recorded. `unblock` runs at the start of every claim, so recording
+    the no-ops would put a line in the log every time anybody asked for work.
+
+    Two clones that both unblock the same card write two events for one transition. That is
+    accepted and harmless — replay is idempotent and newer-wins — and the alternative (a lock
+    across machines for a derived promotion) is far more machinery than the duplicate costs.
     """
     when = now() if at is None else at
     changed: list[str] = []
@@ -66,9 +87,26 @@ def unblock(store: Store, *, at: float | None = None) -> list[str]:
         target: Status = "backlog" if blocked else "ready"
         if task["status"] != target:
             store.tasks.set_status(task["id"], target, when=when)
+            record(store, task=task["id"], actor=MACHINE, kind="status", ts=when,
+                   body={"from": task["status"], "to": target,
+                         "why": "its blockers all closed" if target == "ready"
+                                else "it gained an open blocker"})
             if target == "ready":
                 changed.append(task["id"])
     return changed
+
+
+def pickable(store: Store) -> set[str]:
+    """Every id that is `ready` right now — the set a sync diffs to say what it freed.
+
+    Needed because "what became pickable" stopped having ONE source the moment `unblock`
+    recorded its moves. A promotion can now arrive two ways: re-derived locally from the graph,
+    or REPLAYED from the teammate whose clone derived it first — and the replayed one made
+    `sync` return an empty `unblocked` while genuinely handing the developer a pickable card,
+    so the queue changed and the report said nothing had. A before/after diff of this set
+    cannot tell the two apart, which is exactly the property that call site wants.
+    """
+    return {task["id"] for task in store.tasks.with_status(("ready",))}
 
 
 def branch_for(task: Task) -> str:

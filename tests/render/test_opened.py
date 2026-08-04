@@ -90,3 +90,31 @@ def test_a_window_with_NOTHING_in_any_section_says_so_in_one_line() -> None:
     four tasks, so the report was not "empty", it just had nothing that could hold them."""
     text = render_day(_planning_day(opened=[], actors=[]))
     assert text == "# 2026-07-28\n\nNothing happened on this day."
+
+
+def test_EVERY_status_has_a_glyph() -> None:
+    """The dossier subscripts `STATUS_MARK`, so a missing status is a crash, not a `?`.
+
+    It happened: `claimed` went in when `in_progress` was retired and this table was not brought
+    along, so `taskops report day` raised `KeyError: 'claimed'` on any day that planned a card
+    and claimed it — while the board, which spells `.get(status, "?")`, printed `?` for every
+    card in hand and looked merely odd. Pinned against `STATUSES` rather than a hand-written
+    list, so the next status added to the vocabulary fails HERE and not in somebody's terminal.
+    """
+    from taskops._types import STATUSES
+    from taskops.render._text import STATUS_MARK
+
+    assert set(STATUS_MARK) == set(STATUSES), "a status with no glyph crashes the dossier"
+
+
+def test_a_card_claimed_the_day_it_was_planned_renders() -> None:
+    """The regression above, through the renderer that actually subscripted the table.
+
+    Both sections, because both subscript it: a card planned and claimed the same day lands in
+    `## Abierto`, and one claimed after being planned earlier lands in `## Sigue abierto`.
+    """
+    planned_and_claimed = _planning_day(
+        opened=[OpenedCard(task=_task("tk-a", status="claimed"), waiting_on=[], blocking=[])],
+        in_flight=[_task("tk-older", status="claimed")])
+    text = render_day(planned_and_claimed)
+    assert "tk-a" in text and "tk-older" in text

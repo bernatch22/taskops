@@ -35,14 +35,23 @@ from .reports import (
     stamped_offset,
     stamped_seq,
 )
-from .scheduler import branch_for, claim, hand_back, open_children, ready_tasks, sweep_dead, unblock
+from .scheduler import (
+    branch_for,
+    claim,
+    hand_back,
+    open_children,
+    pickable,
+    ready_tasks,
+    sweep_dead,
+    unblock,
+)
 from .team import team
 from .wire import WIRE, Broadcast, is_wire
 from .worker import Launched
 
 __all__ = ["Facts", "Evidence", "evidenced", "check_move", "allowed_from", "resolve", "parse", "record",
            "build", "relay", "BUS", "EventBus", "unblock", "hand_back", "ready_tasks", "claim",
-           "branch_for", "sweep_dead", "open_children", "board", "standup", "waiting_on",
+           "branch_for", "sweep_dead", "pickable", "open_children", "board", "standup", "waiting_on",
     "team", "fleet", "activity", "day_report", "period_report", "first_date", "label_of", "shift", "date_of",
            "day_zone", "offset_of", "window",
            "counts", "replay", "narrate", "OnPass", "OnText", "stamp", "stamp_for", "stamped_seq", "stamped_offset",

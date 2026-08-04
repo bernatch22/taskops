@@ -83,7 +83,7 @@ _RETIRED = {"invariant": "decision"}
 """Sorts a previous taskops wrote and this one does not have. Mapped rather than dropped: the
 reader skips an UNKNOWN sort, which is right for one a newer version invented and wrong for one
 this version retired — that would make a board's standing rules vanish from every slice with no
-error anywhere. Same shape as `engine.replay._RETIRED`, which does it for a status."""
+error anywhere. Same shape as `engine._stated._RETIRED`, which does it for a status."""
 
 
 def _as_sort(value: str) -> Sort:

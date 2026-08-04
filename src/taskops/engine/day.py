@@ -21,8 +21,9 @@ from .._errors import BadRequest
 from .._types import LOCAL_ONLY_KINDS, WORKING_STATUSES
 from ..contracts import PeriodReport
 from ..storage import Store
+from ._asof import statuses_at
 from ._closed import closed_cards
-from ._opened import opened_cards, waiting_tasks
+from ._opened import opened_cards, still_open
 from .activity import tasks_of
 from .calendar import date_of, day_zone, window
 from .history import rolls
@@ -54,6 +55,12 @@ def period_report(store: Store, start_date: str, end_date: str,
     `label` is an override for the one name the dates cannot produce: `report all` covers a
     span that is only incidentally 2026-07-14..2026-07-28, and calling its file that would
     mean yesterday's "everything" and today's are two different documents.
+
+    Every card is sorted into its section by the status it held AS THE WINDOW CLOSED (`_asof`),
+    never by the status it holds today. Today's status made an old day report less than the same
+    day reported at the time — a card claimed on Tuesday and closed on Thursday was in no
+    Tuesday section by Friday — and a window that shrinks each time it is regenerated is a
+    report that cannot be diffed against anything, including itself.
     """
     zone = day_zone(store)
     start, end = window(start_date, zone)[0], window(end_date, zone)[1]
@@ -64,15 +71,16 @@ def period_report(store: Store, start_date: str, end_date: str,
     touched = tasks_of(store, [e["task"] for e in events])
     dones = [e for e in events if e["kind"] == "done"]
     opened = opened_cards(store, events)
+    held = statuses_at(store, touched, end)
     return PeriodReport(
         repo=str(store.root), from_date=start_date, to_date=end_date,
         label=label or label_of(start_date, end_date),
         closed=closed_cards(store, dones[-MAX_CLOSED:]),
         dropped=max(0, len(dones) - MAX_CLOSED),
         opened=opened,
-        in_flight=[t for t in touched if t["status"] in WORKING_STATUSES],
-        blocked=[t for t in touched if t["status"] == "blocked"],
-        waiting=waiting_tasks(touched, opened),
+        in_flight=still_open(touched, opened, held, WORKING_STATUSES),
+        blocked=still_open(touched, opened, held, ("blocked",)),
+        waiting=still_open(touched, opened, held, ("ready", "backlog")),
         conversations=[e for e in events if e["kind"] in ("comment", "message")],
         actors=rolls(events),
         commits_total=sum(1 for e in events if e["kind"] == "commit"))
