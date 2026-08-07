@@ -27,7 +27,8 @@
 import type { BoardPayload, BoardRow } from "../types";
 import { Column } from "../components/board/Column";
 import type { Chip, Tone } from "../components/board/CardTile";
-import { CardTile, shortActor } from "../components/board/CardTile";
+import { CardTile } from "../components/board/CardTile";
+import { shortActor } from "../format";
 
 export interface BoardProps {
   board: BoardPayload;

@@ -16,7 +16,8 @@
  * the pane and the reader cannot tell "nothing to merge" from "this dashboard
  * does not show merges". */
 import { GROUP_ORDER, type BoardGroups, type BoardPayload, type GroupName } from "../types";
-import { GroupRow, accentInk, ago, type Accent, type GroupRowProps } from "../components/board/GroupRow";
+import { GroupRow, accentInk, type Accent, type GroupRowProps } from "../components/board/GroupRow";
+import { ago } from "../format";
 
 /** What the page resolves a payload row down to; the row draws it. */
 type Line = Omit<GroupRowProps, "onOpen" | "accent">;
@@ -85,11 +86,20 @@ function owner(holder: string | null, assignee: string): string {
   return holder || assignee || "";
 }
 
+/** This page's wording for a duration: the shared magnitude plus the word that
+ *  makes it a past. The suffix is the PAGE's — the tile says "3h in" over the
+ *  same helper (format.ts). "" stays "", so a row with no timestamp draws
+ *  nothing rather than a bare "ago". */
+function elapsed(seconds: number): string {
+  const magnitude = ago(seconds);
+  return magnitude ? `${magnitude} ago` : "";
+}
+
 /** How long this row has been quiet. `quiet_for` is the server's own count and
  *  is preferred wherever it exists — it is immune to a browser clock that
  *  disagrees with the board's. Only a held row falls back to `since`. */
 function staleness(quiet_for: number | null, since: number, now: number): string {
-  return ago(quiet_for === null ? now - since : quiet_for);
+  return elapsed(quiet_for === null ? now - since : quiet_for);
 }
 
 /** The payload → what each group actually shows. A switch and not an index, so
@@ -105,7 +115,7 @@ function linesOf(name: GroupName, groups: BoardGroups, now: number): Line[] {
         title: m.title || m.id,
         note: m.text,
         who: m.by,
-        when: ago(now - m.ts),
+        when: elapsed(now - m.ts),
         priority: null,
       }));
     case "blocked":

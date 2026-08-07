@@ -7,9 +7,9 @@
  * strings by whoever owns the payload — and the page decides what each group
  * means. One shape, many callers; no caller has to own the union.
  *
- * `ago` lives here rather than in the page because it is part of that
- * resolution: every caller of this row has a timestamp and needs the same
- * words for it. */
+ * The row draws `when` exactly as it is handed it. The wording is the page's,
+ * built over the one `ago` in `format.ts` — there used to be a second one here,
+ * and the two disagreed on screen. See that file's docstring. */
 
 export type Accent = "ok" | "warn" | "danger" | "neutral";
 
@@ -37,17 +37,6 @@ export interface GroupRowProps {
 export function accentInk(accent: Accent): { ink: string; wash: string } {
   if (accent === "neutral") return { ink: "var(--text-3)", wash: "var(--pane-3)" };
   return { ink: `var(--${accent})`, wash: `var(--${accent}-soft)` };
-}
-
-/** Seconds → the words the vanilla page used, so the dashboard and the tool
- *  results say the same thing about the same card. */
-export function ago(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
 }
 
 const row: React.CSSProperties = {
