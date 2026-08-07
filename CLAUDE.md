@@ -203,5 +203,6 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    events carrying `mentions` want a human eye after (MENTIONS.md §5).
 2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
 3. The React dashboard (milestone "UI — React dashboard (Nova)") has its data
-   layer and its chrome (header, tabs, KPI rail); the attention, board, dossier
-   and hours views are still cards on the board.
+   layer, its chrome (header, tabs, KPI rail) and its three pages wired into
+   App.tsx (attention, board, hours); the card dossier drawer and the smoke
+   harness are still cards on the board.
