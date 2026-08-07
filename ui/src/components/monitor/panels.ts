@@ -100,6 +100,16 @@ export interface LiveLeasesProps {
 
 /* ── 2. Throughput ────────────────────────────────────────────────────────── */
 
+/** How many calendar days the chart draws. The design's viewBox divides its
+ *  380 units into exactly this many slots and the subtitle says "Last 14 days",
+ *  so the number is the pane's, not the fetcher's — `useBoard` imports it and
+ *  asks the board for that window rather than picking one of its own. Two
+ *  places choosing 14 independently is how the two drift. */
+export const THROUGHPUT_DAYS = 14;
+
+/** The same number in the board verb's own spelling (`verbs/report.py::days`). */
+export const THROUGHPUT_WINDOW = `${THROUGHPUT_DAYS}d`;
+
 /** One bar of the 14-day chart — the design's `throughDays`. */
 export interface ThroughDay {
   /** the calendar label, already formatted by `core/hours.py` */
@@ -111,8 +121,14 @@ export interface ThroughDay {
 }
 
 export interface ThroughputProps {
-  /** `board.hours` — only present when the board call passed `window=`. `null`
-   *  is the honest state before it does, not an error. */
+  /** `board.hours`, and it really does arrive as a prop: `useBoard` asks every
+   *  `board` call for `window=THROUGHPUT_WINDOW` and the browser's IANA zone, so
+   *  the field is populated on the same snapshot as every other pane's rows.
+   *
+   *  `pulse.py::run` builds `hours` ONLY when the call passes `window=` — a
+   *  caller that forgets it gets `null`, which is why this stays nullable and
+   *  the pane keeps an empty state naming the missing argument. It is the
+   *  fallback for a server or a caller that did not ask, not the normal path. */
   report: ReportPayload | null;
 }
 
