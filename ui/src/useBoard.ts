@@ -1,0 +1,140 @@
+/* The one hook that fetches. No component calls the client directly.
+ *
+ * There is exactly one owner of "what the board says right now", and it is this
+ * file. That is not tidiness: the feed is a signal, so a refetch must be
+ * coalesced across every reason to refetch at once, and a second component with
+ * its own effect would fetch on its own clock and paint a board half a second
+ * older than the one next to it.
+ *
+ * Nothing here renders a frame. A frame pokes `refresh`, `refresh` asks the
+ * board, and the board's answer is the only thing that ever reaches state. */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { RpcError, type Client } from "./client";
+import type { BoardPayload, CardPayload } from "./types";
+
+/** One window for a burst of writes. Long enough that an orchestrator's
+ *  plan-of-nine is one refetch, short enough to read as instant. */
+const COALESCE_MS = 150;
+
+export interface Board {
+  board: BoardPayload | null;
+  card: CardPayload | null;
+  /** The feed is connected. False means the page may be stale. */
+  live: boolean;
+  /** Open a card's dossier, or null to close it. */
+  openCard: (task: string | null) => void;
+  openId: string | null;
+  /** The last failure, kept until something succeeds. A refusal's message names
+   *  the call that fixes it, so it is shown as the server wrote it. */
+  error: RpcError | null;
+  /** True until the first answer arrives — an empty board and an unfetched one
+   *  are not the same picture. */
+  loading: boolean;
+  /** The ONE write. Refetch comes from the feed's own change signal. */
+  comment: (text: string, mentions?: string[]) => Promise<void>;
+  /** Force a refetch: after pasting a token, or a manual reload. */
+  refresh: () => void;
+}
+
+export function useBoard(client: Client): Board {
+  const [board, setBoard] = useState<BoardPayload | null>(null);
+  const [card, setCard] = useState<CardPayload | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
+  const [error, setError] = useState<RpcError | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // The open card is read from inside a timer that outlives the render that
+  // scheduled it, so it travels in a ref. Reading state there would refetch the
+  // card that was open when the socket connected, forever.
+  const open = useRef<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alive = useRef(true);
+
+  const fetchAll = useCallback(async () => {
+    try {
+      const next = await client.rpc<BoardPayload>("board", {});
+      if (!alive.current) return;
+      setBoard(next);
+      setError(null);
+      const task = open.current;
+      if (task) {
+        const dossier = await client.rpc<CardPayload>("card", { task });
+        // Still the same card? The drawer may have moved while this was in
+        // flight, and writing a stale dossier into it is a visible glitch.
+        if (alive.current && open.current === task) setCard(dossier);
+      }
+    } catch (err) {
+      if (alive.current) setError(asRpcError(err));
+    } finally {
+      if (alive.current) setLoading(false);
+    }
+  }, [client]);
+
+  /** Every reason to refetch goes through here, so N reasons in one window are
+   *  one request. Criterion 1: a frame arrives → exactly one refetch. */
+  const poke = useCallback(() => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void fetchAll();
+    }, COALESCE_MS);
+  }, [fetchAll]);
+
+  useEffect(() => {
+    alive.current = true;
+    void fetchAll(); // the mount fetch is immediate: nothing to coalesce with
+    const stop = client.subscribe(poke, setLive);
+    return () => {
+      alive.current = false;
+      if (timer.current !== null) clearTimeout(timer.current);
+      stop();
+    };
+  }, [client, fetchAll, poke]);
+
+  const openCard = useCallback(
+    (task: string | null) => {
+      open.current = task;
+      setOpenId(task);
+      setCard(null); // never show the previous card's thread under a new title
+      if (!task) return;
+      void (async () => {
+        try {
+          const dossier = await client.rpc<CardPayload>("card", { task });
+          if (alive.current && open.current === task) setCard(dossier);
+        } catch (err) {
+          if (alive.current) setError(asRpcError(err));
+        }
+      })();
+    },
+    [client],
+  );
+
+  const comment = useCallback(
+    async (text: string, mentions: string[] = []) => {
+      const task = open.current;
+      if (!task || !text.trim()) return;
+      // The same door every agent uses: `update` with comment=, and mentions=
+      // riding on it. No status, no take, no merge — the browser does not move
+      // a card, and a second way to move one is a second way to disagree.
+      await client.rpc("update", { task, comment: text, mentions });
+      // No refetch here on purpose: the write produced an event, the event
+      // publishes a change frame, and the frame pokes the one refresh path.
+    },
+    [client],
+  );
+
+  return useMemo(
+    () => ({ board, card, live, openCard, openId, error, loading, comment, refresh: poke }),
+    [board, card, live, openCard, openId, error, loading, comment, poke],
+  );
+}
+
+function asRpcError(err: unknown): RpcError {
+  if (err instanceof RpcError) return err;
+  // A network failure is not an envelope: `unreachable` is the board's own word
+  // for it (_errors.py), so the UI has one vocabulary and not two.
+  return new RpcError("unreachable", err instanceof Error ? err.message : String(err));
+}
