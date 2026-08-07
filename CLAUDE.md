@@ -16,10 +16,14 @@ back), `docs/design.md` (the product, attribute by attribute), and
 parallel cards, zero conflicts, zero stale leases, and a merged tree that came
 back with two `ago()` and three `initials()` anyway. Read it before planning a
 wide fan-out; it concludes that `collisions()` is not widened and taskops never
-parses source — the seams just land serialized FIRST.
+parses source — the seams just land serialized FIRST. Its two adoptions are
+live (fan-out.md §10): the ordering rule is a sentence in
+`mcp/server.py::INSTRUCTIONS`, and a milestone carries `criteria` next to
+`rules` — shown in every take and at `taskops_merge milestone=`, which refuses
+until the human answers `criteria_met=true`.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**200 passed, 1 skipped** (`tests/test_ui.py` — see below), ruff + pyright
+**202 passed, 1 skipped** (`tests/test_ui.py` — see below), ruff + pyright
 strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on

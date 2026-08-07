@@ -109,6 +109,11 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     # had to shrink to leave the panorama room. Contract, not wording, pinned.)
     for mention in ("✉", "answer on that card and it clears", "no mark-as-read"):
         assert mention in text
+    # docs/fan-out.md's D, delivered where planning happens rather than filed:
+    # the seams land serialized BEFORE a fan-out, because a parallel worker
+    # branches before they exist and its (correct) search finds nothing.
+    for seam in ("ONE serialized card", "search finds nothing", "docs/fan-out.md"):
+        assert seam in text
     # …and the whole handshake must fit UNDER the measured truncation, panorama
     # included: hello.CAP is the ceiling and the protocol may not eat all of it.
     assert len(text) + 300 + 2 <= hello.CAP, "INSTRUCTIONS grew past the cap — the panorama dies"
@@ -375,6 +380,73 @@ def test_merge_refuses_before_git_ever_runs_when_the_card_is_not_done(
     with pytest.raises(Refused, match="not done"):
         call(dev, repo, "taskops_merge", task=cards[0]["id"])
     assert not (repo / ".taskops" / "trees").exists()  # git never even started
+
+
+def test_a_milestones_criteria_travel_into_every_take_the_way_rules_do(
+    repo: Path, boards: Any
+) -> None:
+    """docs/fan-out.md §4: every card was green and the milestone was not,
+    because no worker ever saw what the WHOLE would be judged against. The
+    chapter's criteria ride above the spec, next to its rules."""
+    dev = boards(BERNA)
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "MVP",
+            "goal": "invoice a bank CSV",
+            "criteria": ["the served page renders all three tabs against a real board"],
+            "tasks": [{"title": "VAT", "spec": "the whole tax"}],
+        },
+    )
+    assert out["milestone"]["criteria"] == [
+        "the served page renders all three tabs against a real board"
+    ]
+    card = out["cards"][0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    text = call(boards(W1), repo, "taskops_take", task=card)
+    assert "the served page renders all three tabs" in text
+    assert text.index("all three tabs") < text.index("## Spec")  # above, like a rule
+
+    # ...and replaced WHOLE through update milestone=, exactly like rules
+    dev.call("update", {"milestone": out["milestone"]["id"], "criteria": ["only this now"]})
+    assert dev.stores.state()["milestones"][out["milestone"]["id"]]["criteria"] == [
+        "only this now"
+    ]
+
+
+def test_landing_shows_the_chapters_criteria_and_the_human_answers_out_loud(
+    repo: Path, boards: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate SHOWS the criteria and refuses until the human says they hold —
+    nothing is judged by the machine, nothing stored as status: the answer
+    travels in the call and lands in the `landed` event (docs/fan-out.md §8B)."""
+    from taskops.gitwork import trees
+
+    dev = boards(BERNA)
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "MVP",
+            "goal": "invoice a bank CSV",
+            "criteria": ["all three tabs render"],
+            "tasks": [{"title": "VAT", "spec": "the whole tax"}],
+        },
+    )
+    stone, card = out["milestone"]["id"], out["cards"][0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+    w1.call("update", {"task": card, "status": "dropped", "comment": "not needed after all"})
+
+    with pytest.raises(Refused, match="criteria_met=true") as refusal:
+        call(dev, repo, "taskops_merge", milestone=stone)
+    assert "all three tabs render" in str(refusal.value)  # shown, not summarised
+    assert not (repo / ".taskops" / "trees").exists()  # refused before git ran
+
+    monkeypatch.setattr(trees, "land_milestone", lambda repo_, branch: ("main", "abc123"))
+    call(dev, repo, "taskops_merge", milestone=stone, criteria_met=True)
+    landed = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"]
+    assert landed and landed[-1]["body"].get("criteria_met") is True  # on the record
 
 
 def test_a_tool_bug_is_an_error_result_not_a_dead_server(
