@@ -90,9 +90,12 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                 '["Decimal, never float", "no migrations in this milestone"]. Shown above '
                 "the spec in every take: a rule read after building is a rewrite."
             ),
+            "criteria": _list(
+                "what the CHAPTER is accepted against — every card can be green while the "
+                "milestone is not. Shown at taskops_merge milestone=, refused until answered."
+            ),
             "reviews": _flag(
-                "cards of this chapter default to review=true — OPTIONAL, off unless "
-                "somebody turns it on; a per-card review= always wins"
+                "chapter default: cards get review=true — OPTIONAL; a per-card review= wins"
             ),
             "tasks": {"type": "array", "description": "the cards, in order", "items": CARD},
         },
@@ -113,6 +116,9 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                 "ms-… → land the WHOLE milestone into the trunk. Refused while any card "
                 "of it is open or unintegrated. The human's call — never do this with "
                 "raw git in the shared checkout; the board must record the landing."
+            ),
+            "criteria_met": _flag(
+                "with milestone=: the human's answer to its criteria — recorded, never judged"
             ),
         }
     ),

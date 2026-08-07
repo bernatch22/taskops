@@ -11,7 +11,7 @@ from typing import Any
 from pathlib import Path
 
 from . import brief, render
-from .._json import as_rows, as_object
+from .._json import as_rows, as_object, as_strings
 from ..board import Board
 from .._errors import Refused, BadRequest
 from ..gitwork import trees
@@ -52,7 +52,7 @@ def merge(board: Board, repo: Path, args: Args, now: float) -> str:
     """
     stone = str(args.get("milestone", ""))
     if stone:
-        return _land(board, repo, stone)
+        return _land(board, repo, stone, bool(args.get("criteria_met")))
     task = str(args.get("task", ""))
     dossier = board.call("card", {"task": task})
     state = str(dossier.get("state", ""))
@@ -71,7 +71,7 @@ def merge(board: Board, repo: Path, args: Args, now: float) -> str:
     return render.plain(board.call("merged", {"task": task, "into": branch, "sha": sha}))
 
 
-def _land(board: Board, repo: Path, stone: str) -> str:
+def _land(board: Board, repo: Path, stone: str, criteria_met: bool) -> str:
     """The gate is the board, the git is the client, the record is a verb —
     the same three-way split as a card merge, one level up."""
     view = board.call("board", {"milestone": stone})
@@ -89,7 +89,21 @@ def _land(board: Board, repo: Path, stone: str) -> str:
             f"{stone} still has open work ({listed}) — a milestone lands whole or not at "
             "all. Finish, merge or drop what is left, then taskops_merge milestone= again."
         )
+    crits = as_strings(named.get("criteria"))
+    if crits and not criteria_met:
+        # The chapter's criteria are the human's question, never the machine's:
+        # every card can be green while the assembled thing is not
+        # (docs/fan-out.md §4 — six green cards, one placeholder page). Nothing
+        # is judged or stored here; the answer travels in the call and is
+        # recorded in the `landed` event.
+        listed = "\n".join(f"  {n}. {c}" for n, c in enumerate(crits, 1))
+        raise Refused(
+            f"{stone} is accepted against:\n{listed}\n"
+            "Look at the assembled thing, not the board — then, if each one holds, say so: "
+            f"taskops_merge milestone={stone} criteria_met=true"
+        )
     trunk, sha = trees.land_milestone(repo, str(named.get("branch", "")))
-    return render.plain(
-        board.call("merged", {"milestone": stone, "into": trunk, "sha": sha})
-    )
+    record: Args = {"milestone": stone, "into": trunk, "sha": sha}
+    if crits:
+        record["criteria_met"] = True  # the human's answer, on the record
+    return render.plain(board.call("merged", record))

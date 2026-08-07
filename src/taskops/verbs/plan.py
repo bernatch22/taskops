@@ -92,6 +92,9 @@ def _milestone(
             title=given,
             goal=_args.text(args, "goal", default=""),
             rules=_args.strings(args, "rules"),
+            # What the CHAPTER is accepted against — rendered at the landing
+            # gate, answered by the human, never judged here (docs/fan-out.md §8B).
+            criteria=_args.strings(args, "criteria"),
             # A default for the chapter's cards, not a rule: per-card wins.
             reviews=_args.flag(args, "reviews"),
             # Computed ONCE and stored. Renaming the milestone later cannot move

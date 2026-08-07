@@ -79,6 +79,7 @@ erDiagram
         string title
         string goal "the WHY, travels inside every take"
         list rules "what holds for EVERY card of this chapter"
+        list criteria "what the CHAPTER is accepted against — shown at landing"
         string branch "ms/slug, computed ONCE, stored"
         string status "open | done | dropped"
         float created
@@ -478,12 +479,33 @@ The remaining "recover" mentions (`core/types.py`, `verbs/assign.py`,
 intentional: each one explains why the
 rule exists, which is the whole convention of this codebase.
 
+**A known limit of `collisions()`, argued but not changed.**
+`verbs/_context.py::collisions` intersects the DECLARED `files` of open cards:
+it lives in path space. The Nova UI milestone (2026-08-07) fanned four cards
+onto pairwise-disjoint paths — the warning was correctly silent — and the
+merged tree still came back with two `ago()` and three `initials()`, because
+that class of failure lives in *symbol* space. **`docs/fan-out.md`** is the
+post-mortem, with the file:line evidence and the four proposals weighed. Its
+conclusion is deliberately conservative and belongs here: taskops does NOT
+learn to parse source (a symbol scanner is the first component that would have
+to know what a language is, and §14's layering has nowhere to put it);
+`collisions()` is not widened; language-specific duplicate detection stays in
+the project's own linter. What it recommends instead is free — land the seams
+serialized before fanning out — plus one optional field, `criteria` on a
+Milestone, next to `rules`. Both are implemented (tk-097cae, 2026-08-07): the
+ordering rule is one sentence in `mcp/server.py::INSTRUCTIONS`, delivered at
+the handshake inside `hello.py`'s budget; `Milestone.criteria` travels into
+every take like `rules` and is SHOWN at `taskops_merge milestone=`, which
+refuses until the human answers `criteria_met=true` — recorded in the `landed`
+event, never judged by the machine. `docs/fan-out.md` §10 is the map from each
+adoption to its test.
+
 ---
 
 ## 13. Verified state at time of writing
 
 ```
-201 tests passing   ./scripts/test
+200 passing, 1 skipped   ./scripts/test
 ruff clean            } ./scripts/lint
 pyright --strict clean
 ```
@@ -493,8 +515,10 @@ replay, graph, machine, hours, mentions, review), store (log/cache/live),
 verbs (including the whole review cycle and the two races it can lose),
 gitwork (including a raw-socket WebSocket handshake test), http (topology),
 mcp (dossier section order, tool refusals), migration (the v1 mapping),
-ui (headless — the real `src/taskops/ui/index.html` script run under Node against real
-board payloads, every card clicked).
+ui (headless — **skipped for now**: the harness ran the inline script of the old
+single-file page, and the dashboard is a built React bundle from `ui/` since the
+Nova rewrite. A smoke-harness card, to be re-planned once Monitor lands, restores
+it against the bundle).
 
 Not yet done: running the migration against the v1 boards on axion
 (`scripts/migrate_v1.py` exists and is tested — and the 66 v1 events that

@@ -108,6 +108,7 @@ def _milestone(state: State, event: Event) -> None:
                 title=str(body.get("title", "")),
                 goal=str(body.get("goal", "")),
                 rules=[str(r) for r in body.get("rules", []) if r],
+                criteria=[str(c) for c in body.get("criteria", []) if c],
                 reviews=bool(body.get("reviews", False)),
                 branch=str(body.get("branch", "")),
                 status="open",
@@ -129,6 +130,9 @@ def _milestone(state: State, event: Event) -> None:
             # would leave no way to withdraw a rule short of a `retire` event,
             # which is the machinery this deliberately does not have.
             stone["rules"] = [str(r) for r in body["rules"] if r]
+        if "criteria" in body:
+            # Same shape, same reason: the whole list or nothing.
+            stone["criteria"] = [str(c) for c in body["criteria"] if c]
         if "reviews" in body:
             # Only a DEFAULT for cards planned after it: turning it on does not
             # retro-flag a card, and turning it off does not un-flag one. A card

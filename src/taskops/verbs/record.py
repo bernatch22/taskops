@@ -50,8 +50,13 @@ def merged(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     if stone_id:
         if stone_id not in stores.state()["milestones"]:
             raise Refused(f"milestone {stone_id} does not exist")
-        body = {"op": "landed", "id": stone_id, "into": _args.text(args, "into"),
-                "sha": _args.text(args, "sha")}
+        body: dict[str, Any] = {"op": "landed", "id": stone_id, "into": _args.text(args, "into"),
+                                "sha": _args.text(args, "sha")}
+        if _args.flag(args, "criteria_met"):
+            # The human's out-loud answer to the chapter's criteria, recorded —
+            # never judged here (docs/fan-out.md §8B: the board records, the
+            # human decides).
+            body["criteria_met"] = True
         seq = stores.write([make(PROJECT, actor, "milestone", body, now)])
         stores.live.renew(actor, now)
         return {"milestone": stores.state()["milestones"][stone_id],
