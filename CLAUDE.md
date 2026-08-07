@@ -202,5 +202,6 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    written and tested; it has never been run on the real board, and the 66
    events carrying `mentions` want a human eye after (MENTIONS.md §5).
 2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
-3. The React dashboard (milestone "UI — React dashboard (Nova)") is scaffolded;
-   the real chrome, board, dossier and hours views are still cards on the board.
+3. The React dashboard (milestone "UI — React dashboard (Nova)") has its data
+   layer and its chrome (header, tabs, KPI rail); the attention, board, dossier
+   and hours views are still cards on the board.
