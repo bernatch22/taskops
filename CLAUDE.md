@@ -9,7 +9,14 @@ are the index of *why*: every rule here is a v1 failure that cost real time,
 and the post-mortem for each one is inline in the docstring of the module that
 carries it. Read the module before changing its decision, not after.
 `README.md` is install-and-run (including serving the UI); `MENTIONS.md` is
-the mention design.
+the mention design. `docs/` holds the paper trails for decisions that reversed
+or extended a rule: `docs/implement-reviewer.md` (why optional review came
+back), `docs/design.md` (the product, attribute by attribute), and
+**`docs/fan-out.md`** — the post-mortem of the Nova UI milestone: eight
+parallel cards, zero conflicts, zero stale leases, and a merged tree that came
+back with two `ago()` and three `initials()` anyway. Read it before planning a
+wide fan-out; it concludes that `collisions()` is not widened and taskops never
+parses source — the seams just land serialized FIRST.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
 **200 passed, 1 skipped** (`tests/test_ui.py` — see below), ruff + pyright
