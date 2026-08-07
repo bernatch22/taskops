@@ -41,9 +41,26 @@ export function shortActor(actor: string): string {
   return tail.split(":").pop() ?? tail;
 }
 
-/** The two letters an avatar shows. */
+/** The glyphs that stand for an actor, in the actor's OWN case: "agent:berna/w5"
+ *  → "w5", "agent:berna/w10" → "w10", "dev:berna" → "ber".
+ *
+ *  Up to THREE, not one. A single leading glyph drew eight identical "W" discs
+ *  the day `agent:berna/w1` … `agent:berna/w8` ran in parallel, and the avatar
+ *  row stopped naming anybody. Two would have fixed exactly that board and
+ *  broken the next one: the live board already carries `w1` AND `w10`, which
+ *  share their first two glyphs. The tail is short by construction (a worker
+ *  name, not a sentence), so the cap only ever bites a human's given name, where
+ *  three glyphs read better than two anyway ("ber", not "be").
+ *
+ *  The case is NOT decided here — same split as `ago`: the helper answers "which
+ *  glyphs", the caller says how they are drawn. A round avatar disc wants them
+ *  upcased (AvatarStack, CardTile, both via `textTransform` in their own style
+ *  object, where the rest of that disc's typography already lives); the hours
+ *  table sets its glyphs beside the full lowercase actor string and wants them
+ *  left alone. A helper that had already upcased could serve neither without the
+ *  caller casing them back down. */
 export function initials(actor: string): string {
-  return shortActor(actor).slice(0, 2).toUpperCase();
+  return shortActor(actor).slice(0, 3);
 }
 
 /* On the palettes, which are NOT here on purpose.

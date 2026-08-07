@@ -4,15 +4,16 @@
  * the same board must give the same person the same disc, and there is nowhere to
  * store an assignment. The palette is four token pairs — a literal colour here
  * would be the one thing tokens.css exists to forbid. */
+import { initials } from "../../format";
 import type { TeamMember } from "../../types";
 
-/** `dev:berna` → "B", `agent:berna/w3` → "W". The tail is the person; the head is
- *  the role, and a stack of five "A"s would say nothing. */
-export function initial(actor: string): string {
-  const tail = actor.split("/").pop() ?? actor;
-  const name = tail.includes(":") ? (tail.split(":").pop() ?? tail) : tail;
-  return (name.trim()[0] ?? "?").toUpperCase();
-}
+/* The glyphs come from `initials()` in format.ts: the TAIL of the actor string,
+ * which is the person — the head is the role, and a stack of five "A"s would say
+ * nothing. Up to three glyphs, not one, for the same reason one step later: with
+ * `agent:berna/w1` … `agent:berna/w8` on the board a single leading letter draws
+ * eight identical "W" discs, and two would still collide `w1` with `w10` — see
+ * the argument in format.ts. The upcasing is this disc's own presentation and
+ * lives in `disc` below, with the rest of its typography. */
 
 const TONES = [
   { bg: "var(--accent-soft)", fg: "var(--accent-hi)" },
@@ -38,6 +39,7 @@ const disc: React.CSSProperties = {
   display: "grid",
   placeItems: "center",
   letterSpacing: "-0.02em",
+  textTransform: "uppercase",
 };
 
 export function AvatarStack({ team }: { team: TeamMember[] }): React.JSX.Element {
@@ -52,7 +54,7 @@ export function AvatarStack({ team }: { team: TeamMember[] }): React.JSX.Element
             data-actor={member.actor}
             style={{ ...disc, background: bg, color: fg }}
           >
-            {initial(member.actor)}
+            {initials(member.actor)}
           </div>
         );
       })}

@@ -191,6 +191,8 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
               display: "grid",
               placeItems: "center",
               fontSize: "9.5px",
+              /* The disc upcases; `initials()` returns the actor's own case. */
+              textTransform: "uppercase",
               background: row.holder ? "var(--accent-soft)" : "var(--pane-3)",
               color: row.holder ? "var(--accent-hi)" : "var(--text-3)",
             }}
