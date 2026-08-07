@@ -121,6 +121,25 @@ it just reopens the running one. Remote board: it opens the server's /ui/ with
 the credential `join` already saved. The old `taskops open` sent you to a
 paste-a-token screen holding a token the machine already had.
 
+### Working on the dashboard itself
+
+You do not need node to *run* it — the built bundle
+(`src/taskops/ui/{index.html,app.js,style.css}`) is committed, and React is
+bundled into it rather than fetched from a CDN, so a fresh `pip install taskops`
+serves a dashboard offline. You need node only to *change* it:
+
+```sh
+cd ui
+npm install
+npm run build     # typecheck + esbuild -> ../src/taskops/ui/   (commit the output)
+npm run check     # the closure: build + smoke + `git diff --exit-code` on the output
+```
+
+The source is React + TypeScript under `ui/src`, with Nova's palette in
+`ui/src/theme/tokens.css` — the one file allowed to contain a literal colour.
+The theme is an attribute on `<html data-tk>`, remembered in `localStorage`,
+defaulting to the OS scheme.
+
 ## The shape
 
 ```

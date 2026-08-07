@@ -12,8 +12,8 @@ carries it. Read the module before changing its decision, not after.
 the mention design.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**201 tests**, ruff + pyright strict clean. Not deployed yet (see "What is
-left").
+**200 passed, 1 skipped** (`tests/test_ui.py` — see below), ruff + pyright
+strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
 
@@ -173,9 +173,18 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   back. Two tests here looked green with the fix removed until this was done.
 - **Docs must not lie.** `ARCHITECTURE.md`, `README.md` and this file are part
   of the diff — counts, "not yet" and status tables all expire.
-- **Do not run browser/UI demos unless asked.** The UI is tested headlessly:
-  `tests/test_ui.py` runs `src/taskops/ui/index.html` under node with the real board payload
-  and clicks every card.
+- **The dashboard is built, not hand-written.** Source in `ui/` (React +
+  TypeScript, esbuild); `node ui/build.mjs` writes `index.html`, `app.js` and
+  `style.css` into `src/taskops/ui/`, and **that output is committed** — that is
+  what makes `pip install taskops` serve a dashboard with no node toolchain.
+  React is bundled, never a CDN. `npm run check` in `ui/` is the closure:
+  typecheck + build + smoke + `git diff --exit-code ../src/taskops/ui`.
+- **Do not run browser/UI demos unless asked.** The UI is tested headlessly —
+  `tests/test_ui.py`, currently **skipped**: it reached into the old
+  single-file page's inline script, which the bundle no longer has. Card
+  tk-28e585 (Smoke harness) restores headless coverage against the built
+  bundle. The file is kept whole, not gutted: it is the list of what the UI
+  has to prove.
 - Never re-introduce: a reviewer ROLE, a stored review STATUS, or automatic
   reviewer assignment (optional per-card review exists — docs/implement-reviewer.md
   is the paper trail; what stays banned is v1's shape: a role that ate the
@@ -193,4 +202,5 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    written and tested; it has never been run on the real board, and the 66
    events carrying `mentions` want a human eye after (MENTIONS.md §5).
 2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
-3. The repo has `git init` but **no commits yet** (branch `master`).
+3. The React dashboard (milestone "UI — React dashboard (Nova)") is scaffolded;
+   the real chrome, board, dossier and hours views are still cards on the board.
