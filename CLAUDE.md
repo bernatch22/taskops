@@ -2,7 +2,15 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **67 files / ~6.500 lines**.
+~340 files) as **68 Python files / ~6.700 lines under `src/taskops`**, plus the
+dashboard — **23 TypeScript files / ~3.000 lines under `ui/src`**, whose built
+bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
+these numbers:
+
+```sh
+find src/taskops -name '*.py' | wc -l ; find src/taskops -name '*.py' -exec cat {} + | wc -l
+find ui/src -name '*.ts*'     | wc -l ; find ui/src     -name '*.ts*' -exec cat {} + | wc -l
+```
 
 **`ARCHITECTURE.md` is the reference** — what exists, how it fits, and §11/§14
 are the index of *why*: every rule here is a v1 failure that cost real time,
@@ -133,7 +141,7 @@ presence.
 ## The layers — imports only point DOWN
 
 ```
-0  _errors _ids _clock _json          stdlib only
+0  _errors _ids _clock _json _locate _version      stdlib only
 1  core/    types actors event replay machine graph    PURE: no I/O at all
             hours mentions review
 2  store/   log cache live reviews creds stores       the ONLY SQL
@@ -141,9 +149,9 @@ presence.
             record report review                       no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees trailer bind install             the ONLY git (client-side)
-5  mcp/     server tools gitmoves schema render dossier before brief thread
+5  mcp/     server hello tools gitmoves schema render dossier before brief thread
    http/    server mounts rpc auth feed static
-6  cli/     init join serve invite tidy open hook
+6  cli/     init join serve invite tidy ui hook
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
@@ -182,8 +190,13 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 - **Mutation-check every fix**: break it on purpose, watch the test fail, put it
   back. Two tests here looked green with the fix removed until this was done.
-- **Docs must not lie.** `ARCHITECTURE.md`, `README.md` and this file are part
-  of the diff — counts, "not yet" and status tables all expire.
+- **Docs must not lie.** `ARCHITECTURE.md`, `README.md`, `MENTIONS.md` and this
+  file are part of the diff — counts, "not yet" and status tables all expire.
+  `docs/implement-reviewer.md` and `docs/fan-out.md` are different: dated paper
+  trails, each claim pinned to the tree it was written against. Keep their
+  *current-tense* claims true; do not rewrite their history. `docs/design.md`
+  is a live reference and is held to the same standard as this file. Prefer a
+  command somebody can re-run over a number that rots silently.
 - **The dashboard is built, not hand-written.** Source in `ui/` (React +
   TypeScript, esbuild); `node ui/build.mjs` writes `index.html`, `app.js` and
   `style.css` into `src/taskops/ui/`, and **that output is committed** — that is

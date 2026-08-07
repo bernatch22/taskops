@@ -1,7 +1,10 @@
 # taskops — what the product is, and every attribute in it
 
 A brief for designing the interface. This document says **what exists and what
-each thing carries**; it makes no design decisions.
+each thing carries**; it makes no design decisions. Unlike its neighbours in
+`docs/`, it is not a dated post-mortem: it is a live reference of the data
+model and is kept true. `src/taskops/core/types.py` is the arbiter — if the two
+disagree, that file is right.
 
 ---
 
@@ -134,6 +137,7 @@ A card can have an assignee and no holder — that is exactly `stalled`.
   "title": "MVP facturador",
   "goal": "read a bank CSV and issue invoices with VAT",
   "rules": ["Decimal, never float"],
+  "criteria": ["a bank CSV in, a valid invoice out, end to end"],
   "reviews": false,
   "branch": "ms/mvp-facturador",
   "status": "open",
@@ -147,6 +151,7 @@ A card can have an assignee and no holder — that is exactly `stalled`.
 | `title` | string | The chapter's name. |
 | `goal` | string | **Why** this chapter exists. One or two sentences; travels into every worker's context. |
 | `rules` | string[] | Constraints that hold for **every** card in the chapter, e.g. "Decimal, never float", "no migrations in this milestone". 0–5 short lines. |
+| `criteria` | string[] | What the **chapter** is accepted against — `rules`' sibling. Travels into every take like `rules`, and is shown to the human when the milestone lands, which refuses until they answer `criteria_met=true`. Never judged by the machine. |
 | `reviews` | bool | Cards planned into this chapter default to `review: true`. A default, not a rule — per-card `review` always wins. Default `false`. |
 | `branch` | string | `ms/<slug>`, the integration branch. Computed once at creation and stored; renaming the milestone never moves it. |
 | `status` | enum | `open` \| `done` \| `dropped`. |
@@ -421,7 +426,7 @@ it does not decide them.
 ## 8. Everything at a glance
 
 ```
-Milestone  id · title · goal · rules[] · reviews · branch · status
+Milestone  id · title · goal · rules[] · criteria[] · reviews · branch · status
   └─ Card  id · title · spec · criteria[] · status · priority · parent · after[]
            files[] · labels[] · assignee · review · created_by · created · updated
        ├─ derived:  state (ready|doing|blocked|stalled|review|reviewing|changes|done|dropped)
