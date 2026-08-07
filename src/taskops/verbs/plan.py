@@ -1,0 +1,156 @@
+"""plan — the whole tree in one call. Orchestrator only.
+
+`parent` and `after` accept an index into THIS call's `tasks` list, so a plan
+with dependencies is one transaction. In v1 you could split it across calls and
+the second call had to use real ids, which is the shape of every board that
+ended up with a dangling edge.
+
+Cycles are refused here, at the write. A graph with a cycle makes "ready"
+meaningless, and v1 accepted a 2-cycle silently: both cards were invisible in
+every list that filtered by it.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from . import _args, _facts, _context
+from .. import _clock
+from .._ids import new_task_id, is_milestone_id, new_milestone_id
+from ..core import graph
+from .._errors import NotFound, BadRequest
+from ..core.event import make
+from ..core.types import PROJECT, Card, Event, Milestone, slugify
+from ..store.stores import Stores
+
+ORDER = 0.001  # the spacing between two cards of the same plan call
+
+
+def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
+    now = _clock.now()
+    events: list[Event] = []
+    stone = _milestone(stores, actor, args, now, events)
+    rows = _args.rows(args, "tasks")
+    if not rows:
+        raise BadRequest(
+            'plan writes a tree: tasks=[{"title": "…", "spec": "…", "files": ["src/x.py"]}] '
+            "— use after: <index> to say what waits for what"
+        )
+    ids = [new_task_id() for _ in rows]
+    fresh: dict[str, Card] = {}
+    for index, row in enumerate(rows):
+        # A millisecond apart, in the order they were written: the plan HAS an
+        # order and the pool reads it back through `created`; identical stamps
+        # would leave the tie to a random id.
+        #
+        # Spaced BACKWARDS from now, never forwards. A card stamped in the
+        # future is a card whose next edit looks stale to `replay` and is
+        # dropped — which is exactly what the dispatch test caught here.
+        stamp = now - (len(rows) - 1 - index) * ORDER
+        card = _card(row, ids[index], stone, actor, stamp, ids)
+        fresh[card["id"]] = card
+
+    combined = dict(stores.state()["cards"]) | fresh
+    for card in fresh.values():
+        if card["parent"] and card["parent"] not in combined:
+            raise NotFound(f"parent {card['parent']} does not exist")
+        for dep in card["after"]:
+            graph.check_dep(combined, card["id"], dep)
+
+    for card in fresh.values():
+        events.append(make(card["id"], actor, "created", {"card": dict(card)}, card["created"]))
+    seq = stores.write(events)
+    stores.live.renew(actor, now)
+    return {
+        "milestone": stone,
+        "cards": list(fresh.values()),
+        "seq": seq,
+        "pulse": _context.pulse(stores, actor, now, stone["id"]),
+    }
+
+
+def _milestone(
+    stores: Stores, actor: str, args: _args.Args, now: float, events: list[Event]
+) -> Milestone:
+    """Name an existing milestone, or open one. Never guess between several."""
+    given = _args.text(args, "milestone", default="")
+    if is_milestone_id(given):
+        stone = stores.state()["milestones"].get(given)
+        if stone is None:
+            raise NotFound(f"milestone {given} does not exist")
+        return stone
+    if given:
+        # The same title twice means the same chapter, not a second one with an
+        # identical name — and a duplicate would silently split the board in two
+        # (two goals, two branches, two "the open milestone" answers).
+        for stone in stores.state()["milestones"].values():
+            if stone["status"] == "open" and stone["title"] == given:
+                return stone
+        ident = new_milestone_id()
+        stone = Milestone(
+            id=ident,
+            title=given,
+            goal=_args.text(args, "goal", default=""),
+            rules=_args.strings(args, "rules"),
+            # A default for the chapter's cards, not a rule: per-card wins.
+            reviews=_args.flag(args, "reviews"),
+            # Computed ONCE and stored. Renaming the milestone later cannot move
+            # the branch under the worktrees that already live on it.
+            branch=f"ms/{slugify(given)}",
+            status="open",
+            created=now,
+        )
+        events.append(make(PROJECT, actor, "milestone", {"op": "create", **dict(stone)}, now))
+        return stone
+    stone = _facts.open_milestone(stores)
+    if stone is None:
+        raise BadRequest(
+            "this board has no single open milestone — say which chapter this is: "
+            'taskops_plan milestone="<title>" goal="<why>" tasks=[…]'
+        )
+    return stone
+
+
+def _card(
+    row: _args.Args, ident: str, stone: Milestone, actor: str, now: float, batch: list[str]
+) -> Card:
+    return Card(
+        id=ident,
+        title=_args.text(row, "title"),
+        spec=_args.text(row, "spec", default=""),
+        criteria=_args.strings(row, "criteria"),
+        status="open",
+        # Inherited from the chapter's `reviews` default; the card's own flag wins.
+        review=_args.flag(row, "review", default=bool(stone.get("reviews", False))),
+        priority=_args.number(row, "priority", default=2, low=0, high=3),
+        milestone=stone["id"],
+        parent=_ref(row.get("parent"), batch),
+        after=[r for r in (_ref(x, batch) for x in _list(row.get("after"))) if r],
+        files=_args.strings(row, "files"),
+        labels=_args.strings(row, "labels"),
+        assignee="",
+        created_by=actor,
+        created=now,
+        updated=now,
+    )
+
+
+def _list(value: object) -> list[object]:
+    if value is None or value == "":
+        return []
+    return list(value) if isinstance(value, list) else [value]  # type: ignore[arg-type]
+
+
+def _ref(value: object, batch: list[str]) -> str | None:
+    """A reference is an index into this call's `tasks`, or a real card id."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise BadRequest("parent/after take an index or a card id, not a boolean")
+    if isinstance(value, int):
+        if not 0 <= value < len(batch):
+            raise BadRequest(f"index {value} is outside this call's tasks (0..{len(batch) - 1})")
+        return batch[value]
+    if isinstance(value, str):
+        return value
+    raise BadRequest(f"parent/after take an index or a card id, got {type(value).__name__}")

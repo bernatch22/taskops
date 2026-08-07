@@ -1,0 +1,357 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>taskops</title>
+<!--
+  The board in a browser. Read-only about everything it SHOWS: managing work is
+  what the MCP tools are for, and a second way to move a card is a second way
+  for the two to disagree.
+
+  It has exactly one write, and it is not a way to move a card: the comment box
+  in the card panel (MENTIONS.md §9c). It exists so a human watching the board
+  can reach an agent that is mid-turn — the agent's delivery hook puts the ✉ on
+  its very next tool call — without opening an MCP session to say one sentence.
+
+  The socket is a SIGNAL, not a feed of data: every message just triggers a
+  refetch (debounced), so a dropped or duplicated frame can never leave this
+  page showing something the board never said.
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fff; --fg: #111; --dim: #666; --line: #e3e3e3; --card: #fafafa;
+    --ok: #1a7f37; --warn: #9a6700; --stop: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --fg: #e6edf3; --dim: #8b949e; --line: #21262d; --card: #161b22; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 62rem; margin: 0 auto; }
+  h1 { font-size: 1.35rem; margin: 0 0 .15rem; }
+  .goal { color: var(--dim); margin-bottom: 1.5rem; }
+  .group { margin-bottom: 1.75rem; }
+  .group h2 { font-size: .75rem; letter-spacing: .09em; text-transform: uppercase;
+              color: var(--dim); margin: 0 0 .55rem; font-weight: 600; }
+  .card { border: 1px solid var(--line); background: var(--card); border-radius: 10px;
+          padding: .6rem .8rem; margin-bottom: .45rem; display: flex; gap: .75rem;
+          align-items: baseline; flex-wrap: wrap; }
+  .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim);
+        font-size: .82rem; }
+  .who { margin-left: auto; color: var(--dim); font-size: .82rem; }
+  .merge h2 { color: var(--ok); } .stalled h2 { color: var(--stop); }
+  .take h2 { color: var(--warn); } .mentions h2 { color: var(--warn); }
+  footer { color: var(--dim); font-size: .8rem; border-top: 1px solid var(--line);
+           padding-top: .75rem; margin-top: 2rem; display: flex; gap: 1rem; }
+  .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--stop);
+         display: inline-block; margin-right: .35rem; }
+  .dot.live { background: var(--ok); }
+  input { font: inherit; padding: .4rem .6rem; border: 1px solid var(--line);
+          border-radius: 8px; background: var(--bg); color: var(--fg); width: 22rem; }
+  .empty { color: var(--dim); }
+  .card { cursor: pointer; }
+  .card:hover { border-color: var(--dim); }
+  .tag { font-size: .72rem; color: var(--dim); border: 1px solid var(--line);
+         border-radius: 999px; padding: 0 .45rem; }
+  button.tag { cursor: pointer; background: none; font-family: inherit; }
+  button.tag.on { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+  .say input { width: 100%; margin-bottom: .5rem; }
+  .say button.send { font: inherit; padding: .35rem .9rem; border-radius: 8px;
+                     border: 1px solid var(--line); background: var(--card);
+                     color: var(--fg); cursor: pointer; }
+  dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--bg);
+           color: var(--fg); max-width: 46rem; width: calc(100% - 3rem); padding: 1.5rem; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { font-size: 1.15rem; margin: 0 0 .2rem; }
+  dialog h3 { font-size: .72rem; letter-spacing: .09em; text-transform: uppercase;
+              color: var(--dim); margin: 1.4rem 0 .4rem; }
+  dialog p, dialog li { margin: .25rem 0; }
+  dialog pre { white-space: pre-wrap; font: inherit; margin: 0; }
+  .warn { border-left: 3px solid var(--stop); padding-left: .7rem; }
+  .note { border-left: 3px solid var(--warn); padding-left: .7rem; }
+  .ev { color: var(--dim); font-size: .85rem; }
+  .close { float: right; border: none; background: none; color: var(--dim);
+           font-size: 1.2rem; cursor: pointer; }
+</style>
+
+<main>
+  <h1 id="milestone">taskops</h1>
+  <div class="goal" id="goal"></div>
+  <div id="groups"></div>
+  <dialog id="detail"></dialog>
+  <footer>
+    <span><span class="dot" id="dot"></span><span id="live">connecting…</span></span>
+    <span id="team"></span>
+  </footer>
+</main>
+
+<script>
+  const BASE = location.pathname.replace(/\/ui\/?$/, "");
+  const KEY = "taskops:" + BASE;
+  const params = new URLSearchParams(location.search);
+  if (params.get("token")) {
+    localStorage.setItem(KEY, params.get("token"));
+    history.replaceState({}, "", BASE + "/ui/");
+  }
+
+  const GROUPS = [
+    ["merge", "Merge — done, not integrated"],
+    // Addressed to whoever this credential is, and unanswered. Same derivation
+    // as the agents see: a row here disappears when you write on that card.
+    ["mentions", "Mentions — addressed to you, not yet answered"],
+    ["review", "Review — handed in, nobody checking"],
+    ["changes", "Changes requested"],
+    ["stalled", "Stalled — owned, nobody running it"],
+    ["take", "Ready"],
+    ["doing", "Doing"],
+    ["reviewing", "Reviewing"],
+    ["blocked", "Blocked"],
+  ];
+
+  let TEAM = []; // the actors the mention picker offers; filled by draw()
+
+  async function rpc(verb, args = {}) {
+    const token = localStorage.getItem(KEY) || "";
+    const response = await fetch(BASE + "/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ verb, args }), // the actor is the credential's own
+    });
+    const body = await response.json();
+    if (!body.ok) throw new Error(body.error ? body.error.message : "refused");
+    return body.data;
+  }
+
+  function ago(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return minutes + "m ago";
+    const hours = Math.floor(minutes / 60);
+    return hours < 24 ? hours + "h ago" : Math.floor(hours / 24) + "d ago";
+  }
+
+  function draw(data) {
+    const stone = data.milestone;
+    const others = data.milestones || [];
+    // With several chapters open, naming one would be a coin toss: name them all.
+    document.getElementById("milestone").textContent =
+      stone ? stone.title : others.length ? others.length + " open milestones" : "no open milestone";
+    document.getElementById("goal").textContent =
+      stone ? stone.goal || "" : others.map((m) => m.title).join(" · ");
+    const now = Date.now() / 1000;
+    const root = document.getElementById("groups");
+    root.textContent = "";
+    for (const [key, label] of GROUPS) {
+      const rows = (data.groups || {})[key] || [];
+      if (!rows.length) continue;
+      const section = document.createElement("section");
+      section.className = "group " + key;
+      const head = document.createElement("h2");
+      head.textContent = label + " · " + rows.length;
+      section.append(head);
+      for (const row of rows) {
+        const card = document.createElement("div");
+        card.className = "card";
+        const id = document.createElement("span");
+        id.className = "id";
+        id.textContent = row.id;
+        const title = document.createElement("span");
+        // A mention row carries what was said; for a card row there is no text.
+        title.textContent = row.text || row.title || "";
+        const who = document.createElement("span");
+        who.className = "who";
+        const owner = row.holder || row.actor || row.assignee || row.by || "";
+        const when = row.since || row.ts;
+        who.textContent = [owner, when ? ago(now - when) : ""].filter(Boolean).join(" · ");
+        card.append(id, title, who);
+        card.addEventListener("click", () => open_card(row.id));
+        section.append(card);
+      }
+      root.append(section);
+    }
+    if (!root.children.length) {
+      root.innerHTML = '<p class="empty">Nothing open. Plan something with taskops_plan.</p>';
+    }
+    const team = (data.team || []).map((t) => t.actor + " " + ago(t.ago)).join(" · ");
+    document.getElementById("team").textContent = team;
+    // Who the mention picker can address. Presence is the right list: an actor
+    // nobody has seen in a day is not somebody you reach by writing to them.
+    TEAM = (data.team || []).map((t) => t.actor);
+  }
+
+  // ── the card, in full: the same substance the agent's tool result carries ──
+
+  function el(tag, text, cls) {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (cls) node.className = cls;
+    return node;
+  }
+
+  function section(root, title, nodes) {
+    if (!nodes.length) return;
+    root.append(el("h3", title));
+    for (const node of nodes) root.append(node);
+  }
+
+  async function open_card(id) {
+    const box = document.getElementById("detail");
+    box.textContent = "";
+    let data;
+    try {
+      data = await rpc("card", { task: id });
+    } catch (err) {
+      box.append(el("p", String(err.message || err)));
+      box.showModal();
+      return;
+    }
+    const card = data.card;
+    const shut = el("button", "✕", "close");
+    shut.addEventListener("click", () => box.close());
+    box.append(shut, el("h2", `${card.id} — ${card.title}`));
+
+    const facts = [data.state, "priority " + card.priority];
+    if (data.lease) facts.push("held by " + data.lease.actor);
+    if (data.seconds >= 60) facts.push(Math.round(data.seconds / 60) + "m worked");
+    box.append(el("p", facts.join(" · "), "goal"));
+    if ((card.labels || []).length) {
+      const row = el("p");
+      for (const label of card.labels) row.append(el("span", "#" + label, "tag"), " ");
+      box.append(row);
+    }
+
+    // The ORDER is the same as the agent's card: what changes what you do first.
+    section(box, "⚠ Also touching these files", (data.collisions || []).map((c) =>
+      el("p", `${c.files.join(", ")} — ${c.id} ${c.title} (${c.holder || "assigned"})`, "warn")));
+    if (data.resume) section(box, "Resume — where the last worker stopped",
+      [el("p", data.resume, "note")]);
+    if (data.epic) section(box, "Part of",
+      [el("p", `${data.epic.id} — ${data.epic.title}`), el("p", data.epic.spec || "", "goal")]);
+    section(box, "Spec", [el("pre", card.spec || "(no spec — ask before guessing)")]);
+    section(box, "Acceptance criteria",
+      (card.criteria || []).map((line, n) => el("p", `${n + 1}. ${line}`)));
+    section(box, "Waiting on", (data.blockers || []).map((b) =>
+      el("p", `${b.id} (${b.status}) — ${b.title}`)));
+    section(box, `Blocking ${(data.blocks || []).length} card(s)`, (data.blocks || []).map((b) =>
+      el("p", `${b.id} (${b.status}) — ${b.title}`)));
+    section(box, "Subtasks", (data.subtasks || []).map((b) =>
+      el("p", `${b.id} (${b.status}) — ${b.title}`)));
+    section(box, "History", (data.history || []).map((event) =>
+      el("p", `${ago(now_s() - event.ts)} · ${event.actor} · ${event.kind}${detail(event)}`, "ev")));
+    section(box, "Commits", (data.commits || []).map((commit) =>
+      el("p", `${(commit.sha || "").slice(0, 8)}  ${commit.subject || ""}` +
+              ((commit.files || []).length ? `  (${commit.files.join(", ")})` : ""), "ev")));
+    section(box, "Branch", [el("p", `${data.branch}  ·  ${data.worktree}`, "ev")]);
+
+    // ── the page's ONE write: say something on the card, optionally addressed.
+    // It goes through the same door as every agent (`update`, same token, same
+    // server-side validation), so a refusal comes back in the server's own
+    // words — the page re-implements nothing. This is how a human reaches a
+    // working agent mid-turn: the delivery hook carries the ✉ into its very
+    // next tool call (MENTIONS.md §9).
+    const say = el("div", undefined, "say");
+    say.append(el("h3", "Say something"));
+    const picked = new Set();
+    const tags = el("p");
+    for (const who of TEAM) {
+      const tag = el("button", "@" + who, "tag");
+      tag.addEventListener("click", () => {
+        picked.has(who) ? picked.delete(who) : picked.add(who);
+        tag.classList.toggle("on", picked.has(who));
+      });
+      tags.append(tag, " ");
+    }
+    const input = el("input");
+    input.placeholder = "a comment — the @buttons above address it";
+    const failed = el("p", "", "warn");
+    failed.hidden = true;
+    const send = el("button", "Send", "send");
+    send.addEventListener("click", async () => {
+      const args = { task: card.id, comment: input.value.trim() };
+      if (picked.size) args.mentions = [...picked];
+      try {
+        await rpc("update", args);
+        box.close(); // the feed's change signal refetches the board for us
+      } catch (err) {
+        failed.textContent = String(err.message || err); // the server's words, verbatim
+        failed.hidden = false;
+      }
+    });
+    say.append(tags, input, send, failed);
+    box.append(say);
+    box.showModal();
+  }
+
+  function now_s() { return Date.now() / 1000; }
+
+  function detail(event) {
+    const body = event.body || {};
+    if (event.kind === "created") return ": " + ((body.card || {}).title || "");
+    if (event.kind === "edited") return `: ${body.field} → ${JSON.stringify(body.to)}`;
+    for (const key of ["text", "note", "to", "subject", "into"])
+      if (body[key]) return ": " + body[key];
+    return "";
+  }
+
+  async function refresh() {
+    try {
+      draw(await rpc("board"));
+    } catch (err) {
+      document.getElementById("goal").textContent = String(err.message || err);
+      if (!localStorage.getItem(KEY)) ask();
+    }
+  }
+
+  function ask() {
+    const root = document.getElementById("groups");
+    root.textContent = "";
+    const field = document.createElement("input");
+    field.placeholder = "paste the board token, then press enter";
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && field.value.trim()) {
+        localStorage.setItem(KEY, field.value.trim());
+        connect();
+        refresh();
+      }
+    });
+    root.append(field);
+    field.focus();
+  }
+
+  let timer = null;
+  function poke() {
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 120); // debounce: a burst of writes is one refetch
+  }
+
+  function connect() {
+    const token = localStorage.getItem(KEY) || "";
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${scheme}://${location.host}${BASE}/feed?token=${token}`);
+    const dot = document.getElementById("dot");
+    const label = document.getElementById("live");
+    socket.addEventListener("open", () => {
+      dot.classList.add("live");
+      label.textContent = "live";
+    });
+    socket.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === "change" || message.type === "hello") poke();
+    });
+    socket.addEventListener("close", () => {
+      dot.classList.remove("live");
+      label.textContent = "reconnecting…";
+      setTimeout(connect, 2000); // by wall-clock seconds, never by "ticks seen"
+    });
+  }
+
+  if (localStorage.getItem(KEY)) {
+    connect();
+    refresh();
+  } else {
+    ask();
+  }
+</script>
