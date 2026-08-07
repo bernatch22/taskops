@@ -81,7 +81,15 @@ const tile: React.CSSProperties = {
   cursor: "pointer",
   display: "block",
   background: "var(--pane)",
-  border: "1px solid var(--hair)",
+  /* Per-side LONGHANDS, never the `border` shorthand, and React says why out
+   * loud: "Updating a style property during rerender (borderColor) when a
+   * conflicting property is set (borderLeft) can lead to styling bugs." The
+   * hover repaints three sides and the marker owns the fourth, so mixing the
+   * shorthand with a per-side one left the border in whichever state React
+   * happened to apply last — the grey edge that would not go away. */
+  borderStyle: "solid",
+  borderWidth: "1px",
+  borderColor: "var(--hair)",
   borderRadius: "13px",
   padding: "14px 15px",
   // The design's own easing, not a linear stand-in: `cubic-bezier(0.2,0.8,0.2,1)`
@@ -113,15 +121,33 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
   const who = row.holder ?? row.assignee;
   const style: React.CSSProperties = {
     ...tile,
-    ...(lift ? { borderColor: "var(--accent-line)", transform: "translateY(-2px)" } : {}),
+    /* Hover: `--accent`, not the `--accent-line` the design names — the one
+     * deliberate colour change in this tile, and it is a correction, not taste.
+     * `--accent-line` is `rgba(145,132,217,0.32)`; composited over the tile's
+     * own `--pane` (#191b28) that resolves to rgb(63,60,96) — a violet so
+     * desaturated it reads as a grey outline, which is what a hover is NOT
+     * supposed to say. The solid accent is the same hue at full strength, so
+     * the tile lifts toward the brand colour instead of toward grey. The glow
+     * is the design's own `box-shadow: 0 0 0 3px var(--accent-soft)`, borrowed
+     * from the dots it uses to mark a live thing. */
+    ...(lift
+      ? {
+          borderTopColor: "var(--accent)",
+          borderRightColor: "var(--accent)",
+          borderBottomColor: "var(--accent)",
+          boxShadow: "0 0 0 3px var(--accent-soft)",
+          transform: "translateY(-2px)",
+        }
+      : {}),
+    /* The fourth side belongs to the marker when there is one — Nova draws no
+     * stalled or to-merge edge, so that bar is ours and must survive a hover.
+     * With no marker the left side hovers like the other three. */
+    ...(marker
+      ? { borderLeftWidth: "3px", borderLeftColor: TONE_FG[marker] }
+      : lift
+        ? { borderLeftColor: "var(--accent)" }
+        : {}),
     ...(ring ? focusRing : {}),
-    // AFTER the hover, and that order is the whole point. Nova's hover is
-    // `border-color`, the FOUR-sided shorthand, which is safe in the design
-    // because every side there is `--hair`. The marker bar is ours — Nova draws
-    // no stalled or to-merge edge — so the shorthand repainted it too: a
-    // stalled card's danger edge turned lavender under the cursor and the tile
-    // read as greying out on hover. Re-stating the left side last restores it.
-    ...(marker ? { borderLeft: `3px solid ${TONE_FG[marker]}` } : {}),
   };
 
   return (
