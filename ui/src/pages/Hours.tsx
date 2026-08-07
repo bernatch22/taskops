@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { RpcError, type Client } from "../client";
+import { initials } from "../format";
 import type { ActorHours, ReportPayload } from "../types";
 
 /** The three the switcher offers. `report.py::days` clamps 1..90 server-side —
@@ -251,13 +252,6 @@ function Figure({ value, label }: { value: string; label: string }): React.JSX.E
   );
 }
 
-/** `agent:berna/w6` → `w6`, `dev:berna` → `be`. Two glyphs, from the part that
- *  differs between siblings — the prefix is the same for everyone. */
-function initials(actor: string): string {
-  const tail = actor.split("/").pop() ?? actor;
-  return (tail.split(":").pop() ?? tail).slice(0, 2).toLowerCase();
-}
-
 const page: React.CSSProperties = { display: "grid", gap: "16px", padding: "16px" };
 
 const pane: React.CSSProperties = {
@@ -366,6 +360,12 @@ const avatar: React.CSSProperties = {
   border: "1px solid var(--accent-line)",
   color: "var(--accent-hi)",
   fontSize: "10px",
+  /* Lowercase, unlike the round discs in the chrome and on the tiles: this glyph
+   * pair sits inches from the full actor string it abbreviates ("w6" next to
+   * "agent:berna/w6"), and a shouted "W6" beside a lowercase name reads as two
+   * different identifiers. `initials()` hands over the actor's own case; the case
+   * is each site's to choose. */
+  textTransform: "lowercase",
 };
 
 const who: React.CSSProperties = {
