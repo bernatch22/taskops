@@ -8,8 +8,8 @@ agents working in parallel, with a human who decides.
 * **Agents do not step on each other by mechanism, not by prompt**: a lease
   (one row, one winner), a worktree (one directory each), and a branch pinned
   to that directory for life.
-* **The only management interface is MCP** — eight tools. The CLI behaves like
-  git: it connects, it never manages.
+* **The only management interface is MCP** — nine tools ([below](#the-nine-tools)).
+  The CLI behaves like git: it connects, it never manages.
 * **`main` is written by a person**, through a pull request. taskops stamps a
   commit trailer, records the commit on its card, and integrates finished cards
   into the milestone branch. Nothing else.
@@ -135,6 +135,19 @@ npm run build     # typecheck + esbuild -> ../src/taskops/ui/   (commit the outp
 npm run check     # the closure: build + smoke + `git diff --exit-code` on the output
 ```
 
+`npm run check` does not pass yet: its `smoke` step runs `ui/smoke/run.mjs`,
+which is not written — the headless harness is still a card on the board, and
+`tests/test_ui.py` is skipped for the same reason. `npm run build` is the step
+that matters today.
+
+Two tabs today, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
+default) and **Board** (`ui/src/pages/Board.tsx`) — plus the card dossier drawer
+that opens over either (`ui/src/App.tsx`). Monitor is the SHELL only: its
+two-column layout and the shared pane chrome are built, and its eight sections
+are stubs with honest empty states until one card per panel fills them. Nothing
+else exists — an "Attention" screen and an "Hours" tab were built by mistake and
+deleted (Hours is Nova's Throughput panel, inside Monitor).
+
 The source is React + TypeScript under `ui/src`, with Nova's palette in
 `ui/src/theme/tokens.css` — the one file allowed to contain a literal colour.
 The theme is an attribute on `<html data-tk>`, remembered in `localStorage`,
@@ -242,9 +255,15 @@ the page refetches, so it can never show something the board never said.
 ./scripts/test     # architecture, core, store, verbs, git, http topology, mcp, migration, ui
 ```
 
+`tests/test_ui.py` is the one skip: it drove the inline script of the old
+single-file page, and the dashboard is a built bundle now. The file is kept
+whole — it is the list of what the UI has to prove — and a smoke-harness card
+restores it against the bundle.
+
 `tests/test_architecture.py` pins the layering by AST — imports only point
 down, SQL only in `store/`, `subprocess` only in `gitwork/run.py`, the clock
-only in `_clock.py`, 200 lines per module. A rule with no test is a suggestion.
+only in `_clock.py` and `core/hours.py`, 200 lines per module. A rule with no
+test is a suggestion.
 
 Zero runtime dependencies, on purpose: this package is installed into every
 agent's environment, and the standard library carries all of it.
