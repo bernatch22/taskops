@@ -127,6 +127,21 @@ def test_joining_twice_writes_the_delivery_hook_once_and_keeps_foreign_ones(
     ]
     assert commands.count("mine.sh") == 1 and commands.count(install.claude_command("py")) == 3
 
+    # ...and re-joining from a DIFFERENT interpreter REPLACES ours, never adds a
+    # second: the real repo had one entry per python and the hook fired twice
+    # per tool call. Ours is recognised by the module, not by the whole command.
+    assert install.write_claude_hooks(tmp_path, "/other/python") == []
+    settings = json.loads(path.read_text(encoding="utf-8"))
+    commands = [
+        hook["command"]
+        for entries in settings["hooks"].values()
+        for entry in entries
+        for hook in entry["hooks"]
+    ]
+    assert commands.count(install.claude_command("py")) == 0
+    assert commands.count(install.claude_command("/other/python")) == 3
+    assert commands.count("mine.sh") == 1  # somebody else's is still untouched
+
 
 def test_the_mentions_read_renews_nothing(
     tmp_path: Path, board: LocalBoard, clock: Any
