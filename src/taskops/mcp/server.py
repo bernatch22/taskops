@@ -20,7 +20,8 @@ from pathlib import Path
 from . import hello, tools
 from .. import _clock
 from .._json import as_object
-from ..board import Board, find_root, open_board
+from ..board import find_root, open_board
+from .boards import Boards
 from .._errors import TaskopsError
 
 INSTRUCTIONS = """
@@ -53,18 +54,18 @@ Branches are inhabited, not switched. The human's dashboard: `taskops ui`.
 """.strip()
 
 
-def serve(board: Board, repo: Path, stdin: TextIO, stdout: TextIO) -> None:
+def serve(boards: Boards, stdin: TextIO, stdout: TextIO) -> None:
     """Read a request per line, answer a response per line, until EOF."""
     for line in stdin:
         if not line.strip():
             continue
-        response = handle(board, repo, line)
+        response = handle(boards, line)
         if response is not None:
             stdout.write(json.dumps(response) + "\n")
             stdout.flush()
 
 
-def handle(board: Board, repo: Path, line: str) -> dict[str, Any] | None:
+def handle(boards: Boards, line: str) -> dict[str, Any] | None:
     try:
         request = as_object(json.loads(line))
     except ValueError:
@@ -74,7 +75,7 @@ def handle(board: Board, repo: Path, line: str) -> dict[str, Any] | None:
     params = as_object(request.get("params"))
 
     if method == "initialize":
-        return _ok(ident, hello.hello(board, INSTRUCTIONS))
+        return _ok(ident, hello.hello(boards.at('')[0], INSTRUCTIONS))
     if method.startswith("notifications/"):
         return None  # a notification has no reply, by definition
     if method == "ping":
@@ -82,14 +83,18 @@ def handle(board: Board, repo: Path, line: str) -> dict[str, Any] | None:
     if method == "tools/list":
         return _ok(ident, {"tools": [hello.describe(t) for t in tools.TOOLS]})
     if method == "tools/call":
-        return _call(board, repo, ident, params)
+        return _call(boards, ident, params)
     return _error(ident, -32601, f"this server has no method {method!r}")
 
 
-def _call(board: Board, repo: Path, ident: object, params: dict[str, Any]) -> dict[str, Any]:
+def _call(boards: Boards, ident: object, params: dict[str, Any]) -> dict[str, Any]:
     name = str(params.get("name", ""))
     args = as_object(params.get("arguments"))
+    # Pulled out BEFORE the verb sees it: where a call GOES is the server's
+    # question, and no verb has a `repo_path` argument to answer it with.
+    where = str(args.pop("repo_path", "") or "")
     try:
+        board, repo = boards.at(where)
         text = tools.call(board, repo, name, args, _clock.now())
     except TaskopsError as err:
         # A refusal is a RESULT, not a protocol error: the agent must read it.
@@ -131,6 +136,7 @@ def main() -> int:
     # MCP server in twenty unrelated repos is noise nobody can act on), create
     # nothing, and let each tool answer with the `taskops init` line instead.
     sys.stderr.write(f"taskops mcp: {who} on {board.url or f'{repo} (no board — taskops init)'}\n")
-    serve(board, repo, sys.stdin, sys.stdout)
-    board.close()
+    boards = Boards(board, repo, who)
+    serve(boards, sys.stdin, sys.stdout)
+    boards.close()
     return 0

@@ -464,7 +464,7 @@ def test_a_tool_bug_is_an_error_result_not_a_dead_server(
     )
     request = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
                "params": {"name": "taskops_board", "arguments": {}}}
-    answer = server.handle(dev, repo, json.dumps(request))
+    answer = server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert answer is not None
     result: Any = answer["result"]
     assert result["isError"] is True and "RuntimeError" in result["content"][0]["text"]
@@ -483,7 +483,7 @@ def test_a_refusal_comes_back_as_readable_text_not_a_protocol_error(
         "method": "tools/call",
         "params": {"name": "taskops_take", "arguments": {"task": cards[0]["id"]}},
     }
-    answer = server.handle(dev, repo, json.dumps(request))
+    answer = server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert answer is not None
     result: Any = answer["result"]
     assert result["isError"] is True
@@ -498,7 +498,7 @@ def test_an_unknown_tool_lists_the_ones_that_exist(repo: Path, boards: Any) -> N
         "method": "tools/call",
         "params": {"name": "taskops_land", "arguments": {}},
     }
-    answer = server.handle(dev, repo, json.dumps(request))
+    answer = server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert answer is not None
     assert "taskops_board" in answer["result"]["content"][0]["text"]
 
@@ -509,7 +509,8 @@ def test_an_unknown_tool_lists_the_ones_that_exist(repo: Path, boards: Any) -> N
 def test_initialize_advertises_the_tools_and_the_instructions(repo: Path, boards: Any) -> None:
     dev = boards(BERNA)
     answer = server.handle(
-        dev, repo, json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        server.Boards(dev, repo, BERNA),
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
     )
     assert answer is not None
     result: Any = answer["result"]
@@ -521,7 +522,7 @@ def test_initialize_advertises_the_tools_and_the_instructions(repo: Path, boards
 def test_a_notification_gets_no_answer_at_all(repo: Path, boards: Any) -> None:
     dev = boards(BERNA)
     line = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
-    assert server.handle(dev, repo, line) is None
+    assert server.handle(server.Boards(dev, repo, BERNA), line) is None
 
 
 def test_the_loop_answers_one_line_per_request(repo: Path, boards: Any) -> None:
@@ -532,7 +533,7 @@ def test_the_loop_answers_one_line_per_request(repo: Path, boards: Any) -> None:
         json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
     ]
     out = io.StringIO()
-    server.serve(dev, repo, io.StringIO("\n".join(lines) + "\n"), out)
+    server.serve(server.Boards(dev, repo, BERNA), io.StringIO("\n".join(lines) + "\n"), out)
     answers = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [a["id"] for a in answers] == [1, 2]  # the notification produced nothing
     assert len(answers[1]["result"]["tools"]) == 9
@@ -540,7 +541,7 @@ def test_the_loop_answers_one_line_per_request(repo: Path, boards: Any) -> None:
 
 def test_junk_on_the_wire_is_a_parse_error_not_a_crash(repo: Path, boards: Any) -> None:
     dev = boards(BERNA)
-    answer = server.handle(dev, repo, "{not json")
+    answer = server.handle(server.Boards(dev, repo, BERNA), "{not json")
     assert answer is not None and answer["error"]["code"] == -32700
 
 
@@ -643,3 +644,46 @@ def test_taskops_review_is_declared_like_every_other_tool() -> None:
     assert "review" not in SCHEMAS["taskops_take"]["properties"]
     assert "reviews" in SCHEMAS["taskops_plan"]["properties"]
     assert "review" in SCHEMAS["taskops_update"]["properties"]
+
+
+def test_a_call_can_name_another_project(tmp_path: Path, repo: Path, boards: Any) -> None:
+    """One MCP server per session used to mean one REACHABLE board: a second
+    project answered nothing, so its work left through curl against the HTTP
+    door — which dispatches verbs and therefore silently loses the git half
+    (`assign` hands out a card and cuts no worktree). Found on the first real
+    second board, 2026-08-08."""
+    other = tmp_path / "elsewhere"
+    (other / ".taskops").mkdir(parents=True)
+    home = boards(BERNA)
+    registry = server.Boards(home, repo, BERNA)
+
+    # The default is unchanged: no repo_path is still this session's own board.
+    here, root = registry.at("")
+    assert here is home and root == repo
+
+    # And a path inside another project resolves to ITS root, not to ours.
+    there, elsewhere = registry.at(str(other))
+    assert elsewhere == other
+    assert there is not home
+    # Twice is the same board, never two caches racing each other's writes.
+    assert registry.at(str(other))[0] is there
+    registry.close()
+
+
+def test_repo_path_never_reaches_a_verb(repo: Path, boards: Any) -> None:
+    """Where a call GOES is the server's question. A verb that saw `repo_path`
+    would refuse it as an unknown argument."""
+    seen: dict[str, Any] = {}
+
+    def spy(_board: Any, _repo: Path, args: Any, _now: float) -> str:
+        seen.update(args)
+        return "ok"
+
+    dev = boards(BERNA)
+    request = {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+               "params": {"name": "taskops_board",
+                          "arguments": {"repo_path": str(repo), "milestone": "ms-1"}}}
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setitem(tools.BY_NAME, "taskops_board", tools.BY_NAME["taskops_board"]._replace(run=spy))
+        server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
+    assert "milestone" in seen and "repo_path" not in seen
