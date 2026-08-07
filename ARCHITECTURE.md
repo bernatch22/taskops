@@ -220,7 +220,7 @@ flowchart TB
         httpsrv["http/server, mounts, rpc, auth, feed, static"]
     end
     subgraph L6["6 · cli"]
-        cli["init · join · serve · invite · tidy · open · hook"]
+        cli["init · join · serve · invite · tidy · ui · hook"]
     end
 
     L1 --> L0
@@ -493,7 +493,7 @@ replay, graph, machine, hours, mentions, review), store (log/cache/live),
 verbs (including the whole review cycle and the two races it can lose),
 gitwork (including a raw-socket WebSocket handshake test), http (topology),
 mcp (dossier section order, tool refusals), migration (the v1 mapping),
-ui (headless — the real `ui/index.html` script run under Node against real
+ui (headless — the real `src/taskops/ui/index.html` script run under Node against real
 board payloads, every card clicked).
 
 Not yet done: running the migration against the v1 boards on axion

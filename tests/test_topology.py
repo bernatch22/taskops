@@ -286,7 +286,11 @@ def test_the_websocket_upgrade_is_a_real_handshake(server: BoardServer) -> None:
     sock.close()
 
 
-def test_the_ui_page_is_served_next_to_its_board(server: BoardServer) -> None:
+def test_the_ui_page_is_served_next_to_its_board(server: BoardServer, tmp_path: Path) -> None:
+    # An explicit ui dir: with no root-local ui/, mounts falls back to the
+    # bundle PACKAGED inside taskops itself — and a test that wrote its probe
+    # page "into mounts.ui" would then scribble over the real src/taskops/ui.
+    server.mounts.ui = tmp_path / "ui"
     server.mounts.ui.mkdir(parents=True, exist_ok=True)
     (server.mounts.ui / "index.html").write_text("<title>taskops</title>", encoding="utf-8")
     with urlopen(f"{url_of(server)}/ui/", timeout=5) as response:

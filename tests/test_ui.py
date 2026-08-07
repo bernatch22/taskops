@@ -25,7 +25,7 @@ from tests.conftest import T0
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / "tests" / "ui_harness.js"
-PAGE = ROOT / "ui" / "index.html"
+PAGE = ROOT / "src" / "taskops" / "ui" / "index.html"
 
 pytestmark = [
     pytest.mark.usefixtures("clock"),

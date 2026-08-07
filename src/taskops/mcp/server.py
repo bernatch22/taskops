@@ -87,6 +87,10 @@ by name: taskops_board lists them under MENTIONS, taskops_card task=<id> reads
 the thread. Answer on that card — writing anything on it clears the mention.
 There is no mark-as-read.
 
+The human's dashboard is one command with no parameters: `taskops ui` (run it
+in the background) serves the board if nothing is and prints the URL, token
+included — local or remote, the same command.
+
 Branches are not switched, they are inhabited: one directory per card, pinned
 to its branch for life. `main` is written by a person, through a pull request,
 and by nothing else.

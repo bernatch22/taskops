@@ -5,7 +5,7 @@
     taskops serve           host boards
     taskops invite <who>    a single-use link  ·  --revoke <id>
     taskops tidy            remove worktrees whose work is already in the trunk
-    taskops open            the UI in a browser
+    taskops ui              the dashboard — serves it if nothing is, opens the browser
     taskops hook …          what the two git hooks and the Claude hook call
 
 Moving a card from the terminal does not exist: that is MCP. v1 grew 35
@@ -17,12 +17,11 @@ from __future__ import annotations
 
 import sys
 import argparse
-import webbrowser
 from typing import Sequence
 from pathlib import Path
 
 from . import claude, commands
-from ..board import find_root, read_config
+from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
 
@@ -38,7 +37,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     server.add_argument("--root", default="~/taskops-boards")
     server.add_argument("--host", default="127.0.0.1")
     server.add_argument("--port", type=int, default=8787)
-    server.add_argument("--ui", default="")
+    server.add_argument("--ui", default="", help="override the packaged dashboard bundle")
     invite = sub.add_parser("invite", help="a single-use link for a teammate")
     invite.add_argument("who", nargs="?", default="")
     invite.add_argument("--board", default="")
@@ -46,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     invite.add_argument("--revoke", default="", help="a credential id")
     tidy = sub.add_parser("tidy", help="remove integrated worktrees and branches")
     tidy.add_argument("--trunk", default="")
-    sub.add_parser("open", help="the UI in a browser")
+    sub.add_parser("ui", help="the dashboard: serve if needed, open the browser, token included")
     hook = sub.add_parser("hook", help="internal: what the installed hooks call")
     hook.add_argument("which", choices=["trailer", "commit", "claude"])
     hook.add_argument("rest", nargs="*")
@@ -73,16 +72,8 @@ def _run(args: argparse.Namespace) -> int:
         removed = trees.tidy(find_root(here), str(args.trunk))
         print("\n".join(removed) if removed else "nothing to tidy — no integrated worktrees")
         return 0
-    if args.command == "open":
-        url = str(read_config(find_root(here)).get("url", ""))
-        if not url:
-            print(
-                "this project has no remote board — run `taskops serve` and open it",
-                file=sys.stderr,
-            )
-            return 1
-        webbrowser.open(f"{url}/ui/")
-        return 0
+    if args.command == "ui":
+        return commands.ui(here)
     if str(args.which) == "claude":
         # Routed here and not through `commands` so the delivery hook owns its
         # own error policy end to end: it prints NOTHING, ever, including the

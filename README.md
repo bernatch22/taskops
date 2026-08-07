@@ -39,7 +39,7 @@ taskops init                # .taskops/board/ (log + 2 sqlite files), 2 git hook
 **Remote — a team, one shared board.**
 
 ```sh
-taskops serve --root ~/taskops-boards --ui ./ui &   # host, wherever the board should live
+taskops serve --root ~/taskops-boards &              # host; the dashboard ships inside the package
 taskops invite ana --board my-project                # one-time link, 7 days (--revoke <id>)
 ```
 
@@ -111,8 +111,15 @@ sub-agents exist.
 
 ```sh
 taskops tidy      # drop worktrees whose branch is already merged into the trunk
-taskops open      # the read-only dashboard in a browser
+taskops ui        # the dashboard: serves it if nothing is, opens the browser, token included
 ```
+
+`taskops ui` is the whole story of the dashboard — no port, no token, no flags.
+Local board: it serves right there (blocking, ctrl-c stops it; an agent runs it
+in the background) and opens the browser with a minted token; run it again and
+it just reopens the running one. Remote board: it opens the server's /ui/ with
+the credential `join` already saved. The old `taskops open` sent you to a
+paste-a-token screen holding a token the machine already had.
 
 ## The shape
 

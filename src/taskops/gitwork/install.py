@@ -34,6 +34,7 @@ IGNORED = (
     ".taskops/pending.jsonl",
     ".taskops/trees/",
     ".taskops/hook-seen.json",  # the delivery hook's per-actor throttle stamps
+    ".taskops/ui.json",  # the local dashboard's port and token — this machine's
 )
 
 # `taskops hook claude`, wired on the two events that bracket a turn: every tool

@@ -19,6 +19,8 @@ from ..store.stores import Stores
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
+_PACKAGED_UI = Path(__file__).resolve().parent.parent / "ui"
+
 WATCH_SECONDS = 1.0
 """How often a watched board is asked whether it moved. `head()` is one
 `SELECT MAX(seq)` against a rowid — O(1) — so this is cheap enough to run while
@@ -30,7 +32,11 @@ class Mounts:
 
     def __init__(self, root: Path, ui: Path | None = None) -> None:
         self.root = root
-        self.ui = ui or root / "ui"
+        # The bundle ships INSIDE the package (src/taskops/ui), so a server
+        # needs no --ui flag to have a dashboard: an override is for developing
+        # the page, a root-local ui/ is a board host's custom skin, and the
+        # packaged one is what everybody actually gets.
+        self.ui = ui or (root / "ui" if (root / "ui").is_dir() else _PACKAGED_UI)
         self.credentials = Credentials(root / "live.sqlite")
         self.hub = feed.Hub()
         self._lock = Lock()

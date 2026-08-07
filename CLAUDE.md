@@ -154,11 +154,12 @@ order; breaking them by id was arbitrary and reordered claims against releases.
 ```sh
 ./scripts/lint                      # ruff + pyright strict
 ./scripts/test                      # the whole suite
-uv run python -m taskops.cli serve --root <dir> --ui ./ui
+uv run python -m taskops.cli ui        # the dashboard, one command, token included
+uv run python -m taskops.cli serve --root <dir>
 uv run python -m taskops.cli join "http://host/<board>?token=…"
 ```
 
-The CLI is like git: `init join serve invite tidy open` + the two git hooks.
+The CLI is like git: `init join serve invite tidy ui` + the two git hooks.
 Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 ## Working here
@@ -168,7 +169,7 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
 - **Docs must not lie.** `ARCHITECTURE.md`, `README.md` and this file are part
   of the diff — counts, "not yet" and status tables all expire.
 - **Do not run browser/UI demos unless asked.** The UI is tested headlessly:
-  `tests/test_ui.py` runs `ui/index.html` under node with the real board payload
+  `tests/test_ui.py` runs `src/taskops/ui/index.html` under node with the real board payload
   and clicks every card.
 - Never re-introduce: a reviewer ROLE, a stored review STATUS, or automatic
   reviewer assignment (optional per-card review exists — docs/implement-reviewer.md
