@@ -71,7 +71,7 @@ servers load once, at session start, from `.mcp.json`; from then on
 4. If a card has `review=true` (or its milestone has `reviews=true`), it turns
    up under REVIEW once its worker hands it in. Spawn a **fresh** verifier —
    never a fork of yourself, or it inherits the assumptions it should be
-   checking — it calls `taskops_take task=<id> review=true` and then
+   checking — its one tool is `taskops_review`: `task=<id>` claims it, and then
    `taskops_review task=<id> verdict=pass|changes note="…"`. On `pass` you
    close the card yourself; on `changes` you send the note back to the worker
    that is still alive and holds all the context. Review is OFF by default and
@@ -154,7 +154,7 @@ dies stops renewing its lease, and its card leaves `doing` on its own.
 
 | orchestrator (`dev:`) | worker (`agent:<dev>/<name>`) |
 |---|---|
-| `taskops_board` — what the board waits for, grouped by the next move | `taskops_take` — claim a card, get its whole world back (`review=true` claims it for REVIEW instead) |
+| `taskops_board` — what the board waits for, grouped by the next move | `taskops_take` — claim a card, get its whole world back |
 | `taskops_plan` — the whole tree in one call, dependencies included | `taskops_update` — change the card: close, hand in for review, hand back, drop, rewrite |
 | `taskops_assign` — assign, cut worktrees, return a paste-ready brief | `taskops_card` — one card in full, or search |
 | `taskops_merge` — integrate a done card into its milestone branch | `taskops_review` — the verdict on a submitted card: `pass` or `changes` with a note |

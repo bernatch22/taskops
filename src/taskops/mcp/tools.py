@@ -45,10 +45,6 @@ def _plan(board: Board, repo: Path, args: Args, now: float) -> str:
 
 
 def _take(board: Board, repo: Path, args: Args, now: float) -> str:
-    """`review=true` claims the REVIEW lease instead of the work lease — the
-    verifier's door in. Same call shape, different mutex, same full dossier."""
-    if args.pop("review", False):
-        return dossier.card_view(board.call("review", args), now)
     return dossier.card_view(board.call("take", args), now)
 
 
@@ -128,15 +124,15 @@ TOOLS: list[Tool] = [
     _tool(
         "taskops_take",
         "Claim your card and get everything back: the milestone's goal, the spec, the "
-        "whole thread, the previous worker's note, collisions, your worktree. Workers only. "
-        "review=true claims a submitted card for REVIEW instead (one verifier per card).",
+        "whole thread, the previous worker's note, collisions, your worktree. Workers only.",
         _take,
     ),
     _tool(
         "taskops_review",
-        "Judge a submitted card: verdict=pass (ready to close) or verdict=changes with "
-        "note= saying what to change — the worker is shown it verbatim. Without verdict=, "
-        "claims the review. You may never judge your own work.",
+        "THE verifier's one door: taskops_review task=… CLAIMS a submitted card (one "
+        "verifier per card, full dossier back, the worker's lease untouched); with "
+        "verdict=pass|changes and note= it judges it — the note reaches the worker "
+        "verbatim. You may never judge your own work.",
         _review,
     ),
     _tool(

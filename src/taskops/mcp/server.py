@@ -40,7 +40,8 @@ If you are the main session you are the ORCHESTRATOR (dev:<name>):
   · integrate finished cards with taskops_merge (into the milestone branch);
   · REVIEW is optional, per card (review=true, or reviews=true on the plan).
     A submitted card shows under REVIEW: spawn a verifier (an ordinary agent)
-    that calls taskops_take review=true, then taskops_review verdict=… note=….
+    whose ONE tool is taskops_review — task=<id> claims it and returns
+    everything, task=<id> verdict=… note=… judges it.
     verdict=pass → YOU close it (taskops_update status=done); verdict=changes
     → send the note back to the worker you spawned — it still has its context;
   · you may NOT hold a card. Cards are for workers.

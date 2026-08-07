@@ -116,10 +116,6 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             "files": _list("with title=: the edit surface"),
             "labels": LABELS,
             "milestone": _text("with title=: which chapter it belongs to"),
-            "review": _flag(
-                "claim the card for REVIEW instead of work: one verifier per card, the "
-                "worker's own lease untouched. Only a submitted card that requires review."
-            ),
         }
     ),
     "taskops_review": _object(

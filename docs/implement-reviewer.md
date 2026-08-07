@@ -290,7 +290,7 @@ orchestrator                worker (agent:berna/w1)      verifier (agent:berna/r
      │                             │
      │◀─── "submitted" ────── taskops_update status=review note="…"
      │                             ▲   (finished, but RESUMABLE — keep the handle)
-     ├── spawn verifier, FRESH ──────────────────────────▶ taskops_take review=true
+     ├── spawn verifier, FRESH ──────────────────────────▶ taskops_review task=…
      │      (never a fork — §4.2)                               │
      │                                                     read the diff
      │◀──────────────────────────── taskops_review verdict=… ───┘
@@ -409,7 +409,7 @@ them."* `tools.py` keeps the table and the pure-board handlers.
 | `verbs/_facts.py` | `reviewing(stores, now)` and `standings(stores)` — the world half, mirroring `holders()`. `standings` folds `stores.threads()`, which already exists for mentions |
 | `verbs/review.py` | **new verb**. Claim/verdict/release. Validates `verdict` ∈ {pass, changes} |
 | `verbs/update.py` | `status="review"` writes a `submitted` event — model it exactly on the `status == "released"` branch at line 122, which is the precedent for a `status=` value that is not a stored status |
-| `verbs/take.py` | `review=true` claims the REVIEW lease instead of the work lease |
+| `verbs/take.py` | untouched — the verifier's door is `taskops_review`, not a flag on take |
 | `verbs/plan.py` | a planned card inherits `review` from its milestone's `reviews`, unless the card says otherwise |
 | `verbs/pulse.py` | two new board groups, `review` and `changes` (§7) |
 | `verbs/__init__.py` | register `review` — `Verb(review.run, "write", BOTH, "")` |
@@ -609,7 +609,7 @@ one bug the tests caught:
 | §  | the spec | what is built | why |
 |---|---|---|---|
 | 3.1 | four METHODS on `store/live.py::Live` | four FUNCTIONS over `Live.db` in a new `store/reviews.py` (`claim`, `reviewer`, `reviewing`, `drop`) | `live.py` was at the 200-line budget `tests/test_architecture.py` enforces. The review lease is a cohesive seam of its own — the whole race analysis lives in that module's docstring — so this is a split along a line, not a cut to make room. The DDL stays in `live.DDL`, where every table of that file is declared |
-| 5.2 | `verbs/take.py` grows a `review=true` path | the routing is at the MCP layer: `mcp/tools.py::_take` pops `review` and calls the `review` VERB | one tool ("claim this card and show me everything"), two mutexes underneath. Putting it in `take.py` would have meant one verb holding two different leases with two different guard sets — the shape that became v1's fourteen closing rules. `ARCHITECTURE.md` §6 records the tool→verb mapping |
+| 5.2 | `verbs/take.py` grows a `review=true` path | **removed entirely** (2026-08-07, second pass): the verifier's ONE door is `taskops_review` — `task=` claims and returns the full dossier, `verdict=` judges. A `review=true` flag on `taskops_take` was briefly built and then deleted: two tool surfaces over the same verb is exactly the duplicate-channel shape that broke v1, and the owner called it. `take` holds the work lease and nothing else |
 | 1.2, 5.2 | — | `status=review` does NOT release the work lease; the worker keeps it | §1.2 is the whole point: the worker stays reachable so a `changes` verdict goes back to the agent that already has the context. It is why `graph.derived` puts `review` ABOVE `doing`, and why `machine._not_somebody_elses` needs the §6.3 exception at all (the orchestrator closes a passed card *through* a live lease) |
 | 2.3 | `Standing` alone | plus `review.EMPTY`, the default of `Facts.standing` | `check_transition` is called from paths that have no thread to fold; a defaulted field keeps every existing caller and every existing test in `tests/test_core.py` unchanged, which is §0's requirement expressed in a signature |
 | 7 | a REVIEW row carries the reviewer's note | a REVIEW row carries no text (there is no verdict yet); a CHANGES row carries the verdict note verbatim | at REVIEW time the only words on the card are the worker's hand-in note, and the move ("assign a verifier") does not depend on them. `tests/test_verbs.py::test_changes_requested_sends_it_back_with_the_note_verbatim` pins the CHANGES half |

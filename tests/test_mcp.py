@@ -502,16 +502,19 @@ def test_the_brief_of_a_review_card_says_the_exit_is_status_review(
     assert "status=done" not in text.split("Stuck or out of context")[0]
 
 
-def test_taskops_take_review_true_claims_the_review_lease(repo: Path, boards: Any) -> None:
-    """Same call shape, different mutex: the worker keeps its own lease and
-    stays reachable while the verifier reads."""
+def test_taskops_review_claims_the_review_lease(repo: Path, boards: Any) -> None:
+    """ONE door for the verifier, not two: `taskops_take` never claims a review
+    (its schema has no such flag — a second surface over the same verb is how
+    v1 grew duplicate channels), and `taskops_review task=` is claim + dossier.
+    The worker keeps its own lease and stays reachable while the verifier reads."""
+    assert "review" not in SCHEMAS["taskops_take"]["properties"]
     dev, card = reviewed(boards)
     worker = boards(W1)
     call(worker, repo, "taskops_take", task=card)
     call(worker, repo, "taskops_update", task=card, status="review", note="model + tests")
 
     verifier = boards(R1)
-    text = call(verifier, repo, "taskops_take", task=card, review=True)
+    text = call(verifier, repo, "taskops_review", task=card)
     assert "S" * 400 in text  # the full dossier, exactly like a take
     assert "Handed in by agent:berna/w1" in text
     board = dev.call("board", {})
@@ -558,6 +561,8 @@ def test_a_verdict_without_a_note_is_refused_with_the_way_out(repo: Path, boards
 def test_taskops_review_is_declared_like_every_other_tool() -> None:
     schema = SCHEMAS["taskops_review"]
     assert set(schema["properties"]) >= {"task", "verdict", "note", "actor"}
-    assert "review" in SCHEMAS["taskops_take"]["properties"]
+    # ONE door for the verifier: take never grows a review flag again. Two tool
+    # surfaces over the same verb is the duplicate-channel shape that broke v1.
+    assert "review" not in SCHEMAS["taskops_take"]["properties"]
     assert "reviews" in SCHEMAS["taskops_plan"]["properties"]
     assert "review" in SCHEMAS["taskops_update"]["properties"]
