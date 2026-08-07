@@ -12,11 +12,55 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError, type Client } from "./client";
+import { THROUGHPUT_WINDOW } from "./components/monitor/panels";
 import type { BoardPayload, CardPayload } from "./types";
 
 /** One window for a burst of writes. Long enough that an orchestrator's
  *  plan-of-nine is one refetch, short enough to read as instant. */
 const COALESCE_MS = 150;
+
+/* ── Why the hours window is asked for HERE ───────────────────────────────────
+ *
+ * `pulse.py::run` returns `"hours": _hours(...) if window else None` — the field
+ * exists only when the call asks for it. Monitor's Throughput pane was wired to
+ * `board.hours` and therefore drew its empty state forever.
+ *
+ * Two ways to fix it, and this is the deliberate one: the ONE fetcher asks for
+ * the window, always. The alternative — Throughput owning a `report` call of its
+ * own — contradicts the rule at the top of this file. There is exactly one owner
+ * of "what the board says right now"; a second component with its own effect
+ * fetches on its own clock and paints a chart from a different snapshot than the
+ * rows beside it, and every socket frame would then have to fan out to two
+ * fetchers instead of one coalesced refetch.
+ *
+ * The cost of doing it here was measured against the live board (14 days, 20
+ * cards closed, 145 events) rather than guessed. `verbs/report.py::summary` runs
+ * one `cache.window` over the whole span plus one per day — 15 SQLite reads —
+ * and folds them with `core/hours.py`:
+ *
+ *     board {}                            ~2.9 ms    8.8 KB
+ *     board {window:"14d", tz:"…"}        ~4.2 ms   14.5 KB
+ *
+ * +1.3 ms and +5.7 KB per refetch, on a request that is already coalesced to one
+ * per 150 ms burst. That is the price of every pane sharing one snapshot, and it
+ * is paid on the Board tab too — cheaper than the tab-dependent fetch that would
+ * avoid it, which would turn switching tabs into a refetch.
+ *
+ * The zone must be the browser's real IANA zone: `core/hours.py` buckets by
+ * calendar day between two local midnights, so a hardcoded UTC silently shifts
+ * every bar. `""` from a runtime with no zone data falls back to the board's own
+ * default rather than to a guess. */
+function boardArgs(): Record<string, unknown> {
+  return { window: THROUGHPUT_WINDOW, tz: browserZone() };
+}
+
+function browserZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
 
 export interface Board {
   board: BoardPayload | null;
@@ -55,7 +99,7 @@ export function useBoard(client: Client): Board {
 
   const fetchAll = useCallback(async () => {
     try {
-      const next = await client.rpc<BoardPayload>("board", {});
+      const next = await client.rpc<BoardPayload>("board", boardArgs());
       if (!alive.current) return;
       setBoard(next);
       setError(null);

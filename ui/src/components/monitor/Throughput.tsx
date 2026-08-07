@@ -64,13 +64,15 @@
  * so the taller `--hair-2` bar reads as the ground the `--accent` one stands on.
  */
 import { Pane, PaneEmpty, PaneRow } from "./Pane";
-import type { ThroughDay, ThroughputProps } from "./panels";
+import { THROUGHPUT_DAYS, type ThroughDay, type ThroughputProps } from "./panels";
 
-/* The design's own viewBox. Bars are 16 wide with rx 5, 14 to a row. */
+/* The design's own viewBox. Bars are 16 wide with rx 5, 14 to a row — and the
+ * 14 is `THROUGHPUT_DAYS`, the same constant `useBoard` asks the board for, so
+ * the slot width and the window can never disagree. */
 const VIEW_W = 380;
 const VIEW_H = 130;
 const BAR_W = 16;
-const SLOT = VIEW_W / 14;
+const SLOT = VIEW_W / THROUGHPUT_DAYS;
 /** The baseline sits a hair off the bottom edge and the tallest bar off the top,
  *  so a full-height bar's rounded cap is not clipped by the viewBox. */
 const BASE = 126;
@@ -181,9 +183,9 @@ export function Throughput({ report }: ThroughputProps): React.JSX.Element {
     >
       {days.length === 0 ? (
         <PaneEmpty>
-          No window was asked for. The board call carries <code>hours</code> only when it passed{" "}
-          <code>window=</code>; until it does there are no days to draw — that is a missing
-          question, not an empty fortnight.
+          The answer carried no <code>hours</code>. <code>pulse.py::run</code> builds that field
+          only when the <code>board</code> call passes <code>window=</code>, and this one did not
+          come back with it — that is a missing question, not an empty fortnight.
         </PaneEmpty>
       ) : (
         <div style={{ padding: "12px 20px 8px" }}>
