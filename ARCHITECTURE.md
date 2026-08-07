@@ -478,6 +478,21 @@ The remaining "recover" mentions (`core/types.py`, `verbs/assign.py`,
 intentional: each one explains why the
 rule exists, which is the whole convention of this codebase.
 
+**A known limit of `collisions()`, argued but not changed.**
+`verbs/_context.py::collisions` intersects the DECLARED `files` of open cards:
+it lives in path space. The Nova UI milestone (2026-08-07) fanned four cards
+onto pairwise-disjoint paths — the warning was correctly silent — and the
+merged tree still came back with two `ago()` and three `initials()`, because
+that class of failure lives in *symbol* space. **`docs/fan-out.md`** is the
+post-mortem, with the file:line evidence and the four proposals weighed. Its
+conclusion is deliberately conservative and belongs here: taskops does NOT
+learn to parse source (a symbol scanner is the first component that would have
+to know what a language is, and §14's layering has nowhere to put it);
+`collisions()` is not widened; language-specific duplicate detection stays in
+the project's own linter. What it recommends instead is free — land the seams
+serialized before fanning out — plus one optional field, `criteria` on a
+Milestone, next to `rules`. Neither is implemented yet.
+
 ---
 
 ## 13. Verified state at time of writing
