@@ -105,6 +105,15 @@ class Milestone(TypedDict):
     and was used ZERO times on the real board.
     """
 
+    criteria: list[str]
+    """What the CHAPTER is accepted against — `rules`' sibling: spec, not
+    status. Cards each measured their own part and six greens summed to a
+    placeholder page (docs/fan-out.md §4), so the whole gets its own checklist.
+
+    Shown to the human at `taskops_merge milestone=`, never judged by the
+    machine: the board records the answer, it does not decide it.
+    """
+
     reviews: NotRequired[bool]
     """Cards planned into this chapter default to `review=True` unless the card
     says otherwise. A default, not a rule: the per-card flag always wins."""

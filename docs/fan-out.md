@@ -1,7 +1,8 @@
 # Fan-out — why eight green cards did not make one system
 
 A post-mortem of the milestone `ms/ui-react-dashboard-nova` (2026-08-07), and
-the paper trail for a decision **not yet taken**. It reports what happened, with
+the paper trail for a decision that has since been **taken** — §10 records what
+was adopted and where each piece is enforced. It reports what happened, with
 the evidence, and ranks four proposals against the cost of each.
 
 Every file:line below was checked against the tree at
@@ -451,6 +452,39 @@ milestone learned is that **coordination is not integration**: keeping eight
 agents from colliding is a different problem from making their eight outputs one
 system, and the second one is solved by what you land first, not by what you
 warn about later.
+
+---
+
+## 10. What was adopted, and where it is enforced (tk-097cae, 2026-08-07)
+
+**D — the ordering rule — is delivered where planning happens**, not filed
+here: one sentence in the ORCHESTRATOR paragraph of
+`src/taskops/mcp/server.py::INSTRUCTIONS` ("land the shared seams … in ONE
+serialized card FIRST"), which every host loads at the handshake. It stays
+inside `mcp/hello.py`'s hard budget (`CAP = 2900`, panorama included). Pinned
+by `tests/test_mcp.py::test_the_instructions_carry_the_whole_protocol` — both
+the sentence and the budget, mutation-checked.
+
+**B — milestone acceptance criteria — is one field plus one gate**, exactly as
+§8B priced it:
+
+- `Milestone.criteria` next to `rules` (`core/types.py`), replayed on create
+  and replaced whole on edit (`core/replay.py`), written by `plan criteria=`
+  and `update milestone= criteria=` (`verbs/plan.py`, `verbs/update.py`).
+- It travels into every take the way `rules` does, above the spec
+  (`mcp/before.py::rules`).
+- `taskops_merge milestone=` SHOWS the criteria and refuses until the human
+  answers `criteria_met=true` (`mcp/gitmoves.py::_land`) — nothing is judged
+  by the machine, nothing stored as status; the answer rides in the call and
+  is recorded in the `landed` event (`verbs/record.py`).
+- Pinned by `tests/test_mcp.py::
+  test_a_milestones_criteria_travel_into_every_take_the_way_rules_do` and
+  `::test_landing_shows_the_chapters_criteria_and_the_human_answers_out_loud`,
+  each mutation-checked in both directions.
+
+**A and C stay rejected**, unchanged: no symbol scanner (taskops still parses
+no source, in any language), no plan-time path heuristic, and `collisions()`
+is not widened — §8's arguments stand, and `ARCHITECTURE.md` §11 carries them.
 
 ---
 

@@ -26,17 +26,30 @@ ELSEWHERE_SHOWN = 6
 
 def rules(data: dict[str, Any]) -> list[str]:
     """The chapter's half of the spec. Above the card's own spec on purpose:
-    a rule you read after building is a rewrite."""
+    a rule you read after building is a rewrite.
+
+    The chapter's `criteria` travel with them: a worker whose card is green
+    while the milestone is not (docs/fan-out.md §4) never saw what the whole
+    would be judged against."""
     stone = as_object(data.get("milestone"))
+    out: list[str] = []
     lines = as_strings(stone.get("rules"))
-    if not lines:
-        return []
-    return [
-        "## Rules of this milestone — they hold for every card in it",
-        "",
-        *[f"- {line}" for line in lines],
-        "",
-    ]
+    if lines:
+        out += [
+            "## Rules of this milestone — they hold for every card in it",
+            "",
+            *[f"- {line}" for line in lines],
+            "",
+        ]
+    goals = as_strings(stone.get("criteria"))
+    if goals:
+        out += [
+            "## The milestone is accepted against — your card is one piece of this",
+            "",
+            *[f"{n}. {line}" for n, line in enumerate(goals, 1)],
+            "",
+        ]
+    return out
 
 
 def review(data: dict[str, Any]) -> list[str]:

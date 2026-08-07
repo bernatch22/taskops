@@ -79,6 +79,7 @@ erDiagram
         string title
         string goal "the WHY, travels inside every take"
         list rules "what holds for EVERY card of this chapter"
+        list criteria "what the CHAPTER is accepted against — shown at landing"
         string branch "ms/slug, computed ONCE, stored"
         string status "open | done | dropped"
         float created
@@ -491,7 +492,13 @@ to know what a language is, and §14's layering has nowhere to put it);
 `collisions()` is not widened; language-specific duplicate detection stays in
 the project's own linter. What it recommends instead is free — land the seams
 serialized before fanning out — plus one optional field, `criteria` on a
-Milestone, next to `rules`. Neither is implemented yet.
+Milestone, next to `rules`. Both are implemented (tk-097cae, 2026-08-07): the
+ordering rule is one sentence in `mcp/server.py::INSTRUCTIONS`, delivered at
+the handshake inside `hello.py`'s budget; `Milestone.criteria` travels into
+every take like `rules` and is SHOWN at `taskops_merge milestone=`, which
+refuses until the human answers `criteria_met=true` — recorded in the `landed`
+event, never judged by the machine. `docs/fan-out.md` §10 is the map from each
+adoption to its test.
 
 ---
 

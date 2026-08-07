@@ -28,7 +28,10 @@ This project's work lives on a shared taskops board (milestones → cards). The
 board is the truth, not this transcript.
 
 ORCHESTRATOR (dev:<name>, the main session): plan with taskops_plan (one call,
-whole tree, rules=[…] travel into every take) · dispatch with taskops_assign,
+whole tree, rules=[…] travel into every take) · fanning out onto one surface?
+land the shared seams — types, helpers, the shell — in ONE serialized card
+FIRST: parallel workers branch before they exist and search finds nothing
+(docs/fan-out.md) · dispatch with taskops_assign,
 then spawn one sub-agent per brief, all in one message · integrate a done card
 with taskops_merge task= · land a FINISHED milestone with taskops_merge
 milestone= — NEVER raw git in the shared checkout · review is optional per

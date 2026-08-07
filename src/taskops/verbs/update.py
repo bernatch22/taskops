@@ -176,10 +176,14 @@ def _milestone(stores: Stores, actor: str, args: _args.Args, now: float) -> dict
                 body[field] = _args.text(args, field)
         if "rules" in args:
             body["rules"] = _args.strings(args, "rules")  # the whole list, never appended to
+        if "criteria" in args:
+            body["criteria"] = _args.strings(args, "criteria")  # same shape as rules
         if "reviews" in args:
             body["reviews"] = _args.flag(args, "reviews")
         if len(body) == 2:
-            raise BadRequest("nothing to change: pass status=, title=, goal=, rules= or reviews=")
+            raise BadRequest(
+                "nothing to change: pass status=, title=, goal=, rules=, criteria= or reviews="
+            )
     seq = stores.write([make(PROJECT, actor, "milestone", body, now)])
     stores.live.renew(actor, now)
     return {
