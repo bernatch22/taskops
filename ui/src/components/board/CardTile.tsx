@@ -58,6 +58,13 @@ export interface CardTileProps {
 /** p0 is urgent and p3 is idle, so the scale runs hot → cold. */
 const PRIORITY: Record<number, Tone> = { 0: "danger", 1: "warn", 2: "accent", 3: "neutral" };
 
+/** The board's own vocabulary, from `schema.py`: "0 urgent … 3 idle".
+ *
+ *  2 is the DEFAULT every card gets when nobody says otherwise, so it is not
+ *  worth a pill on every tile — Nova wraps its priority pill in an `sc-if` for
+ *  the same reason. What is left is what somebody chose deliberately. */
+const PRIORITY_LABEL: Record<number, string> = { 0: "urgent", 1: "high", 3: "idle" };
+
 /** The mono line at the top right: how long it has been quiet when nobody holds
  *  it, how long the lease has run when somebody does. `quiet_for` is null while
  *  a lease is live — that is the server's own distinction, kept. */
@@ -77,7 +84,18 @@ const tile: React.CSSProperties = {
   border: "1px solid var(--hair)",
   borderRadius: "13px",
   padding: "14px 15px",
-  transition: "border-color 150ms, transform 150ms",
+  // The design's own easing, not a linear stand-in: `cubic-bezier(0.2,0.8,0.2,1)`
+  // overshoots slightly and is what makes the lift feel like a lift.
+  transition: "all 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+};
+
+/** `all: unset` on a button removes the focus ring with everything else, so the
+ *  design re-adds one and so must we — a board you can tab through is the whole
+ *  reason these are buttons and not divs. Offset outward, because the tile has
+ *  no `overflow: hidden` to clip it. */
+const focusRing: React.CSSProperties = {
+  outline: "2px solid var(--accent)",
+  outlineOffset: "2px",
 };
 
 const pill: React.CSSProperties = {
@@ -90,11 +108,13 @@ const pill: React.CSSProperties = {
 export function CardTile(props: CardTileProps): React.JSX.Element {
   const { row, chip, marker, note, waitingOn, onOpen } = props;
   const [lift, setLift] = useState(false);
+  const [ring, setRing] = useState(false);
   const when = meta(row);
   const who = row.holder ?? row.assignee;
   const style: React.CSSProperties = {
     ...tile,
     ...(lift ? { borderColor: "var(--accent-line)", transform: "translateY(-2px)" } : {}),
+    ...(ring ? focusRing : {}),
     // AFTER the hover, and that order is the whole point. Nova's hover is
     // `border-color`, the FOUR-sided shorthand, which is safe in the design
     // because every side there is `--hair`. The marker bar is ours — Nova draws
@@ -113,8 +133,14 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
       onClick={() => onOpen(row.id)}
       onMouseEnter={() => setLift(true)}
       onMouseLeave={() => setLift(false)}
-      onFocus={() => setLift(true)}
-      onBlur={() => setLift(false)}
+      onFocus={() => {
+        setLift(true);
+        setRing(true);
+      }}
+      onBlur={() => {
+        setLift(false);
+        setRing(false);
+      }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "9px" }}>
         <span className="mono" style={{ fontSize: "10.5px", color: "var(--text-3)" }}>
@@ -136,7 +162,9 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
         </div>
       ) : null}
 
-      <div style={{ fontSize: "14px", letterSpacing: "-0.025em", lineHeight: 1.35 }}>
+      <div
+        style={{ fontSize: "14px", fontWeight: 450, letterSpacing: "-0.025em", lineHeight: 1.35 }}
+      >
         {row.title}
       </div>
 
@@ -173,18 +201,25 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
               {label}
             </span>
           ))}
-          <span
-            data-testid="priority"
-            title={`priority ${row.priority}`}
-            style={{
-              width: "7px",
-              height: "7px",
-              borderRadius: "50%",
-              alignSelf: "center",
-              flex: "none",
-              background: TONE_FG[PRIORITY[row.priority] ?? "neutral"],
-            }}
-          />
+          {/* Nova draws priority as a pill of TEXT beside the labels, not as a
+              dot — a 7px disc in a row of worded pills says "something is
+              coloured here" and nothing about which. The geometry is the
+              design's, verbatim; the colour follows the priority instead of
+              Nova's flat accent, because a board whose p0 and p3 read alike
+              would need the reader to hover to find the urgent one. */}
+          {PRIORITY_LABEL[row.priority] ? (
+            <span
+              data-testid="priority"
+              title={`priority ${row.priority}`}
+              style={{
+                ...pill,
+                color: TONE_FG[PRIORITY[row.priority] ?? "neutral"],
+                background: TONE_BG[PRIORITY[row.priority] ?? "neutral"],
+              }}
+            >
+              {PRIORITY_LABEL[row.priority]}
+            </span>
+          ) : null}
         </div>
         {who ? (
           <span
