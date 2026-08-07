@@ -12,6 +12,7 @@
  * write verb on this page and no drag handle: the UI does not move cards. */
 import { useState } from "react";
 
+import { ago, initials } from "../../format";
 import type { BoardRow } from "../../types";
 
 /** The five ways a thing can be coloured. Nothing here is a literal colour —
@@ -56,25 +57,6 @@ export interface CardTileProps {
 
 /** p0 is urgent and p3 is idle, so the scale runs hot → cold. */
 const PRIORITY: Record<number, Tone> = { 0: "danger", 1: "warn", 2: "accent", 3: "neutral" };
-
-/** "agent:berna/w5" → "w5", "dev:berna" → "berna". The board's actor strings are
- *  role-qualified; the avatar is not the place to re-read the role. */
-export function shortActor(actor: string): string {
-  const tail = actor.split("/").pop() ?? actor;
-  return tail.split(":").pop() ?? tail;
-}
-
-export function initials(actor: string): string {
-  return shortActor(actor).slice(0, 2).toUpperCase();
-}
-
-export function ago(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 90) return `${s}s`;
-  if (s < 5400) return `${Math.round(s / 60)}m`;
-  if (s < 172800) return `${Math.round(s / 3600)}h`;
-  return `${Math.round(s / 86400)}d`;
-}
 
 /** The mono line at the top right: how long it has been quiet when nobody holds
  *  it, how long the lease has run when somebody does. `quiet_for` is null while
