@@ -17,7 +17,7 @@ import type { Event } from "../../types";
 
 /** What a kind means, as a colour. Anything unlisted is neutral rather than
  *  invisible: an event kind this bundle predates still draws a dot. */
-const DOT: Record<string, Tone> = {
+export const DOT: Record<string, Tone> = {
   comment: "accent",
   commit: "ok",
   status: "ok",
