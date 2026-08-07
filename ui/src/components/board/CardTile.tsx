@@ -94,8 +94,14 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
   const who = row.holder ?? row.assignee;
   const style: React.CSSProperties = {
     ...tile,
-    ...(marker ? { borderLeft: `3px solid ${TONE_FG[marker]}` } : {}),
     ...(lift ? { borderColor: "var(--accent-line)", transform: "translateY(-2px)" } : {}),
+    // AFTER the hover, and that order is the whole point. Nova's hover is
+    // `border-color`, the FOUR-sided shorthand, which is safe in the design
+    // because every side there is `--hair`. The marker bar is ours — Nova draws
+    // no stalled or to-merge edge — so the shorthand repainted it too: a
+    // stalled card's danger edge turned lavender under the cursor and the tile
+    // read as greying out on hover. Re-stating the left side last restores it.
+    ...(marker ? { borderLeft: `3px solid ${TONE_FG[marker]}` } : {}),
   };
 
   return (
