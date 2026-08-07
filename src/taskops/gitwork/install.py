@@ -39,7 +39,7 @@ IGNORED = (
 
 # `taskops hook claude`, wired on the events that bracket a turn: every tool
 # call (so a worker mid-edit is reached) and the prompt (so the human is).
-CLAUDE_EVENTS = ("PostToolUse", "UserPromptSubmit", "SessionStart")
+CLAUDE_EVENTS = ("PostToolUse", "UserPromptSubmit")
 
 SCRIPTS = {
     # stderr stays visible on purpose: a broken hook must be seen at the first

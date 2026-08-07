@@ -102,8 +102,10 @@ as its own agents, nobody else's. The export stays in the brief for the git
 hooks, which do run in the worker's shell.
 
 **4. Context travels in the answer, not in a hook that decides.** Three
-layers: the MCP server `instructions` (the role protocol), `taskops_board` (the
-panorama), and the pulse line at the foot of every tool result. Those three are
+layers: the MCP server `instructions` — the role protocol **and the board as of
+the handshake**, which is what a system prompt was in v1 and arrives with no
+hook and no settings file to be trusted (`mcp/hello.py`) —, `taskops_board`
+(the panorama on demand), and the pulse line at the foot of every tool result. Those three are
 also what carry a mention — `✉ 1 mention for you` rides on EVERY result
 (`MENTIONS.md`). One Claude hook exists, and only one: `taskops hook claude`
 (MENTIONS.md §9, Berna's own narrowing of his own rule, 2026-08-06) — it

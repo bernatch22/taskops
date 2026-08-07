@@ -293,6 +293,17 @@ or store". `ARCHITECTURE.md` §11's hook row gets the same narrowing, §10
 gains the delivery channel. `README.md` quickstart mentions what `init`/`join`
 now write. This section is the paper trail for why the rule moved — cite it.
 
+### 9d-bis. What the hook is NOT for (2026-08-07)
+
+A `SessionStart` entry was added to this hook so a session would open with the
+board already in context, and removed the same day. It worked when fired by
+hand and never fired in practice: hooks in a PROJECT `settings.json` depend on
+the host trusting that file, and a session that has already started cannot be
+sent an event that fires at startup. The panorama moved to the MCP handshake
+(`mcp/hello.py::hello`), which happens once per session by definition and is
+loaded before the first message — and the hook went back to delivering exactly
+one thing, a pending mention. Two channels for one fact is the v1 shape.
+
 ### 9e. What actually got built — and where it departs from 9a-9c
 
 Built by hand (the first agent sent at this was stopped mid-way; its partial

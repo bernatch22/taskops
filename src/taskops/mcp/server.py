@@ -17,14 +17,11 @@ import json
 from typing import Any, TextIO
 from pathlib import Path
 
-from . import tools
+from . import hello, tools
 from .. import _clock
 from .._json import as_object
 from ..board import Board, find_root, open_board
 from .._errors import TaskopsError
-from .._version import __version__
-
-PROTOCOL = "2025-06-18"
 
 INSTRUCTIONS = """
 This project has a shared taskops board. Milestones hold cards; cards hold the
@@ -123,13 +120,13 @@ def handle(board: Board, repo: Path, line: str) -> dict[str, Any] | None:
     params = as_object(request.get("params"))
 
     if method == "initialize":
-        return _ok(ident, _hello())
+        return _ok(ident, hello.hello(board, INSTRUCTIONS))
     if method.startswith("notifications/"):
         return None  # a notification has no reply, by definition
     if method == "ping":
         return _ok(ident, {})
     if method == "tools/list":
-        return _ok(ident, {"tools": [_describe(t) for t in tools.TOOLS]})
+        return _ok(ident, {"tools": [hello.describe(t) for t in tools.TOOLS]})
     if method == "tools/call":
         return _call(board, repo, ident, params)
     return _error(ident, -32601, f"this server has no method {method!r}")
@@ -148,19 +145,6 @@ def _call(board: Board, repo: Path, ident: object, params: dict[str, Any]) -> di
         # the stdio loop, taking every later call of the session down with it.
         return _ok(ident, {"content": [_text(f"✗ taskops broke on {name}: {err!r}")], "isError": True})
     return _ok(ident, {"content": [_text(text)]})
-
-
-def _hello() -> dict[str, Any]:
-    return {
-        "protocolVersion": PROTOCOL,
-        "capabilities": {"tools": {"listChanged": False}},
-        "serverInfo": {"name": "taskops", "version": __version__},
-        "instructions": INSTRUCTIONS,
-    }
-
-
-def _describe(tool: tools.Tool) -> dict[str, Any]:
-    return {"name": tool.name, "description": tool.description, "inputSchema": tool.schema}
 
 
 def _text(body: str) -> dict[str, Any]:

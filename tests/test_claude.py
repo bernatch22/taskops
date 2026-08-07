@@ -112,11 +112,7 @@ def test_joining_twice_writes_the_delivery_hook_once_and_keeps_foreign_ones(
     path.parent.mkdir()
     theirs = {"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "mine.sh"}]}]}}
     path.write_text(json.dumps(theirs), encoding="utf-8")
-    assert install.write_claude_hooks(tmp_path, "py") == [
-        "PostToolUse",
-        "UserPromptSubmit",
-        "SessionStart",  # the panorama — the board, once, when a session opens
-    ]
+    assert install.write_claude_hooks(tmp_path, "py") == ["PostToolUse", "UserPromptSubmit"]
     assert install.write_claude_hooks(tmp_path, "py") == []  # a no-op, not a duplicate
     settings = json.loads(path.read_text(encoding="utf-8"))
     commands = [
@@ -125,7 +121,7 @@ def test_joining_twice_writes_the_delivery_hook_once_and_keeps_foreign_ones(
         for entry in entries
         for hook in entry["hooks"]
     ]
-    assert commands.count("mine.sh") == 1 and commands.count(install.claude_command("py")) == 3
+    assert commands.count("mine.sh") == 1 and commands.count(install.claude_command("py")) == 2
 
     # ...and re-joining from a DIFFERENT interpreter REPLACES ours, never adds a
     # second: the real repo had one entry per python and the hook fired twice
@@ -139,7 +135,7 @@ def test_joining_twice_writes_the_delivery_hook_once_and_keeps_foreign_ones(
         for hook in entry["hooks"]
     ]
     assert commands.count(install.claude_command("py")) == 0
-    assert commands.count(install.claude_command("/other/python")) == 3
+    assert commands.count(install.claude_command("/other/python")) == 2
     assert commands.count("mine.sh") == 1  # somebody else's is still untouched
 
 

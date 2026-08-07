@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from taskops import _clock
-from taskops.mcp import tools, server
+from taskops.mcp import hello, tools, server
 from taskops.board import LocalBoard
 from tests.conftest import T0
 from taskops._errors import Refused, BadRequest
@@ -436,7 +436,7 @@ def test_initialize_advertises_the_tools_and_the_instructions(repo: Path, boards
     )
     assert answer is not None
     result: Any = answer["result"]
-    assert result["protocolVersion"] == server.PROTOCOL
+    assert result["protocolVersion"] == hello.PROTOCOL
     assert result["capabilities"]["tools"] == {"listChanged": False}
     assert "ORCHESTRATOR" in result["instructions"]
 
