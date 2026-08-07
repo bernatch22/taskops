@@ -510,7 +510,8 @@ gitwork (including a raw-socket WebSocket handshake test), http (topology),
 mcp (dossier section order, tool refusals), migration (the v1 mapping),
 ui (headless — **skipped for now**: the harness ran the inline script of the old
 single-file page, and the dashboard is a built React bundle from `ui/` since the
-Nova rewrite. Card tk-28e585 restores it against the bundle).
+Nova rewrite. A smoke-harness card, to be re-planned once Monitor lands, restores
+it against the bundle).
 
 Not yet done: running the migration against the v1 boards on axion
 (`scripts/migrate_v1.py` exists and is tested — and the 66 v1 events that

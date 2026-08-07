@@ -6,8 +6,9 @@ ONE inline <script> out of a single-file `index.html` and calling `draw` and
 there is no inline script to reach into — the assertions below still say the
 right things, but they cannot be aimed at this page any more.
 
-TODO(tk-28e585 "Smoke harness"): that card restores headless coverage against
-the built bundle, and re-points (or replaces) everything below it. Until then
+TODO(a smoke harness card, to be re-planned once Monitor lands): that card
+restores headless coverage against the built bundle, and re-points (or replaces)
+everything below it. Until then
 this file is kept whole rather than deleted: it is the list of what the UI has
 to prove, and rewriting it to pass would be the one edit this repo forbids.
 
@@ -42,7 +43,7 @@ pytestmark = [
     pytest.mark.usefixtures("clock"),
     pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed"),
     pytest.mark.skip(
-        reason="the page is a React bundle now; tk-28e585 (Smoke harness) restores this"
+        reason="the page is a React bundle now; a smoke harness card restores this"
     ),
 ]
 

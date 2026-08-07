@@ -1,4 +1,4 @@
-/* The shell: the chrome, the view state, and the three pages it renders.
+/* The shell: the chrome, the view state, and the page it renders.
  *
  * App is the SINGLE caller of useBoard — that is the whole reason this file holds
  * the tab state as well. Which view is on decides nothing about what is fetched
@@ -6,15 +6,15 @@
  * own fetch would only manage to paint a board half a second older than the rail
  * above it. Pages receive data; they never ask for it.
  *
- * Hours is the one exception, and a deliberate one: `report` is not in the board
- * payload (pulse.py only carries it when the call passed window=), and the window
- * and timezone are that page's own state — so it reads through the `client` App
- * hands it. Nothing about the board's fetch is duplicated there.
+ * One page today: the Board. Nova's Monitor — its first and central section, with
+ * the Throughput panel that a short-lived "Hours" tab wrongly promoted to a view
+ * of its own — is not written yet and lands as its own card. Nothing stands in
+ * for it here: an invented landing screen is exactly what this file just lost.
  *
  * `openCard(id)` and `openCard(null)` are the only way a page changes what is
  * open, and `comment` is the ONE write this dashboard has. The drawer is rendered
  * HERE, once, over whichever page is on: it belongs to the app's view state, not
- * to a page — the same card opens from Attention and from the Board, and two
+ * to a page — the same card will open from Monitor and from the Board, and two
  * drawers would be two of everything below them (two escape owners, two comment
  * boxes, two fetches of the same dossier). */
 import { useState } from "react";
@@ -24,9 +24,7 @@ import { Header } from "./components/chrome/Header";
 import { KpiRail } from "./components/chrome/KpiRail";
 import { TABS, TabNav, type TabId } from "./components/chrome/TabNav";
 import type { Client } from "./client";
-import { Attention } from "./pages/Attention";
 import { Board } from "./pages/Board";
-import { Hours } from "./pages/Hours";
 import { applyTheme, readTheme, type Theme } from "./theme/theme";
 import { useBoard } from "./useBoard";
 
@@ -50,7 +48,7 @@ const panel: React.CSSProperties = {
 
 export function App({ client }: { client: Client }): React.JSX.Element {
   const [theme, setTheme] = useState<Theme>(readTheme);
-  const [tab, setTab] = useState<TabId>("attention");
+  const [tab, setTab] = useState<TabId>("board");
   const { board, card, live, error, loading, openCard, openId, comment } = useBoard(client);
 
   function flip(): void {
@@ -58,9 +56,6 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     applyTheme(next);
     setTheme(next);
   }
-
-  const mentions = board?.groups.mentions.length ?? 0;
-  const tabs = TABS.map((t) => (t.id === "attention" && mentions ? { ...t, badge: mentions } : t));
 
   return (
     <div style={shell}>
@@ -73,7 +68,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           theme={theme}
           onToggleTheme={flip}
         >
-          <TabNav tabs={tabs} active={tab} onSelect={setTab} />
+          <TabNav tabs={TABS} active={tab} onSelect={setTab} />
         </Header>
         {board ? <KpiRail board={board} /> : null}
       </header>
@@ -105,12 +100,8 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           <div style={panel} data-testid="loading">
             reading the board…
           </div>
-        ) : tab === "hours" ? (
-          <Hours client={client} />
-        ) : board && tab === "board" ? (
-          <Board board={board} openCard={openCard} />
         ) : board ? (
-          <Attention board={board} openCard={openCard} />
+          <Board board={board} openCard={openCard} />
         ) : null}
       </main>
 
