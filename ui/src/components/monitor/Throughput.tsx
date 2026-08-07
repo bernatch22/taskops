@@ -23,8 +23,36 @@
  *     invented number, and a flat line at 0 is the same invention;
  *   · the "reviews passed" total renders `—`, the standing spelling for
  *     not-knowable in this UI, not `0`.
- * When report.py grows a review count, `reviewLine()` below is the one function
- * that has to start returning a path.
+ * ── What would have to exist for the series to light up ───────────────────
+ *
+ * Naming it here so it does not have to be rediscovered by reading this file.
+ * `verbs/report.py::_day` builds one day's dict from `stores.cache.window(start,
+ * end)`; it must gain ONE key beside `closed` and `commits`:
+ *
+ *     "reviews": sum(1 for e in events
+ *                    if e["kind"] == "reviewed"
+ *                    and e["body"].get("verdict") == "pass")
+ *
+ * — the same shape as the `_closed()` predicate right below it, which already
+ * counts `kind == "status"` events whose `body["to"] == "done"`. The verdict is
+ * an event and never a mutated field (`verbs/review.py` appends `reviewed`,
+ * `core/review.py::Standing` folds it), so the day window already contains the
+ * rows: nothing new has to be stored and no schema changes. Note it is a count of
+ * PASS VERDICTS THAT DAY, not of cards currently standing passed — a card
+ * bounced and re-passed contributes on both days, which is what a throughput
+ * chart should show and what `closed` already does. Then:
+ *
+ *   1. `ReportDay` in `ui/src/types.ts` gains `reviews: number`;
+ *   2. `ThroughDay.reviews` in `panels.ts` loses its `| null` (panels.ts note 2
+ *      is the paper trail and should be struck at the same time);
+ *   3. here, `toDays()` passes `d.reviews` through instead of `null`, and
+ *      `reviewLine()` starts returning a path on its own — its `some(reviews ===
+ *      null)` guard simply stops firing;
+ *   4. the "reviews passed" footer cell renders the sum instead of `—`, and the
+ *      footnote under the chart comes out.
+ *
+ * The `—` and the missing polyline are the ONLY two places a number is withheld,
+ * so that list is exhaustive.
  *
  * ── The scale ─────────────────────────────────────────────────────────────
  *
