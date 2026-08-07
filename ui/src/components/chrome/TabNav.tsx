@@ -4,14 +4,14 @@
  * button that calls back. A hash route would be a second source of truth for one
  * boolean and a reload that lands on a card that no longer exists.
  *
- * One tab today — Board. The bar still renders it: a single pill reads as "this
- * is the view you are on" and is where Monitor lands next to it (Nova's first
- * section), whereas hiding the bar would move the chrome twice for one card.
+ * Two tabs, in Nova's own order: Monitor first — it is the design's first and
+ * central section, and the default view — then Board. The order here IS the
+ * order on screen, so it is not a detail: `TABS[0]` is what App opens on.
  *
  * The badge is a SLOT, not a hardcoded count: a tab with nothing to say carries
  * nothing. The board's pending mentions are on the KPI rail, not on a pill. */
 
-export type TabId = "board";
+export type TabId = "monitor" | "board";
 
 export interface Tab {
   id: TabId;
@@ -20,7 +20,10 @@ export interface Tab {
   badge?: number;
 }
 
-export const TABS: readonly Tab[] = [{ id: "board", name: "Board" }];
+export const TABS: readonly Tab[] = [
+  { id: "monitor", name: "Monitor" },
+  { id: "board", name: "Board" },
+];
 
 const bar: React.CSSProperties = {
   display: "flex",
