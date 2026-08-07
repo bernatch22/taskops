@@ -217,10 +217,15 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    layer, its chrome (header, tabs, KPI rail), the Board page and the card
    dossier drawer — which renders the acceptance criteria no v1 screen ever
    drew, and carries the dashboard's ONE write, the comment box with its
-   mention picker. **Board is the only view**: an "Attention" screen that is in
-   no Nova section, and an "Hours" tab that in Nova is the Throughput panel
-   *inside* Monitor, were built by mistake and deleted. Monitor — Nova's first
-   and central section — is still to be written, and Throughput is rebuilt as
-   its panel there. The smoke harness (`ui/smoke/run.mjs`, and
+   mention picker. **Two views, in Nova's order: Monitor then Board** — an
+   "Attention" screen that is in no Nova section, and an "Hours" tab that in
+   Nova is the Throughput panel *inside* Monitor, were built by mistake and
+   deleted. Monitor — Nova's first and central section, and the DEFAULT tab —
+   has its SEAM: the layout (`ui/src/pages/Monitor.tsx`), the shared pane chrome
+   (`components/monitor/Pane.tsx`) and **`components/monitor/panels.ts`, where
+   every panel's props are a declared interface** rather than a comment, which
+   is the fix `docs/fan-out.md` prescribes. Its eight sections are stubs, one
+   file each, replaced by one card per panel. Throughput is rebuilt there, as
+   the panel Nova draws. The smoke harness (`ui/smoke/run.mjs`, and
    `tests/test_ui.py` against the built bundle) is still a card on the board,
    so `npm run check` fails at its `smoke` step until it lands.
