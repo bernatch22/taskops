@@ -393,8 +393,9 @@ add there.
 **`src/taskops/mcp/tools.py` — 196/200, margin of FOUR lines.**
 Move the two handlers that run git — `_assign` and `_merge` — into
 `src/taskops/mcp/gitmoves.py` (level 5). The module's own docstring already
-names this seam: *"The eight tools — and the git that belongs to three of
-them."* `tools.py` keeps the table and the pure-board handlers.
+named this seam: *"The eight tools — and the git that belongs to three of
+them."* (the docstring counts nine now, this feature being the ninth).
+`tools.py` keeps the table and the pure-board handlers.
 
 ### 5.2 The rest, in dependency order
 
@@ -600,8 +601,8 @@ Each of these is how v1 got where it got.
 
 ## 10b. What actually got built — and where it differs from §2-§7
 
-Green at 201 tests (173 when the feature landed; 28 more were the review suite
-itself, every one mutation-checked). `CARD_STATUSES` is still three, there is
+Green at 201 tests the day this landed (173 before it; 28 more were the review
+suite itself, every one mutation-checked). `CARD_STATUSES` is still three, there is
 no reviewer role, nothing auto-assigns, and a board that never sets `review`
 derives exactly as before. Five deliberate departures from the spec above, and
 one bug the tests caught:
