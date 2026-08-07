@@ -5,3 +5,10 @@ dist/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+
+# taskops
+.taskops/remote.json
+.taskops/pending.jsonl
+.taskops/trees/
+.taskops/hook-seen.json
+.taskops/ui.json
