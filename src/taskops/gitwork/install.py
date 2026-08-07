@@ -37,9 +37,9 @@ IGNORED = (
     ".taskops/ui.json",  # the local dashboard's port and token — this machine's
 )
 
-# `taskops hook claude`, wired on the two events that bracket a turn: every tool
+# `taskops hook claude`, wired on the events that bracket a turn: every tool
 # call (so a worker mid-edit is reached) and the prompt (so the human is).
-CLAUDE_EVENTS = ("PostToolUse", "UserPromptSubmit")
+CLAUDE_EVENTS = ("PostToolUse", "UserPromptSubmit", "SessionStart")
 
 SCRIPTS = {
     # stderr stays visible on purpose: a broken hook must be seen at the first

@@ -93,6 +93,35 @@ def merge_card(repo: Path, milestone_branch: str, card_branch: str, card: str) -
     return run.must("rev-parse", "HEAD", cwd=tree)
 
 
+def land_milestone(repo: Path, milestone_branch: str) -> tuple[str, str]:
+    """Merge a FINISHED milestone branch into the trunk — the shared checkout.
+
+    The one sanctioned write to the human's own checkout, and only because the
+    human asked for exactly this move: v1's `land` stays banned because it was
+    AUTOMATIC (a side effect of closing a card) and ran `git checkout` under
+    working agents. This is neither — it is invoked explicitly, it refuses
+    unless the checkout already IS the trunk, and a conflict aborts clean.
+    Returns (trunk_branch, merge_sha).
+    """
+    trunk = run.branch_at(repo)
+    if not trunk or trunk.startswith("ms/") or trunk.startswith("tk-"):
+        raise Refused(
+            f"the shared checkout is on {trunk or 'a detached HEAD'}, not a trunk — "
+            "landing merges INTO what is checked out there, so put it on main first"
+        )
+    result = run.git("merge", "--no-ff", "-m", f"land {milestone_branch}", milestone_branch, cwd=repo)
+    if not result.ok:
+        conflicts = run.git("diff", "--name-only", "--diff-filter=U", cwd=repo).out
+        run.git("merge", "--abort", cwd=repo)
+        raise Refused(
+            f"{milestone_branch} conflicts with {trunk} in:\n"
+            + "\n".join(f"  {f}" for f in conflicts.splitlines())
+            + f"\n  (merge aborted — {trunk} is untouched)\n  git said: {result.err or result.out}"
+        )
+    run.git("push", "origin", trunk, cwd=repo)  # best effort; local still landed
+    return trunk, run.must("rev-parse", "HEAD", cwd=repo)
+
+
 def tidy(repo: Path, trunk: str = "") -> list[str]:
     """Remove worktrees and branches whose work is already in the trunk.
 

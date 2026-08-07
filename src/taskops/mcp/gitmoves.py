@@ -39,11 +39,20 @@ def assign(board: Board, repo: Path, args: Args, now: float) -> str:
 
 
 def merge(board: Board, repo: Path, args: Args, now: float) -> str:
-    """Integrate a done card into ITS milestone branch.
+    """task= integrates a done card into ITS milestone branch. milestone= lands
+    a FINISHED milestone into the trunk.
 
-    There is no target argument. Merging to `main` is not refused here — it
-    cannot be expressed, which is the only kind of guardrail that never drifts.
+    A card merge has no target argument — merging a card to `main` cannot be
+    expressed, which is the only kind of guardrail that never drifts. Landing
+    a milestone CAN be expressed, since 2026-08-07, because the alternative was
+    worse: with no move to make, the orchestrator reached for raw `git merge`
+    in the shared checkout and the board never learned the milestone shipped.
+    What stays impossible is landing one with open work: the gate below refuses
+    while ANY card of the chapter is not both closed and integrated.
     """
+    stone = str(args.get("milestone", ""))
+    if stone:
+        return _land(board, repo, stone)
     task = str(args.get("task", ""))
     dossier = board.call("card", {"task": task})
     state = str(dossier.get("state", ""))
@@ -60,3 +69,27 @@ def merge(board: Board, repo: Path, args: Args, now: float) -> str:
         raise BadRequest(f"{task} belongs to no milestone, so there is no branch to integrate into")
     sha = trees.merge_card(repo, branch, str(dossier.get("branch", task)), task)
     return render.plain(board.call("merged", {"task": task, "into": branch, "sha": sha}))
+
+
+def _land(board: Board, repo: Path, stone: str) -> str:
+    """The gate is the board, the git is the client, the record is a verb —
+    the same three-way split as a card merge, one level up."""
+    view = board.call("board", {"milestone": stone})
+    named = as_object(view.get("milestone"))
+    if not named:
+        raise BadRequest(f"milestone {stone} does not exist — taskops_board names the open ones")
+    open_work = {
+        group: rows
+        for group, rows in as_object(view.get("groups")).items()
+        if rows and group != "mentions"  # mentions are per-viewer, not work
+    }
+    if open_work:
+        listed = " · ".join(f"{g}: {len(r)}" for g, r in sorted(open_work.items()))
+        raise Refused(
+            f"{stone} still has open work ({listed}) — a milestone lands whole or not at "
+            "all. Finish, merge or drop what is left, then taskops_merge milestone= again."
+        )
+    trunk, sha = trees.land_milestone(repo, str(named.get("branch", "")))
+    return render.plain(
+        board.call("merged", {"milestone": stone, "into": trunk, "sha": sha})
+    )

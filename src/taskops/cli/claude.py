@@ -24,6 +24,11 @@ Four properties make that safe, and each one is a test:
 * it is throttled to one look per reader per 30s, stamped in a gitignored file;
 * every failure path is silence and exit 0 — no output, no stderr, nothing;
 * it emits nothing at all when there is nothing to say, which is almost always.
+
+Two things get delivered, both answers that already exist rather than new
+logic: a pending MENTION (every tool call, every prompt), and — once, at
+`SessionStart` — the BOARD (`panorama.py`), so a session opens already knowing
+what is waiting instead of spending its first move to find out.
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ import json
 from typing import Any
 from pathlib import Path
 
+from . import panorama
 from .. import _clock
 from .._json import text, as_rows, as_object
 from ..board import DIR, find_root, is_project, open_board
@@ -43,6 +49,7 @@ STAMP = "hook-seen.json"  # <repo>/.taskops/ — gitignored by install.IGNORED
 THROTTLE = 30.0  # seconds per reader. A round trip per Edit is v1's latency bug.
 TIMEOUT = 2.0  # a remote board that is slow must cost the turn nothing
 DEFAULT_EVENT = "PostToolUse"
+SESSION_START = "SessionStart"  # the panorama, once — no throttle, it fires once
 
 # `<repo>/.taskops/trees/tk-a1b2c3` — a worktree is named after its card, and
 # that is the whole chain by which a sub-agent can be identified at all.
@@ -73,14 +80,20 @@ def _run(here: Path) -> None:
         # directory whose only `.taskops/` was v1's session file and left a
         # board behind. Found on the first real run, not by a test.
         return
+    event = text(payload.get("hook_event_name")) or DEFAULT_EVENT
     who, for_task = _reader(payload, cwd)
+    if event == SESSION_START:
+        opening = panorama.board(root, who)  # the panorama, once, dev only
+        if opening:
+            _emit(event, opening)
+        return
     if not _due(root, f"{who} {for_task}"):
         return
     answer = _ask(root, who, for_task)
     lines = _lines(text(answer.get("actor")) or who, as_rows(answer.get("mentions")))
     if not lines:
         return  # silence costs zero context, and this fires on every tool call
-    _emit(text(payload.get("hook_event_name")) or DEFAULT_EVENT, lines)
+    _emit(event, lines)
 
 
 def _reader(payload: dict[str, Any], cwd: str) -> tuple[str, str]:

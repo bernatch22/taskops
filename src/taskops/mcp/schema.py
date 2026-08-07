@@ -106,7 +106,16 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         },
         ["tasks"],
     ),
-    "taskops_merge": _object({"task": _text("a DONE card")}, ["task"]),
+    "taskops_merge": _object(
+        {
+            "task": _text("a DONE card → into its milestone branch"),
+            "milestone": _text(
+                "ms-… → land the WHOLE milestone into the trunk. Refused while any card "
+                "of it is open or unintegrated. The human's call — never do this with "
+                "raw git in the shared checkout; the board must record the landing."
+            ),
+        }
+    ),
     "taskops_take": _object(
         {
             "task": _text("tk-… — yours; empty takes what is assigned to you"),

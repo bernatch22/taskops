@@ -43,8 +43,20 @@ def bind(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
 
 
 def merged(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
-    """The card reached its milestone branch. Only the orchestrator integrates."""
+    """The card reached its milestone branch — or, with milestone=, the whole
+    milestone reached the trunk. Only the orchestrator integrates."""
     now = _clock.now()
+    stone_id = _args.text(args, "milestone", default="")
+    if stone_id:
+        if stone_id not in stores.state()["milestones"]:
+            raise Refused(f"milestone {stone_id} does not exist")
+        body = {"op": "landed", "id": stone_id, "into": _args.text(args, "into"),
+                "sha": _args.text(args, "sha")}
+        seq = stores.write([make(PROJECT, actor, "milestone", body, now)])
+        stores.live.renew(actor, now)
+        return {"milestone": stores.state()["milestones"][stone_id],
+                "into": body["into"], "sha": body["sha"], "seq": seq,
+                "pulse": _context.pulse(stores, actor, now, stone_id)}
     card = _facts.find(stores, _args.ident(args, "task"))
     if card["status"] != "done":
         raise Refused(
