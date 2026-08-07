@@ -67,7 +67,7 @@ nowhere to say so. `tests/test_verbs.py::test_anybody_may_write_on_a_card_somebo
 **2. Branches are inhabited, not switched.** `git switch` appears nowhere.
 
 ```
-main ────────────────────────────▶ only a HUMAN, one PR per milestone
+main ────────────────────────────▶ the HUMAN decides: a PR, or taskops_merge milestone=
   └─ ms/<slug> ──┬──────┬───────▶ the ORCHESTRATOR integrates, card by card
                  │      │           (--no-ff, in .taskops/trees/_ms-<slug>/)
               tk-a11  tk-b22     ← one WORKER each, one worktree each
@@ -75,8 +75,11 @@ main ─────────────────────────
 
 Each branch is pinned to a directory for life; "changing branch" is `cd`. Git
 itself refuses the same branch in two worktrees — a third lock nobody has to
-remember. `taskops_merge` takes no target: merging to `main` is not refused,
-it cannot be expressed.
+remember. `taskops_merge task=` takes no target: merging a CARD to `main`
+cannot be expressed. A FINISHED milestone lands with `taskops_merge
+milestone=` — the human's explicit call, refused while any card is open or
+unintegrated, recorded on the board. Raw `git merge` in the shared checkout is
+never the move: the board must learn the milestone shipped.
 
 **3. Two roles, enforced by the server.** The verb registry
 (`verbs/__init__.py`) declares `kind` (read/write) and `roles` once:

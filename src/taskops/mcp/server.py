@@ -38,6 +38,10 @@ If you are the main session you are the ORCHESTRATOR (dev:<name>):
   · dispatch with taskops_assign, then spawn ONE sub-agent per brief it
     returns, all in the same message. The brief is self-contained;
   · integrate finished cards with taskops_merge (into the milestone branch);
+  · a FINISHED milestone reaches the trunk by taskops_merge milestone=ms-…
+    (refused while any card is open or unintegrated) or by a PR the human
+    opens — NEVER by raw git in the shared checkout: the board must record
+    the landing, and a merge it never saw is work it cannot account for;
   · REVIEW is optional, per card (review=true, or reviews=true on the plan).
     A submitted card shows under REVIEW: spawn a verifier (an ordinary agent)
     whose ONE tool is taskops_review — task=<id> claims it and returns

@@ -399,7 +399,7 @@ sequenceDiagram
     Git-->>Board: sha (or refused, conflict files named, ms/* untouched)
     Board-->>Dev: merged
 
-    Note over Dev: only a HUMAN opens the PR from ms/<milestone> to main
+    Note over Dev: the HUMAN decides how ms/<milestone> reaches main: a PR, or taskops_merge milestone= once every card is closed and integrated
 ```
 
 ## 9. Sequence — the case v2 exists to remove
@@ -455,7 +455,7 @@ nobody has touched yet.
 |---|---|---|
 | a `recover` verb | doing is derived from the live lease; nothing is ever wrong to recover | no entry in `verbs/__init__.py::REGISTRY`; `tests/test_verbs.py::test_a_dead_workers_card_comes_back_by_itself` |
 | a reviewer ROLE, a stored review STATUS, automatic reviewer assignment | v1's review system: `peer` deadlocks, 14 closing rules over 6 modules, reviewers eating the budget of the work | review EXISTS since 2026-08-07 but narrowed (docs/implement-reviewer.md is the paper trail): optional per card, derived from history-only events + a second lease, judged by an ordinary agent that may never judge its own work. `CARD_STATUSES` stays three; there is no reviewer role and nothing auto-assigns |
-| automatic merges to `main` | broke checkouts under a working agent | `taskops_merge` takes no target argument — merging to `main` cannot be *expressed*, not just refused |
+| AUTOMATIC merges to `main` | v1's `land` merged as a side effect of closing a card and ran checkout under working agents | a CARD cannot be merged to main — `taskops_merge task=` takes no target. A finished MILESTONE lands via `taskops_merge milestone=` (2026-08-07): explicit, refused while any card is open or unintegrated, refused off-trunk, recorded as a `milestone landed` event. What stays impossible is main moving as a side effect of anything |
 | git replication between clones | split-brain, two machines "owning" the same card | `RemoteBoard` never falls back to a local store on write failure (`Unreachable` instead) |
 | Claude hooks **that decide or store** | latency, another thing to install and drift; v1's held state and gated actions | context travels in `initialize.instructions` + tool responses. The ONE exception, sanctioned 2026-08-06: `taskops hook claude`, delivery-only (`MENTIONS.md` §9) — it reads, injects a ✉ line, and can be deleted with no loss but immediacy. `tests/test_claude.py` pins its four safety properties |
 | a mark-as-read / ack verb for mentions | a stored `read` flag is `recover` again: a write whose only job is to contradict an earlier one | `core/mentions.py::pending()` derives it from the thread; `tests/test_verbs.py::test_a_mention_clears_itself_the_moment_the_actor_touches_the_card` |

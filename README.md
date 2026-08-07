@@ -124,9 +124,9 @@ paste-a-token screen holding a token the machine already had.
 ## The shape
 
 ```
-worker      ──commit────────▶  tk-<id>          its branch, its worktree
-orchestrator──taskops_merge─▶  ms/<milestone>   --no-ff, in the integration worktree
-human       ──pull request──▶  main             one review, one decision
+worker      ──commit──────────────▶  tk-<id>          its branch, its worktree
+orchestrator──taskops_merge task=─▶  ms/<milestone>   --no-ff, in the integration worktree
+human       ──PR, or taskops_merge milestone=─▶  main  one decision, on the record
 ```
 
 Branches are not switched, they are inhabited: one directory per card, pinned

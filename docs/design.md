@@ -349,7 +349,7 @@ the cost was two agents rewriting each other's work.
 This is the GitHub half, and it is literal.
 
 ```
-main ──────────────────────────────▶  only a HUMAN merges here, one PR per milestone
+main ──────────────────────────────▶  the HUMAN decides: a PR, or landing the milestone whole
   └─ ms/mvp-facturador ──┬────┬────▶  the ORCHESTRATOR integrates, card by card
                          │    │
                    tk-a11ffa  tk-d34294   ← one WORKER each, one DIRECTORY each
