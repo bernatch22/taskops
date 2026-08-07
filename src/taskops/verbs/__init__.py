@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Callable, NamedTuple
 
-from . import card, plan, take, pulse, assign, record, report, review, update
+from . import card, plan, take, pulse, assign, record, report, review, update, _mentions
 from .._errors import Refused, BadRequest
 from ..core.types import ROLE_DEV, ROLE_AGENT, role_of
 from ..store.stores import Stores
@@ -40,7 +40,7 @@ REGISTRY: dict[str, Verb] = {
     "board": Verb(pulse.run, "read", BOTH, ""),
     # The ✉ half of `board` alone, and the only read that does NOT renew: the
     # delivery hook calls it on somebody else's behalf (MENTIONS.md §9a).
-    "mentions": Verb(pulse.mentions, "read", BOTH, ""),
+    "mentions": Verb(_mentions.mentions, "read", BOTH, ""),
     "card": Verb(card.run, "read", BOTH, ""),
     "report": Verb(report.run, "read", BOTH, ""),
     "plan": Verb(

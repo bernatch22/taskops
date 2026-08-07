@@ -135,6 +135,11 @@ export interface BoardGroups {
   doing: BoardRow[];
   reviewing: ReviewingRow[];
   blocked: BlockedRow[];
+  /** Closed AND integrated — the only place finished work is visible. Capped at
+   *  `pulse.DONE_SHOWN` (20) and newest first; `BoardPayload.done_total` is the
+   *  real count behind the cap. Every other group is bounded by work in flight;
+   *  this one only grows, which is why it is the one group that is a tail. */
+  done: BoardRow[];
 }
 
 export const GROUP_ORDER = [
@@ -147,6 +152,7 @@ export const GROUP_ORDER = [
   "doing",
   "reviewing",
   "blocked",
+  "done",
 ] as const satisfies readonly (keyof BoardGroups)[];
 
 export type GroupName = (typeof GROUP_ORDER)[number];
@@ -171,6 +177,8 @@ export interface BoardPayload {
   groups: BoardGroups;
   team: TeamMember[];
   hours: ReportPayload | null; // only when the call passed window=
+  /** How many closed cards the chapter really has, behind `groups.done`'s cap. */
+  done_total: number;
   seq: number;
   pulse: Pulse;
 }

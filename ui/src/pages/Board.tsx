@@ -116,6 +116,14 @@ export function columns(board: BoardPayload): Col[] {
         marker: "ok" as Tone,
       })),
     },
+    {
+      // Closed AND in the trunk. Nothing to do here — it is the only screen on
+      // which finished work exists at all, and without it a chapter's whole
+      // history lives in the event log and nowhere a person can look.
+      name: board.done_total > g.done.length ? `Done · ${g.done.length} of ${board.done_total}` : "Done",
+      tone: "neutral",
+      tiles: g.done.map((row) => ({ row, chip: { label: "in trunk", tone: "ok" } as Chip })),
+    },
   ];
 }
 

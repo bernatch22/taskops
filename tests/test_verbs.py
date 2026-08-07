@@ -275,6 +275,20 @@ def test_merge_only_accepts_done_cards_and_clears_the_merge_group(stores: Stores
     assert call(stores, "board", BERNA)["groups"]["merge"] == []
 
 
+def test_an_integrated_card_stays_visible_under_done(stores: Stores) -> None:
+    """A merged card used to leave the payload entirely: it was in no group and
+    on no screen, so a chapter's finished work existed only in the event log.
+    21 closed cards and nothing to show for them (2026-08-07)."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(stores, "update", W1, task=card, status="done", no_code=True, comment="done")
+    call(stores, "merged", BERNA, task=card, sha="9c2f")
+    board = call(stores, "board", BERNA)
+    assert board["groups"]["merge"] == []  # integrated: nothing left to do
+    assert [c["id"] for c in board["groups"]["done"]] == [card]  # but still visible
+    assert board["done_total"] == 1
+
+
 # ── the dead worker ─────────────────────────────────────────────────────────
 
 
