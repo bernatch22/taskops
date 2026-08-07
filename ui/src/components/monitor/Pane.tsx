@@ -61,7 +61,8 @@ const sub: React.CSSProperties = {
 };
 
 export function Pane(props: PaneProps): React.JSX.Element {
-  const { title, subtitle, aside, headPad, headAlign, children, testId } = props;
+  const { title, subtitle, aside, headPad, headAlign, children, testId } =
+    props;
   return (
     <section style={shell} data-testid={testId} data-pane={title}>
       {title !== undefined || aside ? (
@@ -103,6 +104,26 @@ const tile: React.CSSProperties = {
   transition: "background 130ms",
 };
 
+/** The cap every growing list wears, and the one deliberate departure from the
+ *  design in this chapter.
+ *
+ *  Nova draws each list at mock scale — five files, nine chain rows — so only
+ *  Event stream carries an explicit `max-height` in the .dc.html. On a real
+ *  board these lists grow with the work: Edit surface came back 24 rows tall on
+ *  a board with 7 open cards, which pushed everything under it off the screen
+ *  and buried the two contended files it exists to warn about under 22 that
+ *  claim nothing. A pane that has to be scrolled past is worse than one that
+ *  scrolls.
+ *
+ *  Sized to show roughly six rows: enough that a quiet board never scrolls, and
+ *  the panes keep the side-by-side proportions the grid was drawn for. The
+ *  ordering inside each list already puts what matters on top, so what falls
+ *  below the fold is the tail, never the warning. */
+export const LIST_CAP: React.CSSProperties = {
+  maxHeight: "352px",
+  overflowY: "auto",
+};
+
 export interface PaneRowProps {
   children?: React.ReactNode;
   /** Defaults to the `14px 20px` of the Live leases row. */
@@ -112,8 +133,16 @@ export interface PaneRowProps {
 
 /** A full-bleed block separated by a hairline: the Throughput totals strip, the
  *  Chapter footer. Not clickable — the design does not make these buttons. */
-export function PaneRow({ children, pad, style }: PaneRowProps): React.JSX.Element {
-  return <div style={{ ...bordered, padding: pad ?? "14px 20px", ...style }}>{children}</div>;
+export function PaneRow({
+  children,
+  pad,
+  style,
+}: PaneRowProps): React.JSX.Element {
+  return (
+    <div style={{ ...bordered, padding: pad ?? "14px 20px", ...style }}>
+      {children}
+    </div>
+  );
 }
 
 export interface PaneButtonProps extends PaneRowProps {
@@ -157,8 +186,16 @@ export function PaneButton(props: PaneButtonProps): React.JSX.Element {
 /** A radius-10 row inside a padded container, static: the Edit surface rows and
  *  the Chapter rules. `background` is the caller's — Edit surface tints a
  *  contended path, a rule sits on `var(--pane-2)`. */
-export function PaneTile({ children, pad, style }: PaneRowProps): React.JSX.Element {
-  return <div style={{ ...tile, padding: pad ?? "11px 10px", ...style }}>{children}</div>;
+export function PaneTile({
+  children,
+  pad,
+  style,
+}: PaneRowProps): React.JSX.Element {
+  return (
+    <div style={{ ...tile, padding: pad ?? "11px 10px", ...style }}>
+      {children}
+    </div>
+  );
 }
 
 /** The same radius-10 row, clickable: the Dependency chain nodes. */
@@ -193,7 +230,11 @@ export function PaneTileButton(props: PaneButtonProps): React.JSX.Element {
 /** The body a stub draws until its panel card lands, and the body a real panel
  *  draws when its data is genuinely absent. Never a blank pane: a pane that
  *  renders nothing is indistinguishable from a pane somebody forgot. */
-export function PaneEmpty({ children }: { children: React.ReactNode }): React.JSX.Element {
+export function PaneEmpty({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
     <div
       data-testid="pane-empty"

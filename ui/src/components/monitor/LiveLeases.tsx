@@ -12,7 +12,7 @@
  */
 import { ago, shortActor } from "../../format";
 import { TONE_BG, TONE_FG } from "../board/CardTile";
-import { Pane, PaneEmpty, PaneButton } from "./Pane";
+import { Pane, PaneEmpty, PaneButton, LIST_CAP } from "./Pane";
 import { LEASE_TTL } from "./panels";
 import type { BoardRow } from "../../types";
 import type { LeaseProc, LiveLeasesProps, Tone } from "./panels";
@@ -84,7 +84,10 @@ function lapsed(row: BoardRow, now: number): LeaseProc {
  *  silence) cannot drift from the two shapes drawn for them. */
 function level(p: LeaseProc, row: BoardRow, now: number): number {
   if (p.state === "doing") {
-    return Math.max(0, Math.min(1, (LEASE_TTL - (now - row.since)) / LEASE_TTL));
+    return Math.max(
+      0,
+      Math.min(1, (LEASE_TTL - (now - row.since)) / LEASE_TTL),
+    );
   }
   const quiet = row.quiet_for ?? now - row.since;
   return Math.max(0, Math.min(1, 1 - quiet / LEASE_TTL));
@@ -105,7 +108,12 @@ const ellipsis: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-export function LiveLeases({ doing, stalled, now, onOpen }: LiveLeasesProps): React.JSX.Element {
+export function LiveLeases({
+  doing,
+  stalled,
+  now,
+  onOpen,
+}: LiveLeasesProps): React.JSX.Element {
   const rows: { row: BoardRow; p: LeaseProc }[] = [
     ...doing.map((row) => ({ row, p: held(row, now) })),
     ...stalled.map((row) => ({ row, p: lapsed(row, now) })),
@@ -125,102 +133,128 @@ export function LiveLeases({ doing, stalled, now, onOpen }: LiveLeasesProps): Re
       {rows.length === 0 ? (
         <PaneEmpty>Nobody holds a lease right now.</PaneEmpty>
       ) : (
-        rows.map(({ row, p }) => {
-          /* Derived from the card id, never from the row's index: several rows
-           * render at once and an SVG id collides DOCUMENT-wide, so two panes
-           * sharing an index would silently paint one gradient over the other. */
-          const gradId = `tk-lease-grad-${p.card}`;
-          const s = spark(level(p, row, now));
-          return (
-            <PaneButton
-              key={p.card}
-              testId="lease-row"
-              cardId={p.card}
-              onOpen={onOpen}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(150px, 1.6fr) minmax(70px, 1fr) 72px 78px",
-                gap: "12px",
-                alignItems: "center",
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "11px" }}>
-                  <span style={dot(p.tone)} />
-                  <span
+        <div style={LIST_CAP}>
+          {rows.map(({ row, p }) => {
+            /* Derived from the card id, never from the row's index: several rows
+             * render at once and an SVG id collides DOCUMENT-wide, so two panes
+             * sharing an index would silently paint one gradient over the other. */
+            const gradId = `tk-lease-grad-${p.card}`;
+            const s = spark(level(p, row, now));
+            return (
+              <PaneButton
+                key={p.card}
+                testId="lease-row"
+                cardId={p.card}
+                onOpen={onOpen}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "minmax(150px, 1.6fr) minmax(70px, 1fr) 72px 78px",
+                  gap: "12px",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
                     style={{
-                      fontSize: "14.5px",
-                      fontWeight: 450,
-                      letterSpacing: "-0.02em",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "11px",
+                    }}
+                  >
+                    <span style={dot(p.tone)} />
+                    <span
+                      style={{
+                        fontSize: "14.5px",
+                        fontWeight: 450,
+                        letterSpacing: "-0.02em",
+                        ...ellipsis,
+                      }}
+                    >
+                      {p.title}
+                    </span>
+                  </div>
+                  <div
+                    className="mono"
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-3)",
+                      marginTop: "5px",
+                      paddingLeft: "18px",
                       ...ellipsis,
                     }}
                   >
-                    {p.title}
+                    {`${p.card} → ${p.actor}`}
+                  </div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <svg
+                    viewBox={`0 0 ${W} ${H}`}
+                    width="100%"
+                    height={H}
+                    preserveAspectRatio="none"
+                    style={{ display: "block", overflow: "visible" }}
+                  >
+                    <defs>
+                      <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                        <stop
+                          offset="0%"
+                          stopColor={TONE_FG[p.tone]}
+                          stopOpacity="0.28"
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor={TONE_FG[p.tone]}
+                          stopOpacity="0"
+                        />
+                      </linearGradient>
+                    </defs>
+                    <path d={s.area} fill={`url(#${gradId})`} />
+                    <path
+                      d={s.line}
+                      fill="none"
+                      stroke={TONE_FG[p.tone]}
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    className="mono num"
+                    style={{ fontSize: "13.5px", fontWeight: 500 }}
+                  >
+                    {p.remain}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "10.5px",
+                      color: "var(--text-3)",
+                      marginTop: "2px",
+                    }}
+                  >
+                    {p.remainLabel}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      padding: "4px 11px",
+                      borderRadius: "20px",
+                      background: TONE_BG[p.tone],
+                      color: TONE_FG[p.tone],
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {p.state}
                   </span>
                 </div>
-                <div
-                  className="mono"
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--text-3)",
-                    marginTop: "5px",
-                    paddingLeft: "18px",
-                    ...ellipsis,
-                  }}
-                >
-                  {`${p.card} → ${p.actor}`}
-                </div>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <svg
-                  viewBox={`0 0 ${W} ${H}`}
-                  width="100%"
-                  height={H}
-                  preserveAspectRatio="none"
-                  style={{ display: "block", overflow: "visible" }}
-                >
-                  <defs>
-                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={TONE_FG[p.tone]} stopOpacity="0.28" />
-                      <stop offset="100%" stopColor={TONE_FG[p.tone]} stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <path d={s.area} fill={`url(#${gradId})`} />
-                  <path
-                    d={s.line}
-                    fill="none"
-                    stroke={TONE_FG[p.tone]}
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div className="mono num" style={{ fontSize: "13.5px", fontWeight: 500 }}>
-                  {p.remain}
-                </div>
-                <div style={{ fontSize: "10.5px", color: "var(--text-3)", marginTop: "2px" }}>
-                  {p.remainLabel}
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    padding: "4px 11px",
-                    borderRadius: "20px",
-                    background: TONE_BG[p.tone],
-                    color: TONE_FG[p.tone],
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {p.state}
-                </span>
-              </div>
-            </PaneButton>
-          );
-        })
+              </PaneButton>
+            );
+          })}
+        </div>
       )}
     </Pane>
   );

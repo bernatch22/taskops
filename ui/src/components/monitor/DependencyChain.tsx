@@ -23,7 +23,7 @@
  * roots did not reach is emitted afterwards at depth 0 rather than silently
  * dropped. Rendering a cycle honestly beats both looping and hiding it.
  */
-import { PaneTileButton, Pane, PaneEmpty } from "./Pane";
+import { PaneTileButton, Pane, PaneEmpty, LIST_CAP } from "./Pane";
 import { TONE_FG } from "../board/CardTile";
 import type { DagNode, DependencyChainProps, Tone } from "./panels";
 
@@ -51,10 +51,16 @@ function index(props: DependencyChainProps): Map<string, Node> {
   // (take + doing + stalled) and listing all of them would drown the chain in
   // rows that wait on nothing — a blocker earns its line by being named.
   const named = new Set<string>();
-  for (const row of props.blocked) for (const id of row.waiting_on) named.add(id);
+  for (const row of props.blocked)
+    for (const id of row.waiting_on) named.add(id);
   for (const row of props.others) {
     if (named.has(row.id)) {
-      nodes.set(row.id, { id: row.id, title: row.title, blockers: [], known: true });
+      nodes.set(row.id, {
+        id: row.id,
+        title: row.title,
+        blockers: [],
+        known: true,
+      });
     }
   }
   for (const row of props.blocked) {
@@ -71,7 +77,13 @@ function index(props: DependencyChainProps): Map<string, Node> {
   // card with nothing above it, which is the one thing this pane must not do.
   for (const row of props.blocked) {
     for (const id of row.waiting_on) {
-      if (!nodes.has(id)) nodes.set(id, { id, title: "(not on this board)", blockers: [], known: false });
+      if (!nodes.has(id))
+        nodes.set(id, {
+          id,
+          title: "(not on this board)",
+          blockers: [],
+          known: false,
+        });
     }
   }
   return nodes;
@@ -113,7 +125,9 @@ export function chain(props: DependencyChainProps): DagNode[] {
       id: node.id,
       title: cyclic ? `${node.title} — cycle` : node.title,
       depth,
-      note: cyclic ? `already above: ${node.id} waits on itself` : noteFor(node, nodes),
+      note: cyclic
+        ? `already above: ${node.id} waits on itself`
+        : noteFor(node, nodes),
       tone: toneFor(node, cyclic, nodes),
     });
     emitted.add(node.id);
@@ -128,13 +142,15 @@ export function chain(props: DependencyChainProps): DagNode[] {
     }
     emit(node, Math.min(depth, MAX_DEPTH), false);
     if (depth >= MAX_DEPTH) return;
-    for (const kid of dependents.get(id) ?? []) walk(kid, depth + 1, [...path, id]);
+    for (const kid of dependents.get(id) ?? [])
+      walk(kid, depth + 1, [...path, id]);
   };
 
   // A root is a node nothing above it is waiting for — i.e. it blocks, and is
   // not blocked by, anything we can see.
   for (const node of nodes.values()) {
-    if (node.blockers.filter((id) => nodes.has(id)).length === 0) walk(node.id, 0, []);
+    if (node.blockers.filter((id) => nodes.has(id)).length === 0)
+      walk(node.id, 0, []);
   }
   // Whatever the roots could not reach lives entirely inside a cycle. It is
   // still real work; it renders flat, marked, instead of vanishing.
@@ -175,7 +191,9 @@ const idStyle: React.CSSProperties = {
   flex: "none",
 };
 
-export function DependencyChain(props: DependencyChainProps): React.JSX.Element {
+export function DependencyChain(
+  props: DependencyChainProps,
+): React.JSX.Element {
   const nodes = chain(props);
   return (
     <Pane
@@ -185,9 +203,11 @@ export function DependencyChain(props: DependencyChainProps): React.JSX.Element 
       headPad="18px 20px 10px"
     >
       {nodes.length === 0 ? (
-        <PaneEmpty>Nothing is waiting on anything. Every open card is free to move.</PaneEmpty>
+        <PaneEmpty>
+          Nothing is waiting on anything. Every open card is free to move.
+        </PaneEmpty>
       ) : (
-        <div style={{ padding: "4px 10px 12px" }}>
+        <div style={{ padding: "4px 10px 12px", ...LIST_CAP }}>
           {nodes.map((node, i) => (
             <PaneTileButton
               key={`${node.id}-${i}`}
@@ -197,13 +217,18 @@ export function DependencyChain(props: DependencyChainProps): React.JSX.Element 
               pad="9px 10px"
               style={row}
             >
-              <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
-                <span style={{ width: `${node.depth * STEP}px`, flex: "none" }} />
+              <div
+                style={{ display: "flex", alignItems: "center", minWidth: 0 }}
+              >
+                <span
+                  style={{ width: `${node.depth * STEP}px`, flex: "none" }}
+                />
                 <span style={{ ...dot, background: TONE_FG[node.tone] }} />
                 <span
                   style={{
                     ...label,
-                    color: node.tone === "neutral" ? "var(--text-3)" : "var(--text)",
+                    color:
+                      node.tone === "neutral" ? "var(--text-3)" : "var(--text)",
                   }}
                 >
                   {node.title}
@@ -212,7 +237,13 @@ export function DependencyChain(props: DependencyChainProps): React.JSX.Element 
                   {node.id}
                 </span>
               </div>
-              <span style={{ fontSize: "11px", color: TONE_FG[node.tone], whiteSpace: "nowrap" }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: TONE_FG[node.tone],
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {node.note}
               </span>
             </PaneTileButton>

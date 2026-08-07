@@ -38,7 +38,7 @@
  *     which of the two it is, per card, so the difference is on screen and not
  *     hidden in a filter.
  */
-import { Pane, PaneEmpty, PaneTile } from "./Pane";
+import { Pane, PaneEmpty, PaneTile, LIST_CAP } from "./Pane";
 import { TONE_BG, TONE_FG } from "../board/CardTile";
 import { shortActor } from "../../format";
 import type { BoardRow } from "../../types";
@@ -89,7 +89,11 @@ const ellipsis: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const pathStyle: React.CSSProperties = { ...ellipsis, fontSize: "12px", color: "var(--text)" };
+const pathStyle: React.CSSProperties = {
+  ...ellipsis,
+  fontSize: "12px",
+  color: "var(--text)",
+};
 
 const detailStyle: React.CSSProperties = {
   ...ellipsis,
@@ -120,7 +124,7 @@ export function EditSurface({ rows }: EditSurfaceProps): React.JSX.Element {
           declared — never what a worker actually edited.
         </PaneEmpty>
       ) : (
-        <div style={{ padding: "4px 10px 12px" }}>
+        <div style={{ padding: "4px 10px 12px", ...LIST_CAP }}>
           {files.map((file) => (
             <PaneTile
               key={file.path}
@@ -130,7 +134,11 @@ export function EditSurface({ rows }: EditSurfaceProps): React.JSX.Element {
                 ...(file.contended ? { background: TONE_BG.warn } : {}),
               }}
             >
-              <div style={{ minWidth: 0 }} data-testid="file-claim" data-path={file.path}>
+              <div
+                style={{ minWidth: 0 }}
+                data-testid="file-claim"
+                data-path={file.path}
+              >
                 <div className="mono" style={pathStyle}>
                   {file.path}
                 </div>
