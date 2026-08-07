@@ -16,7 +16,7 @@
 import { Pane, PaneEmpty, PaneRow, PaneTile } from "./Pane";
 import type { ChapterProps } from "./panels";
 
-export function Chapter({ milestone }: ChapterProps): React.JSX.Element {
+export function Chapter({ milestone, chapters }: ChapterProps): React.JSX.Element {
   if (milestone === null) {
     return (
       <Pane testId="pane-chapter">
@@ -24,7 +24,17 @@ export function Chapter({ milestone }: ChapterProps): React.JSX.Element {
           <div style={eyebrow}>Chapter in focus</div>
         </div>
         <PaneEmpty>
-          No milestone is open. A chapter opens with <code>taskops_plan milestone=…</code>.
+          {chapters > 1 ? (
+            <>
+              {chapters} chapters are open — the board focuses one on its own only when a
+              single chapter is. Land or drop the finished ones, or read one with{" "}
+              <code>taskops_board milestone=…</code>.
+            </>
+          ) : (
+            <>
+              No milestone is open. A chapter opens with <code>taskops_plan milestone=…</code>.
+            </>
+          )}
         </PaneEmpty>
       </Pane>
     );

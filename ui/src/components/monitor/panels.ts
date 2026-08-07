@@ -189,9 +189,13 @@ export interface EditSurfaceProps {
 /* ── 6. Chapter in focus ──────────────────────────────────────────────────── */
 
 export interface ChapterProps {
-  /** `board.milestone` — `null` when no milestone is open, which the pane says
-   *  rather than rendering an empty heading. */
+  /** `board.milestone` — `null` when no milestone is open AND when several are:
+   *  the server refuses to guess between chapters. The pane needs the count to
+   *  tell those two apart, because "no milestone is open" is a false statement
+   *  on a board with two. */
   milestone: Milestone | null;
+  /** `board.milestones.length` — how many chapters are open. */
+  chapters: number;
 }
 
 /* ── 7. Addressed to you ──────────────────────────────────────────────────── */

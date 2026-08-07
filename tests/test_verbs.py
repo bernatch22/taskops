@@ -64,6 +64,22 @@ def test_renaming_a_milestone_never_moves_its_branch(stores: Stores) -> None:
     assert stores.state()["milestones"][ident]["branch"] == "ms/mvp-facturador"
 
 
+def test_landing_a_milestone_closes_it(stores: Stores) -> None:
+    """Landing IS closing. The `landed` op used to fall through the fold
+    unfolded: the chapter stayed "open" forever, and from the second chapter on
+    `open_milestone` (None for "several") could never focus one again — no
+    Chapter pane, `plan` demanding milestone= on every call, permanently.
+    Found on the first real landing, 2026-08-07."""
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "merged", BERNA, milestone=ident, into="master", sha="abc123")
+    assert stores.state()["milestones"][ident]["status"] == "landed"
+    # And the board can focus a fresh chapter again — the symptom that exposed it.
+    second = call(stores, "plan", BERNA, milestone="chapter two", goal="g", tasks=[{"title": "t"}])
+    board = call(stores, "board", BERNA)
+    assert board["milestone"] is not None
+    assert board["milestone"]["id"] == second["milestone"]["id"]
+
+
 def test_planning_the_same_title_twice_adds_to_the_same_milestone(stores: Stores) -> None:
     """Two chapters with one name would split the board: two goals, two branches,
     and two possible answers to "the open milestone"."""

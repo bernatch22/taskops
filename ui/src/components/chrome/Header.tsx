@@ -113,7 +113,11 @@ export function Header(props: HeaderProps): React.JSX.Element {
           />
           <div style={{ textAlign: "left", minWidth: 0 }}>
             <div style={{ fontSize: "13px", fontWeight: 500, letterSpacing: "-0.02em" }}>
-              {milestone || "no open milestone"}
+              {/* board.milestone is null for ZERO open chapters and for SEVERAL —
+                  the server refuses to guess between them. The count tells the
+                  two apart; saying "no open milestone" over "2 open chapters"
+                  was the visible contradiction that exposed the landed-op bug. */}
+              {milestone || (chapters > 1 ? `${chapters} chapters open` : "no open milestone")}
             </div>
             <div style={{ fontSize: "10.5px", color: "var(--text-3)" }}>
               {chapters} open chapter{chapters === 1 ? "" : "s"}
