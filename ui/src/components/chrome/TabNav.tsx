@@ -1,13 +1,17 @@
-/* The three views, as a pill bar. This is the whole router.
+/* The views, as a pill bar. This is the whole router.
  *
  * No router library and no URL: which view is on is state in App, so a tab is a
  * button that calls back. A hash route would be a second source of truth for one
  * boolean and a reload that lands on a card that no longer exists.
  *
- * The badge is a SLOT, not a hardcoded mention count: Attention carries the
- * pending mentions today, and a tab with nothing to say carries nothing. */
+ * One tab today — Board. The bar still renders it: a single pill reads as "this
+ * is the view you are on" and is where Monitor lands next to it (Nova's first
+ * section), whereas hiding the bar would move the chrome twice for one card.
+ *
+ * The badge is a SLOT, not a hardcoded count: a tab with nothing to say carries
+ * nothing. The board's pending mentions are on the KPI rail, not on a pill. */
 
-export type TabId = "attention" | "board" | "hours";
+export type TabId = "board";
 
 export interface Tab {
   id: TabId;
@@ -16,11 +20,7 @@ export interface Tab {
   badge?: number;
 }
 
-export const TABS: readonly Tab[] = [
-  { id: "attention", name: "Attention" },
-  { id: "board", name: "Board" },
-  { id: "hours", name: "Hours" },
-];
+export const TABS: readonly Tab[] = [{ id: "board", name: "Board" }];
 
 const bar: React.CSSProperties = {
   display: "flex",

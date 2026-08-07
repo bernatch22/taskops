@@ -188,9 +188,9 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   typecheck + build + smoke + `git diff --exit-code ../src/taskops/ui`.
 - **Do not run browser/UI demos unless asked.** The UI is tested headlessly —
   `tests/test_ui.py`, currently **skipped**: it reached into the old
-  single-file page's inline script, which the bundle no longer has. Card
-  tk-28e585 (Smoke harness) restores headless coverage against the built
-  bundle. The file is kept whole, not gutted: it is the list of what the UI
+  single-file page's inline script, which the bundle no longer has. A smoke
+  harness card, to be re-planned once Monitor lands, restores headless coverage
+  against the built bundle. The file is kept whole, not gutted: it is the list of what the UI
   has to prove.
 - Never re-introduce: a reviewer ROLE, a stored review STATUS, or automatic
   reviewer assignment (optional per-card review exists — docs/implement-reviewer.md
@@ -210,10 +210,13 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    events carrying `mentions` want a human eye after (MENTIONS.md §5).
 2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
 3. The React dashboard (milestone "UI — React dashboard (Nova)") has its data
-   layer, its chrome (header, tabs, KPI rail), its three pages wired into
-   App.tsx (attention, board, hours) and the card dossier drawer — which
-   renders the acceptance criteria no v1 screen ever drew, and carries the
-   dashboard's ONE write, the comment box with its mention picker. The smoke
-   harness (`ui/smoke/run.mjs`, and `tests/test_ui.py` against the built
-   bundle) is still a card on the board, so `npm run check` fails at its
-   `smoke` step until it lands.
+   layer, its chrome (header, tabs, KPI rail), the Board page and the card
+   dossier drawer — which renders the acceptance criteria no v1 screen ever
+   drew, and carries the dashboard's ONE write, the comment box with its
+   mention picker. **Board is the only view**: an "Attention" screen that is in
+   no Nova section, and an "Hours" tab that in Nova is the Throughput panel
+   *inside* Monitor, were built by mistake and deleted. Monitor — Nova's first
+   and central section — is still to be written, and Throughput is rebuilt as
+   its panel there. The smoke harness (`ui/smoke/run.mjs`, and
+   `tests/test_ui.py` against the built bundle) is still a card on the board,
+   so `npm run check` fails at its `smoke` step until it lands.
