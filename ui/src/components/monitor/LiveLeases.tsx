@@ -12,7 +12,7 @@
  */
 import { ago, shortActor } from "../../format";
 import { TONE_BG, TONE_FG } from "../board/CardTile";
-import { Pane, PaneEmpty, PaneButton, LIST_CAP } from "./Pane";
+import { Pane, PaneEmpty, PaneButton, PaneRow, LIST_CAP } from "./Pane";
 import { LEASE_TTL } from "./panels";
 import type { BoardRow } from "../../types";
 import type { LeaseProc, LiveLeasesProps, Tone } from "./panels";
@@ -108,18 +108,23 @@ const ellipsis: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-/** What the chapter stands at, for the empty pane. Written as one sentence and
- *  not a row of stat tiles: a stat rail already exists in the chrome, and a
- *  second one here would be the same numbers twice in one screen. Only the
- *  non-zero parts are said — "0 blocked" is noise on a board with none. */
-function standingLine(s: { ready: number; blocked: number; closed: number }): string {
-  const parts = [
-    s.ready > 0 ? `${s.ready} ready to pick up` : "",
-    s.blocked > 0 ? `${s.blocked} blocked` : "",
-    s.closed > 0 ? `${s.closed} closed in this chapter` : "",
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
+/* ── the empty pane ───────────────────────────────────────────────────────────
+ *
+ * Drawn in the design's OWN vocabulary for numbers, not as a sentence: the
+ * three-cell strip on a hairline, a 21px tabular figure over an 11.5px label,
+ * cells split by `border-left` — the same shape Throughput's totals row uses
+ * (design lines 285-296). A paragraph of grey text on a designed surface reads
+ * as a placeholder somebody forgot to finish, which is exactly what it was.
+ *
+ * The figures carry tone where tone means something: ready is what you can act
+ * on, blocked is what is stuck. Closed stays neutral — it is history, not a
+ * call to do anything. */
+const figure: React.CSSProperties = { fontSize: "21px", fontWeight: 500, lineHeight: 1 };
+const figureLabel: React.CSSProperties = {
+  fontSize: "11.5px",
+  color: "var(--text-3)",
+  marginTop: "3px",
+};
 
 export function LiveLeases({
   doing,
@@ -145,14 +150,38 @@ export function LiveLeases({
       }
     >
       {rows.length === 0 ? (
-        <PaneEmpty>
-          <div>Nobody holds a lease right now.</div>
-          {standingLine(standing) ? (
-            <div style={{ marginTop: "6px", color: "var(--text-2)" }} data-testid="standing">
-              {standingLine(standing)}
-            </div>
-          ) : null}
-        </PaneEmpty>
+        <>
+          <PaneEmpty>Nobody holds a lease right now.</PaneEmpty>
+          <div
+            data-testid="standing"
+            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)" }}
+          >
+            <PaneRow>
+              <div className="num" style={{ ...figure, color: TONE_FG.ok }}>
+                {standing.ready}
+              </div>
+              <div style={figureLabel}>ready to pick up</div>
+            </PaneRow>
+            <PaneRow style={{ borderLeft: "1px solid var(--hair)" }}>
+              <div
+                className="num"
+                style={{
+                  ...figure,
+                  ...(standing.blocked > 0 ? { color: TONE_FG.danger } : {}),
+                }}
+              >
+                {standing.blocked}
+              </div>
+              <div style={figureLabel}>blocked</div>
+            </PaneRow>
+            <PaneRow style={{ borderLeft: "1px solid var(--hair)" }}>
+              <div className="num" style={figure}>
+                {standing.closed}
+              </div>
+              <div style={figureLabel}>closed this chapter</div>
+            </PaneRow>
+          </div>
+        </>
       ) : (
         <div style={LIST_CAP}>
           {rows.map(({ row, p }) => {
