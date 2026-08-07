@@ -96,6 +96,15 @@ export interface LiveLeasesProps {
   stalled: readonly BoardRow[];
   now: number;
   onOpen: (id: string) => void;
+  /** What the chapter stands at, read ONLY when no lease is held.
+   *
+   *  A board holds live leases during a fan-out and at almost no other moment,
+   *  so the pane Nova puts first is blank most of the day while six cards sit
+   *  ready one tab away. The empty state says what there is instead of only
+   *  what there is not. The pane keeps its title, its shape and its subject —
+   *  when a lease exists none of this is read, and nothing about the populated
+   *  pane changes. */
+  standing: { ready: number; blocked: number; closed: number };
 }
 
 /* ── 2. Throughput ────────────────────────────────────────────────────────── */

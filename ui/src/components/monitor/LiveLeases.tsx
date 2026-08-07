@@ -108,11 +108,25 @@ const ellipsis: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+/** What the chapter stands at, for the empty pane. Written as one sentence and
+ *  not a row of stat tiles: a stat rail already exists in the chrome, and a
+ *  second one here would be the same numbers twice in one screen. Only the
+ *  non-zero parts are said — "0 blocked" is noise on a board with none. */
+function standingLine(s: { ready: number; blocked: number; closed: number }): string {
+  const parts = [
+    s.ready > 0 ? `${s.ready} ready to pick up` : "",
+    s.blocked > 0 ? `${s.blocked} blocked` : "",
+    s.closed > 0 ? `${s.closed} closed in this chapter` : "",
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
 export function LiveLeases({
   doing,
   stalled,
   now,
   onOpen,
+  standing,
 }: LiveLeasesProps): React.JSX.Element {
   const rows: { row: BoardRow; p: LeaseProc }[] = [
     ...doing.map((row) => ({ row, p: held(row, now) })),
@@ -131,7 +145,14 @@ export function LiveLeases({
       }
     >
       {rows.length === 0 ? (
-        <PaneEmpty>Nobody holds a lease right now.</PaneEmpty>
+        <PaneEmpty>
+          <div>Nobody holds a lease right now.</div>
+          {standingLine(standing) ? (
+            <div style={{ marginTop: "6px", color: "var(--text-2)" }} data-testid="standing">
+              {standingLine(standing)}
+            </div>
+          ) : null}
+        </PaneEmpty>
       ) : (
         <div style={LIST_CAP}>
           {rows.map(({ row, p }) => {

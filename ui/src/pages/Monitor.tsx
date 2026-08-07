@@ -90,7 +90,18 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
     <div style={scroll} data-testid="monitor">
       <div style={grid}>
         <div style={left}>
-          <LiveLeases doing={g.doing} stalled={g.stalled} now={now} onOpen={openCard} />
+          <LiveLeases
+            doing={g.doing}
+            stalled={g.stalled}
+            now={now}
+            onOpen={openCard}
+            standing={{
+              ready: g.take.length,
+              blocked: g.blocked.length,
+              // The count behind the cap, not the tail `groups.done` carries.
+              closed: board.done_total,
+            }}
+          />
 
           <div style={pair("1.25fr")}>
             <Throughput report={board.hours} />
