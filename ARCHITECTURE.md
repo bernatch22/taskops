@@ -483,7 +483,7 @@ rule exists, which is the whole convention of this codebase.
 ## 13. Verified state at time of writing
 
 ```
-201 tests passing   ./scripts/test
+200 passing, 1 skipped   ./scripts/test
 ruff clean            } ./scripts/lint
 pyright --strict clean
 ```
@@ -493,8 +493,9 @@ replay, graph, machine, hours, mentions, review), store (log/cache/live),
 verbs (including the whole review cycle and the two races it can lose),
 gitwork (including a raw-socket WebSocket handshake test), http (topology),
 mcp (dossier section order, tool refusals), migration (the v1 mapping),
-ui (headless — the real `src/taskops/ui/index.html` script run under Node against real
-board payloads, every card clicked).
+ui (headless — **skipped for now**: the harness ran the inline script of the old
+single-file page, and the dashboard is a built React bundle from `ui/` since the
+Nova rewrite. Card tk-28e585 restores it against the bundle).
 
 Not yet done: running the migration against the v1 boards on axion
 (`scripts/migrate_v1.py` exists and is tested — and the 66 v1 events that
