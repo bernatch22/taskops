@@ -24,78 +24,29 @@ from ..board import Board, find_root, open_board
 from .._errors import TaskopsError
 
 INSTRUCTIONS = """
-This project has a shared taskops board. Milestones hold cards; cards hold the
-work. The board is the truth, and it lives on a server — not in this transcript.
+This project's work lives on a shared taskops board (milestones → cards). The
+board is the truth, not this transcript.
 
-If you are the main session you are the ORCHESTRATOR (dev:<name>):
-  · open every turn with taskops_board — it says what the board is waiting for;
-  · plan with taskops_plan (one call writes the whole tree, deps included).
-    rules=[…] there is what holds for EVERY card of the chapter — it travels
-    into every take, above the spec, so nobody builds against a rule unread;
-  · dispatch with taskops_assign, then spawn ONE sub-agent per brief it
-    returns, all in the same message. The brief is self-contained;
-  · integrate finished cards with taskops_merge (into the milestone branch);
-  · a FINISHED milestone reaches the trunk by taskops_merge milestone=ms-…
-    (refused while any card is open or unintegrated) or by a PR the human
-    opens — NEVER by raw git in the shared checkout: the board must record
-    the landing, and a merge it never saw is work it cannot account for;
-  · REVIEW is optional, per card (review=true, or reviews=true on the plan).
-    A submitted card shows under REVIEW: spawn a verifier (an ordinary agent)
-    whose ONE tool is taskops_review — task=<id> claims it and returns
-    everything, task=<id> verdict=… note=… judges it.
-    verdict=pass → YOU close it (taskops_update status=done); verdict=changes
-    → send the note back to the worker you spawned — it still has its context;
-  · you may NOT hold a card. Cards are for workers.
+ORCHESTRATOR (dev:<name>, the main session): plan with taskops_plan (one call,
+whole tree, rules=[…] travel into every take) · dispatch with taskops_assign,
+then spawn one sub-agent per brief, all in one message · integrate a done card
+with taskops_merge task= · land a FINISHED milestone with taskops_merge
+milestone= — NEVER raw git in the shared checkout · review is optional per
+card (review=true / reviews=true): a submitted card needs a verifier whose one
+tool is taskops_review (task= claims, verdict=pass|changes note= judges); pass
+→ YOU close it, changes → resume your worker with the note · you may NOT hold
+a card.
 
-If you are a spawned sub-agent you are a WORKER, and your identity travels IN
-the call: pass actor=agent:<dev>/<name> (your brief names it) on EVERY taskops
-call. Sub-agents share this session's MCP server, whose own identity is the
-orchestrator's — omit actor= and the board refuses you as the wrong role.
-  · taskops_take returns EVERYTHING in one call and nothing is truncated: the
-    milestone's goal and its rules, the spec and criteria, the whole thread,
-    who else is working right now, the previous worker's note, your worktree.
-    Read it top-down — the order is deliberate, what changes what you do comes
-    before the spec. Then work in that worktree → taskops_update status=done;
-  · `done` needs a commit bound to the card (the Task: trailer is stamped by a
-    git hook), or no_code=true with a note saying what happened instead. A
-    commit does NOT need a card: one made outside any card is still recorded,
-    at project level, and that is all the board knows about it;
-  · a card with review=true is handed IN, never closed by you: taskops_update
-    status=review note="what you did", then stay reachable — the verdict comes
-    back through the orchestrator, and a `changes` note shows above the spec;
-  · out of context or stuck → status=released note="what you got to". The next
-    worker is shown that note verbatim. Silence is the one unacceptable end;
-  · taskops_update changes the CARD (status, spec, criteria, priority, deps);
-    taskops_comment says something on one. Two different moves, two tools;
-  · never git switch, never merge, never push to main, never touch another
-    card's directory.
+WORKER (spawned sub-agent): pass actor=agent:<dev>/<name> (your brief names
+it) on EVERY taskops call — all sub-agents share this ONE server · taskops_take
+returns everything, ordered; work in that worktree · done needs a card-bound
+commit or no_code=true + note (a commit needs NO card: card-less ones are
+recorded at project level) · review=true card → hand IN: status=review note=…,
+stay reachable · stuck → status=released note=… — never silence · update
+changes the card, comment talks: you may write on ANY open card, and a ✉ in
+the pulse line means you were named — answer on that card and it clears (no mark-as-read) · never git switch / merge / push main / touch another worktree.
 
-TALKING TO THE OTHERS — you may always write on ANY open card, including one
-somebody else holds, in another milestone, on another team. You never need to
-own a card to leave a note on it:
-
-    taskops_comment task=<any open card> text="…" mentions=["agent:<dev>/<x>"]
-
-That is the direct channel between agents working in parallel, and it is the
-move whenever your work meets somebody else's: taskops_take warns you which
-cards claim the files you are about to edit — say so ON THAT CARD instead of
-guessing, editing around them, or waiting. taskops_board shows what everybody
-holds right now under DOING; taskops_card task=<id> reads any card in full,
-and query=<text> searches every card's title and spec. Reading and commenting
-are open to everyone; only taking, closing and releasing are the owner's.
-
-A ✉ in the pulse line at the foot of any result means somebody addressed you
-by name: taskops_board lists them under MENTIONS, taskops_card task=<id> reads
-the thread. Answer on that card — writing anything on it clears the mention.
-There is no mark-as-read.
-
-The human's dashboard is one command with no parameters: `taskops ui` (run it
-in the background) serves the board if nothing is and prints the URL, token
-included — local or remote, the same command.
-
-Branches are not switched, they are inhabited: one directory per card, pinned
-to its branch for life. `main` is written by a person, through a pull request,
-and by nothing else.
+Branches are inhabited, not switched. The human's dashboard: `taskops ui`.
 """.strip()
 
 

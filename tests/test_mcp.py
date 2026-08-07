@@ -103,10 +103,15 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     text = server.INSTRUCTIONS
     for needed in ("ORCHESTRATOR", "WORKER", "taskops_take", "released", "never git switch"):
         assert needed in text
-    # the ✉ has to be readable without a second document: what it means, where
-    # to read it, and that answering on the card is what clears it.
-    for mention in ("✉", "MENTIONS", "clears the mention", "no mark-as-read"):
+    # the ✉ has to be readable without a second document: what it means and
+    # that answering on the card is what clears it. (Needles follow the 08-07
+    # compression — the host truncates instructions at ~3.1k, so the protocol
+    # had to shrink to leave the panorama room. Contract, not wording, pinned.)
+    for mention in ("✉", "answer on that card and it clears", "no mark-as-read"):
         assert mention in text
+    # …and the whole handshake must fit UNDER the measured truncation, panorama
+    # included: hello.CAP is the ceiling and the protocol may not eat all of it.
+    assert len(text) + 300 + 2 <= hello.CAP, "INSTRUCTIONS grew past the cap — the panorama dies"
 
 
 # ── the dossier ─────────────────────────────────────────────────────────────
