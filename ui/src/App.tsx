@@ -12,10 +12,14 @@
  * hands it. Nothing about the board's fetch is duplicated there.
  *
  * `openCard(id)` and `openCard(null)` are the only way a page changes what is
- * open, and `comment` is the ONE write this dashboard has. The drawer that
- * consumes `openId` lands in tk-e85ced. */
+ * open, and `comment` is the ONE write this dashboard has. The drawer is rendered
+ * HERE, once, over whichever page is on: it belongs to the app's view state, not
+ * to a page — the same card opens from Attention and from the Board, and two
+ * drawers would be two of everything below them (two escape owners, two comment
+ * boxes, two fetches of the same dossier). */
 import { useState } from "react";
 
+import { Drawer } from "./components/card/Drawer";
 import { Header } from "./components/chrome/Header";
 import { KpiRail } from "./components/chrome/KpiRail";
 import { TABS, TabNav, type TabId } from "./components/chrome/TabNav";
@@ -47,7 +51,7 @@ const panel: React.CSSProperties = {
 export function App({ client }: { client: Client }): React.JSX.Element {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [tab, setTab] = useState<TabId>("attention");
-  const { board, live, error, loading, openCard } = useBoard(client);
+  const { board, card, live, error, loading, openCard, openId, comment } = useBoard(client);
 
   function flip(): void {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -109,6 +113,17 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           <Attention board={board} openCard={openCard} />
         ) : null}
       </main>
+
+      {openId ? (
+        <Drawer
+          dossier={card}
+          openId={openId}
+          team={board?.team ?? []}
+          now={Date.now() / 1000}
+          onClose={() => openCard(null)}
+          onComment={comment}
+        />
+      ) : null}
     </div>
   );
 }

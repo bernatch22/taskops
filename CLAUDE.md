@@ -210,6 +210,10 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    events carrying `mentions` want a human eye after (MENTIONS.md §5).
 2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
 3. The React dashboard (milestone "UI — React dashboard (Nova)") has its data
-   layer, its chrome (header, tabs, KPI rail) and its three pages wired into
-   App.tsx (attention, board, hours); the card dossier drawer and the smoke
-   harness are still cards on the board.
+   layer, its chrome (header, tabs, KPI rail), its three pages wired into
+   App.tsx (attention, board, hours) and the card dossier drawer — which
+   renders the acceptance criteria no v1 screen ever drew, and carries the
+   dashboard's ONE write, the comment box with its mention picker. The smoke
+   harness (`ui/smoke/run.mjs`, and `tests/test_ui.py` against the built
+   bundle) is still a card on the board, so `npm run check` fails at its
+   `smoke` step until it lands.
