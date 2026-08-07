@@ -1,4 +1,4 @@
-/* The shell: the chrome, the view state, and the slots the pages plug into.
+/* The shell: the chrome, the view state, and the three pages it renders.
  *
  * App is the SINGLE caller of useBoard — that is the whole reason this file holds
  * the tab state as well. Which view is on decides nothing about what is fetched
@@ -6,31 +6,23 @@
  * own fetch would only manage to paint a board half a second older than the rail
  * above it. Pages receive data; they never ask for it.
  *
- * ── THE SLOTS ────────────────────────────────────────────────────────────────
- * Three sibling cards land the real pages where the placeholder panels are, and
- * a fourth the drawer. Each is handed the payload and the callbacks; none of them
- * imports client.ts:
- *
- *   tk-a7f52a  <AttentionPage board={board} onOpen={openCard} />
- *              the landing view: the nine groups of board.groups in GROUP_ORDER.
- *   tk-0d233a  <BoardPage board={board} onOpen={openCard} />
- *              the kanban: the same groups as columns.
- *   tk-38c876  <HoursPage report={…} />
- *              board.hours is null unless the call passed window=; this card owns
- *              asking for it — through the hook, not a client of its own.
- *   tk-e85ced  <CardDrawer card={card} onClose={() => openCard(null)}
- *                          onComment={comment} />
- *              the dossier for `openId`, over the whole shell. `card` is null
- *              while the dossier is in flight — that is the drawer's own spinner.
+ * Hours is the one exception, and a deliberate one: `report` is not in the board
+ * payload (pulse.py only carries it when the call passed window=), and the window
+ * and timezone are that page's own state — so it reads through the `client` App
+ * hands it. Nothing about the board's fetch is duplicated there.
  *
  * `openCard(id)` and `openCard(null)` are the only way a page changes what is
- * open, and `comment` is the ONE write this dashboard has. */
+ * open, and `comment` is the ONE write this dashboard has. The drawer that
+ * consumes `openId` lands in tk-e85ced. */
 import { useState } from "react";
 
 import { Header } from "./components/chrome/Header";
 import { KpiRail } from "./components/chrome/KpiRail";
 import { TABS, TabNav, type TabId } from "./components/chrome/TabNav";
 import type { Client } from "./client";
+import { Attention } from "./pages/Attention";
+import { Board } from "./pages/Board";
+import { Hours } from "./pages/Hours";
 import { applyTheme, readTheme, type Theme } from "./theme/theme";
 import { useBoard } from "./useBoard";
 
@@ -55,7 +47,7 @@ const panel: React.CSSProperties = {
 export function App({ client }: { client: Client }): React.JSX.Element {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [tab, setTab] = useState<TabId>("attention");
-  const { board, live, error, loading, openCard, openId } = useBoard(client);
+  const { board, live, error, loading, openCard } = useBoard(client);
 
   function flip(): void {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -109,36 +101,14 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           <div style={panel} data-testid="loading">
             reading the board…
           </div>
-        ) : (
-          <Slot tab={tab} openId={openId} onOpen={openCard} />
-        )}
+        ) : tab === "hours" ? (
+          <Hours client={client} />
+        ) : board && tab === "board" ? (
+          <Board board={board} openCard={openCard} />
+        ) : board ? (
+          <Attention board={board} openCard={openCard} />
+        ) : null}
       </main>
-    </div>
-  );
-}
-
-/** The placeholder that stands where each page will. It keeps the seam honest:
- *  a tab click has to change what renders here even before a page exists. */
-function Slot(props: {
-  tab: TabId;
-  openId: string | null;
-  onOpen: (task: string | null) => void;
-}): React.JSX.Element {
-  const { tab, openId, onOpen } = props;
-  return (
-    <div style={panel} data-testid="panel" data-panel={tab}>
-      <div style={{ fontSize: "13px", color: "var(--text-2)" }}>{tab}</div>
-      <div className="mono" style={{ fontSize: "11px" }}>
-        {openId ? `card ${openId} — drawer lands in tk-e85ced` : "page lands in a sibling card"}
-      </div>
-      {openId ? (
-        <button
-          onClick={() => onOpen(null)}
-          style={{ all: "unset", cursor: "pointer", fontSize: "11px", color: "var(--accent-hi)" }}
-        >
-          close
-        </button>
-      ) : null}
     </div>
   );
 }
