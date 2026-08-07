@@ -1,5 +1,11 @@
 # Mentions — design, not a Claude hook
 
+> **Read §8, §9 and §9e first if you want the current state.** §1-§7 are the
+> original design, kept as written; §8 says where the build departed from it,
+> and §9 records the owner's later reversal — ONE delivery-only Claude hook
+> exists. The flat "no Claude hook" of the paragraphs below was narrowed that
+> day to "no Claude hook that decides or stores", and that is the rule now.
+
 Berna asked for two things: keep v1's `@mentions` (currently dropped by
 `scripts/migrate_v1.py`), and make sure a dev or a sub-agent finds out about a
 mention addressed to them **every turn**, without having to remember to look.
@@ -197,8 +203,8 @@ mutation-check, and every doc this touches says the truth when it is done.
 
 ## 8. What actually got built — and where it differs from §1-§7
 
-All eleven steps are done (green at 155 tests; 173 now, after §9, the
-milestone rules, the per-call actor and the board watcher). Zero Claude
+All eleven steps are done (green at 155 tests the day they landed; the suite
+has grown well past that since — `./scripts/test` is the count). Zero Claude
 hooks, nothing under `.claude/`, no `settings.json`. Five deliberate departures
 from the sketch above, each one for a reason:
 
@@ -320,8 +326,8 @@ The stamp file is `.taskops/hook-seen.json` (gitignored by `install.IGNORED`),
 keyed per reader. `board.open_board` gained an optional `timeout` so the hook's
 remote reads give up in 2s; every other caller keeps the 20s default.
 
-Verified end to end, live and in `tests/test_claude.py` (6 tests, each one a
-property from the module docstring, all mutation-checked): mention → hook
+Verified end to end, live and in `tests/test_claude.py` (one test per property
+in that module's docstring, all mutation-checked): mention → hook
 emits the ✉ context JSON; 1s later → throttle, silence; no env, only a
 worktree path in `tool_input` → the worker is resolved through
 path → card → holder; the worker replies on the card → the hook is silent with
