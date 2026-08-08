@@ -562,7 +562,12 @@ export interface SwarmNode {
   /** the actor string, or the card id — the two namespaces cannot collide */
   id: string;
   kind: SwarmKind;
-  /** what is drawn beside the circle: `shortActor()`, or the card id */
+  /** the glyphs drawn INSIDE the circle — `initials()` for an actor, the card
+   *  id without its `tk-` for a card. Two texts per node is what makes the mock
+   *  read as a diagram instead of a bubble chart. */
+  glyph: string;
+  /** the sub-label under the circle: the card id, or what the actor IS
+   *  (`orchestrator`, `worker`, …) — the mock's `dy="46"` text */
   label: string;
   /** the `<title>`: the actor AND its card, because a circle with no text is
    *  unreachable to a screen reader otherwise */

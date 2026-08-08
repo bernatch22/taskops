@@ -1585,8 +1585,42 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     "swarm: an ownership edge is drawn quieter than a lease",
     swarmFirst.includes('data-kind="owns"') &&
       swarmFirst.includes('stroke="var(--hair-2)"') &&
-      swarmFirst.includes('stroke-width="0.7"') &&
+      /* the mock's own numbers: a lease is 1.6 solid, ownership 1 and dashed 3 4 */
+      /data-kind="owns"[^>]*stroke-width="1"[^>]*stroke-dasharray="3 4"/.test(swarmFirst) &&
       !/data-kind="lease"[^>]*stroke="var\(--hair-2\)"/.test(swarmFirst),
+  );
+  /* Criterion 1 and 3: the mockup's SVG is the specification, so its numbers are
+   * asserted as numbers. The pane used to draw r=16 discs on a 460×330 board and
+   * read as a bubble chart; nothing about the DATA changed to fix that. */
+  check(
+    "swarm: the svg is the mockup's viewBox, height and guide rings",
+    swarmFirst.includes('viewBox="0 0 600 400"') &&
+      swarmFirst.includes('height="440"') &&
+      swarmFirst.includes('cx="300" cy="200" r="100"') &&
+      swarmFirst.includes('cx="300" cy="200" r="130"') &&
+      /* the grid is a 28px CSS background on the wrapper, not an SVG pattern */
+      swarmFirst.includes("background-size:28px 28px") &&
+      !swarmFirst.includes("<pattern"),
+  );
+  check(
+    "swarm: a node is r=26 with a halo ring at r=34, opacity 0.22",
+    /r="26" fill="var\(--pane\)" stroke="[^"]+" stroke-width="1.6"/.test(swarmFirst) &&
+      /r="34" fill="none" stroke="[^"]+" stroke-width="1" opacity="0.22"/.test(swarmFirst),
+  );
+  /* Criterion 2: TWO texts per node — that is what makes it read as a diagram
+   * rather than a bubble chart. */
+  check(
+    "swarm: a node carries its glyphs inside and its sub-label at dy=46",
+    /dominant-baseline="central" font-size="12" font-weight="500"/.test(swarmFirst) &&
+      /dy="46"[^>]*font-size="9.5"/.test(swarmFirst) &&
+      swarmFirst.includes(">tk-aaa111<") &&
+      swarmFirst.includes(">orchestrator<") &&
+      swarmFirst.includes(">ber<"),
+  );
+  check(
+    "swarm: every edge is the mockup's weight and opacity",
+    /data-kind="lease"[^>]*stroke-width="1.6"[^>]*opacity="0.55"/.test(swarmFirst) &&
+      /data-kind="contested"[^>]*stroke-width="1.6"[^>]*stroke-dasharray="5 4"[^>]*opacity="0.55"/.test(swarmFirst),
   );
   check(
     "swarm: the caveat is on the pane, in the Edit surface's own words",
