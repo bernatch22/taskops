@@ -386,6 +386,38 @@ def test_a_long_gap_is_dropped_not_capped() -> None:
     assert hours.total(stamps) == 900.0
 
 
+def test_sessions_are_runs_of_intervals_and_a_dropped_gap_breaks_them() -> None:
+    """A block is a RUN — consecutive counted intervals on one card merge — and
+    what breaks it is a dropped gap or a change of card, never a tick."""
+    stamps = [
+        (0.0, "tk-a"),
+        (300.0, "tk-a"),  # merges into the block that started at 0
+        (900.0, "tk-a"),
+        (100_000.0, "tk-a"),  # the gap before it is > GAP: dropped whole, and
+        (100_300.0, "tk-a"),  # the SAME card does not heal over it
+        (100_600.0, "tk-c"),  # touching, but another card: its own block
+    ]
+    got = hours.sessions(stamps)
+    assert [(s["start"], s["end"], s["task"], s["seconds"]) for s in got] == [
+        (0.0, 900.0, "tk-a", 900.0),
+        (100_000.0, 100_300.0, "tk-a", 300.0),
+        (100_300.0, 100_600.0, "tk-c", 300.0),
+    ]
+    # The wall-clock between two blocks is time NOBODY counted — it is what the
+    # timesheet draws as space, and it is not in any session.
+    assert got[1]["start"] - got[0]["end"] == 99_100.0
+
+
+def test_spent_is_a_fold_of_sessions_and_nothing_else() -> None:
+    """One definition of an interval: the totals ARE the blocks, summed."""
+    stamps = [(0.0, "tk-a"), (600.0, "tk-a"), (100_000.0, "tk-b"), (100_300.0, "tk-b")]
+    folded: dict[str, float] = {}
+    for block in hours.sessions(stamps):
+        folded[block["task"]] = folded.get(block["task"], 0.0) + block["seconds"]
+    assert hours.spent(stamps) == folded
+    assert hours.total(stamps) == sum(s["seconds"] for s in hours.sessions(stamps))
+
+
 def test_a_dst_day_is_not_24_hours() -> None:
     tz = "Europe/Madrid"
     when = datetime(2026, 3, 30, 12, 0, tzinfo=ZoneInfo(tz)).timestamp()

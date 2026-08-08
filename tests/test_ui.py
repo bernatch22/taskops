@@ -27,7 +27,7 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Seven waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+Ten waves of `.tsx`-only cards have now been rebuilt into that bundle, and
 each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
@@ -40,10 +40,16 @@ thread on it, and Monitor's ninth pane) and `NOTHING_DRAWN` (tk-81c980 — a
 column with nothing in it is not drawn at all, which is the one wave that also
 RETIRED a marker of its own: see `RETIRED`) and `CHAPTERS_LISTED` (tk-13d115 —
 several open chapters listed as foldable rows instead of apologised for, which
-also retired a sentence: see `RETIRED_APOLOGY`). All seven
-lists are the check that the bundle is the CURRENT source's output and not the
-previous wave's: none of those strings existed in the bundle its chapter-close
-replaced, so a close that forgot to run `node build.mjs` fails here.
+also retired a sentence: see `RETIRED_APOLOGY`) and `CLOSING_NOTE` (tk-a1b7f2 —
+a close's transition and the note the worker signed off with) and `ACTORS`
+(tk-5fc887 — the fourth view as a page about DEVS; it also RETIRED the six
+markers of the draft it replaced) and `DATE_PANES` (tk-36b550 — the SECOND
+redesign of what a dev opens into: a pane per calendar day with an hour that
+folds open, which retired the lane-per-agent drawing and the hours bar panel
+whole: see `RETIRED_TIMESHEET`). All ten lists are the check that the bundle is the CURRENT source's output and not
+the previous wave's: none of those strings existed in the bundle its
+chapter-close replaced, so a close that forgot to run `node build.mjs` fails
+here.
 
 The one marker that had to be RETIRED rather than added is the Event stream's
 `"no events verb"`. It was true while nothing returned the log; `verbs/events.py`
@@ -203,7 +209,23 @@ NOTHING_DRAWN = ("worktrees-none",)  # the both-empty message, centred in the pa
 #: …and what the same change REMOVED. `worktrees-empty` was the dotted field
 #: inside a column shell; it was in the bundle this close rebuilt over (checked),
 #: and it must not be in the one that replaces it.
-RETIRED = ("worktrees-empty",)
+#:
+#: The ACTORS row below retired six more, and for the same shape of reason: the
+#: first draft of that page drew one tile per ACTOR with the detail revealed in
+#: place, and tk-5fc887 replaced both with a dev card and a real overlay. A
+#: source tree that kept the old page beside the new one would carry both sets,
+#: so only the swap passes. `timesheet-cards` is the one this card exists for —
+#: it is the list of card ids joined by dots that stood where a drawing belongs.
+RETIRED = (
+    "worktrees-empty",
+    "actor-card",  # one tile per ephemeral sub-agent: sixty-seven of them
+    "actor-card-open",
+    "actor-pill",
+    "actor-carried",
+    "actor-history",
+    "actor-timesheet-toggle",  # the in-place reveal, replaced by a full overlay
+    "timesheet-cards",  # THE DEFECT: a timesheet drawn as a list of ids
+)
 
 #: The SEVENTH wave, and it is the Chapter pane's (tk-13d115). `_facts.in_scope`
 #: returns None for SEVERAL open chapters as well as for none — it refuses to
@@ -225,6 +247,105 @@ CHAPTERS_LISTED = (
 
 #: …and what it removed: the apology for a board that is merely working.
 RETIRED_APOLOGY = ("Land or drop the finished ones",)
+
+#: The EIGHTH wave's, and it is the thread's (tk-a1b7f2). A `status` event was
+#: drawn as the bare word "done": `Thread.tsx::detail` tried body keys in an
+#: order that reached `to` and never `reason`, and the render drew a text block
+#: only for a comment. Every close note in the log — 61 of 61 on this board —
+#: was on the wire and off the screen. The thread now draws a PHRASE and, under
+#: it, the PROSE, and these are the two `data-testid`s that split.
+#:
+#: It was written OUTSIDE the `markers` tuple by the card that earned it, for
+#: exactly the reason `PANES` records for `pane-swarm`: that wave's cards are
+#: `.tsx`-only and none of them may rebuild `src/taskops/ui/`, so the assertion
+#: would have been red from the moment it was written until the chapter-close
+#: rebuild. tk-56740f is that rebuild, and both strings are asserted now.
+CLOSING_NOTE = (
+    "event-detail",  # the transition, the field, the verdict — the phrase
+    "event-prose",  # …and the writing underneath it
+)
+
+#: The NINTH wave, and it is this chapter's own: ACTORS, the fourth view. It
+#: shipped once as a grid of ACTOR tiles with an in-place reveal, and tk-5fc887
+#: reversed both — sixty-seven tiles for sixty-six dead sub-agents is not a page
+#: about who has been on this board — so these markers are that page's, not the
+#: first draft's: `dev-card` where `actor-card` was, `dev-open` where
+#: `actor-timesheet-toggle` was.
+#:
+#: What the row is really pinning is the chapter's refusal (ARCHITECTURE.md §11):
+#: an actor is a name bound to the run of a card, so the bundle carries a dev's
+#: own figures and the days it worked INSTEAD of a held/free/lapsed slot roster.
+#: `actors-none` is the empty board's one sentence rather than an empty grid.
+ACTORS = (
+    "actors",  # the fourth tab (pages/Actors.tsx)
+    "dev-card",  # ONE card per dev — the durable identity, never per agent
+    "dev-live",  # how many of its agents are on a card RIGHT NOW, unopened
+    "dev-recent",  # the most recent few agents, and the rest as a count
+    "dev-open",  # the door into the full overlay (components/actors/DevPanel.tsx)
+    "actors-none",  # a board nobody has touched: one sentence
+)
+
+#: The TENTH wave, and it is the SECOND redesign of that same panel (tk-36b550).
+#: What a dev opened into was a DRAWING — one lane per agent on a shared
+#: wall-clock axis — with a panel of hour BARS beside it on the page. Both
+#: existed to compare actors against each other, and an ephemeral agent is a
+#: label: `w1` today is not `w1` yesterday, which is this chapter's own goal. So
+#: neither was restyled; both were deleted.
+#:
+#: What replaced them answers the one question the panel can answer honestly —
+#: WHEN did the work happen: a pane per calendar day, NEWEST FIRST and only the
+#: newest open, each day's hours a row, each row folding open to its sessions.
+#: An hour with nothing counted is drawn and says so, because that is where the
+#: dropped gaps are.
+#:
+#: Both halves are asserted, as every redesign row here is: these strings are the
+#: new panel's, `RETIRED_TIMESHEET` below is the old one's, and a source tree
+#: that kept one beside the other would carry both. Only the swap passes.
+DATE_PANES = (
+    "daysheet",  # the panel (components/actors/Daysheet.tsx)
+    "day-pane",  # ONE PANE PER DATE, newest first
+    "day-fold",  # …a real button with aria-expanded, not an arrow glyph
+    "day-total",  # that day's counted time
+    "day-dropped",  # the gaps: how many, and the wall-clock they hold
+    "hour-row",  # every hour the day spans — including one with nothing in it
+    "hour-fold",  # the second fold, and only where there is something behind it
+    "hour-total",  # the time counted inside that hour
+    "hour-cards",  # the cards it touched, or `nothing counted`
+    "session-row",  # HH:MM – HH:MM, the duration, the card — a door to its dossier
+    "daysheet-none",  # nothing counted in the window: one sentence
+    "daysheet-rule",  # the arithmetic, in core/hours.py's own words
+    "dev-figures",  # the rail: worked, commits, cards, who is running now
+)
+
+#: …and what that redesign REMOVED. Every one of these was in the bundle this
+#: close rebuilt over (checked, one at a time), and none may be in the one that
+#: replaces it: the lanes and their axis, the per-agent rows under them, and the
+#: bar panel on the page.
+RETIRED_TIMESHEET = (
+    "timesheet",  # the drawing itself
+    "timesheet-lane",  # ONE LANE PER AGENT: the comparison this card refuses
+    "timesheet-lane-total",
+    "timesheet-axis",
+    "timesheet-ruler",
+    "timesheet-tick",
+    "timesheet-block",
+    "timesheet-gap",
+    "timesheet-range",
+    "timesheet-dropped",
+    "timesheet-capped",
+    "timesheet-none",
+    "timesheet-rule",
+    "dev-agent",  # a row per sub-agent — an agent is not a subject here
+    "dev-agents",
+    "dev-agents-none",
+    "dev-agents-more",
+    "dev-agent-state",
+    "dev-agent-card",
+    "dev-agent-history",
+    "pane-hours-today",  # THE UGLY ONE: a bar chart comparing labels
+    "hours-dev",
+    "hours-bar",
+)
 
 #: The EIGHTH wave, and it is one card (tk-382948): every screen that draws
 #: prose routes through the one renderer. Two markers, on the same terms as the
@@ -329,6 +450,67 @@ needs_node = pytest.mark.skipif(
 )
 
 
+def a_closed_pair(root: Path) -> list[dict[str, Any]]:
+    """Two cards the board actually CLOSED, and the payloads it answers with.
+
+    Its OWN board, and that is the point of the function rather than two more
+    rows in `a_board`: nothing on the fixture board is done or integrated, and
+    several assertions in `ui/smoke/main.tsx` are about exactly that shape (a
+    Merged column with no rows is not drawn at all). A closed card there would
+    have quietly changed what those assertions are looking at.
+
+    Every string here is written by the SERVER onto a real event body —
+    `submitted.note`, `reviewed.note`, `status.reason`, `status.no_code` — and
+    §9 of the harness proves each one reached the screen. The first card takes
+    the long way round (handed in, judged, closed) so its history carries all
+    three kinds; the second closes with NO code, which is the other body key a
+    reader should not have to open the log to learn about.
+    """
+    dev = LocalBoard(root, "dev:berna")
+    cards = dev.call(
+        "plan",
+        {
+            "milestone": "the importer",
+            "goal": "read a bank CSV",
+            "tasks": [
+                {"title": "the CSV reader", "spec": "read the bank CSV", "review": True},
+                {"title": "the changelog", "spec": "write it"},
+            ],
+        },
+    )["cards"]
+    worker = LocalBoard(root, "agent:berna/w2")
+    reviewed, no_code = cards[0]["id"], cards[1]["id"]
+
+    worker.call("take", {"task": reviewed})
+    worker.call("bind", {"task": reviewed, "sha": "c0ffee11", "subject": "feat: csv"})
+    worker.call(
+        "update", {"task": reviewed, "status": "review", "comment": "parsed with Decimal throughout"}
+    )
+    dev.call(
+        "review",
+        {"task": reviewed, "verdict": "pass", "note": "read every row, the rounding holds"},
+    )
+    worker.call(
+        "update",
+        {"task": reviewed, "status": "done", "comment": "closed after the pass — Decimal all the way"},
+    )
+
+    worker.call("take", {"task": no_code})
+    worker.call(
+        "update",
+        {
+            "task": no_code,
+            "status": "done",
+            "no_code": True,
+            "comment": "the README already said it, so there was nothing to write",
+        },
+    )
+    payloads = [dev.call("card", {"task": reviewed}), dev.call("card", {"task": no_code})]
+    dev.close()
+    worker.close()
+    return payloads
+
+
 def a_board(root: Path) -> dict[str, Any]:
     """A board with something of every kind on it, and the payloads it answers with.
 
@@ -431,6 +613,7 @@ def a_board(root: Path) -> dict[str, Any]:
             "every pane is filled",
         ],
         "card": dev.call("card", {"task": cards[1]["id"]}),
+        "closed": a_closed_pair(root.parent / "closed"),
         # The board this credential is looking at owes it an answer, and the
         # page must say so — a mention row carries what was said, not a title.
         "expect_board": ["Addressed to you", "Decimal or float?"],
@@ -471,7 +654,14 @@ def test_the_pages_draw_the_board_and_the_dossier(tmp_path: Path) -> None:
     assert "smoke ok" in done.stdout
     # The harness prints one `ok <claim>` per assertion; naming a few here means
     # a harness that silently stopped asserting them still fails this test.
-    for claim in ("ok criteria are on screen", "ok the draft survives a refusal"):
+    for claim in (
+        "ok criteria are on screen",
+        "ok the draft survives a refusal",
+        # The eighth wave's own claim, named here for the same reason as the two
+        # above: a harness that silently stopped asserting it still fails.
+        "ok a close draws its transition AND the note the worker signed off with",
+        "ok a close with no commit says so, in the Python renderer's own words",
+    ):
         assert claim in done.stdout, done.stdout
     for pane in PANES:
         assert f"ok pane {pane}" in done.stdout, done.stdout
@@ -496,10 +686,10 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED + PROSE
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
-    for testid in RETIRED:
+    for testid in RETIRED + RETIRED_TIMESHEET:
         assert f'"{testid}"' not in app, f"{testid} was retired but is still in the bundle"
     # A sentence, not a `data-testid`, so it is read as a plain substring: the
     # minifier keeps the literal but not the quotes around a JSX text node.

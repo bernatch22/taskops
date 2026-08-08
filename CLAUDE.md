@@ -2,8 +2,8 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
-dashboard — **42 TypeScript files / ~10.000 lines under `ui/src`**, whose built
+~340 files) as **79 Python files / ~8.200 lines under `src/taskops`**, plus the
+dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -37,9 +37,10 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**297 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 296+1; see below), ruff +
-pyright strict clean. Not deployed yet (see "What is left").
+**304 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 303+1; see below), ruff +
+pyright strict clean. Deployed: `taskops.bernardocastro.dev` serves
+this, four boards, since 2026-08-08 (ARCHITECTURE.md §17).
 
 ## The four ideas everything rests on
 
@@ -256,16 +257,22 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    `tests/fixtures/axion-v1/`) — then run: 926 v1 events → 845 v2 events + 81
    named drops into `~/axion-v3/.taskops/board`, verified count by count.
    Mentions: 82 in v1, 17 survive, and that is correct (MENTIONS.md §5).
-   Still open there: v1's `.taskops/remote.json` in that clone carries the v1
-   server url, so `taskops ui` would redirect until it is retired — the board
-   is served by hand for now.
-2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
+   The other three v1 boards followed on the deploy (item 2): agenda 43 → 35,
+   notas 59 → 48, probe 31 → 17, each reconciled against its own v1
+   `db.sqlite`. `~/axion-v3`'s v1 `remote.json` is gone and that clone is
+   re-joined against v2.
+2. ~~Deploy and point `taskops.bernardocastro.dev` at v2.~~ DONE (tk-5d3ccc,
+   2026-08-08). The domain serves v2 with all four boards; v1's process and
+   install are removed. **Not via `shipway`** — a board host is a wheel plus a
+   directory of board logs, not a code tree to rsync: `ARCHITECTURE.md` §17 is
+   the deploy, the order it was done in, and how to upgrade it. The four v1
+   board directories are still on the box, untouched, as the last backup.
 3. The React dashboard is BUILT — the milestone "Monitor — Nova, panel by panel"
    closed it. It has its data layer, its chrome (header, the milestone picker,
    tabs, KPI rail) and the card dossier drawer — which renders the acceptance
    criteria no v1 screen ever drew, and carries the dashboard's ONE write, the
-   comment box with its mention picker. **Three views, in Nova's order: Monitor,
-   Board, Worktrees** — an "Attention" screen that is in no Nova section, and an
+   comment box with its mention picker. **Four views, in Nova's order: Monitor,
+   Board, Actors, Worktrees** — an "Attention" screen that is in no Nova section, and an
    "Hours" tab that in Nova is the Throughput panel *inside* Monitor, were built
    by mistake and deleted. Monitor — Nova's first and central section, and the
    DEFAULT tab — kept its SEAM (`components/monitor/panels.ts`, where every
@@ -329,4 +336,40 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    `tk-<id>` as branch, directory and id at once), so a second thread would be
    two places to say one thing and the reader of the CARD would see half of it.
 
-   What the dashboard still cannot do is deploy itself: item 2 above.
+   **Actors is the fourth view, and it is a page about DEVS** — an agent is a
+   LINE inside one. It shipped once as a grid of ACTOR tiles: sixty-seven of
+   them, sixty-six being ephemeral sub-agents that had died with their cards,
+   which contradicts the chapter's own goal (an actor is a name bound to the RUN
+   of a card). The top level is the dev, the durable identity, and two devs are
+   two cards each with its own agents. A dev card says how many of its agents
+   are on a card right now WITHOUT being opened, plus its figures over the
+   window and the most recent few agent names with the rest as a count. A dev's
+   totals are dev + agents, refused whole rather than summed over a subset when
+   one member cannot say its own. There is NO worker-slot roster and there must
+   never be one: taskops allocates no worker (`ui/src/pages/Actors.tsx` and
+   `components/monitor/panels.ts` both carry the post-mortem).
+   A dev opens into a **full overlay** (`components/actors/DevPanel.tsx`) that
+   REUSES `shared/Overlay` — the same portal, the same `overlayStack` that owns
+   Escape, one `width` prop apart — with `DevDetail` exported beside it exactly
+   as `Dossier` is beside `Drawer`, so the harness reads the document a portal
+   cannot render. Inside it, **`components/actors/Daysheet.tsx`** is a pane per
+   calendar DAY — newest FIRST and only the newest open, the day's counted total
+   on its header — and inside a day, one row per hour it actually SPANS, each
+   folding open to that hour's sessions (`HH:MM – HH:MM`, the duration, the card
+   and its title, each a door to the dossier). That is the SECOND design of the
+   panel: the first drew ONE LANE PER AGENT on a shared wall-clock axis with a
+   table of per-agent rows under it, and an "Hours worked today" panel of bars
+   beside it on the page. Both are DELETED, not restyled — a bar chart and a
+   lane comparison exist to compare things, and an agent is a name bound to the
+   RUN of a card, so they compared labels. `tests/test_ui.py::RETIRED_TIMESHEET`
+   asserts the committed bundle carries no marker of either.
+   A session belongs to the hour its START falls in and is never split
+   (splitting would invent intervals `core/hours.py::sessions` never produced),
+   and an hour with nothing counted is DRAWN and says so — that is where the
+   dropped gaps are, and why a day's total is smaller than last-minus-first. A
+   gap over 30 minutes is dropped whole, never capped; the gaps are counted and
+   measured under the hours and the rule is on screen in `core/hours.py`'s own
+   words.
+
+   It is live: `taskops.bernardocastro.dev/<board>/ui/` is this dashboard,
+   served by the same package that hosts the boards (ARCHITECTURE.md §17).
