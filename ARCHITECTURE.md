@@ -643,8 +643,13 @@ files that answer it:
   that cell and its `worktree-commits` marker are gone. A tree is a pull
   request, so a row opens THIS view's own full-width diff surface
   (`WorktreeDiff`, its props declared in `components/monitor/panels.ts` as
-  `WorktreeDiffProps`) and never the card drawer: the selection is one
-  `useState` in the page and the index is replaced, not floated over.
+  `WorktreeDiffProps`) and never the card drawer: the index is replaced, not
+  floated over. The selection lives in `App.tsx`, next to the tab — it started
+  as one `useState` in the page and had to move, because the thing that must
+  clear it is the tab bar (`App.tsx::onTab`, pure and tested: selecting a tab,
+  including the one already active, returns to the index). `Worktrees` takes it
+  as an OPTIONAL controlled pair, so a caller that passes neither still gets the
+  page it had.
 * **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
@@ -760,6 +765,26 @@ and no component fetches a patch outside `cascade()`. The one seam this cost is
 exactly the reason `Dossier` is exported beside `Drawer`: the asking half is a
 `useEffect`, and `react-dom/server` fires none, so the drawn list would otherwise
 have no headless test at all.
+
+**And that surface reads like a page, not like a pane in a drawer.** Three
+things, none of which stores anything or adds a verb. (1) The pane's
+measurements are a PROP with two named values — `PatchSize = "drawer" | "page"`,
+defaulted to `drawer`, so the dossier's pane is byte-for-byte what it was
+(11.5px, 360px cap) while the page gets a page's typography and a cap on the
+*viewport*. (2) Side by side: `components/card/split.ts` folds a unified patch
+into `Hunk[]` of aligned rows with a line number per side, reading exactly the
+prefixes `Patch.tsx::tone` reads and pairing a run of `-` with the run of `+`
+after it POSITIONALLY. Anything it cannot parse returns `[]` and the component
+draws the unified view it already had — an empty two-column table reads as "no
+changes" and means "I did not understand", so that fallback is the whole safety
+of the feature. The toggle is on the page, defaults to split, and remembers
+nothing. (3) The card's OWN thread is on the page: the same `Thread` and the
+same `CommentBox`, fed the dossier `App` already opened when it opened the tree,
+writing through the same `update comment=`. There is **no worktree comment and
+there must never be one** — a worktree has no identity apart from its card
+(`gitwork/trees.py` pins `tk-<id>` as branch, directory and id at once), and a
+second thread would be two places to say one thing. `ui/smoke/main.tsx` §9 pins
+all of it, `split()` against the door's own patch.
 
 What did NOT change: `events.jsonl` still stores references and measures and
 never content; the door DERIVES on demand and nothing it returns is written

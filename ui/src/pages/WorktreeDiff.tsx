@@ -27,9 +27,46 @@
  * its `forge` or `none` step and `FilesChanged` draws the honest sentence, so
  * there is no spinner, no error box and no retry in this file.
  */
-import { FilesChanged } from "../components/card/Patch";
+import { useState } from "react";
+
+import { FilesChanged, type PatchMode, type PatchView } from "../components/card/Patch";
+import { CommentBox } from "../components/card/CommentBox";
+import { Thread } from "../components/card/Thread";
 import { TREE_DIR, type WorktreeDiffProps } from "../components/monitor/panels";
 import { Ext, compareUrl } from "../links";
+import type { CardPayload, TeamMember } from "../types";
+
+/* THE CARD'S OWN THREAD, and why these props are declared HERE.
+ *
+ * A worktree has no identity apart from its card: `gitwork/trees.py` pins
+ * `tk-<id>` as branch, directory and id at once. So there is no worktree comment
+ * and there must never be one — a second thread would be two places to say
+ * something about one thing, and the reader of the CARD would see half of it.
+ * This page therefore renders the same `Thread` the dossier renders, with the
+ * same `CommentBox`, writing through the same `useBoard::comment` → `update
+ * comment=` door. Nothing here fetches: `App` already opens the card when it
+ * opens the tree, exactly as the drawer does, so the payload arrives as a prop
+ * and there is no second fetch shape to keep in step.
+ *
+ * They are an intersection declared in this file rather than fields on
+ * `WorktreeDiffProps` (`components/monitor/panels.ts`) for one reason, and it is
+ * this wave's own rule: panels.ts is held by another card right now, and a
+ * concept two workers touch in one file is the conflict `docs/fan-out.md` is
+ * about. The seam is unchanged; this is the page's own extension of it, and it
+ * belongs back in panels.ts the next time that file is open. */
+export interface ThreadProps {
+  /** The card behind the tree — the dossier `verbs/card.py` returns, handed down
+   *  by `App`. `null` while it is in flight, and then the page draws its diff and
+   *  says the thread is still coming rather than showing an empty one. */
+  dossier?: CardPayload | null | undefined;
+  /** Who is addressable in the mention picker — `board.team`, the same list the
+   *  drawer's box gets. Empty is a picker with nobody in it, not a crash. */
+  team?: TeamMember[];
+  now?: number;
+  /** The dashboard's ONE write. Absent, the thread is read-only and no box is
+   *  drawn — a send button with nowhere to send is worse than no box. */
+  onComment?: ((text: string, mentions: string[]) => Promise<void>) | undefined;
+}
 
 const page: React.CSSProperties = {
   height: "100%",
@@ -79,13 +116,60 @@ function carrier(row: WorktreeDiffProps["row"]): string {
   return row.worker ? `${row.dev} · ${row.worker}` : row.dev;
 }
 
+/* The two ways to read a patch, as a control. It remembers NOTHING — no
+ * localStorage, no key on the board — because a stored preference is a write
+ * whose only job is to contradict the default, and the default is the reason
+ * this page exists. Split leads. */
+const MODES: readonly { id: PatchMode; name: string }[] = [
+  { id: "split", name: "split" },
+  { id: "unified", name: "unified" },
+];
+
+/** What this page asks `FilesChanged` for. A function, exported, because it is
+ *  the one place the PAGE's measurements are chosen — and no handler fires under
+ *  `react-dom/server`, so left inline it would be a decision with no test
+ *  (`ui/smoke/main.tsx` §9, and `submit()`'s reasoning in CLAUDE.md). `size` is
+ *  fixed: this surface is the page, always. Only the mode is the reader's. */
+export function pageView(mode: PatchMode): PatchView {
+  return { size: "page", mode };
+}
+
+const modeButton = (on: boolean): React.CSSProperties => ({
+  all: "unset",
+  boxSizing: "border-box",
+  cursor: "pointer",
+  fontSize: "11.5px",
+  padding: "4px 12px",
+  borderRadius: "9px",
+  background: on ? "var(--accent-soft)" : "transparent",
+  color: on ? "var(--accent)" : "var(--text-3)",
+});
+
+const sectionLabel: React.CSSProperties = {
+  fontSize: "11px",
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: "var(--text-3)",
+  marginBottom: "10px",
+};
+
 export function WorktreeDiff({
   row,
   base,
   repo,
   reader,
   onBack,
-}: WorktreeDiffProps): React.JSX.Element {
+  dossier,
+  team = [],
+  now = Date.now() / 1000,
+  onComment,
+}: WorktreeDiffProps & ThreadProps): React.JSX.Element {
+  /* The one piece of state this page owns. `split` by default — side by side is
+   * the reason the page is not the drawer's pane. It is passed DOWN into
+   * `FilesChanged`, never read from context, and a patch `split()` cannot parse
+   * falls back to unified per file (`components/card/split.ts`). */
+  const [mode, setMode] = useState<PatchMode>("split");
+  const view = pageView(mode);
   // The head is the row's id — a branch name IS the card id, no slug
   // (ARCHITECTURE.md §11), which is why there is nothing to construct here.
   const head = row.id;
@@ -181,9 +265,72 @@ export function WorktreeDiff({
 
       {/* The file list, the +/− per file, the summary bar and all four steps of
           the cascade — one component, already written, asked for this range.
-          `summary` is the only thing this page adds to it. */}
-      <div style={{ marginTop: "14px" }}>
-        <FilesChanged reader={reader} repo={repo} base={base} head={head} summary={true} />
+          `summary` and `view` are the only things this page adds to it. */}
+      <div style={{ marginTop: "18px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: "12px",
+            marginBottom: "10px",
+          }}
+        >
+          <span style={sectionLabel}>Files changed</span>
+          <span data-testid="worktree-diff-mode" style={{ display: "flex", gap: "2px" }}>
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                data-mode={m.id}
+                aria-pressed={mode === m.id}
+                onClick={() => setMode(m.id)}
+                style={modeButton(mode === m.id)}
+              >
+                {m.name}
+              </button>
+            ))}
+          </span>
+        </div>
+        <FilesChanged
+          reader={reader}
+          repo={repo}
+          base={base}
+          head={head}
+          summary={true}
+          view={view}
+        />
+      </div>
+
+      {/* THE CARD'S OWN THREAD — the same component, the same box, the same
+          write. See the note at the top of this file for why there is no
+          worktree comment and never will be. */}
+      <div style={{ marginTop: "26px" }} data-testid="worktree-diff-thread">
+        <div style={sectionLabel}>
+          {dossier ? `Thread · ${dossier.history.length}` : "Thread"}
+        </div>
+        <div
+          style={{
+            borderRadius: "16px",
+            background: "var(--pane)",
+            border: "1px solid var(--hair)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "18px 20px" }}>
+            {dossier ? (
+              <Thread history={dossier.history} now={now} repo={repo} reader={reader} />
+            ) : (
+              <div style={{ fontSize: "12.5px", color: "var(--text-3)" }}>
+                reading {head}&apos;s card…
+              </div>
+            )}
+          </div>
+          {/* No box without a door to send through: the write is `App`'s
+              `comment`, and a caller that did not hand one over gets the thread
+              read-only rather than a button that fails. */}
+          {onComment ? <CommentBox team={team} onSend={onComment} /> : null}
+        </div>
       </div>
     </div>
   );

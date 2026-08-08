@@ -25,8 +25,34 @@
  * every grid cell above it is `minmax(0, …)`. Nothing here may widen the drawer:
  * a horizontal scrollbar on the page is the one failure mode this pane has. */
 import { Ext, Numstat, cascade, useGitDiff, type DiffStep, type GitReader, type GitTarget, type Repo } from "../../links";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { Counts } from "../../links";
+import { split, type Hunk, type Side } from "./split";
+
+/* ── HOW BIG, AND IN HOW MANY COLUMNS ─────────────────────────────────────────
+ *
+ * The same patch is read in two places that are nothing alike: a 900px dossier
+ * column, where it is one pane among ten and 360px of it is generous, and a
+ * full-width diff PAGE, where those measurements draw a ribbon in the middle of
+ * nothing. Both are correct for their surface, so neither may be inherited from
+ * context: the choice is a PROP with two named values, defaulted to the one that
+ * was already there, so no existing caller moves and no component has to guess
+ * which screen it is on.
+ *
+ * `mode` rides in the same object for the same reason. Unified is what the
+ * drawer draws and what every fallback lands on; split is the page's default,
+ * because side by side is the reason the page exists. */
+export type PatchSize = "drawer" | "page";
+export type PatchMode = "unified" | "split";
+
+export interface PatchView {
+  size: PatchSize;
+  mode: PatchMode;
+}
+
+/** The drawer's view, character for character what this file drew before the
+ *  page existed. Every prop below defaults to it. */
+export const DRAWER_VIEW: PatchView = { size: "drawer", mode: "unified" };
 
 /** A patch line's ink, by its first character — the whole grammar. `+++`/`---`
  *  are file headers and are tested BEFORE `+`/`-`, or every header would read as
@@ -41,15 +67,40 @@ export function tone(line: string): string {
   return "var(--text-2)";
 }
 
-const pane: React.CSSProperties = {
-  borderRadius: "11px",
-  background: "var(--pane-3)",
-  padding: "10px 12px",
-  fontSize: "11.5px",
-  lineHeight: 1.55,
-  maxHeight: "360px",
-  overflow: "auto",
-  whiteSpace: "pre",
+/** The pane's measurements, by surface.
+ *
+ *  `drawer` is the original object, untouched — criterion 3 of this card is that
+ *  the dossier's pane keeps today's numbers, so they are written here once and
+ *  the page's are a SECOND entry rather than an override of the first.
+ *
+ *  `page` is a page's typography: ~13px mono instead of 11.5, a looser line, and
+ *  a cap that is a fraction of the VIEWPORT rather than 360 fixed pixels — a
+ *  number chosen for a drawer means "a third of the screen" on a laptop and "a
+ *  seventh" on a monitor, and the pane's job on the page is to be the page.
+ *  `overflow: auto` and `white-space: pre` are the same on both: a patch line is
+ *  arbitrarily long, and this pane scrolling on its own X axis is what keeps the
+ *  page from scrolling on its. */
+const PANE: Record<PatchSize, React.CSSProperties> = {
+  drawer: {
+    borderRadius: "11px",
+    background: "var(--pane-3)",
+    padding: "10px 12px",
+    fontSize: "11.5px",
+    lineHeight: 1.55,
+    maxHeight: "360px",
+    overflow: "auto",
+    whiteSpace: "pre",
+  },
+  page: {
+    borderRadius: "11px",
+    background: "var(--pane-3)",
+    padding: "14px 16px",
+    fontSize: "13px",
+    lineHeight: 1.65,
+    maxHeight: "72vh",
+    overflow: "auto",
+    whiteSpace: "pre",
+  },
 };
 
 const note: React.CSSProperties = {
@@ -59,9 +110,96 @@ const note: React.CSSProperties = {
   lineHeight: 1.55,
 };
 
+/* ── the two columns ──────────────────────────────────────────────────────── */
+
+const num: React.CSSProperties = {
+  color: "var(--text-3)",
+  textAlign: "right",
+  padding: "0 10px 0 0",
+  userSelect: "none",
+  whiteSpace: "pre",
+  verticalAlign: "top",
+};
+
+/** One side of a row. `null` is a real cell and not an absent one — it is the
+ *  gap opposite a pure addition or deletion, and it must be drawn (tinted, with
+ *  no number) or the two columns stop being aligned by construction. */
+function Cell({ side, ink }: { side: Side | null; ink: string }): React.JSX.Element {
+  return (
+    <>
+      <td style={num}>{side ? side.n : ""}</td>
+      <td
+        style={{
+          color: side ? ink : "var(--text-3)",
+          background: side ? undefined : "var(--pane-2)",
+          padding: "0 12px 0 0",
+          whiteSpace: "pre",
+          verticalAlign: "top",
+        }}
+      >
+        {side ? side.text || " " : " "}
+      </td>
+    </>
+  );
+}
+
+/** The patch, side by side.
+ *
+ *  ONE table, so the two halves cannot scroll apart: both sides live in the same
+ *  rows of the same grid, and the single `overflow: auto` above them is one X
+ *  axis for both. Two panes side by side would be two scrollbars a reader has to
+ *  keep in sync by hand, and a long line on one side would silently offset the
+ *  other.
+ *
+ *  It draws nothing it was not handed: `split()` decides what pairs with what,
+ *  and an unparseable patch never reaches here at all — see `PatchText`. */
+export function SplitText({ hunks }: { hunks: Hunk[] }): React.JSX.Element {
+  return (
+    <table
+      data-testid="patch-split"
+      /* No fixed layout and no per-column width: a patch line is arbitrarily
+         long, so the table is allowed to grow past the pane and the pane's own
+         `overflow: auto` scrolls BOTH columns together. Capping the columns
+         would clip the code instead, which is the failure this pane exists to
+         avoid. */
+      style={{ borderCollapse: "collapse", minWidth: "100%" }}
+    >
+      <tbody>
+        {hunks.map((hunk, h) => (
+          <Fragment key={h}>
+            <tr>
+              <td colSpan={4} style={{ color: "var(--text-3)", whiteSpace: "pre", padding: "6px 0 2px" }}>
+                {hunk.header}
+              </td>
+            </tr>
+            {hunk.rows.map((r, i) => (
+              <tr key={i} data-testid="patch-split-row">
+                <Cell side={r.left} ink="var(--danger)" />
+                <Cell side={r.right} ink="var(--ok)" />
+              </tr>
+            ))}
+          </Fragment>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /** The patch itself. Empty text is its own sentence: git answered, and the
- *  answer was "nothing here" — which is not the same as not having asked. */
-export function PatchText({ text }: { text: string }): React.JSX.Element {
+ *  answer was "nothing here" — which is not the same as not having asked.
+ *
+ *  THE FALLBACK IS HERE, at the one place both views are in scope: split mode is
+ *  a REQUEST, not a promise. `split()` returns `[]` for anything it could not
+ *  read, and then this draws the unified view it has always drawn — never an
+ *  empty two-column table, which reads as "no changes" and means "I did not
+ *  understand". */
+export function PatchText({
+  text,
+  view = DRAWER_VIEW,
+}: {
+  text: string;
+  view?: PatchView;
+}): React.JSX.Element {
   if (!text.trim()) {
     return (
       <div data-testid="patch-empty" style={note}>
@@ -69,13 +207,18 @@ export function PatchText({ text }: { text: string }): React.JSX.Element {
       </div>
     );
   }
+  const hunks = view.mode === "split" ? split(text) : [];
   return (
-    <div className="mono" data-testid="patch" style={pane}>
-      {text.split("\n").map((line, n) => (
-        <div key={n} style={{ color: tone(line) }}>
-          {line || " "}
-        </div>
-      ))}
+    <div className="mono" data-testid="patch" style={PANE[view.size]}>
+      {hunks.length > 0 ? (
+        <SplitText hunks={hunks} />
+      ) : (
+        text.split("\n").map((line, n) => (
+          <div key={n} style={{ color: tone(line) }}>
+            {line || " "}
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -84,7 +227,13 @@ export function PatchText({ text }: { text: string }): React.JSX.Element {
  *  LOOKS like, and it renders all four — including the two that are not a
  *  patch, because "no spinner forever, no silent nothing" is a rule about those
  *  two and not about the happy one. */
-export function DiffPane({ step }: { step: DiffStep }): React.JSX.Element {
+export function DiffPane({
+  step,
+  view = DRAWER_VIEW,
+}: {
+  step: DiffStep;
+  view?: PatchView;
+}): React.JSX.Element {
   if (step.step === "loading") {
     return (
       <div data-testid="patch-loading" style={note}>
@@ -127,7 +276,7 @@ export function DiffPane({ step }: { step: DiffStep }): React.JSX.Element {
           ) : null}
         </div>
       ) : null}
-      <PatchText text={step.diff.patch} />
+      <PatchText text={step.diff.patch} view={view} />
     </div>
   );
 }
@@ -142,15 +291,17 @@ function Asked({
   target,
   on,
   path,
+  view = DRAWER_VIEW,
 }: {
   reader: GitReader | null | undefined;
   repo: Repo | null | undefined;
   target: GitTarget;
   on: boolean;
   path?: string;
+  view?: PatchView;
 }): React.JSX.Element {
   const state = useGitDiff(reader, target, on, path);
-  return <DiffPane step={cascade(repo, target, state)} />;
+  return <DiffPane step={cascade(repo, target, state)} view={view} />;
 }
 
 const toggle: React.CSSProperties = {
@@ -199,17 +350,35 @@ export function CommitPatch({
   );
 }
 
-const row: React.CSSProperties = {
-  all: "unset",
-  boxSizing: "border-box",
-  cursor: "pointer",
-  display: "grid",
-  gridTemplateColumns: "minmax(0,1fr) auto",
-  gap: "14px",
-  alignItems: "center",
-  padding: "9px 14px",
-  width: "100%",
-  borderBottom: "1px solid var(--hair)",
+/** A file row, by surface. In the drawer it is a LIST ITEM — nine pixels of
+ *  padding, 12px mono, one of many things in a column. On the page it is the
+ *  HEADER of the file below it: more room, a heavier line, and a hairline that
+ *  reads as a section break rather than as a separator between two entries. */
+const ROW: Record<PatchSize, React.CSSProperties> = {
+  drawer: {
+    all: "unset",
+    boxSizing: "border-box",
+    cursor: "pointer",
+    display: "grid",
+    gridTemplateColumns: "minmax(0,1fr) auto",
+    gap: "14px",
+    alignItems: "center",
+    padding: "9px 14px",
+    width: "100%",
+    borderBottom: "1px solid var(--hair)",
+  },
+  page: {
+    all: "unset",
+    boxSizing: "border-box",
+    cursor: "pointer",
+    display: "grid",
+    gridTemplateColumns: "minmax(0,1fr) auto",
+    gap: "18px",
+    alignItems: "center",
+    padding: "14px 20px",
+    width: "100%",
+    borderBottom: "1px solid var(--hair)",
+  },
 };
 
 /** One file of the compare: its path, its +/−, and its own patch on demand.
@@ -223,20 +392,28 @@ function FileRow({
   target,
   path,
   counts,
+  view = DRAWER_VIEW,
 }: {
   reader: GitReader | null | undefined;
   repo: Repo | null | undefined;
   target: GitTarget;
   path: string;
   counts: Counts;
+  view?: PatchView;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   return (
     <div data-testid="changed-file" style={{ minWidth: 0 }}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} style={row}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} style={ROW[view.size]}>
         <span
           className="mono"
-          style={{ fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          style={{
+            fontSize: view.size === "page" ? "13px" : "12px",
+            fontWeight: view.size === "page" ? 500 : undefined,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
         >
           <span style={{ color: "var(--text-3)", marginRight: "8px" }}>{open ? "▾" : "▸"}</span>
           {path}
@@ -244,8 +421,8 @@ function FileRow({
         <Numstat counts={counts} />
       </button>
       {open ? (
-        <div style={{ padding: "8px 14px 12px" }}>
-          <Asked reader={reader} repo={repo} target={target} on={true} path={path} />
+        <div style={{ padding: view.size === "page" ? "10px 20px 18px" : "8px 14px 12px" }}>
+          <Asked reader={reader} repo={repo} target={target} on={true} path={path} view={view} />
         </div>
       ) : null}
     </div>
@@ -280,6 +457,7 @@ export function FilesChanged({
   base,
   head,
   summary = false,
+  view = DRAWER_VIEW,
 }: {
   reader: GitReader | null | undefined;
   repo: Repo | null | undefined;
@@ -295,6 +473,9 @@ export function FilesChanged({
    *  third rule forbids. Off by default: the drawer's pane never drew one.
    *  `<Numstat>` paints the +/−, so the status pair is not spelled twice. */
   summary?: boolean;
+  /** The surface this list is drawn on, and in how many columns. Defaults to
+   *  the drawer's, so the dossier pane is byte-for-byte what it was. */
+  view?: PatchView;
 }): React.JSX.Element {
   const target: GitTarget = { kind: "compare", base, head };
   const state = useGitDiff(reader, target, true);
@@ -305,6 +486,7 @@ export function FilesChanged({
       target={target}
       step={cascade(repo, target, state)}
       summary={summary}
+      view={view}
     />
   );
 }
@@ -325,15 +507,17 @@ export function FileList({
   target,
   step,
   summary = false,
+  view = DRAWER_VIEW,
 }: {
   reader: GitReader | null | undefined;
   repo: Repo | null | undefined;
   target: GitTarget;
   step: DiffStep;
   summary?: boolean;
+  view?: PatchView;
 }): React.JSX.Element {
   const { base, head } = target.kind === "compare" ? target : { base: "", head: target.ref };
-  if (step.step !== "patch") return <DiffPane step={step} />;
+  if (step.step !== "patch") return <DiffPane step={step} view={view} />;
 
   const stat: Counts = step.diff.stat;
   const paths = Object.keys(stat).sort();
@@ -362,6 +546,7 @@ export function FileList({
           target={target}
           path={path}
           counts={{ [path]: stat[path] ?? null }}
+          view={view}
         />
       ))}
     </div>
