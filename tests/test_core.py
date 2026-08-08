@@ -393,14 +393,14 @@ def test_sessions_are_runs_of_intervals_and_a_dropped_gap_breaks_them() -> None:
         (0.0, "tk-a"),
         (300.0, "tk-a"),  # merges into the block that started at 0
         (900.0, "tk-a"),
-        (100_000.0, "tk-b"),  # the gap before it is > GAP: dropped whole
-        (100_300.0, "tk-b"),
+        (100_000.0, "tk-a"),  # the gap before it is > GAP: dropped whole, and
+        (100_300.0, "tk-a"),  # the SAME card does not heal over it
         (100_600.0, "tk-c"),  # touching, but another card: its own block
     ]
     got = hours.sessions(stamps)
     assert [(s["start"], s["end"], s["task"], s["seconds"]) for s in got] == [
         (0.0, 900.0, "tk-a", 900.0),
-        (100_000.0, 100_300.0, "tk-b", 300.0),
+        (100_000.0, 100_300.0, "tk-a", 300.0),
         (100_300.0, 100_600.0, "tk-c", 300.0),
     ]
     # The wall-clock between two blocks is time NOBODY counted — it is what the

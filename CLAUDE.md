@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
-dashboard — **42 TypeScript files / ~10.000 lines under `ui/src`**, whose built
+dashboard — **44 TypeScript files / ~11.000 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**286 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 285+1; see below), ruff +
+**293 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 292+1; see below), ruff +
 pyright strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
@@ -257,8 +257,8 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    closed it. It has its data layer, its chrome (header, the milestone picker,
    tabs, KPI rail) and the card dossier drawer — which renders the acceptance
    criteria no v1 screen ever drew, and carries the dashboard's ONE write, the
-   comment box with its mention picker. **Three views, in Nova's order: Monitor,
-   Board, Worktrees** — an "Attention" screen that is in no Nova section, and an
+   comment box with its mention picker. **Four views, in Nova's order: Monitor,
+   Board, Actors, Worktrees** — an "Attention" screen that is in no Nova section, and an
    "Hours" tab that in Nova is the Throughput panel *inside* Monitor, were built
    by mistake and deleted. Monitor — Nova's first and central section, and the
    DEFAULT tab — kept its SEAM (`components/monitor/panels.ts`, where every
@@ -321,5 +321,19 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    worktree has no identity apart from its card (`gitwork/trees.py` pins
    `tk-<id>` as branch, directory and id at once), so a second thread would be
    two places to say one thing and the reader of the CARD would see half of it.
+
+   **Actors is the fourth view** — every actor bound to the cards it carried,
+   its role, its presence and its hours, ordered by what it is ON and never by
+   name. There is NO worker-slot roster and there must never be one: taskops
+   allocates no worker (`ui/src/pages/Actors.tsx` and
+   `components/monitor/panels.ts` both carry the post-mortem). An actor opens
+   IN PLACE into its **timesheet** (`components/actors/Timesheet.tsx`) — the
+   blocks of time it worked, per day, on one axis SHARED by every actor of that
+   day, so two rows answer "who was working in parallel" by eye. The blocks are
+   `core/hours.py::sessions`, and `spent()` is now a FOLD of that same list, so
+   the timeline and the total beside it are one computation and cannot drift.
+   The dropped gaps — a gap over 30 minutes is dropped whole, never capped — are
+   drawn as space and said as a figure, and the rule is stated on screen in
+   `core/hours.py`'s own words.
 
    What the dashboard still cannot do is deploy itself: item 2 above.

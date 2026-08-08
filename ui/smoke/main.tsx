@@ -1875,6 +1875,12 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
           ]),
           "dev:berna": sheetHours(1800, [block(7200, 9000, "tk-d34294")]),
           "agent:berna/capped": sheetHours(7200, [block(0, 1800, "tk-f0aa12")], 9),
+          /* Two cards back to back: two blocks, and NO gap — a boundary
+             between cards is not time nobody counted. */
+          "agent:berna/touch": sheetHours(3600, [
+            block(0, 1800, "tk-f0aa12"),
+            block(1800, 3600, "tk-a11ffa"),
+          ]),
         },
         closed: [],
         commits: 0,
@@ -1925,6 +1931,21 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     w1Sheet[0]?.human === "1h" && w1Sheet[0]?.seconds === 5400,
   );
   check("timesheet: dropped time is worded like core/hours.py::human", span(5400) === "1h 30m");
+  /* A change of card ends a block; it does not create a gap. Only wall-clock
+   * that was DROPPED is not-counted time. */
+  const touching = timesheet(sheetReport, "agent:berna/touch")[0];
+  check(
+    "timesheet: two blocks that touch are two cards, not a gap",
+    touching?.blocks.length === 2 && touching?.gaps.length === 0 && touching?.dropped === 0,
+    JSON.stringify(touching?.gaps),
+  );
+  check(
+    "timesheet: a day with nothing dropped says so, and does not draw one",
+    renderToStaticMarkup(<Timesheet days={[touching!]} onOpen={() => {}} />).includes(">no gap<") &&
+      !renderToStaticMarkup(<Timesheet days={[touching!]} onOpen={() => {}} />).includes(
+        'data-testid="timesheet-gap"',
+      ),
+  );
   check(
     "timesheet: a truncated day says so and still shows the whole total",
     timesheet(sheetReport, "agent:berna/capped")[0]?.capped === true &&
