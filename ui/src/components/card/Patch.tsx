@@ -298,8 +298,41 @@ export function FilesChanged({
 }): React.JSX.Element {
   const target: GitTarget = { kind: "compare", base, head };
   const state = useGitDiff(reader, target, true);
-  const step = cascade(repo, target, state);
+  return (
+    <FileList
+      reader={reader}
+      repo={repo}
+      target={target}
+      step={cascade(repo, target, state)}
+      summary={summary}
+    />
+  );
+}
 
+/** The list itself, given a step — `DiffPane`'s seam, for the file list.
+ *
+ *  Split out for exactly the reason `Dossier` is exported beside `Drawer`
+ *  (CLAUDE.md): `FilesChanged` asks through `useGitDiff`, an EFFECT, and
+ *  `react-dom/server` fires no effects — so under the headless harness that
+ *  component can only ever reach the cascade's fallback and the drawn list
+ *  would have no test at all. This half is pure: hand it the step `cascade()`
+ *  returned from the door's own payload and it draws what a reader sees.
+ *  It decides nothing — the fallback order is still `cascade()`'s alone and the
+ *  only fetch is still the hook above. */
+export function FileList({
+  reader,
+  repo,
+  target,
+  step,
+  summary = false,
+}: {
+  reader: GitReader | null | undefined;
+  repo: Repo | null | undefined;
+  target: GitTarget;
+  step: DiffStep;
+  summary?: boolean;
+}): React.JSX.Element {
+  const { base, head } = target.kind === "compare" ? target : { base: "", head: target.ref };
   if (step.step !== "patch") return <DiffPane step={step} />;
 
   const stat: Counts = step.diff.stat;

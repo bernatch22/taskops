@@ -27,12 +27,14 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Three waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+Four waves of `.tsx`-only cards have now been rebuilt into that bundle, and
 each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
-the dev carrying a worktree, the picker's landed chapters) and `OWN_CLONE`
-(tk-e5a340 — Files changed and the four steps of the diff cascade). All three
+the dev carrying a worktree, the picker's landed chapters), `OWN_CLONE`
+(tk-e5a340 — Files changed and the four steps of the diff cascade) and
+`WORKTREES_PR` (tk-b9c857 — the two-column index and the full-width diff page
+that replaced the five-column table). All four
 lists are the check that the bundle is the CURRENT source's output and not the
 previous wave's: none of those strings existed in the bundle its chapter-close
 replaced, so a close that forgot to run `node build.mjs` fails here.
@@ -87,11 +89,8 @@ PANES = (
 #: and the per-branch commit CELL does not exist any more (it drew an em dash —
 #: `WorktreeRow.commits` has never had a source). A marker for a deleted element
 #: would fail the next rebuild and say nothing about the bundle. What it did for
-#: this list — one string per card of the wave — the four below still do. The
-#: worktrees-as-pull-requests chapter owes this file a row of its OWN
-#: (`worktree-column`, `worktree-block`, `worktree-chapter`), and that row lands
-#: with the rebuild that puts those strings in the bundle — added here before
-#: the bundle exists it would only be red.
+#: this list — one string per card of the wave — the four below still do, and
+#: the chapter that retired it paid its debt in `WORKTREES_PR`.
 VIEWS = (
     "worktrees",  # the third tab (pages/Worktrees.tsx)
     "milestone-menu",  # the header's picker, open (chrome/MilestonePicker.tsx)
@@ -136,6 +135,26 @@ OWN_CLONE = (
     "patch-truncated",  # a cut patch SAYS it was cut…
     "patch-truncated-link",  # …and offers the whole of it when it can
     "patch-toggle",  # the fold on a commit row
+)
+
+#: What the WORKTREES-AS-PULL-REQUESTS chapter added, on the same terms again:
+#: the five-column table is gone and with it `worktree-commits` (see `VIEWS`),
+#: so this row is what says the bundle carries the two screens that replaced it
+#: — the two-column index with its sub-blocks and resolved chapter line, and the
+#: second surface, a FULL-WIDTH diff page with its own chrome. None of the nine
+#: is in the bundle this chapter-close rebuilt over; the last two are in it as
+#: LITERALS even on a board with no slug and no clone, where neither can ever be
+#: drawn — which is exactly what a byte-level check can say and a render cannot.
+WORKTREES_PR = (
+    "worktree-column",  # the index is two columns, In progress and Merged
+    "worktree-block",  # …each split into its sub-blocks
+    "worktree-chapter",  # the row's chapter, resolved to its title
+    "worktree-diff",  # the second surface: the tree as a pull request
+    "worktree-diff-back",  # the only way out of it
+    "worktree-diff-range",  # base ← head
+    "worktree-diff-dir",  # where the tree is on disk
+    "worktree-diff-forge",  # …and out to the forge, when the board has a slug
+    "files-changed-summary",  # the bar the diff PAGE adds to the file list
 )
 
 
@@ -336,7 +355,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
-    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE:
+    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     # The pane that used to say "no events verb" no longer can: the verb exists
     # (`verbs/events.py`), so an empty pane now means an empty LOG and says that.

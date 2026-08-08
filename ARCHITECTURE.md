@@ -635,12 +635,16 @@ files that answer it:
   opens no second socket — the board payload's identity is its change signal,
   so a frame on the one feed resets it to page one.
 * **Board** — the nine groups of `docs/design.md` §4, as the board reports them.
-* **Worktrees** — the branch-per-card table (`ui/src/pages/Worktrees.tsx`): one
-  row per inhabited directory, which is idea 2 made visible. A tree is a pull
+* **Worktrees** — an INDEX OF PULL REQUESTS (`ui/src/pages/Worktrees.tsx`): one
+  tile per inhabited directory, which is idea 2 made visible, in two 50/50
+  columns — *In progress* and *Merged* — each split into two sub-blocks, and a
+  row carries the four facts you choose one by (branch, title, who carries it,
+  which chapter). It was a five-column table whose commit cell had no source;
+  that cell and its `worktree-commits` marker are gone. A tree is a pull
   request, so a row opens THIS view's own full-width diff surface
   (`WorktreeDiff`, its props declared in `components/monitor/panels.ts` as
   `WorktreeDiffProps`) and never the card drawer: the selection is one
-  `useState` in the page and the table is replaced, not floated over.
+  `useState` in the page and the index is replaced, not floated over.
 * **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
@@ -692,8 +696,9 @@ local-vs-remote mode.** With no origin: nothing pushes, no link renders, and
 nothing degrades — a board without a remote behaves byte-for-byte like the
 taskops that predates this chapter, with no dead anchors and no column reserved
 for one. That case is pinned headlessly (`ui/smoke/main.tsx` §7: *not one anchor
-is rendered*, and the Worktrees grid keeps its five columns) because it is the
-default, not the exception: this repo's own board records no origin.
+is rendered*, and the Worktrees index still draws both its columns and every row
+in them) because it is the default, not the exception: this repo's own board
+records no origin.
 
 The rules this chapter was held to are the milestone's own: LOCAL == REMOTE BY
 CONSTRUCTION (a git fact enters the board only as an EVENT written by the side
@@ -744,6 +749,17 @@ another ref". All four steps are drawn from the door's own payload in
 `ui/smoke/main.tsx` §8; what no headless harness reaches is `useGitDiff`'s
 effect firing, and that half is covered against a real server in
 `tests/test_topology.py`.
+
+**The same cascade now feeds a SECOND surface** (the worktrees-as-pull-requests
+chapter): `pages/WorktreeDiff.tsx`, the full-width page a Worktrees row opens,
+hands its whole range `<milestone branch>...tk-<id>` to the very same
+`FilesChanged` — plus a summary bar, which is a prop on it and not a second ask.
+Nothing else moved to do that: **no verb, no stored key, no change to the door**,
+and no component fetches a patch outside `cascade()`. The one seam this cost is
+`FileList` exported beside `FilesChanged` — the pure half, given a step — for
+exactly the reason `Dossier` is exported beside `Drawer`: the asking half is a
+`useEffect`, and `react-dom/server` fires none, so the drawn list would otherwise
+have no headless test at all.
 
 What did NOT change: `events.jsonl` still stores references and measures and
 never content; the door DERIVES on demand and nothing it returns is written
