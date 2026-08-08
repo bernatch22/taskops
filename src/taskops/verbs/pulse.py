@@ -47,7 +47,11 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     stone = _which(stores, args)
     mine = [c for c in cards.values() if not stone or c["milestone"] == stone["id"]]
 
-    checking = _facts.reviewing(stores, now)
+    # The whole review lease, not just the name: a `reviewing` row has to say
+    # how much of THAT lease is left, and the work lease's `since` can only
+    # bound it from below (`_row`'s `since` note). Same query either way.
+    live_reviews = _facts.review_leases(stores, now)
+    checking = {task: lease.actor for task, lease in live_reviews.items()}
     stood = _facts.standings(stores)
     # REVIEW above STALLED: finished work nobody is checking is more blocking
     # than work nobody has started. CHANGES right after it — the fix is usually
@@ -86,7 +90,20 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
             note = stood[card["id"]].note if shown == "changes" else ""
             groups[shown].append(row | {"text": note, "holder": checking.get(card["id"])})
         elif shown == "reviewing":
-            groups["reviewing"].append(row | {"holder": checking.get(card["id"])})
+            # `review_since` is the REVIEW lease's own acquisition, and it is a
+            # second key rather than a better `since` because the two are
+            # different leases on the same card: `since` stays the work lease's,
+            # held by the worker who may still be alive beside the verifier.
+            # Conflating them is what made the countdown a floor that read 0
+            # under a live lease.
+            lease = live_reviews.get(card["id"])
+            groups["reviewing"].append(
+                row
+                | {
+                    "holder": checking.get(card["id"]),
+                    "review_since": lease.acquired if lease else None,
+                }
+            )
         elif shown == "ready":
             groups["take"].append(row)
         elif shown in groups:

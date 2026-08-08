@@ -21,6 +21,7 @@ inside the 200-line budget along a seam, not an arbitrary cut.
 from __future__ import annotations
 
 import sqlite3
+from typing import NamedTuple
 
 from .live import Row, Live
 from .._errors import TaskopsError
@@ -57,10 +58,28 @@ def reviewer(live: Live, task: str, now: float) -> str | None:
     return str(rows[0][0]) if rows else None
 
 
+class Held(NamedTuple):
+    """A live review lease, as much of it as a reader outside this store needs:
+    who is checking, and WHEN THAT REVIEW began. The second half is not a
+    detail — a screen counting a review lease down from the work lease's
+    `acquired` can only state a floor, and reads 0 while the lease is provably
+    still live (`ui/src/components/monitor/LiveLeases.tsx::checked`)."""
+
+    actor: str
+    acquired: float
+
+
+def held(live: Live, now: float) -> dict[str, Held]:
+    """task -> the live review lease. One query; `reviewing()` is its actor half."""
+    rows = live.db.execute(
+        "SELECT task, actor, acquired FROM reviews WHERE expires > ?", (now,)
+    ).fetchall()
+    return {str(r[0]): Held(str(r[1]), float(r[2])) for r in rows}
+
+
 def reviewing(live: Live, now: float) -> dict[str, str]:
     """task -> actor, for every LIVE review lease."""
-    rows = live.db.execute("SELECT task, actor FROM reviews WHERE expires > ?", (now,)).fetchall()
-    return {str(r[0]): str(r[1]) for r in rows}
+    return {task: lease.actor for task, lease in held(live, now).items()}
 
 
 def drop(live: Live, task: str, actor: str) -> bool:

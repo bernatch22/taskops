@@ -175,6 +175,19 @@ export interface VerdictRow extends BoardRow {
 /** @source `verbs/pulse.py::run` (the `reviewing` group) */
 export interface ReviewingRow extends BoardRow {
   holder: string | null; // likewise: whoever is checking right now
+  /** When the REVIEW lease was acquired — a different lease from the one
+   *  `since` describes. `since` is the WORK lease's acquisition (or the card's
+   *  `updated`), and the worker may still be alive beside the verifier, so it
+   *  says nothing exact about the review: counting the TTL down from it yields
+   *  a floor that reads 0 while the review lease is provably still live.
+   *  Named `review_since` and never folded into `since` because that ambiguity
+   *  IS the bug (`store/reviews.py::Held`).
+   *
+   *  OPTIONAL by the header's rule, not because the Python may omit it: a board
+   *  at this version always sends the key (null only if the lease lapsed between
+   *  the two reads inside one call). A board one version BEHIND sends no key at
+   *  all, and the UI must fall back to the floor rather than assert it. */
+  review_since?: number | null;
 }
 
 /** A pending mention — `pulse.py::_mentions`. Not a card row: it is the comment
