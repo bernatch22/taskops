@@ -14,7 +14,7 @@
  * refetch per event on a busy board) and the text almost never changes. */
 import { useMemo } from "react";
 
-import { parse, type Block, type Span } from "../../markdown";
+import { parse, spansOf, type Block, type Span } from "../../markdown";
 
 /* The family comes from the `.mono` class in tokens.css — the one place a font
  * stack is written down. Only the size and the colour are decided here. */
@@ -187,8 +187,41 @@ function One({ block: b }: { block: Block }): React.JSX.Element | null {
   }
 }
 
-export function Markdown({ text }: { text: string }): React.JSX.Element {
-  const blocks = useMemo(() => parse(text), [text]);
+/** The SAME renderer, one mode down: spans only, no block wrapper at all.
+ *
+ *  A chapter's rule and a card's criterion are prose too — axion's nine rules
+ *  carry `code` in every one of them — but they are drawn INSIDE a layout that
+ *  already owns their shape: a numbered tile whose mono index is a sibling of
+ *  the text, baseline-aligned. Handed the block renderer, each one becomes a
+ *  flex column of `<p>`s, the baseline moves off the number, and a rule that
+ *  happens to start `1. ` or `- ` becomes a LIST — a second numbering beside
+ *  the one the tile draws. All three are the numbering breaking.
+ *
+ *  So `inline` exists on THIS component rather than in a second one: same
+ *  parser (`spansOf`, the inline half of `markdown.ts`), same `Spans`, same
+ *  code/bold/italic/mention decisions. Nothing block-level renders — a heading
+ *  or a fence inside a one-line rule stays the characters it was typed as,
+ *  which is the correct failure for a field whose whole contract is one line.
+ *
+ *  It is additive: `<Markdown text=…>` with no prop is byte-for-byte the
+ *  element tree it always produced, which is what keeps a spec and a comment
+ *  unmoved. */
+export function Markdown({
+  text,
+  inline,
+}: {
+  text: string;
+  inline?: boolean;
+}): React.JSX.Element {
+  const blocks = useMemo(() => (inline === true ? [] : parse(text)), [text, inline]);
+  const spans = useMemo(() => (inline === true ? spansOf(text) : []), [text, inline]);
+  if (inline === true) {
+    return (
+      <span data-testid="markdown-inline">
+        <Spans spans={spans} />
+      </span>
+    );
+  }
   return (
     <div
       data-testid="markdown"

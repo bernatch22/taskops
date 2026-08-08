@@ -804,6 +804,22 @@ commit row, both drawn by `ui/src/components/card/Patch.tsx` from the step
 `links.tsx::cascade` hands it. See §16 and its amendment for the switch and the
 four steps.
 
+**Prose is rendered as prose, by ONE renderer.** `ui/src/markdown.ts` parses
+(pure, no React, produces DATA) and `components/shared/Markdown.tsx` turns the
+blocks into elements — never `dangerouslySetInnerHTML`, so React's escaping IS
+the sanitiser. Every screen that draws a human-written string calls it: a card
+spec, a comment, a released note, a reviewer's verdict, a chapter GOAL, a
+chapter rule, a chapter criterion, a card criterion, a mention row and a board
+tile's note. It has two modes and no sibling: blocks, and `inline` — spans
+only, for the strings that live inside a layout that already owns their shape
+(a numbered tile, a grid cell, a 278px column), because block-rendering a rule
+that opens `1. ` draws a second numbering inside the first. Titles, ids,
+branches and the UI's own sentences are NOT prose and are drawn as text. A
+chapter goal is the longest writing the board carries — axion's is 4,252
+characters — so the pane gives it a max height and its own scroll: never a
+clamp and never an ellipsis, since a cut goal is a lie about what the chapter
+says. `ui/smoke/main.tsx` §1b pins all of it from the server's own payload.
+
 Colour lives in exactly one file, `ui/src/theme/tokens.css`; the theme is an
 attribute on `<html data-tk>`, remembered in `localStorage`, defaulting to the
 OS scheme. `tests/test_ui.py` runs the page headlessly through the smoke

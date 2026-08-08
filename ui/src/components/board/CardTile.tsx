@@ -13,6 +13,7 @@
 import { useState } from "react";
 
 import { ago, initials } from "../../format";
+import { Markdown } from "../shared/Markdown";
 import type { BoardRow } from "../../types";
 
 /** The five ways a thing can be coloured. Nothing here is a literal colour —
@@ -218,7 +219,14 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
       ) : null}
 
       {note ? (
-        <div style={{ fontSize: "11.5px", color: "var(--text-2)", marginTop: "8px" }}>{note}</div>
+        <div style={{ fontSize: "11.5px", color: "var(--text-2)", marginTop: "8px" }}>
+          {/* The submit note or the reviewer's words — prose, "verbatim, never
+              summarised", and it quotes calls and file names as often as any
+              comment does. INLINE: a tile is 278px of a kanban column, so the
+              block renderer's headings and fences have no business here, but a
+              backtick printing as a backtick had none either. */}
+          <Markdown text={note} inline />
+        </div>
       ) : null}
 
       {waitingOn && waitingOn.length > 0 ? (

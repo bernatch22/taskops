@@ -347,6 +347,55 @@ RETIRED_TIMESHEET = (
     "hours-bar",
 )
 
+#: The EIGHTH wave, and it is one card (tk-382948): every screen that draws
+#: prose routes through the one renderer. Two markers, on the same terms as the
+#: rows above — neither is in the bundle this close rebuilt over.
+#:
+#: `chapter-goal` is the goal's own scroll box, which exists because the goal is
+#: blocks now; `markdown-inline` is the renderer's second mode, the one a rule, a
+#: criterion, a mention row and a tile note are drawn in. A rebuild that carried
+#: the fix for the goal and not the fix for the lists would fail on the second.
+PROSE = (
+    "chapter-goal",  # the goal, rendered and scrolled, never cut
+    "markdown-inline",  # the ONE renderer's spans-only mode
+)
+
+
+#: A chapter goal with real markdown in it — the bug this chapter exists for.
+#:
+#: NOT invented: it is an excerpt of the goal the migrated axion board actually
+#: carries (4.252 characters, read off `board` on the live server, 2026-08-08),
+#: cut to the four constructs that were printing literally on screen — bold, a
+#: `###` heading, inline code and a bullet list. A fixture that said
+#: "**bold**\n\n- item" would pin the parser; this one pins the SCREEN, because
+#: it is shaped like the thing the reader complained about.
+MARKDOWN_GOAL = """**La máquina, y el menú que ya está lleno.**
+
+De cualquier feature a un veredicto **pre-registrado** en una llamada — eso es
+la imprenta (`LA IMPRENTA ·1` a `·12`).
+
+### Dónde está el frente hoy (actualizado 2026-08-05)
+
+- `#103 etfflow_regime` — REJECT. El veto paga peaje de transacción para comprar nada.
+- `#96 mlrank` — deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.
+
+Y el límite que ninguna card mueve: la restricción que ata es el **nivel de Sharpe**."""
+
+#: Two rules. The first is verbatim off this repo's own board (the Nova
+#: chapter's), because a rule carrying a code span is the ordinary case and not a
+#: contrived one — nine of the ten rules with backticks in this board's log are
+#: shaped exactly like it.
+#:
+#: The second is another of them with the number a human types when they are
+#: writing a list into a list. That is the whole reason it is here: handed to the
+#: BLOCK renderer, `1. …` becomes an `<ol>` — a second numbering inside a tile
+#: that already draws its own, which is criterion 2 failing.
+MARKDOWN_RULES = [
+    "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle"
+    " in src/taskops/ui/ IS committed.",
+    "1. The feed socket is a signal, not data: never render from a frame.",
+]
+
 
 def a_clone(root: Path) -> Path:
     """A real two-branch repo, so the /git door has something true to answer.
@@ -475,7 +524,9 @@ def a_board(root: Path) -> dict[str, Any]:
         "plan",
         {
             "milestone": "MVP facturador",
-            "goal": "read a bank CSV and issue invoices with VAT",
+            "goal": MARKDOWN_GOAL,
+            "rules": MARKDOWN_RULES,
+            "criteria": ["Every number is a Decimal — `float` appears nowhere"],
             "tasks": [
                 {
                     "title": "VAT",
@@ -487,7 +538,13 @@ def a_board(root: Path) -> dict[str, Any]:
                     "title": "the reduced rate",
                     "parent": 0,
                     "spec": "10% for food",
-                    "criteria": ["Decimal, never float"],
+                    # The second one is verbatim off THIS repo's own board — a
+                    # criterion with a code span in it is the ordinary case, not
+                    # a contrived one, and it is what pins criterion 2.
+                    "criteria": [
+                        "Decimal, never float",
+                        "WHEN `npm run typecheck` runs in ui/ THEN it passes strict",
+                    ],
                     "files": ["src/tax.py"],
                 },
                 {"title": "PDF", "spec": "render", "files": ["src/pdf.py"], "after": 1},
@@ -500,11 +557,24 @@ def a_board(root: Path) -> dict[str, Any]:
     worker.call("bind", {"task": cards[1]["id"], "sha": "a3f9c21b", "subject": "feat: rates"})
     worker.call(
         "update",
-        {"task": cards[1]["id"], "comment": "Decimal or float?", "mentions": ["dev:berna"]},
+        {
+            "task": cards[1]["id"],
+            # A comment quoting code is the ordinary case on this board, and it
+            # is what says the mentions pane reads the same markdown the thread
+            # does — it used to print the backticks (tk-382948).
+            "comment": "Decimal or float? `round()` truncates",
+            "mentions": ["dev:berna"],
+        },
     )
     worker.call(
         "update",
-        {"task": cards[1]["id"], "status": "released", "comment": "got to the rounding"},
+        {
+            "task": cards[1]["id"],
+            "status": "released",
+            # A released note is prose an agent wrote in a hurry, and it quotes
+            # code — this is the shape every real one on this board has.
+            "comment": "got to the rounding — see `src/tax.py::half_up`",
+        },
     )
 
     # A chapter that already LANDED, and its own board payload. Built by the
@@ -551,7 +621,7 @@ def a_board(root: Path) -> dict[str, Any]:
         "expect": [
             "the reduced rate",
             "10% for food",  # the spec
-            "Criteria · 1",  # the section, counted
+            "Criteria · 2",  # the section, counted
             "Decimal, never float",  # the criterion itself
             "got to the rounding",  # the previous worker's note
             "VAT",  # the epic, resolved
@@ -616,7 +686,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     for testid in RETIRED + RETIRED_TIMESHEET:
