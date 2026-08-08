@@ -63,7 +63,9 @@ def test_a_migrated_mention_is_still_owed_a_reply_on_the_new_board(tmp_path: Pat
     ]
     source = tmp_path / "events.jsonl"
     source.write_text("\n".join(json.dumps(line) for line in lines), encoding="utf-8")
-    migrate_v1.migrate(source, tmp_path / "board", "imported from v1", "history")
+    # migrate() no longer takes --milestone/--goal: the real chapter comes out of
+    # the log itself (a synthetic one shadowed it — see tests/test_migrate_v1.py).
+    migrate_v1.migrate(source, tmp_path / "board")
 
     stores = Stores(tmp_path / "board")
     try:
