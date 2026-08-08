@@ -136,7 +136,12 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           tab === "monitor" ? (
             <Monitor board={board} openCard={openCard} now={Date.now() / 1000} client={client} />
           ) : tab === "worktrees" ? (
-            <Worktrees groups={board.groups} onOpen={openCard} />
+            <Worktrees
+              groups={board.groups}
+              onOpen={openCard}
+              repo={board.repo}
+              milestoneBranch={board.milestone?.branch ?? ""}
+            />
           ) : (
             <Board board={board} openCard={openCard} />
           )
@@ -151,6 +156,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           now={Date.now() / 1000}
           onClose={() => openCard(null)}
           onComment={comment}
+          repo={board?.repo}
         />
       ) : null}
     </div>

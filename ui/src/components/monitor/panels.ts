@@ -242,6 +242,15 @@ export interface ChapterProps {
   milestone: Milestone | null;
   /** `board.milestones.length` — how many chapters are open. */
   chapters: number;
+  /** `board.repo` — where this repo lives on the web, so the integration branch
+   *  in the footer can be the chapter's diff against the trunk (`links.tsx`).
+   *
+   *  OPTIONAL, and not only for the two version-skew reasons `links.tsx` gives:
+   *  a prop that a call site has not been taught to pass must still compile,
+   *  because this seam is edited from several worktrees at once and the failure
+   *  mode of a REQUIRED prop landing before its caller does is a red build in
+   *  everybody else's tree. Absent, the pane is what it was. */
+  repo?: { host: string; slug: string; url: string } | null | undefined;
 }
 
 /* ── 7. Addressed to you ──────────────────────────────────────────────────── */
@@ -346,4 +355,13 @@ export interface WorktreesProps {
    *  holes in it. */
   groups: BoardGroups;
   onOpen: (id: string) => void;
+  /** `board.repo` — the switch for the compare link on every row. Optional for
+   *  the reasons `ChapterProps.repo` sets out. */
+  repo?: { host: string; slug: string; url: string } | null | undefined;
+  /** `board.milestone?.branch` — the BASE a row's branch is compared against.
+   *  A row's own head is `tk-<id>`, which is `WorktreeRow.id` by construction;
+   *  the base is the one thing the table does not already hold. Empty when no
+   *  chapter is in focus, and then the compare falls back to the forge's own
+   *  default branch (`links.tsx`, "the trunk the UI does not know"). */
+  milestoneBranch?: string;
 }

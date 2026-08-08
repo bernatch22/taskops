@@ -128,7 +128,11 @@ export function Monitor({ board, openCard, now, client }: MonitorProps): React.J
         </div>
 
         <div style={right}>
-          <Chapter milestone={board.milestone} chapters={board.milestones.length} />
+          <Chapter
+            milestone={board.milestone}
+            chapters={board.milestones.length}
+            repo={board.repo}
+          />
           <Mentions mentions={g.mentions} now={now} onOpen={openCard} />
           {/* The one pane that reads the LOG and not the board snapshot, so it
               is the one pane handed the client: it pages `events` itself

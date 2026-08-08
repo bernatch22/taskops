@@ -361,6 +361,15 @@ export interface Elsewhere {
 export interface CommitRef {
   sha: string;
   subject: string;
+  /** `+/−` per file, as `gitwork/bind.py::numstat` measured it at commit time.
+   *
+   *  OPTIONAL, and this one is optional at the SOURCE as well as across
+   *  versions: `commit_facts` writes the key only when git could count
+   *  something (`if counted:`), so a commit that touches nothing carries no key
+   *  rather than an empty wall of zeros — and a board older than tk-dd6a9b
+   *  never wrote it at all. `null` for a path means BINARY: git prints `-`
+   *  there, and "cannot be counted" is not "nothing changed". */
+  numstat?: Record<string, [number, number] | null>;
   [key: string]: unknown; // an event body is open; extras are kept
 }
 
