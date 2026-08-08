@@ -169,8 +169,11 @@ The harness runs on its own captured payload (`npm run smoke`, which needs no
 Python) and on a live one — `tests/test_ui.py` builds a real board and hands it
 over. It needs `ui/node_modules`; without it, or without node, that test skips.
 
-Three tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
-default), **Board** (`ui/src/pages/Board.tsx`) and **Worktrees**
+Four tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
+default), **Board** (`ui/src/pages/Board.tsx`), **Actors**
+(`ui/src/pages/Actors.tsx`, every actor bound to the cards it carried, ordered
+by what it is ON and never by name, each opening in place into its timesheet)
+and **Worktrees**
 (`ui/src/pages/Worktrees.tsx`, an index of pull requests in two equal columns,
 In progress and Merged, where a row opens its own full-width diff page — side by
 side, with the card's own thread on it — instead of the drawer) — plus the card
