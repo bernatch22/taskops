@@ -145,6 +145,40 @@ tk-91a27e is not in your clone yet — `git fetch origin tk-91a27e` brings it.
 Nothing is ever fetched for you: that would move a branch under a worktree
 somebody is sitting in.
 
+### How code travels between two devs
+
+**The board carries references; git carries objects.** A shared board is an
+events API and nothing else — it never holds a repository, a clone or a git
+credential, so a sha on a screen is a *name*, and the bytes it names live in
+git. The meeting point is whatever `origin` is: GitHub, GitLab, a bare repo on
+a box, it makes no difference.
+
+So the two halves are:
+
+1. Berna closes a card — `taskops_update task=tk-91a27e status=done note="…"`.
+   The board records the commit that closed it, and the client that made the
+   call (the one machine with the repo) pushes `tk-91a27e` to `origin`.
+   **Best effort, never a gate**: no origin, no network, a protected branch —
+   the card is closed either way and the board carries the sha regardless.
+2. Ana, in her own clone of the same repo, fetches it and reads it locally:
+
+   ```sh
+   git fetch origin tk-91a27e
+   git log --oneline main..FETCH_HEAD
+   git diff main...FETCH_HEAD
+   ```
+
+   Her `taskops ui` shows the same diff without leaving the browser, because it
+   reads *her* clone — and until she fetches, it says so and names that exact
+   command instead of pretending the branch is empty.
+
+The same push happens at the other two lifecycle moments that already existed:
+integrating a card into its milestone branch, and landing a milestone. Push
+failures are silent by design and are never recorded on the board — a push is
+infrastructure, not a board fact, and the next lifecycle moment pushes again.
+Pinned against a real HTTP board and a real `origin` in
+`tests/test_mcp.py` ("code travels by git, and the board is REMOTE").
+
 ### Working on the dashboard itself
 
 You do not need node to *run* it — the built bundle
