@@ -817,3 +817,50 @@ def test_a_commit_with_no_card_is_recorded_at_project_level(stores: Stores) -> N
     call(stores, "take", W1, task=card)
     with pytest.raises(Refused, match="no commit bound"):
         call(stores, "update", W1, task=card, status="done", comment="the sha is on project")
+
+
+# ── the repo's web home (verbs/project.py) ──────────────────────────────────
+
+
+def test_the_boards_repo_travels_in_the_board_payload(stores: Stores) -> None:
+    """A project-level fact, so no card exists to carry it — and every client
+    sees it through the same read, local or remote."""
+    planned(stores)
+    assert call(stores, "board", BERNA)["repo"] is None
+    call(
+        stores, "project", BERNA,
+        op="remote", host="github.com", slug="bernatch22/taskops", url="https://github.com/bernatch22/taskops",
+    )
+    assert call(stores, "board", BERNA)["repo"] == {
+        "host": "github.com",
+        "slug": "bernatch22/taskops",
+        "url": "https://github.com/bernatch22/taskops",
+    }
+
+
+def test_recording_the_same_origin_twice_writes_nothing(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """`init` is re-run all the time; the log is replayed forever and has no
+    delete, so an unchanged fact must not append."""
+    args = {"op": "remote", "host": "github.com", "slug": "a/b", "url": "https://github.com/a/b"}
+    first = call(stores, "project", BERNA, **args)
+    clock(60)
+    second = call(stores, "project", BERNA, **args)
+    assert first["recorded"] and not second["recorded"]
+    assert len([e for e in stores.events("project") if e["kind"] == "project"]) == 1
+
+
+def test_a_changed_origin_wins_by_being_later(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    call(stores, "project", BERNA, op="remote", host="github.com", slug="a/b")
+    clock(60)
+    call(stores, "project", BERNA, op="remote", host="gitlab.com", slug="team/sub/c")
+    repo = call(stores, "board", BERNA)["repo"]
+    assert repo == {"host": "gitlab.com", "slug": "team/sub/c", "url": "https://gitlab.com/team/sub/c"}
+
+
+def test_an_unknown_project_fact_is_refused_by_name(stores: Stores) -> None:
+    with pytest.raises(BadRequest, match="not a project fact"):
+        call(stores, "project", BERNA, op="mascot", slug="a/b")

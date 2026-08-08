@@ -217,19 +217,21 @@ flowchart TB
         plan["plan"]; take["take"]; update["update"]; card["card"]
         assign["assign"]; pulse["pulse (board, mentions, waiting)"]; record["record"]; report["report"]
         reviewv["review — claim a submitted card, or record the verdict"]
+        projectv["project — a board-level fact about the repo (op=remote)"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
     subgraph L4["4 · board.py + gitwork (the ONLY git, client-side)"]
         board["board.py — LocalBoard | RemoteBoard, routing decided ONCE"]
         run["gitwork/run"]; trees["gitwork/trees — worktrees"]
         trailer["gitwork/trailer"]; bind["gitwork/bind"]; install["gitwork/install"]
+        remotem["gitwork/remote — origin → {host, slug, url}"]
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread"]
         httpsrv["http/server, mounts, rpc, auth, feed, static"]
     end
     subgraph L6["6 · cli"]
-        cli["init · join · serve · invite · tidy · ui · hook"]
+        cli["commands: init · join · hook   ·   serving: serve · invite · ui"]
     end
 
     L1 --> L0
@@ -289,6 +291,7 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 | `update` | write | both | — |
 | `review` | write | both | — (optional review: claim a submitted card, or record the verdict. A verifier is an ordinary agent — there is no reviewer role) |
 | `bind` | write | both | (internal — the git hooks call it) |
+| `project` | write | both | (internal — `taskops init` / `taskops join` record where the repo lives on the web; a board-level fact, `op=remote`) |
 
 Every refusal names the call that works. `role_of()` in `core/types.py` is the
 *only* actor parser in the codebase (v1 had five, plus an inference step that
