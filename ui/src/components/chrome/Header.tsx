@@ -20,9 +20,12 @@ import { MilestonePicker } from "./MilestonePicker";
 export interface HeaderProps {
   /** The milestone in scope, "" when none is open. */
   milestone: string;
-  /** Every OPEN chapter — `board.milestones`, which the server returns whole
+  /** Every chapter the board offers — open AND recently landed, in one list
+   *  (`types.ts::BoardPayload.milestones`), which the server returns whole
    *  whatever the call filtered by, so the menu never shrinks to its own choice. */
   milestones: Milestone[];
+  /** How many chapters landed in total, behind the list's cap. */
+  landedTotal?: number | undefined;
   /** The chosen chapter's id, "" for "all chapters" (no `milestone=` is sent). */
   selected: string;
   /** Choose a chapter, or "" for all of them. */
@@ -72,8 +75,8 @@ const toggle: React.CSSProperties = {
 };
 
 export function Header(props: HeaderProps): React.JSX.Element {
-  const { milestone, milestones, selected, onSelect, live, team, theme, onToggleTheme, children } =
-    props;
+  const { milestone, milestones, landedTotal, selected, onSelect, live, team, theme } = props;
+  const { onToggleTheme, children } = props;
   const dot = live ? "var(--ok)" : "var(--danger)";
   const dotSoft = live ? "var(--ok-soft)" : "var(--danger-soft)";
 
@@ -100,6 +103,7 @@ export function Header(props: HeaderProps): React.JSX.Element {
         <MilestonePicker
           milestone={milestone}
           milestones={milestones}
+          landedTotal={landedTotal}
           selected={selected}
           onSelect={onSelect}
         />

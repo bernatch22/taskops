@@ -264,7 +264,22 @@ export interface Pulse {
 /** @source `verbs/pulse.py::run` */
 export interface BoardPayload {
   milestone: Milestone | null;
-  milestones: Milestone[]; // the open ones only
+  /** Every OPEN chapter, then the most recent landed ones — one list, told
+   *  apart by `Milestone.status` (`verbs/_facts.py::chapters`).
+   *
+   *  It used to be the open ones only, which was correct until `landed` became
+   *  a real status and two finished chapters vanished from this dashboard. So
+   *  `milestones.length` is NOT "how many chapters are open" any more: every
+   *  consumer that means that filters on `status === "open"` — the picker's
+   *  count and Monitor's `chapters` prop both do, and the smoke test pins it. */
+  milestones: Milestone[];
+  /** How many chapters have landed in total, behind `milestones`' cap.
+   *
+   *  OPTIONAL for the usual reason (types.ts header): a board one version
+   *  behind sends neither this nor any landed chapter at all. Consumers read
+   *  `?? 0`, and absent then says the true thing about that board — this screen
+   *  can reach no landed chapter. `verbs/pulse.py::run`. */
+  landed_total?: number;
   groups: BoardGroups;
   team: TeamMember[];
   hours: ReportPayload | null; // only when the call passed window=

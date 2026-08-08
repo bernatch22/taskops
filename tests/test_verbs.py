@@ -12,6 +12,7 @@ import pytest
 
 from taskops import verbs, _clock
 from taskops.store import log
+from taskops.verbs import pulse, _facts
 from taskops._errors import Refused, NotFound, BadRequest
 from taskops.core.types import LEASE_TTL
 from taskops.store.stores import Stores
@@ -332,6 +333,78 @@ def test_an_integrated_card_stays_visible_under_done(stores: Stores) -> None:
     assert board["groups"]["merge"] == []  # integrated: nothing left to do
     assert [c["id"] for c in board["groups"]["done"]] == [card]  # but still visible
     assert board["done_total"] == 1
+
+
+def test_a_landed_chapter_is_still_on_the_board(stores: Stores) -> None:
+    """The same bug as `done`, one level up: `milestones` filtered to `open`,
+    which was correct until `landed` became a real status — and the day it did,
+    two finished chapters (14 cards and 22) were in the log and on no screen.
+    Berna found both by looking at the dashboard."""
+    stone = planned(stores)["milestone"]["id"]
+    call(stores, "merged", BERNA, milestone=stone, into="main", sha="9c2f")
+
+    board = call(stores, "board", BERNA)
+    listed = {m["id"]: m["status"] for m in board["milestones"]}
+    assert listed == {stone: "landed"}
+    assert board["landed_total"] == 1
+
+    # And it RESOLVES when named — a chapter offered by a picker the server then
+    # refused to focus would be the same hole with an extra click in it.
+    focused = call(stores, "board", BERNA, milestone=stone)
+    assert focused["milestone"]["id"] == stone
+    assert focused["milestone"]["goal"] == "read a bank CSV and issue invoices with VAT"
+
+
+def test_the_landed_chapters_are_capped_newest_first(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Open chapters are bounded by the work in flight; landed ones only grow.
+    Same argument as `DONE_SHOWN`, so the same shape: a cap, newest first, and
+    the honest total beside it."""
+    landed = []
+    start = _clock.now()
+    for n in range(_facts.LANDED_SHOWN + 2):
+        clock(start + n * 86400)  # a chapter is days apart, never the same instant
+        out = call(stores, "plan", BERNA, milestone=f"chapter {n}", goal="g", tasks=[{"title": "t"}])
+        landed.append(out["milestone"]["id"])
+        call(stores, "merged", BERNA, milestone=landed[-1], into="main", sha="9c2f")
+
+    board = call(stores, "board", BERNA)
+    assert board["landed_total"] == _facts.LANDED_SHOWN + 2
+    shown = [m["id"] for m in board["milestones"]]
+    assert len(shown) == _facts.LANDED_SHOWN
+    assert shown[0] == landed[-1]  # newest first
+    assert landed[0] not in shown  # the oldest fell off the tail
+    # Off the list is not out of reach: naming one still resolves it.
+    assert call(stores, "board", BERNA, milestone=landed[0])["milestone"]["id"] == landed[0]
+
+
+def test_focusing_a_chapter_raises_the_done_cap(stores: Stores) -> None:
+    """`DONE_SHOWN` bounds the BOARD's history, which grows forever. A chapter
+    is a finite planned unit, and reviewing a finished one is exactly when
+    somebody wants all of its cards — this project's own chapters closed 14 and
+    22, and `20 of 22` cannot answer "what shipped"."""
+    plan = call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="wide",
+        goal="g",
+        tasks=[{"title": f"card {n}", "spec": "s"} for n in range(pulse.DONE_SHOWN + 2)],
+    )
+    for card in plan["cards"]:
+        call(stores, "take", W1, task=card["id"])
+        call(stores, "update", W1, task=card["id"], status="done", no_code=True, comment="done")
+        call(stores, "merged", BERNA, task=card["id"], sha="9c2f")
+
+    stone = plan["milestone"]["id"]
+    assert len(call(stores, "board", BERNA, milestone=stone)["groups"]["done"]) == len(plan["cards"])
+    # The board-wide read keeps the tight cap: there, `done` is history without end.
+    call(stores, "merged", BERNA, milestone=stone, into="main", sha="9c2f")
+    wide = call(stores, "board", BERNA)
+    assert wide["milestone"] is None  # nothing open — no chapter narrows this read
+    assert len(wide["groups"]["done"]) == pulse.DONE_SHOWN
+    assert wide["done_total"] == len(plan["cards"])
 
 
 # ── the dead worker ─────────────────────────────────────────────────────────

@@ -129,7 +129,10 @@ def _header(data: dict[str, Any]) -> str:
     stone = _obj(data.get("milestone"))
     if stone:
         return f"{BULLET} {stone.get('title')} — {stone.get('goal', '')}".rstrip(" —")
-    others = _rows(data.get("milestones"))
+    # `milestones` carries the landed chapters too (`verbs/pulse.py::_chapters`),
+    # and this line is about which chapter to FOCUS: a landed one is history, not
+    # a choice, and counting it here would say "3 open milestones" over one.
+    others = [m for m in _rows(data.get("milestones")) if m.get("status") == "open"]
     if not others:
         return f'{BULLET} no open milestone — taskops_plan milestone="…" goal="…" opens one'
     names = " · ".join(f"{m['id']} {m['title']}" for m in others)
