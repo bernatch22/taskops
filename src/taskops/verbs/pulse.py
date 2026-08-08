@@ -96,6 +96,17 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
             # held by the worker who may still be alive beside the verifier.
             # Conflating them is what made the countdown a floor that read 0
             # under a live lease.
+            #
+            # `quiet_for` on this row has the SAME split and is deliberately
+            # left alone: `_row` fills it from the work lease, so a card handed
+            # in an hour ago with a verifier actively on it arrives saying
+            # `quiet_for = 3600`. That is not wrong — the WORKER has been quiet
+            # for an hour — it is only unreadable next to a `holder` that was
+            # overwritten with the verifier. A reader that wants the verifier's
+            # timing now has it exactly, here, and does not have to reinterpret
+            # a number that belongs to the other lease. Redefining `quiet_for`
+            # per group would make one key mean two things, which is the shape
+            # of the bug this key exists to end.
             lease = live_reviews.get(card["id"])
             groups["reviewing"].append(
                 row
