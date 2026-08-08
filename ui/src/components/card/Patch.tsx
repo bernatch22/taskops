@@ -252,6 +252,18 @@ function FileRow({
   );
 }
 
+/** The optional summary band — the design's `7 files changed   +412 −38`. */
+const summaryBar: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "14px",
+  padding: "11px 14px",
+  fontSize: "12.5px",
+  color: "var(--text-2)",
+  borderBottom: "1px solid var(--hair)",
+};
+
 /** Files changed — the card AS A PULL REQUEST.
  *
  *  The target is `<milestone branch>...<card branch>`, both already on the
@@ -267,11 +279,22 @@ export function FilesChanged({
   repo,
   base,
   head,
+  summary = false,
 }: {
   reader: GitReader | null | undefined;
   repo: Repo | null | undefined;
   base: string;
   head: string;
+  /** Draw the `N files changed  +a −d` bar above the list.
+   *
+   *  A PROP here rather than a computation at the call site, because the count
+   *  it states is `step.diff.stat` — which only exists once the cascade has
+   *  answered, inside this component. A page that wanted the bar for itself
+   *  would have to ask the door a second time for the range this one already
+   *  holds, and that second fetch is exactly the duplication the chapter's
+   *  third rule forbids. Off by default: the drawer's pane never drew one.
+   *  `<Numstat>` paints the +/−, so the status pair is not spelled twice. */
+  summary?: boolean;
 }): React.JSX.Element {
   const target: GitTarget = { kind: "compare", base, head };
   const state = useGitDiff(reader, target, true);
@@ -290,6 +313,14 @@ export function FilesChanged({
   }
   return (
     <div data-testid="files-changed" style={{ borderRadius: "13px", background: "var(--pane-2)", overflow: "hidden" }}>
+      {summary ? (
+        <div data-testid="files-changed-summary" style={summaryBar}>
+          <span>
+            {paths.length} file{paths.length === 1 ? "" : "s"} changed
+          </span>
+          <Numstat counts={stat} />
+        </div>
+      ) : null}
       {paths.map((path) => (
         <FileRow
           key={path}
