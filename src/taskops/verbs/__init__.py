@@ -22,6 +22,7 @@ from . import (
     take,
     pulse,
     assign,
+    events,
     record,
     report,
     review,
@@ -65,6 +66,9 @@ REGISTRY: dict[str, Verb] = {
     ),
     "card": Verb(card.run, "read", BOTH, ""),
     "report": Verb(report.run, "read", BOTH, ""),
+    # The LOG, paged — the one read that answers "what happened" rather than
+    # "what is each card". Board-wide by construction (verbs/events.py).
+    "events": Verb(events.run, "read", BOTH, ""),
     "plan": Verb(
         plan.run,
         "write",

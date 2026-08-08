@@ -134,7 +134,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           </div>
         ) : board ? (
           tab === "monitor" ? (
-            <Monitor board={board} openCard={openCard} now={Date.now() / 1000} />
+            <Monitor board={board} openCard={openCard} now={Date.now() / 1000} client={client} />
           ) : tab === "worktrees" ? (
             <Worktrees
               groups={board.groups}

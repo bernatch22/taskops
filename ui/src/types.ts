@@ -41,7 +41,7 @@
  *  error instead of a 400 nobody sees.
  *
  *  @source the subset of `verbs/__init__.py::REGISTRY` this client speaks */
-export type RpcVerb = "board" | "card" | "report" | "mentions" | "update";
+export type RpcVerb = "board" | "card" | "report" | "mentions" | "update" | "events";
 
 /* ── the stored rows (core/types.py) ─────────────────────────────────────── */
 
@@ -446,4 +446,28 @@ export interface ReportPayload {
 export interface MentionsPayload {
   actor: string; // the actor the server RESOLVED — the caller could not have known it
   mentions: MentionRow[];
+}
+
+/* ── the log, paged (verbs/events.py) ────────────────────────────────────── */
+
+/** One keyset page of the whole log, newest first.
+ *
+ *  @source `verbs/events.py::run`
+ *
+ *  `next` is a `seq` — the cache's rowid — and is passed straight back as
+ *  `before=` to get the page behind this one. It is NOT a timestamp and must
+ *  never become one: `ts` ties constantly (a plan of nine writes nine events in
+ *  one millisecond) and a tying cursor drops or repeats the rows sharing the
+ *  boundary instant. `null` means this page is the tail of the log.
+ *
+ *  `total` is the LOG's length, not this page's — it is what the pane's header
+ *  counter draws. The stream is board-wide on purpose: a stored event carries
+ *  no milestone, and `task: "project"` rows are board history belonging to no
+ *  chapter, so there is nothing here to filter by and nothing is. */
+export interface EventPage {
+  events: Event[];
+  next: number | null;
+  total: number;
+  /** the board's sequence at the moment of the read (`store/cache.py::head`) */
+  head: number;
 }
