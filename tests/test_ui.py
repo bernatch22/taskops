@@ -8,7 +8,7 @@ those two ends:
    `LocalBoard`, hands the server's own `board` and `card` payloads to
    `ui/smoke/run.mjs`, and that harness renders the very modules `src/main.tsx`
    bundles — through `react-dom/server`, with no browser and no jsdom. What it
-   proves is the list this file has always been: the eight Monitor panes, a
+   proves is the list this file has always been: the nine Monitor panes, a
    pane with no verb showing its empty state instead of a zero, the Board's
    columns, the acceptance criteria in the dossier (the hole v1 never closed),
    the comment box posting `update` and nothing else, the draft surviving a
@@ -27,12 +27,20 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Three waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+Seven waves of `.tsx`-only cards have now been rebuilt into that bundle, and
 each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
-the dev carrying a worktree, the picker's landed chapters) and `OWN_CLONE`
-(tk-e5a340 — Files changed and the four steps of the diff cascade). All three
+the dev carrying a worktree, the picker's landed chapters), `OWN_CLONE`
+(tk-e5a340 — Files changed and the four steps of the diff cascade) and
+`WORKTREES_PR` (tk-b9c857 — the two-column index and the full-width diff page
+that replaced the five-column table) and `SIDE_BY_SIDE` (tk-d0fc41 — the second
+close of that same chapter: the page read side by side, with the card's own
+thread on it, and Monitor's ninth pane) and `NOTHING_DRAWN` (tk-81c980 — a
+column with nothing in it is not drawn at all, which is the one wave that also
+RETIRED a marker of its own: see `RETIRED`) and `CHAPTERS_LISTED` (tk-13d115 —
+several open chapters listed as foldable rows instead of apologised for, which
+also retired a sentence: see `RETIRED_APOLOGY`). All seven
 lists are the check that the bundle is the CURRENT source's output and not the
 previous wave's: none of those strings existed in the bundle its chapter-close
 replaced, so a close that forgot to run `node build.mjs` fails here.
@@ -62,7 +70,13 @@ UI = ROOT / "ui"
 HARNESS = UI / "smoke" / "run.mjs"
 BUNDLE = ROOT / "src" / "taskops" / "ui"
 
-#: The eight panes Monitor draws — `ui/src/components/monitor/panels.ts`.
+#: The NINE panes Monitor draws — `ui/src/components/monitor/panels.ts`.
+#:
+#: `pane-swarm` is the ninth and the newest. It was added to the smoke harness's
+#: own list by the card that built it (tk-74ace0) and deliberately NOT here,
+#: because this tuple is asserted against the COMMITTED bundle and no card of
+#: that wave was allowed to rebuild it — the marker would have been red from the
+#: moment it was written until this close. It is here now, after the rebuild.
 PANES = (
     "pane-leases",
     "pane-throughput",
@@ -72,6 +86,7 @@ PANES = (
     "pane-chapter",
     "pane-mentions",
     "pane-events",
+    "pane-swarm",
 )
 
 #: What only the FINISHED code emits — the markers a stub never carried.
@@ -81,9 +96,16 @@ PANES = (
 #: built before any panel had content. Each of these is a `data-testid` that
 #: exists in exactly one component written by this wave, and none of the five
 #: is in the bundle this chapter-close rebuilt over.
+#:
+#: `worktree-commits` was a fifth marker here and is deliberately NOT: the
+#: worktrees-as-pull-requests chapter rebuilt that view as two columns of tiles
+#: and the per-branch commit CELL does not exist any more (it drew an em dash —
+#: `WorktreeRow.commits` has never had a source). A marker for a deleted element
+#: would fail the next rebuild and say nothing about the bundle. What it did for
+#: this list — one string per card of the wave — the four below still do, and
+#: the chapter that retired it paid its debt in `WORKTREES_PR`.
 VIEWS = (
     "worktrees",  # the third tab (pages/Worktrees.tsx)
-    "worktree-commits",  # its per-branch commit cell
     "milestone-menu",  # the header's picker, open (chrome/MilestonePicker.tsx)
     "chapter-criteria",  # the chapter's criteria list (monitor/Chapter.tsx)
     "standing",  # Live leases' three-figure empty state
@@ -127,6 +149,82 @@ OWN_CLONE = (
     "patch-truncated-link",  # …and offers the whole of it when it can
     "patch-toggle",  # the fold on a commit row
 )
+
+#: What the WORKTREES-AS-PULL-REQUESTS chapter added, on the same terms again:
+#: the five-column table is gone and with it `worktree-commits` (see `VIEWS`),
+#: so this row is what says the bundle carries the two screens that replaced it
+#: — the two-column index with its sub-blocks and resolved chapter line, and the
+#: second surface, a FULL-WIDTH diff page with its own chrome. None of the nine
+#: is in the bundle this chapter-close rebuilt over; the last two are in it as
+#: LITERALS even on a board with no slug and no clone, where neither can ever be
+#: drawn — which is exactly what a byte-level check can say and a render cannot.
+WORKTREES_PR = (
+    "worktree-column",  # the index is two columns, In progress and Merged
+    "worktree-block",  # …each split into its sub-blocks
+    "worktree-chapter",  # the row's chapter, resolved to its title
+    "worktree-diff",  # the second surface: the tree as a pull request
+    "worktree-diff-back",  # the only way out of it
+    "worktree-diff-range",  # base ← head
+    "worktree-diff-dir",  # where the tree is on disk
+    "worktree-diff-forge",  # …and out to the forge, when the board has a slug
+    "files-changed-summary",  # the bar the diff PAGE adds to the file list
+)
+
+#: What the SECOND close of that same chapter added — the wave after `WORKTREES_PR`
+#: landed, on the same terms once more. The index and the page existed; this wave
+#: made the page READ like one (side by side, the card's own thread on it) and gave
+#: Monitor its ninth pane. Every one of these nine is a `data-testid` written by
+#: exactly one card of the wave, and none of them is in the bundle this close
+#: rebuilt over — checked marker by marker against the previous `app.js` before
+#: this list was written.
+SIDE_BY_SIDE = (
+    "patch-split",  # the diff, two columns
+    "patch-split-row",  # …one paired line of it
+    "worktree-diff-mode",  # unified ↔ split, on the page only
+    "worktree-diff-thread",  # the CARD's thread, on the tree's page
+    "swarm-graph",  # the ninth pane's ring
+    "swarm-node",  # an actor or a card on it
+    "swarm-edge",  # a lease, a lapsed lease, or a contested path
+    "swarm-legend",  # the four actor kinds, as the mock draws them
+    "swarm-count",  # nodes, and how many edges are contested
+)
+
+#: The THIRD close of that chapter, and it is one marker because it is one
+#: decision reversed: a column with nothing in it is no longer drawn at all, so
+#: the per-column empty state goes with the shells that carried it and the ONE
+#: surviving sentence — both columns empty — is a message centred in the page.
+#:
+#: Both halves are asserted, and that is the point of a byte-level check here: a
+#: rebuild that forgot this card would carry `worktrees-empty` and not
+#: `worktrees-none`, and a source tree that kept the old empty state alongside
+#: the new one would carry both. Only the swap passes.
+NOTHING_DRAWN = ("worktrees-none",)  # the both-empty message, centred in the page
+
+#: …and what the same change REMOVED. `worktrees-empty` was the dotted field
+#: inside a column shell; it was in the bundle this close rebuilt over (checked),
+#: and it must not be in the one that replaces it.
+RETIRED = ("worktrees-empty",)
+
+#: The SEVENTH wave, and it is the Chapter pane's (tk-13d115). `_facts.in_scope`
+#: returns None for SEVERAL open chapters as well as for none — it refuses to
+#: guess — and the pane read that refusal as a fault: a paragraph telling the
+#: reader to close one, and nothing at all about either chapter. It now lists
+#: every OPEN chapter, one foldable row each, first expanded, each row's `focus`
+#: calling the header picker's own setter.
+#:
+#: Both halves again, and here the retired half is a SENTENCE rather than a
+#: `data-testid`: the apology is what this card deleted, it was in the bundle
+#: this close rebuilt over (checked), and a rebuild that missed this card would
+#: carry it.
+CHAPTERS_LISTED = (
+    "chapter-row",  # one open chapter, one row
+    "chapter-fold",  # …a real button with aria-expanded, not an arrow glyph
+    "chapter-open-count",  # how many open cards it carries, folded from the rows
+    "chapter-focus",  # the door to the header picker's own setter
+)
+
+#: …and what it removed: the apology for a board that is merely working.
+RETIRED_APOLOGY = ("Land or drop the finished ones",)
 
 
 def a_clone(root: Path) -> Path:
@@ -326,8 +424,17 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
-    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE:
+    markers = (
+        VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
+    ) + CHAPTERS_LISTED
+    for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
+    for testid in RETIRED:
+        assert f'"{testid}"' not in app, f"{testid} was retired but is still in the bundle"
+    # A sentence, not a `data-testid`, so it is read as a plain substring: the
+    # minifier keeps the literal but not the quotes around a JSX text node.
+    for phrase in RETIRED_APOLOGY:
+        assert phrase not in app, f"{phrase!r} was retired but is still in the bundle"
     # The pane that used to say "no events verb" no longer can: the verb exists
     # (`verbs/events.py`), so an empty pane now means an empty LOG and says that.
     assert "no events verb" not in app

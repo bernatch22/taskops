@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
-dashboard — **39 TypeScript files / ~8.000 lines under `ui/src`**, whose built
+dashboard — **42 TypeScript files / ~10.000 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**283 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 282+1; see below), ruff +
+**286 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 285+1; see below), ruff +
 pyright strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
@@ -263,7 +263,12 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    by mistake and deleted. Monitor — Nova's first and central section, and the
    DEFAULT tab — kept its SEAM (`components/monitor/panels.ts`, where every
    panel's props are a declared interface rather than a comment, the fix
-   `docs/fan-out.md` prescribes), and its eight panes are filled, one card each.
+   `docs/fan-out.md` prescribes), and its NINE panes are filled, one card each
+   — the ninth, Swarm, drawing who is attached to what right now from slices the
+   board already sends (ARCHITECTURE.md §15). Chapter in focus no longer
+   apologises when several chapters are open: it lists every OPEN one as a
+   foldable row, first expanded, and each row's `focus` calls the header
+   picker's own `setMilestone` — a door, not a second selection.
    The Event stream — the last pane still empty, because nothing returned the
    log — is fed: `events` is a read verb and the pane pages it by keyset on
    `seq` (`store/cache.py::page`), through the ONE fetch in this dashboard that
@@ -294,5 +299,27 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    the door's OWN payload); `useGitDiff`'s effect firing is not reachable under
    `react-dom/server` and is covered against a real server in
    `tests/test_topology.py` instead.
+
+   **Worktrees is now two screens** (ARCHITECTURE.md §15/§16, decided
+   2026-08-08). The index is an INDEX OF PULL REQUESTS — two 50/50 columns, *In
+   progress* and *Merged*, two sub-blocks each, and a tile carrying branch,
+   title, who carries it and which chapter; the five-column table and its
+   sourceless commit cell are gone. Clicking a tree no longer opens the card
+   drawer at all: it opens THIS view's own full-width diff page
+   (`pages/WorktreeDiff.tsx`), which hands the whole compare range to the SAME
+   `FilesChanged`. No verb, no stored key and no change to the /git door bought
+   that. The dossier keeps its own Files changed pane, untouched — a second
+   surface, not a replacement. That page now READS like one: the patch folds
+   into two columns (`components/card/split.ts`, pure — anything it cannot parse
+   returns `[]` and the unified view is drawn instead, which is the whole safety
+   of the feature), the measurements are a prop (`PatchSize = "drawer" | "page"`,
+   so the drawer's pane is byte-for-byte what it was), a column with nothing in
+   it is not drawn at all — one populated column is one full-width panel, both
+   empty is one centred sentence and no shell — and the page carries **the card's own
+   thread** — the same `Thread`, the same `CommentBox`, the same `update
+   comment=`. There is no worktree comment and there must never be one: a
+   worktree has no identity apart from its card (`gitwork/trees.py` pins
+   `tk-<id>` as branch, directory and id at once), so a second thread would be
+   two places to say one thing and the reader of the CARD would see half of it.
 
    What the dashboard still cannot do is deploy itself: item 2 above.

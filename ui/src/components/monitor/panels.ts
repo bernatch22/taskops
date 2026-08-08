@@ -58,13 +58,19 @@ import type {
   BlockedRow,
   BoardGroups,
   BoardRow,
+  CardPayload,
   Event,
   MentionRow,
   Milestone,
   ReportPayload,
   ReviewingRow,
+  TeamMember,
 } from "../../types";
 import type { Tone } from "../board/CardTile";
+/** Type-only, and it is the door's client as `links.tsx` declares it —
+ *  structurally, so this seam names the reader the cascade already takes rather
+ *  than inventing a second spelling of it. */
+import type { GitReader } from "../../links";
 
 /** Re-exported so a panel imports its palette from the seam rather than reaching
  *  into the Board's tile. `Tone` is defined ONCE, in CardTile.tsx. */
@@ -252,8 +258,43 @@ export interface ChapterProps {
    *  it. The narrow-slice rule above applies to the PAYLOAD, not to a stored
    *  row that already is one thing. */
   milestone: Milestone | null;
-  /** `board.milestones.length` — how many chapters are open. */
-  chapters: number;
+  /** Every OPEN chapter — `board.milestones` filtered by `status === "open"`,
+   *  because that list carries the landed ones too (types.ts) and a landed
+   *  chapter is history, not something in flight.
+   *
+   *  This REPLACED a `chapters: number` count. When the server cannot focus one
+   *  the pane no longer says how many there are and stops, it LISTS them, one
+   *  foldable row each — so it needs the chapters themselves, and a count beside
+   *  them would be a second spelling of `open.length`.
+   *
+   *  Not optional and not nullable: an empty list is the honest "no chapter is
+   *  open", which is a state this pane already drew. */
+  open: readonly Milestone[];
+  /** Every OPEN card row, across groups — `take` + `doing` + `stalled` +
+   *  `blocked` + `reviewing` + `review` + `changes` + `merge`, which is every
+   *  group except `mentions` (not a card) and `done` (a capped tail, so it
+   *  cannot be counted).
+   *
+   *  The pane folds these by `BoardRow.milestone` to say how many open cards
+   *  each row of the accordion carries. The FOLD is the panel's, as this seam's
+   *  rule says — Monitor slices and nothing else — and it is a fold and not an
+   *  invention: a chapter with no rows reads `0 open`, and a payload where NO
+   *  row carries a `milestone` at all (the field is optional, types.ts) draws no
+   *  counts on any row rather than `0 open` on all of them.
+   *
+   *  Only read in the accordion, which only renders when NO chapter is in focus
+   *  — and that is exactly when these groups are unfiltered. Focus a chapter and
+   *  the server narrows the groups to it, but then `milestone` is non-null and
+   *  the pane is drawing one chapter, not counting several. */
+  rows: readonly BoardRow[];
+  /** Focus a chapter — THE SAME setter the header's milestone picker calls
+   *  (`App.tsx::setMilestone`, threaded down through Monitor).
+   *
+   *  Not a pane-local selection and not a copy of that state: after this fires
+   *  the picker and this pane agree because they ARE one fact. Optional so the
+   *  pane renders under a harness with no wire; absent, no focus control is
+   *  drawn at all — a button that selects nothing is worse than no button. */
+  onFocus?: ((id: string) => void) | undefined;
   /** `board.repo` — where this repo lives on the web, so the integration branch
    *  in the footer can be the chapter's diff against the trunk (`links.tsx`).
    *
@@ -319,7 +360,14 @@ export interface EventStreamProps {
   onMore: () => void;
 }
 
-/* ── 9. Worktrees ─────────────────────────────────────────────────────────── */
+/* ── The Worktrees VIEW — not a Monitor pane, and numbered out of the run ───
+ *
+ * Everything above and below is one of Monitor's NINE panes, in Nova's order.
+ * The Worktrees tab is a view of its own and lives here because it is the same
+ * kind of contract — a declared props interface several worktrees compile
+ * against — not because it is a tenth pane. Numbering it would have made the
+ * pane count unreadable, and the pane count is what `tests/test_ui.py::PANES`
+ * asserts against the committed bundle. */
 
 /** Where `gitwork/trees.py` pins a card's worktree: `.taskops/trees/<id>`, for
  *  life. The path is a CONSTRUCTION, not a field — `BoardRow` carries no
@@ -368,6 +416,27 @@ export interface WorktreeRow {
    *  payload that failed, not as "free". */
   dev: string | null;
   worker: string | null;
+  /** WHICH CHAPTER this tree belongs to, resolved: the row carries the id
+   *  (`BoardRow.milestone`, `pulse.py::_row`) and the payload's `milestones`
+   *  list carries the words, so the pair is joined ONCE, where the rows are
+   *  built, and every cell below is handed the answer.
+   *
+   *  `null` covers both honest gaps and they are deliberately not told apart on
+   *  screen: a board one version behind sends no `milestone` on the row, and a
+   *  chapter that has aged past `milestones`' cap cannot be named. In neither
+   *  case does the cell show a raw `ms-…` id — an identifier nobody can read is
+   *  not more informative than an empty cell, it is only louder.
+   *
+   *  `branch` rides in the SAME join, and it is not decoration: it is the BASE
+   *  this tree is compared against (`Milestone.branch`, `pulse.py` sends it on
+   *  every chapter). A card belongs to a chapter regardless of who is looking
+   *  at it, so the base is the ROW's own chapter and never the one the header
+   *  happens to have in focus — with "All milestones" selected `board.milestone`
+   *  is `null` (`verbs/_facts.py::in_scope` refuses to guess between several),
+   *  and a base of `""` made the /git door answer not-found for EVERY tree.
+   *  There is no fallback to another chapter's branch: rendering one chapter's
+   *  work as another's diff is worse than the empty state it would replace. */
+  milestone: { id: string; title: string; branch: string } | null;
   /** the design's `{{ w.merged }}` pill */
   status: string;
   tone: Tone;
@@ -381,14 +450,183 @@ export interface WorktreesProps {
    *  `changes`. Naming seven fields would be listing `BoardGroups` with two
    *  holes in it. */
   groups: BoardGroups;
-  onOpen: (id: string) => void;
+  /** `board.milestones` — the id → {title, branch} dictionary for
+   *  `WorktreeRow.milestone`. Optional: absent, no row can name its chapter and
+   *  every one of them says nothing, which is exactly what a board that sends no
+   *  chapters can support — and then no row has a base either, which is the
+   *  no-base case `links.tsx` already documents ("the trunk the UI does not
+   *  know"). */
+  milestones?: readonly Milestone[];
   /** `board.repo` — the switch for the compare link on every row. Optional for
    *  the reasons `ChapterProps.repo` sets out. */
   repo?: { host: string; slug: string; url: string } | null | undefined;
-  /** `board.milestone?.branch` — the BASE a row's branch is compared against.
-   *  A row's own head is `tk-<id>`, which is `WorktreeRow.id` by construction;
-   *  the base is the one thing the table does not already hold. Empty when no
-   *  chapter is in focus, and then the compare falls back to the forge's own
-   *  default branch (`links.tsx`, "the trunk the UI does not know"). */
-  milestoneBranch?: string;
+  /* There is NO `milestoneBranch` here, and there must not be one again. It
+   * carried `board.milestone?.branch` — the chapter IN FOCUS — and with "All
+   * milestones" selected that is `""`, so every tree on the index compared
+   * against nothing and the diff page said "this host could not read that
+   * diff". The base belongs to the row (`WorktreeRow.milestone.branch`),
+   * resolved once in `rows()` from this same `milestones` list. A second source
+   * of the same fact could only ever contradict the first. */
+  /** The `/git` door's client, handed straight down to the diff page. The table
+   *  itself never reads it — it is `WorktreeDiffProps.reader` arriving one level
+   *  up, because the page that owns the view state is the page that owns the
+   *  props of what it switches to. */
+  reader?: GitReader | null | undefined;
+}
+
+/** THE FULL-WIDTH DIFF PAGE — the second surface this chapter adds.
+ *
+ *  It is NOT the card Dossier and NOT a modal: the Worktrees page renders this
+ *  INSTEAD of its table (an early return on its own `openTree` state), so the
+ *  reader is on a page, at full width, with a way back. The drawer keeps its own
+ *  Files changed pane, untouched; nothing here replaces it.
+ *
+ *  Everything it draws comes through `links.tsx::cascade` — numstat → the patch
+ *  → the forge link → one honest sentence. No component fetches a patch outside
+ *  that function, so this interface hands over the two things the cascade needs
+ *  (a `reader` and a `repo`) and the range to ask for, and nothing else. */
+export interface WorktreeDiffProps {
+  /** The tree the reader clicked — already folded, already named, already
+   *  carrying its chapter. The page re-derives none of it: the row IS the
+   *  selection, and `row.id` is both the card and the head branch. */
+  row: WorktreeRow;
+  /** The BASE of the comparison — `row.milestone?.branch`, THIS CARD's chapter
+   *  integration branch, never the chapter the header has in focus. Empty only
+   *  when the row's chapter cannot be resolved at all (a payload one version
+   *  behind, or a chapter aged past `milestones`' cap), and then the door is
+   *  asked for nothing and the forge falls back to its own default branch
+   *  (`links.tsx`, "the trunk the UI does not know"). */
+  base: string;
+  /** `board.repo` — step three of the cascade, and the only thing that decides
+   *  whether an unreadable diff can still be offered as a link. */
+  repo?: { host: string; slug: string; url: string } | null | undefined;
+  /** The `/git` door's client. `null` on a host that serves boards and not a
+   *  clone, which is not an error: the cascade says so in words. */
+  reader?: GitReader | null | undefined;
+  /** Back to the table. The page owns no router and no history entry — the
+   *  selection is one `useState` in `pages/Worktrees.tsx` and this clears it. */
+  onBack: () => void;
+}
+
+/** THE CARD'S OWN THREAD, on the diff page — and why it is a SEPARATE interface
+ *  rather than four more fields on `WorktreeDiffProps`.
+ *
+ *  A worktree has no identity apart from its card: `gitwork/trees.py` pins
+ *  `tk-<id>` as branch, directory and id at once. So there is no worktree
+ *  comment and there must never be one — a second thread would be two places to
+ *  say something about one thing, and the reader of the CARD would see half of
+ *  it. The page therefore renders the same `Thread` the dossier renders, with
+ *  the same `CommentBox`, writing through the same `useBoard::comment` → `update
+ *  comment=` door. Nothing there fetches: `App` already opens the card when it
+ *  opens the tree, exactly as the drawer does, so the payload arrives as a prop
+ *  and there is no second fetch shape to keep in step.
+ *
+ *  Every field is optional because the thread is the page's SECOND half: the
+ *  diff renders whole without any of them, and a caller that has not been taught
+ *  to pass a dossier gets the page it had. It was declared inside
+ *  `pages/WorktreeDiff.tsx` for the length of one wave — this file was held by
+ *  another card — and moved back here at the chapter close, which is what that
+ *  file's own comment said would happen. */
+export interface ThreadProps {
+  /** The card behind the tree — the dossier `verbs/card.py` returns, handed down
+   *  by `App`. `null` while it is in flight, and then the page draws its diff and
+   *  says the thread is still coming rather than showing an empty one. */
+  dossier?: CardPayload | null | undefined;
+  /** Who is addressable in the mention picker — `board.team`, the same list the
+   *  drawer's box gets. Empty is a picker with nobody in it, not a crash. */
+  team?: TeamMember[];
+  now?: number;
+  /** The dashboard's ONE write. Absent, the thread is read-only and no box is
+   *  drawn — a send button with nowhere to send is worse than no box. */
+  onComment?: ((text: string, mentions: string[]) => Promise<void>) | undefined;
+}
+
+/* ── 9. Swarm topology ────────────────────────────────────────────────────── */
+
+/** What a circle on the ring IS. Four of these are actors and one is a card;
+ *  the legend at the foot of the pane names the four actor kinds only, exactly
+ *  as the mock draws it — a card is the thing they are attached TO, not a role.
+ *
+ *  `verifier` is its own kind and not a shade of `worker` for the reason the
+ *  board itself keeps two mutexes: a REVIEW lease (`store/reviews.py`) is a
+ *  SECOND lease on the same card, so an actor holding one is not doing the same
+ *  thing as the actor holding the work lease, and a card carrying both has two
+ *  honest edges rather than a duplicate. */
+export type SwarmKind = "orchestrator" | "worker" | "verifier" | "lapsed" | "card";
+
+/** A node, already placed. The position is computed by `topology()` — a pure
+ *  function of the payload, deterministic by index around one circle — because a
+ *  force simulation is an animation loop whose output no headless harness can
+ *  assert. `Math.random()` appears nowhere in this pane. */
+export interface SwarmNode {
+  /** the actor string, or the card id — the two namespaces cannot collide */
+  id: string;
+  kind: SwarmKind;
+  /** the glyphs drawn INSIDE the circle — `initials()` for an actor, the card
+   *  id without its `tk-` for a card. Two texts per node is what makes the mock
+   *  read as a diagram instead of a bubble chart. */
+  glyph: string;
+  /** the sub-label under the circle: the card id, or what the actor IS
+   *  (`orchestrator`, `worker`, …) — the mock's `dy="46"` text */
+  label: string;
+  /** the `<title>`: the actor AND its card, because a circle with no text is
+   *  unreachable to a screen reader otherwise */
+  title: string;
+  x: number;
+  y: number;
+}
+
+/** `lease` is an actor attached to a card — one edge per lease, and the lapsed
+ *  variety is an assignment with no lease behind it, drawn faint. Both start at
+ *  an AGENT: a `dev:` is refused `take` by the registry, so an edge from a dev
+ *  to a card is a claim the server makes impossible.
+ *
+ *  `owns` is the dev→agent edge, and it is a different KIND of fact — a standing
+ *  property of the name (`agent:<dev>/<name>`, `format.ts::ownerOf`, the same
+ *  relation `http/auth.py::authorize` enforces on the wire) rather than a live
+ *  claim that expires. Drawn hair-thin for exactly that reason, and left out of
+ *  the header count: a name is not work.
+ *
+ *  `contested` is a DASHED edge between two CARDS that declare a path in common
+ *  (`BoardRow.files`). It is the same fact the Edit surface pane states, in the
+ *  same words: a warning, never a lock. `files` is what a card DECLARED, never
+ *  what a worker actually edited — the board never parses source
+ *  (`docs/fan-out.md`), so this edge can be silent while the tree is wrong and
+ *  loud while nothing is. */
+export interface SwarmEdge {
+  from: string;
+  to: string;
+  kind: "lease" | "lapsed" | "contested" | "owns";
+}
+
+export interface SwarmGraph {
+  nodes: SwarmNode[];
+  edges: SwarmEdge[];
+  /** how many LIVE work/review leases — counted apart from the lapsed and the
+   *  ownership edges, which are not somebody working */
+  leases: number;
+  /** how many `contested` edges — the header count says it out loud */
+  contested: number;
+  /** nothing is running: no lease, no review, no stalled assignment. The pane
+   *  draws one sentence and NO graph — an empty ring pretending to be a graph
+   *  is the worst reading of a quiet board. */
+  quiet: boolean;
+}
+
+/** Every field is a slice the board already sends. No verb, no payload key, no
+ *  store, no second fetch — the pane's own subtitle is its contract. */
+export interface SwarmProps {
+  /** `board.team` — where the `dev:` actors come from, and the only place they
+   *  do: a dev absent from presence is never conjured to hang an agent off. A
+   *  dev never holds a card (the role rule, `verbs/__init__.py`), so the centre
+   *  of this diagram is the one node with no edge to a CARD — its edges are the
+   *  `owns` hairlines out to its own agents. */
+  team: readonly TeamMember[];
+  /** `board.groups.doing` — a live WORK lease, and `holder` is the worker */
+  doing: readonly BoardRow[];
+  /** `board.groups.reviewing` — a live REVIEW lease, and `holder` is the verifier */
+  reviewing: readonly ReviewingRow[];
+  /** `board.groups.stalled` — an `assignee` and no holder anywhere. Nothing
+   *  running, nothing written; the state the board has no repair verb for. */
+  stalled: readonly BoardRow[];
 }
