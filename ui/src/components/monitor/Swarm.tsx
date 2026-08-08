@@ -268,7 +268,7 @@ export function topology(props: SwarmProps): SwarmGraph {
     nodes.unshift({
       id: centre,
       kind: "orchestrator",
-      glyph: initials(centre),
+      glyph: glyphOf({ id: centre, kind: "orchestrator" }),
       label: SUBLABEL.orchestrator,
       title: `${centre} — orchestrator; plans and dispatches, never holds a card`,
       x: CX,

@@ -1615,7 +1615,22 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       /dy="46"[^>]*font-size="9.5"/.test(swarmFirst) &&
       swarmFirst.includes(">tk-aaa111<") &&
       swarmFirst.includes(">orchestrator<") &&
-      swarmFirst.includes(">ber<"),
+      /* the glyphs are `initials()` for an actor and the id without its `tk-`
+       * for a card — three at most, because `w1` and `w10` exist */
+      swarmFirst.includes(">ber<") &&
+      swarmFirst.includes(">s1<") &&
+      swarmFirst.includes(">aaa<") &&
+      !swarmFirst.includes(">agent:berna/s1<"),
+  );
+  /* The ring is the mock's OUTER guide circle, centred where the mock centres
+   * it: the coordinates in its SVG are 300+130·cosθ, 200+130·sinθ. */
+  check(
+    "swarm: every ring node sits on r=130 around the mockup's centre",
+    swarmGraph.nodes
+      .filter((n) => n.id !== "dev:berna")
+      .every((n) => Math.abs(Math.hypot(n.x - 300, n.y - 200) - 130) < 0.05) &&
+      swarmGraph.nodes[0]?.x === 300 &&
+      swarmGraph.nodes[0]?.y === 200,
   );
   check(
     "swarm: every edge is the mockup's weight and opacity",
