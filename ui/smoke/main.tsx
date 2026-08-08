@@ -2133,6 +2133,18 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       day?.to === T + 10800,
     `${solo?.left} +${solo?.width}`,
   );
+  /* …and the axis stays the DAY's even when only ONE lane is asked for, which
+   * is the only way to catch an extent quietly measured over the lanes drawn:
+   * berna alone would start at 0 and fill the row, and two panels opened one
+   * after the other would no longer compare. */
+  const alone = timesheet(sheetReport, ["dev:berna"])[0];
+  check(
+    "timesheet: the axis is the day's, not the drawn lanes'",
+    alone?.from === T &&
+      alone?.to === T + 10800 &&
+      Math.round(alone?.lanes[0]?.blocks[0]?.left ?? -1) === 67,
+    `${alone?.from === T} ${alone?.lanes[0]?.blocks[0]?.left}`,
+  );
   /* The axis is a REAL-TIME axis, so it carries wall-clock marks. */
   check(
     "timesheet: the axis is marked in wall-clock, not unitless",
