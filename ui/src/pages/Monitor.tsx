@@ -32,18 +32,24 @@
 import { Chapter } from "../components/monitor/Chapter";
 import { DependencyChain } from "../components/monitor/DependencyChain";
 import { EditSurface } from "../components/monitor/EditSurface";
-import { EventStream } from "../components/monitor/EventStream";
+import { EventStreamPane } from "../components/monitor/EventStream";
 import { LeaseHealth } from "../components/monitor/LeaseHealth";
 import { LiveLeases } from "../components/monitor/LiveLeases";
 import { Mentions } from "../components/monitor/Mentions";
 import { Throughput } from "../components/monitor/Throughput";
 import type { BoardPayload } from "../types";
+import type { Client } from "../client";
 
 export interface MonitorProps {
   board: BoardPayload;
   openCard: (id: string) => void;
   /** epoch seconds. Passed in so every pane shares one clock (panels.ts). */
   now: number;
+  /** ONLY the Event stream uses it, and only because the log is not part of the
+   *  board snapshot (see the pane below). Optional on purpose: the smoke
+   *  harness renders this page with no wire at all, and a page that demanded a
+   *  client would be a page that cannot be tested headlessly. */
+  client?: Client | null;
 }
 
 const scroll: React.CSSProperties = {
@@ -81,7 +87,7 @@ const pair = (ratio: string): React.CSSProperties => ({
   gap: "16px",
 });
 
-export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Element {
+export function Monitor({ board, openCard, now, client }: MonitorProps): React.JSX.Element {
   const g = board.groups;
   /** Every open row that can name a file, for the Edit surface. */
   const rows = [...g.take, ...g.doing, ...g.stalled, ...g.blocked];
@@ -124,9 +130,13 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
         <div style={right}>
           <Chapter milestone={board.milestone} chapters={board.milestones.length} />
           <Mentions mentions={g.mentions} now={now} onOpen={openCard} />
-          {/* No verb streams the log: `[]` and `null` are the honest arguments,
-              and the pane says so rather than being dropped. panels.ts, note 1. */}
-          <EventStream events={[]} total={null} now={now} />
+          {/* The one pane that reads the LOG and not the board snapshot, so it
+              is the one pane handed the client: it pages `events` itself
+              (useEvents.ts), resets to page one whenever `board` changes
+              identity, and opens no socket of its own. `client` is optional and
+              `null` draws the empty state — the headless harness renders this
+              page with no wire. */}
+          <EventStreamPane client={client ?? null} signal={board} now={now} />
         </div>
       </div>
     </div>
