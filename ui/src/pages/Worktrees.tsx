@@ -2,7 +2,9 @@
  *
  * One table, five columns, and under it three note cards. It answers the one
  * question the kanban cannot: not "what state is this card in" but "what is on
- * disk right now, and has it reached the trunk".
+ * disk right now, who is carrying it, and has it reached the trunk". The WHO is
+ * two facts on one mono line inside the Card cell — the dev to talk to and the
+ * worker process holding the directory; see `GRID` for why it is not a column.
  *
  * DERIVED FROM `board.groups`, exactly like `pages/Board.tsx::columns` — same
  * mechanism, different fold. There is no second read, no client-side status
@@ -36,15 +38,40 @@ import {
   type WorktreesProps,
 } from "../components/monitor/panels";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
+import { ownerOf, shortActor } from "../format";
 import { Ext, compareUrl, hasRepo } from "../links";
 import type { BoardRow } from "../types";
 
 export type { WorktreesProps };
 
+/** WHO carries a tree, from the row the table already has.
+ *
+ *  `holder` first, then `assignee`, and that order is the fact itself: `holder`
+ *  is the LIVE lease — the process that has the directory open right now —
+ *  while `assignee` is only who it was handed to, which is all a stalled or
+ *  handed-in row still has (`types.ts::BoardRow`). Taking the assignee when a
+ *  holder exists would name a hand-over that a running worker has already
+ *  superseded.
+ *
+ *  Two values out of one string, because they answer two different questions:
+ *  `ownerOf` folds `agent:berna/w1` → `dev:berna` (the ownership
+ *  `http/auth.py::authorize` enforces on the wire) and that is WHO TO TALK TO;
+ *  `shortActor` gives `w1`, WHICH PROCESS holds the tree. An actor that is a
+ *  dev already yields no worker — see `WorktreeRow.dev`. */
+function owner(row: BoardRow): { dev: string | null; worker: string | null } {
+  const actor = row.holder ?? (row.assignee || "");
+  if (!actor) return { dev: null, worker: null };
+  return {
+    dev: ownerOf(actor),
+    worker: actor.startsWith("agent:") ? shortActor(actor) : null,
+  };
+}
+
 function tree(row: BoardRow, status: string, tone: Tone): WorktreeRow {
   return {
     id: row.id,
     title: row.title,
+    ...owner(row),
     // Construction, not a fetch: `gitwork/trees.py` pins every card's worktree
     // to `.taskops/trees/<id>` for life. There is no directory on the wire.
     dir: TREE_DIR + row.id,
@@ -101,6 +128,29 @@ const NOTES: readonly { title: string; body: string }[] = [
 /* ── the design's own geometry, transcribed ───────────────────────────────── */
 
 const GRID = "130px minmax(0,1fr) 240px 92px 124px";
+
+/* WHO carries the tree is folded INTO the Card cell — a mono line under the
+ * title — and is NOT a sixth column. The five widths above are Nova's, drawn;
+ * the table already spends its ONE elastic track on the title, so a real column
+ * would have to take its width from that track (`minmax(0,1fr)` is what makes
+ * the long titles legible) and every other cell is a fixed pixel width the
+ * design chose.
+ *
+ * The mono second line is the design's OWN vocabulary for exactly this pair:
+ * Live leases prints `<card-id> → <actor>` as an 11px mono line under its title
+ * (`components/monitor/LiveLeases.tsx`), so a reader who has seen the Monitor
+ * has already learnt to read this line. Here the id is redundant — it is the
+ * Branch column, one cell to the left — so the line carries the two halves of
+ * the answer instead: `dev:berna · e4`.
+ *
+ * And it has to compose with tk-3939c9's SIXTH column, which is real and
+ * conditional: `LINK_COL` is appended to `GRID` only when the board carries a
+ * slug. A second conditional column would make the grid string a four-way
+ * product of two unrelated switches, and the compare anchor is laid out
+ * ABSOLUTELY against the row's right edge — a column that only sometimes sits
+ * between the pill and that anchor would move a link that is positioned in
+ * pixels. Folding leaves that geometry untouched: the grid is the same string,
+ * with or without ownership. */
 
 /* The compare column, added ONLY when the board carries a slug.
  *
@@ -232,15 +282,39 @@ export function Worktrees({
               <span className="mono" style={{ fontSize: "12px", color: "var(--accent)" }}>
                 {w.id}
               </span>
-              <span
-                style={{
-                  ...clip,
-                  fontSize: "14px",
-                  fontWeight: 450,
-                  letterSpacing: "-0.025em",
-                }}
-              >
-                {w.title}
+              <span style={{ minWidth: 0, display: "block" }}>
+                <span
+                  style={{
+                    ...clip,
+                    display: "block",
+                    fontSize: "14px",
+                    fontWeight: 450,
+                    letterSpacing: "-0.025em",
+                  }}
+                >
+                  {w.title}
+                </span>
+                {/* The dev is the sentence's subject and the worker its
+                    qualifier, so they are drawn in that weight: the person in
+                    `--text-2`, the process a shade back in `--text-3`. Same
+                    line, two colours — distinguishable without a second column
+                    and without a label nobody needs twice per row. */}
+                <span
+                  className="mono"
+                  data-testid="worktree-owner"
+                  style={{
+                    ...clip,
+                    display: "block",
+                    fontSize: "11px",
+                    marginTop: "4px",
+                    color: w.dev ? "var(--text-2)" : "var(--text-3)",
+                  }}
+                >
+                  {w.dev ?? "nobody — free to take"}
+                  {w.worker ? (
+                    <span style={{ color: "var(--text-3)" }}>{` · ${w.worker}`}</span>
+                  ) : null}
+                </span>
               </span>
               <span
                 className="mono"
