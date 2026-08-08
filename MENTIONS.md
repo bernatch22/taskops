@@ -150,10 +150,15 @@ and `message` (documented at the top of that file as a deliberate loss). Once
   — so a handoff that also looped in a second person does not silently drop
   that second person.
 
-Re-run against the axion board after this ships; 66 events (65 `handoff` + 1
-`message`) carried `mentions` and are worth re-checking by hand — diff the
-`pending()` output before/after against what a human remembers being owed a
-reply.
+Run against the real axion board (2026-08-08, tk-5fd8a0): **82** events carry
+`mentions` — 65 `handoff` + 17 `message`; the "66" above was counted against a
+smaller, older copy of the log. Measured, all 65 handoffs have
+`mentions == [assigned_to]` and loop in nobody else, so the companion-comment
+rule fires ZERO times and only the **17** `message` mentions survive into v2.
+That is correct, not loss: the other 65 mentions are carried by the assignment
+itself, exactly as this section intends. The human-eye check stands: every one
+of the 17 mentioned cards is closed, so `pending()` (which excludes closed
+cards) owes nobody a reply on the migrated board.
 
 ## 6. What NOT to build
 

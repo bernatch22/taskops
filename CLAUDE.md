@@ -249,9 +249,16 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 ## What is left
 
-1. Run `scripts/migrate_v1.py` against the v1 boards on axion. The script is
-   written and tested; it has never been run on the real board, and the 66
-   events carrying `mentions` want a human eye after (MENTIONS.md §5).
+1. ~~Run `scripts/migrate_v1.py` against the v1 boards on axion.~~ DONE
+   (tk-5fd8a0, 2026-08-08): the script was first fixed against the real bytes —
+   it silently lost the milestone, the criteria, the rules and every released
+   note (`tests/test_migrate_v1.py` pins each fix against verbatim fixtures in
+   `tests/fixtures/axion-v1/`) — then run: 926 v1 events → 845 v2 events + 81
+   named drops into `~/axion-v3/.taskops/board`, verified count by count.
+   Mentions: 82 in v1, 17 survive, and that is correct (MENTIONS.md §5).
+   Still open there: v1's `.taskops/remote.json` in that clone carries the v1
+   server url, so `taskops ui` would redirect until it is retired — the board
+   is served by hand for now.
 2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
 3. The React dashboard is BUILT — the milestone "Monitor — Nova, panel by panel"
    closed it. It has its data layer, its chrome (header, the milestone picker,
