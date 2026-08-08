@@ -135,6 +135,20 @@ npm run build     # typecheck + esbuild -> ../src/taskops/ui/   (commit the outp
 npm run check     # the closure: build + smoke + `git diff --exit-code` on the output
 ```
 
+Because that output is committed, `.gitattributes` marks the three files
+`-merge`: git will not text-merge a generated artifact into one no build ever
+produced. **A fresh clone needs nothing for this** — `-merge` is built into
+git, there is no driver to install and no `git config` to run. It means a merge
+that touches the bundle stops with the path conflicted and your copy intact;
+resolve it by rebuilding, never by hand:
+
+```sh
+cd ui && node build.mjs && git add ../src/taskops/ui && git commit --no-edit
+```
+
+(`docs/fan-out.md` §11 — five parallel cards each rebuilding the bundle cost a
+milestone six merge round trips.)
+
 `npm run check` does not pass yet: its `smoke` step runs `ui/smoke/run.mjs`,
 which is not written — the headless harness is still a card on the board, and
 `tests/test_ui.py` is skipped for the same reason. `npm run build` is the step

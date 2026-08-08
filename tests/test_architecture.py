@@ -192,3 +192,19 @@ def test_no_assert_for_invariants_in_src() -> None:
 def test_future_annotations_everywhere() -> None:
     for path in modules():
         assert "from __future__ import annotations" in source_of(path), dotted(path)
+
+
+def test_the_committed_bundle_is_never_text_merged() -> None:
+    """`src/taskops/ui/` is build OUTPUT that is committed on purpose, so N
+    parallel cards each rebuilding it conflict by construction. Marked `-merge`
+    (git's BUILT-IN refusal — no `git config`, nothing a fresh clone installs)
+    so a merge stops loudly and is resolved by rebuilding, never by hunk.
+    docs/fan-out.md §11."""
+    rules = (SRC.parent.parent / ".gitattributes").read_text().splitlines()
+    marked = {
+        line.split()[0]: line.split()[1:] for line in rules if line.strip() and not line.startswith("#")
+    }
+    for built in ("app.js", "style.css", "index.html"):
+        attrs = marked.get(f"src/taskops/ui/{built}")
+        assert attrs is not None, f"{built} is generated and committed but .gitattributes says nothing"
+        assert "-merge" in attrs, f"{built} may still be text-merged into a bundle no build produced"

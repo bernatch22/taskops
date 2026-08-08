@@ -114,6 +114,11 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     # branches before they exist and its (correct) search finds nothing.
     for seam in ("ONE serialized card", "search finds nothing", "docs/fan-out.md"):
         assert seam in text
+    # …and its sibling (fan-out.md §11): a committed BUILD OUTPUT is rebuilt by
+    # one card at the end, because N cards regenerating one artifact is N-1
+    # guaranteed conflicts no matter how disjoint their sources are.
+    for bundle in ("GENERATED artifact", "ONE card rebuilds it at the end"):
+        assert bundle in text
     # …and the whole handshake must fit UNDER the measured truncation, panorama
     # included: hello.CAP is the ceiling and the protocol may not eat all of it.
     assert len(text) + 300 + 2 <= hello.CAP, "INSTRUCTIONS grew past the cap — the panorama dies"
