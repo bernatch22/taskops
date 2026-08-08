@@ -2,7 +2,7 @@
 
     taskops init            a local board in this repo
     taskops join <url>      join one (?token= or ?invite=), install the hooks
-    taskops serve           host boards
+    taskops serve           host boards — an events API, no dashboard
     taskops invite <who>    a single-use link  ·  --revoke <id>
     taskops tidy            remove worktrees whose work is already in the trunk
     taskops ui              the dashboard — serves it if nothing is, opens the browser
@@ -37,7 +37,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     server.add_argument("--root", default="~/taskops-boards")
     server.add_argument("--host", default="127.0.0.1")
     server.add_argument("--port", type=int, default=8787)
-    server.add_argument("--ui", default="", help="override the packaged dashboard bundle")
     invite = sub.add_parser("invite", help="a single-use link for a teammate")
     invite.add_argument("who", nargs="?", default="")
     invite.add_argument("--board", default="")

@@ -33,11 +33,13 @@ def serve(args: argparse.Namespace) -> int:
     )
 
     root = Path(str(args.root)).expanduser()
-    ui_path = Path(str(args.ui)).expanduser() if args.ui else None
     # No `repo=`: this root is a directory of boards, not a checkout. /git
     # refuses here and says which case it is, rather than sniffing for a repo
-    # that would be the wrong one anyway (ARCHITECTURE.md §16).
-    httpd = make_server(root, str(args.host), int(args.port), ui_path)
+    # that would be the wrong one anyway (ARCHITECTURE.md §16). The SAME
+    # argument is why this host serves no dashboard either — a window needs a
+    # clone to read a diff from, and /ui/ answers one sentence naming
+    # `taskops ui` instead (`http/static.py`, which carries the post-mortem).
+    httpd = make_server(root, str(args.host), int(args.port))
     host, port = httpd.server_address[0], httpd.server_address[1]
     print(f"taskops serving {root} on http://{host}:{port} — ctrl-c to stop")
     try:

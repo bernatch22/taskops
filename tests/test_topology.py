@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+import taskops
 from taskops import _clock
 from taskops.http import feed
 from taskops.board import RemoteBoard
@@ -287,17 +288,37 @@ def test_the_websocket_upgrade_is_a_real_handshake(server: BoardServer) -> None:
     sock.close()
 
 
-def test_the_ui_page_is_served_next_to_its_board(server: BoardServer, tmp_path: Path) -> None:
-    # An explicit ui dir: with no root-local ui/, mounts falls back to the
-    # bundle PACKAGED inside taskops itself — and a test that wrote its probe
-    # page "into mounts.ui" would then scribble over the real src/taskops/ui.
-    server.mounts.ui = tmp_path / "ui"
-    server.mounts.ui.mkdir(parents=True, exist_ok=True)
-    (server.mounts.ui / "index.html").write_text("<title>taskops</title>", encoding="utf-8")
-    with urlopen(f"{url_of(server)}/ui/", timeout=5) as response:
+def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
+    server: BoardServer,
+) -> None:
+    """`taskops serve` is an events API. Its /ui/ is ONE sentence naming
+    `taskops ui`, at 410 — the page was withdrawn on purpose and is not coming
+    back to a host that has no clone to read a diff from (`http/static.py`)."""
+    assert server.mounts.ui is None and server.mounts.repo is None
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"{url_of(server)}/ui/", timeout=5)
+    answer = caught.value
+    body = answer.read().decode()
+    assert answer.code == 410
+    assert answer.headers["Content-Type"].startswith("text/plain")
+    assert "taskops ui" in body
+    # the sentence, and NOT the bundle: no page, no script, no bundle marker.
+    assert "<html" not in body.lower() and "<script" not in body.lower()
+    assert len(body) < 400
+
+
+def test_the_window_still_serves_the_bundle_it_ships_with(
+    repo_server: BoardServer,
+) -> None:
+    """The other half of the same switch: a host that stands in a checkout —
+    what `taskops ui` builds — serves the bundle PACKAGED in the wheel. The UI
+    was never removed from the package; only the server-side mount was."""
+    packaged = Path(str(taskops.__file__)).resolve().parent / "ui"
+    assert repo_server.mounts.ui == packaged
+    with urlopen(f"{url_of(repo_server)}/ui/", timeout=5) as response:
         body = response.read().decode()
         assert response.headers["Content-Type"].startswith("text/html")
-    assert "taskops" in body
+    assert "<script" in body.lower()
 
 
 # ── plumbing for the raw calls above ────────────────────────────────────────

@@ -44,12 +44,14 @@ class Mounts:
     holds no board of its own: every /rpc is relayed to the server that does
     (`upstream.py`), while /git and /ui stay local — which is the point of the
     window (ARCHITECTURE.md §16).
+
+    `ui` is not a parameter: it is `repo`'s shadow. A window (`taskops ui`) has
+    a checkout and serves the bundle; a board host (`taskops serve`) has neither.
     """
 
     def __init__(
         self,
         root: Path,
-        ui: Path | None = None,
         repo: Path | None = None,
         upstream: Upstream | None = None,
     ) -> None:
@@ -61,11 +63,13 @@ class Mounts:
         # `taskops serve` sits in a boards directory and hands nothing, so its
         # /git door refuses with a message that says exactly that (gitdoor.py).
         self.repo = repo
-        # The bundle ships INSIDE the package (src/taskops/ui), so a server
-        # needs no --ui flag to have a dashboard: an override is for developing
-        # the page, a root-local ui/ is a board host's custom skin, and the
-        # packaged one is what everybody actually gets.
-        self.ui = ui or (root / "ui" if (root / "ui").is_dir() else _PACKAGED_UI)
+        # ONE switch, not two: the same `repo` that mounts /git mounts the
+        # bundle. A dashboard needs the viewer's CLONE to draw a diff, so a
+        # process with no clone has no business serving one — see `static.py`
+        # for the whole post-mortem. The bundle still ships inside the wheel;
+        # what went away is the server-side mount and the `--ui` flag that
+        # configured it.
+        self.ui = _PACKAGED_UI if repo is not None else None
         self.credentials = Credentials(root / "live.sqlite")
         self.hub = feed.Hub()
         self._lock = Lock()
