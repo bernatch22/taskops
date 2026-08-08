@@ -114,6 +114,11 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     # branches before they exist and its (correct) search finds nothing.
     for seam in ("ONE serialized card", "search finds nothing", "docs/fan-out.md"):
         assert seam in text
+    # …and its sibling (fan-out.md §11): a committed BUILD OUTPUT is rebuilt by
+    # one card at the end, because N cards regenerating one artifact is N-1
+    # guaranteed conflicts no matter how disjoint their sources are.
+    for bundle in ("GENERATED artifact", "ONE card rebuilds it at the end"):
+        assert bundle in text
     # …and the whole handshake must fit UNDER the measured truncation, panorama
     # included: hello.CAP is the ceiling and the protocol may not eat all of it.
     assert len(text) + 300 + 2 <= hello.CAP, "INSTRUCTIONS grew past the cap — the panorama dies"
@@ -382,6 +387,58 @@ def test_merge_refuses_before_git_ever_runs_when_the_card_is_not_done(
     assert not (repo / ".taskops" / "trees").exists()  # git never even started
 
 
+def test_merge_names_a_stale_branch_instead_of_reporting_its_conflict(
+    repo: Path, boards: Any
+) -> None:
+    """A card that never pulled its chapter in came back as a CONFLICT about a
+    file, and "you are behind" was nowhere in it — one session paid six round
+    trips to that, four workers each told by hand what `merge-base
+    --is-ancestor` says. The refusal names the branch, the distance, and the two
+    commands; it does not merge or rebase on the worker's behalf."""
+    from taskops.gitwork import run, trees
+
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+    dev.call("bind", {"task": card, "sha": "a1b2c3", "subject": "feat: model"})
+    w1.call("update", {"task": card, "status": "done", "comment": "model + tests"})
+
+    dossier = dev.call("card", {"task": card})
+    stone_branch = str(dossier["milestone"]["branch"])
+    card_branch = str(dossier["branch"])
+
+    run.must("init", "-q", "-b", "main", str(repo))
+    run.must("config", "user.email", "test@example.com", cwd=repo)
+    run.must("config", "user.name", "Test", cwd=repo)
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    run.must("add", "README.md", cwd=repo)
+    run.must("commit", "-q", "-m", "first", cwd=repo)
+
+    # the chapter moves on; the card's branch is cut from where main was
+    tree = trees.ensure_card(repo, card, card_branch, stone_branch)
+    integration = trees.integration_tree(repo, stone_branch)
+    (integration / "shared.py").write_text("VAT = 21\n", encoding="utf-8")
+    run.must("add", "-A", cwd=integration)
+    run.must("commit", "-q", "-m", "chapter moves", cwd=integration)
+
+    with pytest.raises(Refused) as refusal:
+        call(dev, repo, "taskops_merge", task=card)
+    said = str(refusal.value)
+    assert f"{card} is 1 commit behind {stone_branch}" in said  # counted, not just "behind"
+    assert f"cd {trees.card_tree(repo, card)} && git merge {stone_branch}" in said
+    assert f"taskops_merge task={card} again" in said
+    # refused, never repaired: the card's branch is still the worker's, untouched
+    assert trees.behind(repo, stone_branch, card_branch) == 1
+
+    # ...and once the worker does exactly that, the merge proceeds as before
+    run.must("merge", "-q", "--no-edit", stone_branch, cwd=tree)
+    out = call(dev, repo, "taskops_merge", task=card)
+    assert stone_branch in out
+    assert (integration / "shared.py").exists()
+
+
 def test_a_milestones_criteria_travel_into_every_take_the_way_rules_do(
     repo: Path, boards: Any
 ) -> None:
@@ -464,7 +521,7 @@ def test_a_tool_bug_is_an_error_result_not_a_dead_server(
     )
     request = {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
                "params": {"name": "taskops_board", "arguments": {}}}
-    answer = server.handle(dev, repo, json.dumps(request))
+    answer = server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert answer is not None
     result: Any = answer["result"]
     assert result["isError"] is True and "RuntimeError" in result["content"][0]["text"]
@@ -483,7 +540,7 @@ def test_a_refusal_comes_back_as_readable_text_not_a_protocol_error(
         "method": "tools/call",
         "params": {"name": "taskops_take", "arguments": {"task": cards[0]["id"]}},
     }
-    answer = server.handle(dev, repo, json.dumps(request))
+    answer = server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert answer is not None
     result: Any = answer["result"]
     assert result["isError"] is True
@@ -498,7 +555,7 @@ def test_an_unknown_tool_lists_the_ones_that_exist(repo: Path, boards: Any) -> N
         "method": "tools/call",
         "params": {"name": "taskops_land", "arguments": {}},
     }
-    answer = server.handle(dev, repo, json.dumps(request))
+    answer = server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert answer is not None
     assert "taskops_board" in answer["result"]["content"][0]["text"]
 
@@ -509,7 +566,8 @@ def test_an_unknown_tool_lists_the_ones_that_exist(repo: Path, boards: Any) -> N
 def test_initialize_advertises_the_tools_and_the_instructions(repo: Path, boards: Any) -> None:
     dev = boards(BERNA)
     answer = server.handle(
-        dev, repo, json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        server.Boards(dev, repo, BERNA),
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
     )
     assert answer is not None
     result: Any = answer["result"]
@@ -521,7 +579,7 @@ def test_initialize_advertises_the_tools_and_the_instructions(repo: Path, boards
 def test_a_notification_gets_no_answer_at_all(repo: Path, boards: Any) -> None:
     dev = boards(BERNA)
     line = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
-    assert server.handle(dev, repo, line) is None
+    assert server.handle(server.Boards(dev, repo, BERNA), line) is None
 
 
 def test_the_loop_answers_one_line_per_request(repo: Path, boards: Any) -> None:
@@ -532,7 +590,7 @@ def test_the_loop_answers_one_line_per_request(repo: Path, boards: Any) -> None:
         json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
     ]
     out = io.StringIO()
-    server.serve(dev, repo, io.StringIO("\n".join(lines) + "\n"), out)
+    server.serve(server.Boards(dev, repo, BERNA), io.StringIO("\n".join(lines) + "\n"), out)
     answers = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [a["id"] for a in answers] == [1, 2]  # the notification produced nothing
     assert len(answers[1]["result"]["tools"]) == 9
@@ -540,7 +598,7 @@ def test_the_loop_answers_one_line_per_request(repo: Path, boards: Any) -> None:
 
 def test_junk_on_the_wire_is_a_parse_error_not_a_crash(repo: Path, boards: Any) -> None:
     dev = boards(BERNA)
-    answer = server.handle(dev, repo, "{not json")
+    answer = server.handle(server.Boards(dev, repo, BERNA), "{not json")
     assert answer is not None and answer["error"]["code"] == -32700
 
 
@@ -643,3 +701,46 @@ def test_taskops_review_is_declared_like_every_other_tool() -> None:
     assert "review" not in SCHEMAS["taskops_take"]["properties"]
     assert "reviews" in SCHEMAS["taskops_plan"]["properties"]
     assert "review" in SCHEMAS["taskops_update"]["properties"]
+
+
+def test_a_call_can_name_another_project(tmp_path: Path, repo: Path, boards: Any) -> None:
+    """One MCP server per session used to mean one REACHABLE board: a second
+    project answered nothing, so its work left through curl against the HTTP
+    door — which dispatches verbs and therefore silently loses the git half
+    (`assign` hands out a card and cuts no worktree). Found on the first real
+    second board, 2026-08-08."""
+    other = tmp_path / "elsewhere"
+    (other / ".taskops").mkdir(parents=True)
+    home = boards(BERNA)
+    registry = server.Boards(home, repo, BERNA)
+
+    # The default is unchanged: no repo_path is still this session's own board.
+    here, root = registry.at("")
+    assert here is home and root == repo
+
+    # And a path inside another project resolves to ITS root, not to ours.
+    there, elsewhere = registry.at(str(other))
+    assert elsewhere == other
+    assert there is not home
+    # Twice is the same board, never two caches racing each other's writes.
+    assert registry.at(str(other))[0] is there
+    registry.close()
+
+
+def test_repo_path_never_reaches_a_verb(repo: Path, boards: Any) -> None:
+    """Where a call GOES is the server's question. A verb that saw `repo_path`
+    would refuse it as an unknown argument."""
+    seen: dict[str, Any] = {}
+
+    def spy(_board: Any, _repo: Path, args: Any, _now: float) -> str:
+        seen.update(args)
+        return "ok"
+
+    dev = boards(BERNA)
+    request = {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+               "params": {"name": "taskops_board",
+                          "arguments": {"repo_path": str(repo), "milestone": "ms-1"}}}
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setitem(tools.BY_NAME, "taskops_board", tools.BY_NAME["taskops_board"]._replace(run=spy))
+        server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
+    assert "milestone" in seen and "repo_path" not in seen

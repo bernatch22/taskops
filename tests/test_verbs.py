@@ -64,6 +64,66 @@ def test_renaming_a_milestone_never_moves_its_branch(stores: Stores) -> None:
     assert stores.state()["milestones"][ident]["branch"] == "ms/mvp-facturador"
 
 
+def test_landing_a_milestone_closes_it(stores: Stores) -> None:
+    """Landing IS closing. The `landed` op used to fall through the fold
+    unfolded: the chapter stayed "open" forever, and from the second chapter on
+    `open_milestone` (None for "several") could never focus one again — no
+    Chapter pane, `plan` demanding milestone= on every call, permanently.
+    Found on the first real landing, 2026-08-07."""
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "merged", BERNA, milestone=ident, into="master", sha="abc123")
+    assert stores.state()["milestones"][ident]["status"] == "landed"
+    # And the board can focus a fresh chapter again — the symptom that exposed it.
+    second = call(stores, "plan", BERNA, milestone="chapter two", goal="g", tasks=[{"title": "t"}])
+    board = call(stores, "board", BERNA)
+    assert board["milestone"] is not None
+    assert board["milestone"]["id"] == second["milestone"]["id"]
+
+
+def test_a_new_chapter_is_warned_about_the_unlanded_one_it_will_not_see(stores: Stores) -> None:
+    """The Monitor chapter was cut from a `master` missing 27 commits of unlanded
+    UI work; a worker found out when its worktree had no `ui/` at all. A warning,
+    never a refusal — opening a second chapter deliberately is normal."""
+    first = planned(stores)["milestone"]
+    second = call(stores, "plan", BERNA, milestone="Monitor", goal="g", tasks=[{"title": "t"}])
+    assert second["cards"], "the plan still went through — this is a warning, not a refusal"
+    note = "\n".join(second["notes"])
+    assert f'{first["id"]} "MVP facturador" is open and has not landed.' in note
+    assert "ms/monitor is cut from the trunk, so it will not see that chapter's work." in note
+
+
+def test_a_landed_chapter_is_not_warned_about(stores: Stores) -> None:
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "merged", BERNA, milestone=ident, into="master", sha="abc123")
+    assert call(stores, "plan", BERNA, milestone="Monitor", tasks=[{"title": "t"}])["notes"] == []
+
+
+def test_a_dropped_chapter_is_not_warned_about(stores: Stores) -> None:
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "update", BERNA, milestone=ident, status="dropped")
+    assert call(stores, "plan", BERNA, milestone="Monitor", tasks=[{"title": "t"}])["notes"] == []
+
+
+def test_a_finished_but_unlanded_chapter_is_still_warned_about(stores: Stores) -> None:
+    """`done` is not `landed`: the work exists on a branch the trunk does not
+    carry, which is exactly what the new branch will not see."""
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "update", BERNA, milestone=ident, status="done")
+    out = call(stores, "plan", BERNA, milestone="Monitor", tasks=[{"title": "t"}])
+    assert f'{ident} "MVP facturador" is done and has not landed.' in out["notes"]
+
+
+def test_adding_cards_to_an_existing_chapter_warns_about_nothing(stores: Stores) -> None:
+    """The warning is about the branch a NEW chapter is cut from. Planning into a
+    chapter that already exists cuts no branch, so there is nothing to say."""
+    first = planned(stores)["milestone"]
+    call(stores, "plan", BERNA, milestone="Monitor", goal="g", tasks=[{"title": "t"}])
+    by_id = call(stores, "plan", BERNA, milestone=first["id"], tasks=[{"title": "more"}])
+    assert by_id["notes"] == []
+    by_title = call(stores, "plan", BERNA, milestone="MVP facturador", tasks=[{"title": "yet"}])
+    assert by_title["notes"] == []
+
+
 def test_planning_the_same_title_twice_adds_to_the_same_milestone(stores: Stores) -> None:
     """Two chapters with one name would split the board: two goals, two branches,
     and two possible answers to "the open milestone"."""
@@ -257,6 +317,20 @@ def test_merge_only_accepts_done_cards_and_clears_the_merge_group(stores: Stores
     out = call(stores, "merged", BERNA, task=card, sha="9c2f")
     assert out["into"] == "ms/mvp-facturador"
     assert call(stores, "board", BERNA)["groups"]["merge"] == []
+
+
+def test_an_integrated_card_stays_visible_under_done(stores: Stores) -> None:
+    """A merged card used to leave the payload entirely: it was in no group and
+    on no screen, so a chapter's finished work existed only in the event log.
+    21 closed cards and nothing to show for them (2026-08-07)."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(stores, "update", W1, task=card, status="done", no_code=True, comment="done")
+    call(stores, "merged", BERNA, task=card, sha="9c2f")
+    board = call(stores, "board", BERNA)
+    assert board["groups"]["merge"] == []  # integrated: nothing left to do
+    assert [c["id"] for c in board["groups"]["done"]] == [card]  # but still visible
+    assert board["done_total"] == 1
 
 
 # ── the dead worker ─────────────────────────────────────────────────────────
@@ -674,6 +748,30 @@ def test_a_reviewer_that_keeps_talking_never_loses_its_review(
         clock(LEASE_TTL * 0.6)
         call(stores, "board", R1)  # an ordinary read, nothing about reviewing
     assert [r["id"] for r in call(stores, "board", BERNA)["groups"]["reviewing"]] == [card]
+
+
+def test_a_reviewing_row_carries_the_review_leases_own_acquired(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """`since` is the WORK lease's (or the card's `updated`) and `review_since`
+    is the REVIEW lease's — two leases on one card, and a screen counting the
+    second one down from the first can only state a floor that reads 0 while the
+    review is provably still live (`ui/.../LiveLeases.tsx::checked`).
+
+    The gap is the whole point: the card was handed in long before anybody
+    started checking it, so the two timestamps are a TTL apart.
+    """
+    card = handed_in(stores)
+    clock(LEASE_TTL + 60)  # the work lease lapses; the card waits, unchecked
+    call(stores, "review", R1, task=card)
+    row = call(stores, "board", BERNA)["groups"]["reviewing"][0]
+
+    assert row["id"] == card and row["holder"] == R1
+    assert row["review_since"] == _clock.now()  # the review began just now
+    assert row["since"] <= _clock.now() - LEASE_TTL  # and the card is far older
+    # the floor the UI falls back to would say 0 left; the real lease is full
+    assert LEASE_TTL - (_clock.now() - row["since"]) <= 0
+    assert LEASE_TTL - (_clock.now() - row["review_since"]) == LEASE_TTL
 
 
 def test_two_reviewers_one_card_one_winner(stores: Stores) -> None:

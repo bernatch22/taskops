@@ -10,61 +10,17 @@ from __future__ import annotations
 
 from typing import Any
 
-
-def _text(desc: str) -> dict[str, Any]:
-    return {"type": "string", "description": desc}
-
-
-def _list(desc: str) -> dict[str, Any]:
-    return {"type": "array", "items": {"type": "string"}, "description": desc}
-
-
-def _flag(desc: str) -> dict[str, Any]:
-    return {"type": "boolean", "description": desc}
-
-
-def _object(props: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": props,
-        "required": required or [],
-        "additionalProperties": False,
-    }
-
-
-PRIORITY = {"type": "integer", "minimum": 0, "maximum": 3, "description": "0 urgent … 3 idle"}
-
-ACTOR = _text(
-    "who is speaking, when it is not the session's own identity. Sub-agents share the "
-    "session's ONE MCP server, so a spawned worker MUST pass the agent:<dev>/<name> its "
-    "brief names on EVERY taskops call — without it the board hears the orchestrator."
-)
-
-CRITERIA = _list(
-    "what this card is accepted against — the other half of the spec. The worker "
-    "is shown these right under it; closing says which were met and what proves it."
-)
-LABELS = _list('routing and search hints, e.g. ["backend", "urgent"]')
-
-CARD = _object(
-    {
-        "title": _text("a label — not the brief"),
-        "spec": _text(
-            "the brief, complete enough that a fresh agent reads it and needs nothing "
-            "else: what done looks like, what must NOT change, and where to look"
-        ),
-        "criteria": CRITERIA,
-        "files": _list("the edit surface; used to warn about collisions"),
-        "labels": LABELS,
-        "priority": PRIORITY,
-        "after": {"description": "an index into this call's tasks, or a card id"},
-        "parent": {"description": "the epic: an index into this call's tasks, or a card id"},
-        "review": _flag(
-            "this card must pass review before it closes. Default: the milestone's "
-            "reviews= flag; the card's own value always wins."
-        ),
-    },
-    ["title"],
+from .fields import (
+    CARD,
+    ACTOR,
+    LABELS,
+    CRITERIA,
+    PRIORITY,
+    REPO_PATH,
+    _flag,
+    _list,
+    _text,
+    _object,
 )
 
 SCHEMAS: dict[str, dict[str, Any]] = {
@@ -194,7 +150,9 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     ),
 }
 
-# Every tool takes actor= — identity is per CALL, not per process, because the
-# host runs one MCP server per session and every sub-agent shares it.
+# Every tool takes actor= and repo_path= — identity and DESTINATION are per CALL,
+# not per process, because the host runs one MCP server per session and every
+# sub-agent shares it.
 for _schema in SCHEMAS.values():
     _schema["properties"]["actor"] = ACTOR
+    _schema["properties"]["repo_path"] = REPO_PATH

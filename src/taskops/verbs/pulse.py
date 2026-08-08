@@ -26,11 +26,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import _args, _facts, report, _context
+from . import _args, _facts, report, _context, _mentions
 from .. import _clock
 from ..core import graph
 from ..core.types import Card, Milestone
 from ..store.stores import Stores
+
+DONE_SHOWN = 20
+"""How many closed cards ride along. The cap is the whole reason `done` can be
+in this payload at all: every other group is bounded by how much work is in
+flight, and closed work only ever grows."""
 
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
@@ -42,14 +47,18 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     stone = _which(stores, args)
     mine = [c for c in cards.values() if not stone or c["milestone"] == stone["id"]]
 
-    checking = _facts.reviewing(stores, now)
+    # The whole review lease, not just the name: a `reviewing` row has to say
+    # how much of THAT lease is left, and the work lease's `since` can only
+    # bound it from below (`_row`'s `since` note). Same query either way.
+    live_reviews = _facts.review_leases(stores, now)
+    checking = {task: lease.actor for task, lease in live_reviews.items()}
     stood = _facts.standings(stores)
     # REVIEW above STALLED: finished work nobody is checking is more blocking
     # than work nobody has started. CHANGES right after it — the fix is usually
     # seconds of an agent's time and it unblocks a merge.
     groups: dict[str, list[dict[str, Any]]] = {
         "merge": [],
-        "mentions": _mentions(stores, actor),
+        "mentions": _mentions.rows(stores, actor),
         "review": [],
         "changes": [],
         "stalled": [],
@@ -57,6 +66,13 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         "doing": [],
         "reviewing": [],
         "blocked": [],
+        # LAST, and it is not a move the board is waiting for: it is the only
+        # place finished work is visible at all. A merged card used to be
+        # dropped from this payload entirely, so a chapter's whole history
+        # existed in the log and on no screen. Capped and newest-first: a
+        # chapter is bounded, a board is not, and an uncapped tail would grow
+        # this read forever.
+        "done": [],
     }
     for card in sorted(mine, key=lambda c: (c["priority"], c["created"])):
         shown = graph.derived(cards, card, live, checking, stood)
@@ -64,6 +80,8 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         if shown == "done":
             if not _facts.merged_into(stores.events(card["id"])):
                 groups["merge"].append(row)
+            else:
+                groups["done"].append(row)
         elif shown == "blocked":
             groups["blocked"].append(row | {"waiting_on": graph.blockers(cards, card["id"])})
         elif shown in ("review", "changes"):
@@ -72,14 +90,46 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
             note = stood[card["id"]].note if shown == "changes" else ""
             groups[shown].append(row | {"text": note, "holder": checking.get(card["id"])})
         elif shown == "reviewing":
-            groups["reviewing"].append(row | {"holder": checking.get(card["id"])})
+            # `review_since` is the REVIEW lease's own acquisition, and it is a
+            # second key rather than a better `since` because the two are
+            # different leases on the same card: `since` stays the work lease's,
+            # held by the worker who may still be alive beside the verifier.
+            # Conflating them is what made the countdown a floor that read 0
+            # under a live lease.
+            #
+            # `quiet_for` on this row has the SAME split and is deliberately
+            # left alone: `_row` fills it from the work lease, so a card handed
+            # in an hour ago with a verifier actively on it arrives saying
+            # `quiet_for = 3600`. That is not wrong — the WORKER has been quiet
+            # for an hour — it is only unreadable next to a `holder` that was
+            # overwritten with the verifier. A reader that wants the verifier's
+            # timing now has it exactly, here, and does not have to reinterpret
+            # a number that belongs to the other lease. Redefining `quiet_for`
+            # per group would make one key mean two things, which is the shape
+            # of the bug this key exists to end.
+            lease = live_reviews.get(card["id"])
+            groups["reviewing"].append(
+                row
+                | {
+                    "holder": checking.get(card["id"]),
+                    "review_since": lease.acquired if lease else None,
+                }
+            )
         elif shown == "ready":
             groups["take"].append(row)
         elif shown in groups:
             groups[shown].append(row)
 
+    # Newest first, and only the tail: the other groups are sorted by what to do
+    # next, but nobody acts on a closed card — what a reader wants is what just
+    # landed. `done_total` is the honest count behind the cap, so a screen can
+    # say "20 of 63" instead of implying the chapter closed twenty cards.
+    done_total = len(groups["done"])
+    groups["done"] = sorted(groups["done"], key=lambda r: r["since"], reverse=True)[:DONE_SHOWN]
+
     window = _args.text(args, "window", default="")
     return {
+        "done_total": done_total,
         "milestone": stone,
         "milestones": [m for m in state["milestones"].values() if m["status"] == "open"],
         "groups": groups,
@@ -90,69 +140,11 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     }
 
 
-def mentions(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
-    """The ✉ group alone, for ONE reader, and WITHOUT renewing anything.
-
-    `taskops hook claude` (MENTIONS.md §9a) calls this on a tool call the reader
-    did not make itself, so it must be a read in the strictest sense. `board`
-    would not do: it opens with `live.renew(actor)`, which is right for a call
-    the actor typed — that call IS the heartbeat — and wrong here. A hook firing
-    on the orchestrator's `Read` of a dead worker's worktree would renew THAT
-    worker's lease, and the card it abandoned would never reach STALLED. That is
-    a stored `doing` grown back by the side door, which is the one thing this
-    board is built not to have.
-
-    `for_task=` is how a hook that knows the card asks who it belongs to; see
-    `_addressee`. The answer names the actor it resolved, because the caller
-    could not have known it.
-    """
-    who = _addressee(stores, args) or actor
-    return {"actor": who, "mentions": _mentions(stores, who)}
-
-
-def _addressee(stores: Stores, args: _args.Args) -> str:
-    """Whose ✉ a card carries: its live holder, else whoever it was handed to.
-
-    A hook process does not inherit the worker's environment, so it cannot read
-    `TASKOPS_ACTOR` off a sub-agent — but every tool call that sub-agent makes
-    touches its own worktree, the worktree is named after the card, and the card
-    is named here. That chain is what makes delivery to a sub-agent possible at
-    all. An unknown card, or one nobody owns, answers "" so the caller falls
-    back to its own identity rather than to a guess.
-    """
-    task = _args.ident(args, "for_task", default="")
-    card = stores.state()["cards"].get(task) if task else None
-    if card is None:
-        return ""
-    return stores.live.holder(task, _clock.now()) or card["assignee"]
-
-
 def _which(stores: Stores, args: _args.Args) -> Milestone | None:
     given = _args.text(args, "milestone", default="")
     if given:
         return stores.state()["milestones"].get(given)
     return _facts.open_milestone(stores)
-
-
-def _mentions(stores: Stores, actor: str) -> list[dict[str, Any]]:
-    """The one group the milestone filter does not apply to: a mention is
-    addressed to a person, not to a chapter, and a reader focused elsewhere is
-    exactly who must not miss it.
-
-    The card's title travels with it like it does in every other group — an id
-    is not something a reader recognises without spending another call.
-    """
-    cards = stores.state()["cards"]
-    return [
-        {
-            "id": m["task"],
-            "title": cards[m["task"]]["title"] if m["task"] in cards else "",
-            "by": m["by"],
-            "text": m["text"],
-            "ts": m["ts"],
-        }
-        for m in _facts.pending_mentions(stores, actor)
-    ]
 
 
 def _row(stores: Stores, card: Card, now: float, live: dict[str, str]) -> dict[str, Any]:

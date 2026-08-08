@@ -116,6 +116,21 @@ export function columns(board: BoardPayload): Col[] {
         marker: "ok" as Tone,
       })),
     },
+    {
+      // Closed AND in the trunk. Nothing to do here — it is the only screen on
+      // which finished work exists at all, and without it a chapter's whole
+      // history lives in the event log and nowhere a person can look.
+      // `?? 0` / `?? []`: both arrived in one commit and a board older than it
+      // sends neither (types.ts). Absent collapses to the plain "Done" header
+      // over an empty column — the honest reading of a payload that cannot say.
+      name: (() => {
+        const shown = (g.done ?? []).length;
+        const total = board.done_total ?? 0;
+        return total > shown ? `Done · ${shown} of ${total}` : "Done";
+      })(),
+      tone: "neutral",
+      tiles: (g.done ?? []).map((row) => ({ row, chip: { label: "in trunk", tone: "ok" } as Chip })),
+    },
   ];
 }
 

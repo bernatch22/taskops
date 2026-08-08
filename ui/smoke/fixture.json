@@ -1,0 +1,435 @@
+{
+ "board": {
+  "done_total": 0,
+  "groups": {
+   "blocked": [
+    {
+     "assignee": "",
+     "files": [
+      "src/pdf.py"
+     ],
+     "holder": null,
+     "id": "tk-702c49",
+     "labels": [],
+     "priority": 2,
+     "quiet_for": 0.00209808349609375,
+     "since": 1786176127.434361,
+     "title": "PDF",
+     "waiting_on": [
+      "tk-1b6fec"
+     ]
+    }
+   ],
+   "changes": [],
+   "doing": [],
+   "done": [],
+   "mentions": [
+    {
+     "by": "agent:berna/w2",
+     "id": "tk-1b6fec",
+     "text": "Decimal or float?",
+     "title": "the reduced rate",
+     "ts": 1786176127.435923
+    }
+   ],
+   "merge": [],
+   "review": [],
+   "reviewing": [],
+   "stalled": [
+    {
+     "assignee": "agent:berna/w1",
+     "files": [
+      "src/tax.py"
+     ],
+     "holder": null,
+     "id": "tk-faf963",
+     "labels": [
+      "backend"
+     ],
+     "priority": 2,
+     "quiet_for": 0.0015981197357177734,
+     "since": 1786176127.434861,
+     "title": "VAT"
+    }
+   ],
+   "take": [
+    {
+     "assignee": "",
+     "files": [
+      "src/tax.py"
+     ],
+     "holder": null,
+     "id": "tk-1b6fec",
+     "labels": [],
+     "priority": 2,
+     "quiet_for": 0.00030112266540527344,
+     "since": 1786176127.436158,
+     "title": "the reduced rate"
+    }
+   ]
+  },
+  "hours": {
+   "by_actor": {
+    "agent:berna/w2": {
+     "cards": [
+      "tk-1b6fec"
+     ],
+     "human": "\u2014",
+     "seconds": 0.0008368492126464844
+    },
+    "dev:berna": {
+     "cards": [
+      "project",
+      "tk-1b6fec",
+      "tk-702c49",
+      "tk-faf963"
+     ],
+     "human": "\u2014",
+     "seconds": 0.0025000572204589844
+    }
+   },
+   "days": [
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-07-26"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-07-27"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-07-28"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-07-29"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-07-30"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-07-31"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-08-01"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-08-02"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-08-03"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-08-04"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-08-05"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-08-06"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-08-07"
+    },
+    {
+     "by_actor": {
+      "agent:berna/w2": {
+       "cards": [
+        "tk-1b6fec"
+       ],
+       "human": "\u2014",
+       "seconds": 0.0008368492126464844
+      },
+      "dev:berna": {
+       "cards": [
+        "project",
+        "tk-1b6fec",
+        "tk-702c49",
+        "tk-faf963"
+       ],
+       "human": "\u2014",
+       "seconds": 0.0025000572204589844
+      }
+     },
+     "closed": [],
+     "commits": 1,
+     "day": "2026-08-08"
+    }
+   ],
+   "from": 1785024000.0,
+   "to": 1786233600.0,
+   "total": {
+    "closed": 0,
+    "seconds": 0.0033369064331054688
+   }
+  },
+  "milestone": {
+   "branch": "ms/mvp-facturador",
+   "created": 1786176127.434361,
+   "criteria": [],
+   "goal": "read a bank CSV and issue invoices with VAT",
+   "id": "ms-0efc70",
+   "reviews": false,
+   "rules": [],
+   "status": "open",
+   "title": "MVP facturador"
+  },
+  "milestones": [
+   {
+    "branch": "ms/mvp-facturador",
+    "created": 1786176127.434361,
+    "criteria": [],
+    "goal": "read a bank CSV and issue invoices with VAT",
+    "id": "ms-0efc70",
+    "reviews": false,
+    "rules": [],
+    "status": "open",
+    "title": "MVP facturador"
+   }
+  ],
+  "pulse": {
+   "counts": {
+    "blocked": 1,
+    "doing": 0,
+    "done": 0,
+    "ready": 1,
+    "stalled": 1
+   },
+   "goal": "read a bank CSV and issue invoices with VAT",
+   "mentions": 1,
+   "milestone": "MVP facturador"
+  },
+  "seq": 9,
+  "team": [
+   {
+    "actor": "agent:berna/w2",
+    "ago": 0.00030112266540527344,
+    "seen": 1786176127.436158
+   },
+   {
+    "actor": "dev:berna",
+    "ago": 0.0,
+    "seen": 1786176127.436459
+   }
+  ]
+ },
+ "card": {
+  "blockers": [],
+  "blocks": [
+   {
+    "assignee": "",
+    "id": "tk-702c49",
+    "status": "blocked",
+    "title": "PDF"
+   }
+  ],
+  "branch": "tk-1b6fec",
+  "card": {
+   "after": [],
+   "assignee": "",
+   "created": 1786176127.433361,
+   "created_by": "dev:berna",
+   "criteria": [
+    "Decimal, never float"
+   ],
+   "files": [
+    "src/tax.py"
+   ],
+   "id": "tk-1b6fec",
+   "labels": [],
+   "milestone": "ms-0efc70",
+   "parent": "tk-faf963",
+   "priority": 2,
+   "review": false,
+   "spec": "10% for food",
+   "status": "open",
+   "title": "the reduced rate",
+   "updated": 1786176127.436158
+  },
+  "collisions": [
+   {
+    "files": [
+     "src/tax.py"
+    ],
+    "holder": "agent:berna/w1",
+    "id": "tk-faf963",
+    "started": false,
+    "title": "VAT"
+   }
+  ],
+  "commits": [
+   {
+    "branch": "",
+    "files": [],
+    "sha": "a3f9c21b",
+    "subject": "feat: rates"
+   }
+  ],
+  "elsewhere": [],
+  "epic": {
+   "id": "tk-faf963",
+   "spec": "the whole tax",
+   "status": "stalled",
+   "title": "VAT"
+  },
+  "history": [
+   {
+    "actor": "dev:berna",
+    "body": {
+     "card": {
+      "after": [],
+      "assignee": "",
+      "created": 1786176127.433361,
+      "created_by": "dev:berna",
+      "criteria": [
+       "Decimal, never float"
+      ],
+      "files": [
+       "src/tax.py"
+      ],
+      "id": "tk-1b6fec",
+      "labels": [],
+      "milestone": "ms-0efc70",
+      "parent": "tk-faf963",
+      "priority": 2,
+      "review": false,
+      "spec": "10% for food",
+      "status": "open",
+      "title": "the reduced rate",
+      "updated": 1786176127.433361
+     }
+    },
+    "id": "700f0ea0bf9703fd07626704ec2d378e",
+    "kind": "created",
+    "task": "tk-1b6fec",
+    "ts": 1786176127.433361
+   },
+   {
+    "actor": "agent:berna/w2",
+    "body": {
+     "branch": "tk-1b6fec"
+    },
+    "id": "fc0f25adbe0a12b985b3375c26c3a5fb",
+    "kind": "claimed",
+    "task": "tk-1b6fec",
+    "ts": 1786176127.435321
+   },
+   {
+    "actor": "agent:berna/w2",
+    "body": {
+     "branch": "",
+     "files": [],
+     "sha": "a3f9c21b",
+     "subject": "feat: rates"
+    },
+    "id": "cff0ce3327dfcd8a6f028610a284a7f5",
+    "kind": "commit",
+    "task": "tk-1b6fec",
+    "ts": 1786176127.435758
+   },
+   {
+    "actor": "agent:berna/w2",
+    "body": {
+     "mentions": [
+      "dev:berna"
+     ],
+     "text": "Decimal or float?"
+    },
+    "id": "f5191f3dd11ceaa45661e7beaa6cb7d0",
+    "kind": "comment",
+    "task": "tk-1b6fec",
+    "ts": 1786176127.435923
+   },
+   {
+    "actor": "agent:berna/w2",
+    "body": {
+     "note": "got to the rounding"
+    },
+    "id": "0fd6e4a3a7d513e4464d0684f5f2856d",
+    "kind": "released",
+    "task": "tk-1b6fec",
+    "ts": 1786176127.436158
+   }
+  ],
+  "lease": null,
+  "merged_into": "",
+  "milestone": {
+   "branch": "ms/mvp-facturador",
+   "created": 1786176127.434361,
+   "criteria": [],
+   "goal": "read a bank CSV and issue invoices with VAT",
+   "id": "ms-0efc70",
+   "reviews": false,
+   "rules": [],
+   "status": "open",
+   "title": "MVP facturador"
+  },
+  "pulse": {
+   "counts": {
+    "blocked": 1,
+    "doing": 0,
+    "done": 0,
+    "ready": 1,
+    "stalled": 1
+   },
+   "goal": "read a bank CSV and issue invoices with VAT",
+   "mentions": 1,
+   "milestone": "MVP facturador"
+  },
+  "resume": "got to the rounding",
+  "seconds": 0.0008368492126464844,
+  "standing": null,
+  "state": "ready",
+  "subtasks": [],
+  "worktree": ".taskops/trees/tk-1b6fec"
+ },
+ "expect": [
+  "the reduced rate",
+  "10% for food",
+  "Criteria \u00b7 1",
+  "Decimal, never float",
+  "got to the rounding",
+  "VAT",
+  "a3f9c21b"
+ ],
+ "expect_board": [
+  "Addressed to you",
+  "Decimal or float?"
+ ]
+}

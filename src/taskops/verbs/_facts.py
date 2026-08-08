@@ -54,6 +54,16 @@ def reviewing(stores: Stores, now: float) -> dict[str, str]:
     return reviews.reviewing(stores.live, now)
 
 
+def review_leases(stores: Stores, now: float) -> dict[str, reviews.Held]:
+    """task -> the whole live review lease, actor AND when the review began.
+
+    `reviewing()` above is this one's actor half, and it is what `core/graph.py`
+    takes, because deriving the state only asks WHETHER somebody holds it. A
+    caller that also has to say how much of the review lease is left reads this
+    instead — same single query, no second trip to the store."""
+    return reviews.held(stores.live, now)
+
+
 def standings(stores: Stores) -> dict[str, review.Standing]:
     """Every card's standing with its reviewer — the world half of
     `core/review.pending()`, folded from the same threads as mentions."""

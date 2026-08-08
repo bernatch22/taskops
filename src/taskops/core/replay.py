@@ -121,6 +121,16 @@ def _milestone(state: State, event: Event) -> None:
         return
     if op == "status":
         stone["status"] = str(body.get("to", stone["status"]))
+    elif op == "landed":
+        # Landing IS closing: `merge milestone=` already refuses while any card
+        # is open or unintegrated, so a landed chapter has nothing left to hold
+        # open. Found on the first real landing (2026-08-07): this op used to
+        # fall through unfolded, the chapter stayed "open" forever, and from the
+        # SECOND chapter on `open_milestone` — which answers None for "several"
+        # — could never focus again: no Chapter pane, `plan` demanding
+        # milestone= on every call, permanently. The event log already carried
+        # the truth; the fold just never read it.
+        stone["status"] = "landed"
     elif op == "edit":
         for field in ("title", "goal"):
             if field in body:

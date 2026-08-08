@@ -16,7 +16,19 @@ from __future__ import annotations
 
 from typing import Any, Literal, Callable, NamedTuple
 
-from . import card, plan, take, pulse, assign, record, report, review, update
+from . import (
+    card,
+    plan,
+    take,
+    pulse,
+    assign,
+    record,
+    report,
+    review,
+    update,
+    _waiting,
+    _mentions,
+)
 from .._errors import Refused, BadRequest
 from ..core.types import ROLE_DEV, ROLE_AGENT, role_of
 from ..store.stores import Stores
@@ -40,7 +52,16 @@ REGISTRY: dict[str, Verb] = {
     "board": Verb(pulse.run, "read", BOTH, ""),
     # The ✉ half of `board` alone, and the only read that does NOT renew: the
     # delivery hook calls it on somebody else's behalf (MENTIONS.md §9a).
-    "mentions": Verb(pulse.mentions, "read", BOTH, ""),
+    "mentions": Verb(_mentions.mentions, "read", BOTH, ""),
+    # The orchestrator's three groups of `board`, and the OTHER read that does
+    # not renew — same delivery hook, same reason (`verbs/_waiting.py`). DEV
+    # only, because merging, verifying and re-dispatching are the dev's moves.
+    "waiting": Verb(
+        _waiting.waiting,
+        "read",
+        DEV,
+        "these are the orchestrator's moves, not yours. Your own picture: taskops_board",
+    ),
     "card": Verb(card.run, "read", BOTH, ""),
     "report": Verb(report.run, "read", BOTH, ""),
     "plan": Verb(

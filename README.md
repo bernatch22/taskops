@@ -8,8 +8,8 @@ agents working in parallel, with a human who decides.
 * **Agents do not step on each other by mechanism, not by prompt**: a lease
   (one row, one winner), a worktree (one directory each), and a branch pinned
   to that directory for life.
-* **The only management interface is MCP** — eight tools. The CLI behaves like
-  git: it connects, it never manages.
+* **The only management interface is MCP** — nine tools ([below](#the-nine-tools)).
+  The CLI behaves like git: it connects, it never manages.
 * **`main` is written by a person**, through a pull request. taskops stamps a
   commit trailer, records the commit on its card, and integrates finished cards
   into the milestone branch. Nothing else.
@@ -54,8 +54,10 @@ committed, it travels with the code) and, for `join`, `.taskops/remote.json`
 (0600, gitignored — the credential never does). Both write the two git hooks,
 `.mcp.json`, and the one Claude hook (`.claude/settings.json`, merged) — the
 delivery hook that carries a pending `✉` mention into a working agent's very
-next tool call ([MENTIONS.md](MENTIONS.md) §9; read-only, deletable, never
-decides). **Restart your Claude Code session in that project after** — MCP
+next tool call, and — to the orchestrator only — the `◆` groups it is sitting
+on, done-but-unmerged, handed-in-but-unchecked, owned-but-stalled
+([MENTIONS.md](MENTIONS.md) §9 and §9f; read-only, deletable, never decides).
+**Restart your Claude Code session in that project after** — MCP
 servers load once, at session start, from `.mcp.json`; from then on
 `taskops_board` is a tool call, not a shell command.
 
@@ -134,6 +136,42 @@ npm install
 npm run build     # typecheck + esbuild -> ../src/taskops/ui/   (commit the output)
 npm run check     # the closure: build + smoke + `git diff --exit-code` on the output
 ```
+
+Because that output is committed, `.gitattributes` marks the three files
+`-merge`: git will not text-merge a generated artifact into one no build ever
+produced. **A fresh clone needs nothing for this** — `-merge` is built into
+git, there is no driver to install and no `git config` to run. It means a merge
+that touches the bundle stops with the path conflicted and your copy intact;
+resolve it by rebuilding, never by hand:
+
+```sh
+cd ui && node build.mjs && git add ../src/taskops/ui && git commit --no-edit
+```
+
+(`docs/fan-out.md` §11 — five parallel cards each rebuilding the bundle cost a
+milestone six merge round trips.)
+
+`npm run check` is the closure and its four steps run: typecheck, build,
+`ui/smoke/run.mjs` (the headless harness — `react-dom/server`, no browser and
+no jsdom), then `git diff --exit-code ../src/taskops/ui`. All four steps are
+green in the current tree: the wave of `.tsx`-only cards that made the last
+clause red has had its one chapter-close rebuild, which is exactly the drift the
+clause exists to report and to clear.
+
+The harness runs on its own captured payload (`npm run smoke`, which needs no
+Python) and on a live one — `tests/test_ui.py` builds a real board and hands it
+over. It needs `ui/node_modules`; without it, or without node, that test skips.
+
+Three tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
+default), **Board** (`ui/src/pages/Board.tsx`) and **Worktrees**
+(`ui/src/pages/Worktrees.tsx`, the branch-per-card table) — plus the card
+dossier drawer that opens over any of them (`ui/src/App.tsx`) and the header's
+milestone picker. Monitor is no longer a shell: its two-column layout, the
+shared pane chrome and all eight panes are built, one card per panel. The Event
+stream keeps an honest empty state because it has no verb behind it — the pane
+is drawn to its full shape and says what is missing, which is the rule, not a
+gap. Nothing else exists — an "Attention" screen and an "Hours" tab were built
+by mistake and deleted (Hours is Nova's Throughput panel, inside Monitor).
 
 The source is React + TypeScript under `ui/src`, with Nova's palette in
 `ui/src/theme/tokens.css` — the one file allowed to contain a literal colour.
@@ -242,9 +280,20 @@ the page refetches, so it can never show something the board never said.
 ./scripts/test     # architecture, core, store, verbs, git, http topology, mcp, migration, ui
 ```
 
+`tests/test_ui.py` runs the dashboard headlessly, from both ends: it hands a
+real `LocalBoard` payload to `ui/smoke/run.mjs`, which renders the very modules
+`src/main.tsx` bundles through `react-dom/server` — the eight Monitor panes, a
+pane with no verb showing its empty state instead of a zero, the Board's
+columns, the acceptance criteria in the dossier, the comment box posting
+`update` and nothing else, the draft surviving a refusal, Escape closing the
+top-most overlay only — and it reads the COMMITTED bundle for the same panes,
+which is what `pip install taskops` serves. The first half needs node and
+`ui/node_modules` and skips without them; the second always runs.
+
 `tests/test_architecture.py` pins the layering by AST — imports only point
 down, SQL only in `store/`, `subprocess` only in `gitwork/run.py`, the clock
-only in `_clock.py`, 200 lines per module. A rule with no test is a suggestion.
+only in `_clock.py` and `core/hours.py`, 200 lines per module. A rule with no
+test is a suggestion.
 
 Zero runtime dependencies, on purpose: this package is installed into every
 agent's environment, and the standard library carries all of it.

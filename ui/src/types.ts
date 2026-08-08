@@ -9,16 +9,43 @@
  * The reading rule: what the server MAY omit is `| null` (it sends JSON `null`),
  * what a group row MAY carry is optional. Anything the UI is unsure of, it must
  * treat as absent rather than assert — the payload is a contract, not a promise
- * that the board on the other end is the same version. */
+ * that the board on the other end is the same version.
+ *
+ * ── The drift convention, and why it is a convention ──────────────────────
+ *
+ * `Milestone.criteria` was added to `core/types.py`, travelled through plan,
+ * take and the landing gate, and never arrived here: the browser was
+ * structurally unable to see a chapter's acceptance criteria and nothing said
+ * so (tk-77dc9c). So EVERY interface below now carries a `@source` line naming
+ * the Python that produces it — a reader who opens either side is one grep from
+ * the other, and a diff that changes a payload has the transcription named in
+ * its own review.
+ *
+ * That is a convention, not a check, and the honest reason is that the two
+ * halves are not the same kind of object. Only the four stored ROWS (`Card`,
+ * `Milestone`, `Event`, `Lease`) are `TypedDict`s whose keys a test could read
+ * mechanically — and a ~30-line test comparing `__annotations__` against a
+ * regex over this file WOULD have caught this exact bug, cheaply. Everything
+ * below them (`BoardPayload`, `CardPayload`, `ReportPayload`, and every row
+ * type inside them) is a dict assembled by hand across `pulse.py`, `card.py`,
+ * `_context.py` and `report.py`; there is no declared key set to compare
+ * against, and inferring one means parsing Python source — which
+ * `docs/fan-out.md` concluded taskops does not do. Anything stronger than the
+ * TypedDict test is that machinery, and it is not worth it. The row test is
+ * cheap and is proposed on the card; it is not written here because this card's
+ * diff is `.ts`-only. */
 
 /** The only verbs this client speaks. The board's registry has more; the
  *  dashboard is read-only except for the ONE write (`update` with comment=), and
  *  a union rather than `string` is what makes "do not invent a verb" a compile
- *  error instead of a 400 nobody sees. */
+ *  error instead of a 400 nobody sees.
+ *
+ *  @source the subset of `verbs/__init__.py::REGISTRY` this client speaks */
 export type RpcVerb = "board" | "card" | "report" | "mentions" | "update";
 
 /* ── the stored rows (core/types.py) ─────────────────────────────────────── */
 
+/** @source `core/types.py::Card`, sent whole by `verbs/card.py::run` */
 export interface Card {
   id: string;
   title: string;
@@ -38,17 +65,44 @@ export interface Card {
   updated: number;
 }
 
+/** @source `core/types.py::Milestone`, sent whole by `verbs/pulse.py::run` and `verbs/card.py::run` */
 export interface Milestone {
   id: string;
   title: string;
   goal: string;
+  /** What holds for EVERY card of this chapter. Binding, and it travels into
+   *  every take. */
   rules: string[];
+  /** What the CHAPTER is accepted against — `rules`' sibling, spec and not
+   *  status (`core/types.py::Milestone.criteria`, docs/fan-out.md §10). Shown
+   *  to the human at `taskops_merge milestone=`, never judged by the machine.
+   *
+   *  OPTIONAL, and not because the Python says so — `core/types.py` declares it
+   *  required and `core/replay.py::_milestone` materialises it as `[]` for a
+   *  chapter planned before the field existed, so a board at this version always
+   *  sends the key. It is optional because a board one version BEHIND does not:
+   *  rendering the pane against the dashboard actually running on this machine
+   *  (2026-08-08, port 54546) threw `Cannot read properties of undefined
+   *  (reading 'length')`. That server's `board` payload also had no
+   *  `done_total`, which `pulse.py::run` does send — so it is a process older
+   *  than both fields, and it is exactly the case a live dashboard hits after a
+   *  `join` to a board that has not been redeployed. The same run against the
+   *  board verb AT THIS COMMIT returns `criteria: []`, present and empty.
+   *
+   *  That is the header's rule in the concrete: the payload is a contract,
+   *  not a promise that the board on the other end is the same version, and the
+   *  UI treats what it is unsure of as absent rather than asserting it.
+   *
+   *  Absent and `[]` mean the same thing to the reader — "this chapter has no
+   *  criteria" — and both draw no section. */
+  criteria?: string[];
   reviews?: boolean;
   branch: string;
   status: string;
   created: number;
 }
 
+/** @source `core/types.py::Event`, sent whole by `verbs/_context.py::dossier` (history) */
 export interface Event {
   id: string;
   task: string; // "project" for board-level facts
@@ -58,6 +112,7 @@ export interface Event {
   ts: number;
 }
 
+/** @source `core/types.py::Lease`, sent by `verbs/_context.py::dossier` */
 export interface Lease {
   task: string;
   actor: string;
@@ -67,7 +122,9 @@ export interface Lease {
 }
 
 /** Everything a card can be ON SCREEN. Only the first three are stored; the rest
- *  are derived by `core/graph.py` from the graph, the live lease and the thread. */
+ *  are derived by `core/graph.py` from the graph, the live lease and the thread.
+ *
+ *  @source `core/machine.py::state`, via `verbs/_context.py::dossier` */
 export type CardState =
   | "open"
   | "done"
@@ -84,7 +141,9 @@ export type CardState =
 
 /** One line of the board — `pulse.py::_row`. `holder` is the LIVE lease holder
  *  and `assignee` is who it was handed to: a stalled card has the second and not
- *  the first, and that difference is the whole group. */
+ *  the first, and that difference is the whole group.
+ *
+ *  @source `verbs/pulse.py::_row` */
 export interface BoardRow {
   id: string;
   title: string;
@@ -97,24 +156,44 @@ export interface BoardRow {
   labels: string[];
 }
 
-/** A blocked row carries what it is waiting for — `graph.blockers`. */
+/** A blocked row carries what it is waiting for — `graph.blockers`.
+ *
+ *  @source `verbs/pulse.py::run`, which adds `waiting_on` from `core/graph.py::blockers` */
 export interface BlockedRow extends BoardRow {
   waiting_on: string[];
 }
 
 /** review and changes carry the REASON, not just the id: the submit note is
- *  empty on `review`, and on `changes` it is the reviewer's words verbatim. */
+ *  empty on `review`, and on `changes` it is the reviewer's words verbatim.
+ *
+ *  @source `verbs/pulse.py::run` (the `review` and `changes` groups) */
 export interface VerdictRow extends BoardRow {
   text: string;
   holder: string | null; // on these two it is the REVIEW lease holder
 }
 
+/** @source `verbs/pulse.py::run` (the `reviewing` group) */
 export interface ReviewingRow extends BoardRow {
   holder: string | null; // likewise: whoever is checking right now
+  /** When the REVIEW lease was acquired — a different lease from the one
+   *  `since` describes. `since` is the WORK lease's acquisition (or the card's
+   *  `updated`), and the worker may still be alive beside the verifier, so it
+   *  says nothing exact about the review: counting the TTL down from it yields
+   *  a floor that reads 0 while the review lease is provably still live.
+   *  Named `review_since` and never folded into `since` because that ambiguity
+   *  IS the bug (`store/reviews.py::Held`).
+   *
+   *  OPTIONAL by the header's rule, not because the Python may omit it: a board
+   *  at this version always sends the key (null only if the lease lapsed between
+   *  the two reads inside one call). A board one version BEHIND sends no key at
+   *  all, and the UI must fall back to the floor rather than assert it. */
+  review_since?: number | null;
 }
 
 /** A pending mention — `pulse.py::_mentions`. Not a card row: it is the comment
- *  that named you, and it is the one group the milestone filter does not apply to. */
+ *  that named you, and it is the one group the milestone filter does not apply to.
+ *
+ *  @source `verbs/pulse.py::mentions`, from `core/mentions.py` */
 export interface MentionRow {
   id: string; // the card the comment lives on
   title: string; // "" when the card is unknown to this board
@@ -124,7 +203,9 @@ export interface MentionRow {
 }
 
 /** The nine groups, in the order `pulse.py` builds them — which IS the order to
- *  act in, so a view that reorders them is contradicting the board. */
+ *  act in, so a view that reorders them is contradicting the board.
+ *
+ *  @source `verbs/pulse.py::run` */
 export interface BoardGroups {
   merge: BoardRow[];
   mentions: MentionRow[];
@@ -135,6 +216,17 @@ export interface BoardGroups {
   doing: BoardRow[];
   reviewing: ReviewingRow[];
   blocked: BlockedRow[];
+  /** Closed AND integrated — the only place finished work is visible. Capped at
+   *  `pulse.DONE_SHOWN` (20) and newest first; `BoardPayload.done_total` is the
+   *  real count behind the cap. Every other group is bounded by work in flight;
+   *  this one only grows, which is why it is the one group that is a tail.
+   *
+   *  OPTIONAL by the header's rule, and for exactly the reason `done_total` is:
+   *  the two arrived in the SAME commit (a1d1005, "closed work is visible"), so
+   *  every board older than that sends nine groups, not ten. The other eight
+   *  date from the first commit and no board that speaks this protocol omits
+   *  them. Consumers read `?? []`. */
+  done?: BoardRow[];
 }
 
 export const GROUP_ORDER = [
@@ -147,17 +239,21 @@ export const GROUP_ORDER = [
   "doing",
   "reviewing",
   "blocked",
+  "done",
 ] as const satisfies readonly (keyof BoardGroups)[];
 
 export type GroupName = (typeof GROUP_ORDER)[number];
 
+/** @source `verbs/pulse.py::_team` */
 export interface TeamMember {
   actor: string;
   seen: number;
   ago: number; // seconds
 }
 
-/** The heartbeat that rides on every result — `_context.py::pulse`. */
+/** The heartbeat that rides on every result — `_context.py::pulse`.
+ *
+ *  @source `verbs/_context.py::pulse` */
 export interface Pulse {
   milestone: string; // the TITLE, "" when no milestone is in scope
   goal: string;
@@ -165,12 +261,25 @@ export interface Pulse {
   mentions: number; // addressed to the reader of THIS call, unanswered
 }
 
+/** @source `verbs/pulse.py::run` */
 export interface BoardPayload {
   milestone: Milestone | null;
   milestones: Milestone[]; // the open ones only
   groups: BoardGroups;
   team: TeamMember[];
   hours: ReportPayload | null; // only when the call passed window=
+  /** How many closed cards the chapter really has, behind `groups.done`'s cap.
+   *
+   *  OPTIONAL, and not because `pulse.py::run` may omit it — at this version it
+   *  always sends the key. It is optional because a board one version BEHIND
+   *  does not: the field was added in a1d1005 alongside the `done` group itself,
+   *  and a dashboard `join`ed to a board that has not been redeployed since gets
+   *  neither. This is the third instance of the drift the header describes
+   *  (`Milestone.criteria` crashed with `Cannot read properties of undefined`
+   *  before it was made optional; `ReviewingRow.review_since` was written
+   *  optional from the start). Consumers read `?? 0` — absent and `0` say the
+   *  same thing to a reader: nothing closed that this screen can count. */
+  done_total?: number;
   seq: number;
   pulse: Pulse;
 }
@@ -178,7 +287,9 @@ export interface BoardPayload {
 /* ── card (verbs/card.py::run → verbs/_context.py::dossier) ──────────────── */
 
 /** How a card stands with its reviewer — `core/review.py::Standing`, sent as a
- *  plain dict and only when it was ever submitted. */
+ *  plain dict and only when it was ever submitted.
+ *
+ *  @source `core/review.py::Standing`, sent by `verbs/_context.py::dossier` */
 export interface Standing {
   submitted_at: number;
   submitted_by: string;
@@ -188,7 +299,9 @@ export interface Standing {
   reviewed_at: number;
 }
 
-/** A dependency, a dependent or a subtask, resolved to something readable. */
+/** A dependency, a dependent or a subtask, resolved to something readable.
+ *
+ *  @source `verbs/_context.py::_brief` */
 export interface CardBrief {
   id: string;
   title: string;
@@ -196,7 +309,9 @@ export interface CardBrief {
   assignee?: string; // absent on the "(unknown)" placeholder
 }
 
-/** The parent card, with the sentence that makes this one's spec make sense. */
+/** The parent card, with the sentence that makes this one's spec make sense.
+ *
+ *  @source `verbs/_context.py::_epic` */
 export interface Epic {
   id: string;
   title: string;
@@ -204,7 +319,9 @@ export interface Epic {
   status: string;
 }
 
-/** Another open card claiming the same FILES. A warning, never a lock. */
+/** Another open card claiming the same FILES. A warning, never a lock.
+ *
+ *  @source `verbs/_context.py::collisions` */
 export interface Collision {
   id: string;
   title: string;
@@ -213,7 +330,9 @@ export interface Collision {
   started: boolean; // true when that holder is a live lease
 }
 
-/** Who else is working right now, and on what. */
+/** Who else is working right now, and on what.
+ *
+ *  @source `verbs/_context.py::elsewhere` */
 export interface Elsewhere {
   id: string;
   title: string;
@@ -221,13 +340,16 @@ export interface Elsewhere {
   milestone: string;
 }
 
-/** A `commit` event's body — `_facts.commits_of` sends the bodies, not the events. */
+/** A `commit` event's body — `_facts.commits_of` sends the bodies, not the events.
+ *
+ *  @source a `commit` event body, selected by `verbs/_facts.py::commits_of` */
 export interface CommitRef {
   sha: string;
   subject: string;
   [key: string]: unknown; // an event body is open; extras are kept
 }
 
+/** @source `verbs/card.py::run` → `verbs/_context.py::dossier` */
 export interface CardPayload {
   card: Card;
   state: CardState;
@@ -250,7 +372,9 @@ export interface CardPayload {
   pulse: Pulse;
 }
 
-/** `card` answers a SEARCH instead when the call passed query=. */
+/** `card` answers a SEARCH instead when the call passed query=.
+ *
+ *  @source `verbs/card.py::_search` */
 export interface SearchHit {
   id: string;
   title: string;
@@ -260,6 +384,7 @@ export interface SearchHit {
   matched: "title" | "spec";
 }
 
+/** @source `verbs/card.py::run` when the call passed `query=` */
 export interface SearchPayload {
   query: string;
   matches: SearchHit[];
@@ -267,12 +392,14 @@ export interface SearchPayload {
 
 /* ── report (verbs/report.py::summary) ───────────────────────────────────── */
 
+/** @source `verbs/report.py::_by_actor`, formatted by `core/hours.py` */
 export interface ActorHours {
   seconds: number;
   human: string; // already formatted by core/hours.py — never re-derive it
   cards: string[];
 }
 
+/** @source `verbs/report.py::_day` */
 export interface ReportDay {
   day: string; // the calendar label from core/hours.py::windows
   by_actor: Record<string, ActorHours>;
@@ -280,6 +407,7 @@ export interface ReportDay {
   commits: number;
 }
 
+/** @source `verbs/report.py::summary` */
 export interface ReportPayload {
   from: number;
   to: number;
@@ -290,6 +418,7 @@ export interface ReportPayload {
 
 /* ── mentions (verbs/pulse.py::mentions) ─────────────────────────────────── */
 
+/** @source `verbs/pulse.py::mentions` */
 export interface MentionsPayload {
   actor: string; // the actor the server RESOLVED — the caller could not have known it
   mentions: MentionRow[];

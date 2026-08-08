@@ -1,8 +1,10 @@
 """`taskops hook claude` — the delivery hook, run for real against a board.
 
-Each test is one of the four properties the module's own docstring promises.
-The hook is driven in-process (stdin swapped, stdout captured): the routing
-from `taskops.cli.main` is one `if` and the properties live in `deliver()`.
+Each test is one of the four properties the module's own docstring promises,
+for each of the two things it delivers — a MENTION to anybody, and MERGE /
+REVIEW / STALLED to a `dev:` only. The hook is driven in-process (stdin swapped,
+stdout captured): the routing from `taskops.cli.main` is one `if` and the
+properties live in `deliver()`.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import pytest
 
 from taskops.cli import claude
 from taskops.board import LocalBoard
+from taskops._errors import Refused
 from taskops.gitwork import install
 from taskops.cli.claude import STAMP
 
@@ -154,6 +157,117 @@ def test_the_mentions_read_renews_nothing(
     w1.call("mentions", {})
     after = w1.stores.live.lease(card, 0)
     assert after is not None and after["expires"] == lease["expires"]
+    w1.close()
+
+
+def test_the_orchestrator_is_told_the_three_groups_it_is_sitting_on(
+    tmp_path: Path, board: LocalBoard, capsys: Any, monkeypatch: Any
+) -> None:
+    """The incident this half exists for: two cards dispatched, no worker ever
+    spawned, twelve minutes of `stalled` nobody read. One line per group, in the
+    board's own ranking (merge · review · stalled), each with the count and the
+    call that clears it — a reader must not have to open anything to act."""
+    dev, other = board, tmp_path / ".taskops" / "board"
+    stalled = card_of(board)  # the fixture's: assigned to w1, never taken
+    dev.call("plan", {"tasks": [{"title": "a", "spec": "s"}, {"title": "b", "spec": "s"}]})
+    ready = [row["id"] for row in dev.call("board", {})["groups"]["take"]]
+    dev.call("update", {"task": ready[1], "review": True})
+    w2 = LocalBoard(other, "agent:berna/w2")
+    w2.call("take", {"task": ready[0]})
+    w2.call(
+        "update",
+        {"task": ready[0], "status": "done", "no_code": True, "comment": "c", "note": "n"},
+    )
+    w2.call("take", {"task": ready[1]})
+    w2.call("update", {"task": ready[1], "status": "review", "comment": "c", "note": "n"})
+    w2.close()
+
+    out = json.loads(fire(tmp_path, capsys, monkeypatch))["hookSpecificOutput"]
+    lines = out["additionalContext"].splitlines()
+    assert [line.split(" — ")[0] for line in lines] == [
+        "◆ taskops: 1 done, not in the trunk",
+        "◆ taskops: 1 handed in, nobody checking",
+        "◆ taskops: 1 owned, nobody running them",
+    ]
+    assert "one taskops_merge task= each: " + ready[0] in lines[0]
+    assert "taskops_review task=): " + ready[1] in lines[1]
+    assert "taskops_assign tasks=[…]" in lines[2] and stalled in lines[2]
+
+
+def test_nothing_waiting_is_no_output_at_all(
+    tmp_path: Path, board: LocalBoard, capsys: Any, monkeypatch: Any
+) -> None:
+    """The common case, and it must stay the common case: an empty group is not
+    a line saying zero. Somebody took the only card, so nothing is waiting —
+    and the orchestrator's own ✉ is empty too."""
+    w1 = LocalBoard(tmp_path / ".taskops" / "board", "agent:berna/w1")
+    w1.call("take", {"task": card_of(board)})
+    w1.close()
+    assert fire(tmp_path, capsys, monkeypatch) == ""
+
+
+def test_a_worker_is_told_nothing_about_the_orchestrators_groups(
+    tmp_path: Path, board: LocalBoard, capsys: Any, monkeypatch: Any
+) -> None:
+    """A worker neither merges nor dispatches, so these are noise it cannot act
+    on — and noise is how a hook gets deleted. Its ✉ still arrives.
+
+    Both ways a worker is recognised, because they fail differently: with
+    `TASKOPS_ACTOR` the `waiting` verb itself refuses an agent, but a sub-agent
+    named only by its worktree path reads as `dev:$USER`, and there the hook's
+    own `for_task` gate is the only thing standing between it and three lines
+    about work it cannot touch."""
+    card = card_of(board)
+    tool = {"file_path": f"{tmp_path}/.taskops/trees/{card}/game.py"}
+    delivered = fire(tmp_path, capsys, monkeypatch, tool_input=tool)
+    assert "✉" in delivered and "◆" not in delivered
+
+    monkeypatch.setenv("TASKOPS_ACTOR", "agent:berna/w1")
+    delivered = fire(tmp_path, capsys, monkeypatch)
+    assert "✉" in delivered and "◆" not in delivered
+
+
+def test_the_two_halves_are_throttled_apart(
+    tmp_path: Path, board: LocalBoard, capsys: Any, monkeypatch: Any, clock: Any
+) -> None:
+    """A stalled card is not urgent within a turn the way a mention is, so the
+    orchestrator's groups have their own, longer interval AND their own key in
+    the stamp: repeating them every 30s is what would make this noise."""
+    assert "◆" in fire(tmp_path, capsys, monkeypatch)
+    clock(claude.THROTTLE + 1)  # the ✉ half is due again; this half is not
+    assert fire(tmp_path, capsys, monkeypatch) == ""
+    clock(claude.WAITING)
+    assert "◆" in fire(tmp_path, capsys, monkeypatch)
+
+
+def test_the_waiting_read_renews_nothing(
+    tmp_path: Path, board: LocalBoard, clock: Any
+) -> None:
+    """Same property as `mentions`, and the same reason: the hook reads on a
+    tool call the holder did not make. Renewing here — or stamping presence —
+    would keep a dead worker's card out of STALLED forever."""
+    card = card_of(board)
+    w1 = LocalBoard(tmp_path / ".taskops" / "board", "agent:berna/w1")
+    w1.call("take", {"task": card})
+    lease = w1.stores.live.lease(card, 0)
+    assert lease is not None
+    clock(10)  # a renewal would now move `expires`; a frozen clock would hide it
+    seen = dict(board.stores.live.present(0))
+    board.call("waiting", {})
+    after = w1.stores.live.lease(card, 0)
+    assert after is not None and after["expires"] == lease["expires"]
+    assert dict(board.stores.live.present(0)) == seen
+    w1.close()
+
+
+def test_a_worker_may_not_ask_what_the_orchestrator_is_sitting_on(
+    tmp_path: Path, board: LocalBoard
+) -> None:
+    """The role gate is the verb's, not the hook's — the hook merely does not
+    ask. A refusal names the call that works."""
+    w1 = LocalBoard(tmp_path / ".taskops" / "board", "agent:berna/w1")
+    with pytest.raises(Refused, match="taskops_board"):
+        w1.call("waiting", {})
     w1.close()
 
 

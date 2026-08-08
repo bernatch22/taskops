@@ -63,6 +63,22 @@ def ensure_card(repo: Path, card: str, branch: str, base: str) -> Path:
     return _worktree(repo, card_tree(repo, card), branch, create=True, base=base or base_ref(repo))
 
 
+def behind(repo: Path, milestone_branch: str, card_branch: str) -> int:
+    """How many commits of the milestone branch the card branch does not have.
+
+    0 means the card contains the milestone head. This is the question a merge
+    conflict answers badly: git names a FILE, and the real cause — this branch
+    never pulled the chapter in — is nowhere in the message. Asked before the
+    merge, it is one `merge-base --is-ancestor`.
+    """
+    if not (run.has_branch(repo, milestone_branch) and run.has_branch(repo, card_branch)):
+        return 0  # nothing to be behind yet — the merge itself will say what is missing
+    if run.git("merge-base", "--is-ancestor", milestone_branch, card_branch, cwd=repo).ok:
+        return 0
+    count = run.git("rev-list", "--count", f"{card_branch}..{milestone_branch}", cwd=repo).out
+    return int(count) if count.isdigit() else 0
+
+
 def merge_card(repo: Path, milestone_branch: str, card_branch: str, card: str) -> str:
     """Integrate one card. Returns the merge sha, or refuses with git's own words.
 

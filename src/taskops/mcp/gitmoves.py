@@ -67,8 +67,33 @@ def merge(board: Board, repo: Path, args: Args, now: float) -> str:
     branch = str(as_object(dossier.get("milestone")).get("branch", ""))
     if not branch:
         raise BadRequest(f"{task} belongs to no milestone, so there is no branch to integrate into")
-    sha = trees.merge_card(repo, branch, str(dossier.get("branch", task)), task)
+    card_branch = str(dossier.get("branch", task))
+    _refuse_if_stale(repo, branch, card_branch, task)
+    sha = trees.merge_card(repo, branch, card_branch, task)
     return render.plain(board.call("merged", {"task": task, "into": branch, "sha": sha}))
+
+
+def _refuse_if_stale(repo: Path, branch: str, card_branch: str, task: str) -> None:
+    """A branch that never pulled the chapter in is named as such, BEFORE git runs.
+
+    Merged anyway, it comes back as a conflict about a file, and the cause — the
+    card is behind — is nowhere in the message. This session paid six round trips
+    to that: four workers each told by hand what one `merge-base --is-ancestor`
+    says. The count is part of the sentence because "behind" with no number reads
+    as a bigger problem than three commits.
+
+    It refuses; it does not merge or rebase for the worker. A card's branch is the
+    worker's, and this codebase names the fix rather than performing it.
+    """
+    count = trees.behind(repo, branch, card_branch)
+    if not count:
+        return
+    raise Refused(
+        f"{task} is {count} commit{'s' if count != 1 else ''} behind {branch} — "
+        "merge it in your own worktree first:\n"
+        f"  cd {trees.card_tree(repo, task)} && git merge {branch}\n"
+        f"then taskops_merge task={task} again"
+    )
 
 
 def _land(board: Board, repo: Path, stone: str, criteria_met: bool) -> str:

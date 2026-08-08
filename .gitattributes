@@ -1,0 +1,22 @@
+# The built dashboard is a GENERATED artifact that is committed on purpose —
+# that is what makes `pip install taskops` serve a dashboard with no node
+# toolchain (CLAUDE.md, "The dashboard is built, not hand-written"). Its source
+# is `ui/`; `node build.mjs` from there writes these three files.
+#
+# `-merge` uses git's BUILT-IN refusal to text-merge a file: no `git config`,
+# no custom driver, nothing a fresh clone has to install. On a merge git leaves
+# our copy whole (never a conflict marker inside minified JavaScript) and marks
+# the path conflicted. The resolution is not a hunk, it is a rebuild:
+#
+#     cd ui && node build.mjs && git add ../src/taskops/ui && git commit --no-edit
+#
+# Measured, 2026-08-08: without this, two branches that changed DIFFERENT
+# regions of the bundle auto-merge SILENTLY into a file no build ever produced
+# — a bundle that is neither side's. That is the failure this line exists to
+# make loud. See docs/fan-out.md §11.
+#
+# `-diff` keeps a 190kb single-purpose artifact out of every diff and every
+# `git log -p`; the rebuild is the change, the bytes are not reviewable.
+src/taskops/ui/app.js      -diff -merge linguist-generated=true
+src/taskops/ui/style.css   -diff -merge linguist-generated=true
+src/taskops/ui/index.html  -diff -merge linguist-generated=true

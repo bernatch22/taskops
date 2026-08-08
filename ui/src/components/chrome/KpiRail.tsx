@@ -1,4 +1,4 @@
-/* The six numbers that say how the board stands, in Nova's auto-fit rail.
+/* The seven numbers that say how the board stands, in Nova's auto-fit rail.
  *
  * Every one is COUNTED from the payload, never stored and never a delta against
  * a number the client remembers from the last poll: the board derives its own
@@ -28,6 +28,11 @@ export function kpis(board: BoardPayload): Kpi[] {
     { key: "blocked", label: "blocked", n: g.blocked.length, dot: "var(--danger)" },
     { key: "mentions", label: "mentions", n: g.mentions.length, dot: "var(--warn)" },
     { key: "merge", label: "to merge", n: g.merge.length, dot: "var(--ok)" },
+    // The count behind the cap, not the tail: the rail is a measure, and
+    // `groups.done` only carries the newest 20. `?? 0` because a board older
+    // than a1d1005 sends no such key (types.ts) and a rail tile that renders
+    // `undefined` is worse than one that renders the 0 the payload implies.
+    { key: "closed", label: "closed", n: board.done_total ?? 0, dot: "var(--text-3)" },
   ];
 }
 

@@ -87,6 +87,10 @@ def plain(data: dict[str, Any]) -> str:
     for made in _rows(data.get("cards")):
         after = f"  after {', '.join(_strs(made.get('after')))}" if made.get("after") else ""
         lines.append(f"{made['id']}  {made['title']}{after}")
+    # A warning a verb wants read, not a status: one block, first line labelled.
+    notes = _strs(data.get("notes"))
+    if notes:
+        lines.append("note: " + "\n".join(notes))
     for merged in ("into", "sha"):
         if data.get(merged):
             lines.append(f"{merged}: {data[merged]}")

@@ -42,6 +42,21 @@ export function shortActor(actor: string): string {
   return tail.split(":").pop() ?? tail;
 }
 
+/** Whose actor this is: "agent:berna/w5" → "dev:berna", "dev:berna" → itself.
+ *
+ *  An agent belongs to the dev that spawned it — that ownership is the rule
+ *  `http/auth.py::authorize` enforces on the wire (a dev may act as its own
+ *  agents, nobody else's), so it is a real relation and not a naming habit.
+ *
+ *  It exists because a presence row is about PEOPLE. One session spawned 22
+ *  ephemeral workers and drew 23 discs, of which 22 were the same person's
+ *  short-lived processes — a row that says who is around, saying nothing. */
+export function ownerOf(actor: string): string {
+  if (!actor.startsWith("agent:")) return actor;
+  const owner = actor.slice("agent:".length).split("/")[0] ?? "";
+  return owner ? `dev:${owner}` : actor;
+}
+
 /** The glyphs that stand for an actor, in the actor's OWN case: "agent:berna/w5"
  *  → "w5", "agent:berna/w10" → "w10", "dev:berna" → "ber".
  *
