@@ -213,6 +213,7 @@ export function LiveLeases({
   now,
   onOpen,
   standing,
+  finished = false,
 }: LiveLeasesProps): React.JSX.Element {
   /* The design's order: live and fine, live and being checked, then lapsed. */
   const rows: { row: LeaseRow; p: LeaseProc }[] = [
@@ -238,34 +239,53 @@ export function LiveLeases({
     >
       {rows.length === 0 ? (
         <>
-          <PaneEmpty>Nobody holds a lease right now.</PaneEmpty>
+          <PaneEmpty>
+            {finished
+              ? "This chapter has landed. Nothing is running, and nothing is left to pick up."
+              : "Nobody holds a lease right now."}
+          </PaneEmpty>
           <div
             data-testid="standing"
-            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)" }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: finished ? "1fr" : "repeat(3, 1fr)",
+            }}
           >
-            <PaneRow>
-              <div className="num" style={{ ...figure, color: TONE_FG.ok }}>
-                {standing.ready}
-              </div>
-              <div style={figureLabel}>ready to pick up</div>
-            </PaneRow>
-            <PaneRow style={{ borderLeft: "1px solid var(--hair)" }}>
-              <div
-                className="num"
-                style={{
-                  ...figure,
-                  ...(standing.blocked > 0 ? { color: TONE_FG.danger } : {}),
-                }}
-              >
-                {standing.blocked}
-              </div>
-              <div style={figureLabel}>blocked</div>
-            </PaneRow>
-            <PaneRow style={{ borderLeft: "1px solid var(--hair)" }}>
+            {/* `ready` and `blocked` are the two figures that are a call to
+                action, so a landed chapter draws neither: they can only be 0
+                there, and a 0 next to "ready to pick up" reads as a live board
+                somebody has stopped working, not as finished work. What is
+                worth reading about a landed chapter is the one figure that is
+                its result. */}
+            {finished ? null : (
+              <PaneRow>
+                <div className="num" style={{ ...figure, color: TONE_FG.ok }}>
+                  {standing.ready}
+                </div>
+                <div style={figureLabel}>ready to pick up</div>
+              </PaneRow>
+            )}
+            {finished ? null : (
+              <PaneRow style={{ borderLeft: "1px solid var(--hair)" }}>
+                <div
+                  className="num"
+                  style={{
+                    ...figure,
+                    ...(standing.blocked > 0 ? { color: TONE_FG.danger } : {}),
+                  }}
+                >
+                  {standing.blocked}
+                </div>
+                <div style={figureLabel}>blocked</div>
+              </PaneRow>
+            )}
+            <PaneRow style={finished ? {} : { borderLeft: "1px solid var(--hair)" }}>
               <div className="num" style={figure}>
                 {standing.closed}
               </div>
-              <div style={figureLabel}>closed this chapter</div>
+              <div style={figureLabel}>
+                {finished ? "cards this chapter shipped" : "closed this chapter"}
+              </div>
             </PaneRow>
           </div>
         </>

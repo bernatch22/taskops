@@ -132,10 +132,41 @@ def a_board(root: Path) -> dict[str, Any]:
         {"task": cards[1]["id"], "status": "released", "comment": "got to the rounding"},
     )
 
+    # A chapter that already LANDED, and its own board payload. Built by the
+    # server, like everything else here: `plan`, then `merged milestone=` — the
+    # verb the orchestrator's own landing goes through (`verbs/record.py`), which
+    # is what writes `status: "landed"` through the fold. It is landed
+    # immediately so the board is left with exactly one OPEN chapter and every
+    # other assertion in this file sees the payload it always saw.
+    past = dev.call(
+        "plan",
+        {
+            "milestone": "Nova, panel by panel",
+            "goal": "the dashboard, pane by pane",
+            "rules": ["ts-only diffs, the chapter-close rebuilds"],
+            "criteria": ["every pane is filled"],
+            "tasks": [{"title": "the Chapter pane", "spec": "goal, rules, branch"}],
+        },
+    )
+    dev.call("merged", {"milestone": past["milestone"]["id"], "into": "main", "sha": "beef1234"})
+
     fixture: dict[str, Any] = {
         # `window=` is what makes `hours` exist at all (verbs/pulse.py::run), and
         # `useBoard` passes it on every call so Throughput draws real bars.
         "board": dev.call("board", {"window": "14d", "tz": "UTC"}),
+        # The SAME verb, focused on the chapter that landed — the read that used
+        # to be unreachable, since `milestones` sent only the open ones and the
+        # picker could not name this id.
+        "board_landed": dev.call(
+            "board", {"milestone": past["milestone"]["id"], "window": "14d", "tz": "UTC"}
+        ),
+        # What the landed chapter must still be able to say for itself.
+        "expect_landed": [
+            "Nova, panel by panel",
+            "the dashboard, pane by pane",
+            "ts-only diffs, the chapter-close rebuilds",
+            "every pane is filled",
+        ],
         "card": dev.call("card", {"task": cards[1]["id"]}),
         # The board this credential is looking at owes it an answer, and the
         # page must say so — a mention row carries what was said, not a title.

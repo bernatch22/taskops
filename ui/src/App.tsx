@@ -69,9 +69,15 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     milestone,
   );
 
-  // A chapter that closes stops being pickable, and a filter naming a chapter
-  // nobody can see would narrow the page with no way back to it from the pill.
-  // Falling back to "all chapters" is the honest state, not a stored correction.
+  // A filter naming a chapter nobody can see would narrow the page with no way
+  // back to it from the pill, so the focus falls back to "all chapters" — the
+  // honest state, not a stored correction.
+  //
+  // Note what this does NOT do any more: landing a chapter no longer drops it.
+  // `board.milestones` carries the landed ones too, so a reader who focused a
+  // chapter and watched it land keeps reading it. What still falls off is a
+  // chapter that was dropped, or one aged past the list's cap — and for those
+  // the fallback is the only thing that can be true.
   const chapters = board?.milestones;
   useEffect(() => {
     if (!chapters || !milestone) return;
@@ -90,6 +96,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
         <Header
           milestone={board?.pulse.milestone ?? ""}
           milestones={board?.milestones ?? []}
+          landedTotal={board?.landed_total}
           selected={milestone}
           onSelect={setMilestone}
           live={live}
