@@ -8,7 +8,7 @@ those two ends:
    `LocalBoard`, hands the server's own `board` and `card` payloads to
    `ui/smoke/run.mjs`, and that harness renders the very modules `src/main.tsx`
    bundles — through `react-dom/server`, with no browser and no jsdom. What it
-   proves is the list this file has always been: the eight Monitor panes, a
+   proves is the list this file has always been: the nine Monitor panes, a
    pane with no verb showing its empty state instead of a zero, the Board's
    columns, the acceptance criteria in the dossier (the hole v1 never closed),
    the comment box posting `update` and nothing else, the draft surviving a
@@ -27,14 +27,16 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Four waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+Five waves of `.tsx`-only cards have now been rebuilt into that bundle, and
 each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
 the dev carrying a worktree, the picker's landed chapters), `OWN_CLONE`
 (tk-e5a340 — Files changed and the four steps of the diff cascade) and
 `WORKTREES_PR` (tk-b9c857 — the two-column index and the full-width diff page
-that replaced the five-column table). All four
+that replaced the five-column table) and `SIDE_BY_SIDE` (tk-d0fc41 — the second
+close of that same chapter: the page read side by side, with the card's own
+thread on it, and Monitor's ninth pane). All five
 lists are the check that the bundle is the CURRENT source's output and not the
 previous wave's: none of those strings existed in the bundle its chapter-close
 replaced, so a close that forgot to run `node build.mjs` fails here.
@@ -64,7 +66,13 @@ UI = ROOT / "ui"
 HARNESS = UI / "smoke" / "run.mjs"
 BUNDLE = ROOT / "src" / "taskops" / "ui"
 
-#: The eight panes Monitor draws — `ui/src/components/monitor/panels.ts`.
+#: The NINE panes Monitor draws — `ui/src/components/monitor/panels.ts`.
+#:
+#: `pane-swarm` is the ninth and the newest. It was added to the smoke harness's
+#: own list by the card that built it (tk-74ace0) and deliberately NOT here,
+#: because this tuple is asserted against the COMMITTED bundle and no card of
+#: that wave was allowed to rebuild it — the marker would have been red from the
+#: moment it was written until this close. It is here now, after the rebuild.
 PANES = (
     "pane-leases",
     "pane-throughput",
@@ -74,6 +82,7 @@ PANES = (
     "pane-chapter",
     "pane-mentions",
     "pane-events",
+    "pane-swarm",
 )
 
 #: What only the FINISHED code emits — the markers a stub never carried.
@@ -155,6 +164,25 @@ WORKTREES_PR = (
     "worktree-diff-dir",  # where the tree is on disk
     "worktree-diff-forge",  # …and out to the forge, when the board has a slug
     "files-changed-summary",  # the bar the diff PAGE adds to the file list
+)
+
+#: What the SECOND close of that same chapter added — the wave after `WORKTREES_PR`
+#: landed, on the same terms once more. The index and the page existed; this wave
+#: made the page READ like one (side by side, the card's own thread on it) and gave
+#: Monitor its ninth pane. Every one of these nine is a `data-testid` written by
+#: exactly one card of the wave, and none of them is in the bundle this close
+#: rebuilt over — checked marker by marker against the previous `app.js` before
+#: this list was written.
+SIDE_BY_SIDE = (
+    "patch-split",  # the diff, two columns
+    "patch-split-row",  # …one paired line of it
+    "worktree-diff-mode",  # unified ↔ split, on the page only
+    "worktree-diff-thread",  # the CARD's thread, on the tree's page
+    "swarm-graph",  # the ninth pane's ring
+    "swarm-node",  # an actor or a card on it
+    "swarm-edge",  # a lease, a lapsed lease, or a contested path
+    "swarm-legend",  # the four actor kinds, as the mock draws them
+    "swarm-count",  # nodes, and how many edges are contested
 )
 
 
@@ -355,7 +383,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
-    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR:
+    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     # The pane that used to say "no events verb" no longer can: the verb exists
     # (`verbs/events.py`), so an empty pane now means an empty LOG and says that.

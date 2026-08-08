@@ -65,13 +65,14 @@ import { useState } from "react";
 import { PaneButton } from "../components/monitor/Pane";
 import {
   TREE_DIR,
+  type ThreadProps,
   type Tone,
   type WorktreeRow,
   type WorktreesProps,
 } from "../components/monitor/panels";
 /* The second surface, in its own file. Re-exported here because this page is
  * what renders it and the smoke harness reaches for it through this module. */
-import { WorktreeDiff, type ThreadProps } from "./WorktreeDiff";
+import { WorktreeDiff } from "./WorktreeDiff";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
 import { ownerOf, shortActor } from "../format";
 import { Ext, compareUrl } from "../links";

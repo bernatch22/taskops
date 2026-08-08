@@ -58,6 +58,7 @@ import type {
   BlockedRow,
   BoardGroups,
   BoardRow,
+  CardPayload,
   Event,
   MentionRow,
   Milestone,
@@ -324,7 +325,14 @@ export interface EventStreamProps {
   onMore: () => void;
 }
 
-/* ── 9. Worktrees ─────────────────────────────────────────────────────────── */
+/* ── The Worktrees VIEW — not a Monitor pane, and numbered out of the run ───
+ *
+ * Everything above and below is one of Monitor's NINE panes, in Nova's order.
+ * The Worktrees tab is a view of its own and lives here because it is the same
+ * kind of contract — a declared props interface several worktrees compile
+ * against — not because it is a tenth pane. Numbering it would have made the
+ * pane count unreadable, and the pane count is what `tests/test_ui.py::PANES`
+ * asserts against the committed bundle. */
 
 /** Where `gitwork/trees.py` pins a card's worktree: `.taskops/trees/<id>`, for
  *  life. The path is a CONSTRUCTION, not a field — `BoardRow` carries no
@@ -447,6 +455,39 @@ export interface WorktreeDiffProps {
   /** Back to the table. The page owns no router and no history entry — the
    *  selection is one `useState` in `pages/Worktrees.tsx` and this clears it. */
   onBack: () => void;
+}
+
+/** THE CARD'S OWN THREAD, on the diff page — and why it is a SEPARATE interface
+ *  rather than four more fields on `WorktreeDiffProps`.
+ *
+ *  A worktree has no identity apart from its card: `gitwork/trees.py` pins
+ *  `tk-<id>` as branch, directory and id at once. So there is no worktree
+ *  comment and there must never be one — a second thread would be two places to
+ *  say something about one thing, and the reader of the CARD would see half of
+ *  it. The page therefore renders the same `Thread` the dossier renders, with
+ *  the same `CommentBox`, writing through the same `useBoard::comment` → `update
+ *  comment=` door. Nothing there fetches: `App` already opens the card when it
+ *  opens the tree, exactly as the drawer does, so the payload arrives as a prop
+ *  and there is no second fetch shape to keep in step.
+ *
+ *  Every field is optional because the thread is the page's SECOND half: the
+ *  diff renders whole without any of them, and a caller that has not been taught
+ *  to pass a dossier gets the page it had. It was declared inside
+ *  `pages/WorktreeDiff.tsx` for the length of one wave — this file was held by
+ *  another card — and moved back here at the chapter close, which is what that
+ *  file's own comment said would happen. */
+export interface ThreadProps {
+  /** The card behind the tree — the dossier `verbs/card.py` returns, handed down
+   *  by `App`. `null` while it is in flight, and then the page draws its diff and
+   *  says the thread is still coming rather than showing an empty one. */
+  dossier?: CardPayload | null | undefined;
+  /** Who is addressable in the mention picker — `board.team`, the same list the
+   *  drawer's box gets. Empty is a picker with nobody in it, not a crash. */
+  team?: TeamMember[];
+  now?: number;
+  /** The dashboard's ONE write. Absent, the thread is read-only and no box is
+   *  drawn — a send button with nowhere to send is worse than no box. */
+  onComment?: ((text: string, mentions: string[]) => Promise<void>) | undefined;
 }
 
 /* ── 9. Swarm topology ────────────────────────────────────────────────────── */

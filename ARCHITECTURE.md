@@ -623,9 +623,18 @@ files that answer it:
   (`components/monitor/Pane.tsx`) landed FIRST, with every panel's props
   declared as an interface in `components/monitor/panels.ts` — the seam
   serialized ahead of the fan-out, which is `docs/fan-out.md`'s own prescription
-  applied to the milestone that produced it. Nova draws **eight** `<section>`
-  panes in six layout slots (three stacked blocks left, three panes right), and
-  all eight are filled, one card per panel — the Event stream last, which drew
+  applied to the milestone that produced it. Nova drew **eight** `<section>`
+  panes in six layout slots (three stacked blocks left, three panes right); the
+  **ninth is Swarm** (`components/monitor/Swarm.tsx`), who is attached to what
+  right now — the team's `dev:` at the centre, a circle per actor and per card
+  on one ring, an edge per LEASE (work and review are two mutexes, so a card
+  under review has two edges and the verifier is its own kind), a faint edge for
+  a stalled assignment, and a dashed one between two cards that DECLARED a path
+  in common. Its placement is `topology()`, a pure function deterministic by
+  index — `Math.random()` and a force simulation are both absent on purpose,
+  because an animation loop is what no headless harness can assert. It reads
+  only slices the board already sends: no verb, no payload key, no second fetch.
+  All nine are filled, one card per panel — the Event stream among them, which drew
   an honest empty state for a chapter because nothing returned the log ("layout
   first, data second"), and is now fed by the `events` verb. That pane is the
   ONE place the dashboard fetches outside `useBoard`, and deliberately so: the
@@ -649,7 +658,17 @@ files that answer it:
   clear it is the tab bar (`App.tsx::onTab`, pure and tested: selecting a tab,
   including the one already active, returns to the index). `Worktrees` takes it
   as an OPTIONAL controlled pair, so a caller that passes neither still gets the
-  page it had.
+  page it had. The two columns are equal-height by construction, so a chapter
+  with nothing merged yet does not draw one tall column beside a stub; an empty
+  side keeps its full height and centres its own sentence. The diff page itself
+  reads side by side (§16) and carries **the card's own thread** — there is no
+  worktree comment and there must never be one, because a worktree has no
+  identity apart from its card and a second thread would be two places to say
+  one thing. `WorktreeDiffProps` and `ThreadProps` both live in
+  `components/monitor/panels.ts`: `ThreadProps` spent one wave declared inside
+  `WorktreeDiff.tsx` because the seam was held by another card, and came back at
+  the chapter close. The seam is where a props contract lives; a page-local copy
+  is a wave-length exception with a date on it, never the resting place.
 * **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
