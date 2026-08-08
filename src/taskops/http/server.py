@@ -3,6 +3,7 @@
     POST /<board>/rpc            every verb, read and write
     GET  /<board>/feed           WebSocket (SSE fallback) — the UI's live wire
     POST /<board>/invite/redeem  burn an invite, get a personal credential
+    GET  /<board>/git/*          read-only diffs, ONLY on a host inside a repo
     GET  /<board>/ui/*           the bundle
     GET  /healthz
 
@@ -16,14 +17,11 @@ from typing import Any, cast
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-from . import rpc, feed, static
+from . import rpc, feed, static, gitdoor
 from .. import _clock
-from .auth import Credential, authorize
-from .._json import as_object
+from .auth import Credential, token_in, authorize
 from .mounts import Mounts
 from .._errors import Refused, BadRequest, TaskopsError
-
-MAX_BODY = 4 * 1024 * 1024
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -55,6 +53,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "seq": 0, "data": {"boards": self.mounts.count()}})
         elif tail == "feed":
             self._feed(board)
+        elif tail.startswith("git/"):
+            self._git(board, tail[4:])
         elif tail.startswith("ui"):
             self._static(tail[2:])
         else:
@@ -110,48 +110,45 @@ class Handler(BaseHTTPRequestHandler):
         self.mounts.watch(board)
         feed.attach(self, self.mounts.hub, board, *wanted)
 
+    def _git(self, board: str, rest: str) -> None:  # same token door as /rpc
+        try:
+            self.mounts.stores(board)
+            self._credential(board, "read")
+            data = gitdoor.answer(self.mounts.repo, rest, self.path.partition("?")[2])
+        except TaskopsError as err:
+            self._fail(rpc.status_for(rpc.failure(err)), err)
+            return
+        self._json(200, {"ok": True, "seq": 0, "data": data})
+
     def _static(self, rest: str) -> None:
-        path = static.resolve(self.mounts.ui, rest)
-        if path is None:
+        found = static.payload(self.mounts.ui, rest)
+        if found is None:
             self._fail(404, BadRequest("no UI bundle is installed on this server"))
             return
-        data = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", static.content_type(path))
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._send(200, *found)
 
     # ── plumbing ────────────────────────────────────────────────────────────
 
     def _credential(self, board: str, need: str) -> Credential:
-        token = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        if not token:
-            _, _, query = self.path.partition("?")
-            for part in query.split("&"):
-                if part.startswith(("token=", "invite=")):
-                    token = part.partition("=")[2]
+        token = token_in(self.headers.get("Authorization", ""), self.path)
         if not token:
             raise Refused("no credential — run: taskops join <url with ?token= or ?invite=>")
         return self.mounts.credentials.check(token, board, need, _clock.now())
 
     def _body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or 0)
-        if length > MAX_BODY:
+        if length > rpc.MAX_BODY:
             raise BadRequest("that request is too large for a board call")
-        try:
-            raw: object = json.loads(self.rfile.read(length) or b"{}")
-        except ValueError as err:
-            raise BadRequest(f"the body must be JSON: {err}") from err
-        body = as_object(raw)
-        if not body and not isinstance(raw, dict):
-            raise BadRequest("the body must be a JSON object")
-        return body
+        return rpc.decode(self.rfile.read(length))
 
     def _json(self, status: int, body: dict[str, Any]) -> None:
-        data = json.dumps(body).encode()
+        self._send(status, json.dumps(body).encode(), "application/json")
+
+    def _send(self, status: int, data: bytes, kind: str) -> None:
+        """Content-Length on every answer, always: this is HTTP/1.1 with
+        keep-alive, and a body without one leaves the next request unparseable."""
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -183,7 +180,12 @@ class BoardServer(ThreadingHTTPServer):
 
 
 def serve(
-    root: Path, host: str = "127.0.0.1", port: int = 8787, ui: Path | None = None
+    root: Path,
+    host: str = "127.0.0.1",
+    port: int = 8787,
+    ui: Path | None = None,
+    repo: Path | None = None,
 ) -> BoardServer:
-    """A server, not yet running. The caller decides the thread and the lifetime."""
-    return BoardServer((host, port), Mounts(root, ui))
+    """A server, not yet running. The caller decides the thread and the lifetime —
+    and whether it sits in a repo (`repo`), which is what mounts /git (§16)."""
+    return BoardServer((host, port), Mounts(root, ui, repo))

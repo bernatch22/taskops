@@ -12,7 +12,24 @@ from .._errors import Refused
 from ..core.types import role_of
 from ..store.creds import Credential, Credentials
 
-__all__ = ["Credential", "Credentials", "authorize"]
+__all__ = ["Credential", "Credentials", "authorize", "token_in"]
+
+
+def token_in(header: str, path: str) -> str:
+    """The bearer token, from the Authorization header or the query string.
+
+    Both, and in that order, because the same door is opened three ways: an
+    agent's client sends a header, a browser follows a link (`?token=`), and a
+    newcomer redeems an invite (`?invite=`). One extractor, so a door added
+    later — /feed, /git — cannot accidentally invent a second way in.
+    """
+    token = header.removeprefix("Bearer ").strip()
+    if token:
+        return token
+    for part in path.partition("?")[2].split("&"):
+        if part.startswith(("token=", "invite=")):
+            return part.partition("=")[2]
+    return ""
 
 
 def authorize(credential: Credential, actor: str) -> None:

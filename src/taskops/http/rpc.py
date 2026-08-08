@@ -13,12 +13,15 @@ number. v1 had two incomparable cursors and reconciled them by guessing.
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 from .. import verbs
 from .._json import as_object
 from .._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
 from ..store.stores import Stores
+
+MAX_BODY = 4 * 1024 * 1024
 
 STATUS: dict[type[TaskopsError], int] = {
     BadRequest: 400,
@@ -84,3 +87,18 @@ def rest_of(payload: dict[str, Any], subject: str) -> tuple[str, dict[str, Any]]
 def needs(verb: str) -> str:
     """The capability a verb consumes — the registry decides, not the router."""
     return "write" if verbs.writes(verb) else "read"
+
+
+def decode(raw: bytes) -> dict[str, Any]:
+    """A request body, as the object every door here requires. An array or a
+    bare string is refused by name — the envelope rule holds in BOTH directions,
+    and v1's client decoder turning a non-object into a silent `{}` is exactly
+    the bug this file exists to make unwritable."""
+    try:
+        parsed: object = json.loads(raw or b"{}")
+    except ValueError as err:
+        raise BadRequest(f"the body must be JSON: {err}") from err
+    body = as_object(parsed)
+    if not body and not isinstance(parsed, dict):
+        raise BadRequest("the body must be a JSON object")
+    return body

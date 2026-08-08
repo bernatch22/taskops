@@ -689,8 +689,50 @@ default, not the exception: this repo's own board records no origin.
 
 The rules this chapter was held to are the milestone's own: LOCAL == REMOTE BY
 CONSTRUCTION (a git fact enters the board only as an EVENT written by the side
-that has the repo — no verb touches git, no server reads a repo), and every new
-payload key optional in `ui/src/types.ts` with a fallback in every consumer.
+that has the repo — no verb touches git), and every new payload key optional in
+`ui/src/types.ts` with a fallback in every consumer.
+
+### The amendment: a host that sits in a repo may read it (decided 2026-08-08)
+
+The paragraph above used to end *"no verb touches git, **no server reads a
+repo**"*. That second clause was written deliberately, and it is now **narrowed
+on purpose** — recorded here rather than quietly dropped:
+
+> **The dashboard renders the board, PLUS git content served by a host that
+> sits inside a repo. A host that does not, says so.**
+
+The reasoning is a fact about who runs the server, not a convenience. **Every
+dev has the clone by construction**: `board.json` lives inside `.taskops/`,
+inside the repo, and you cannot `init` or `join` without a checkout. So "the
+side that HAS the repo" — the side the rule above already trusts to write git
+facts — is the same machine that serves the page at render time. Asking it for
+a diff is not a new trust boundary; it is the boundary that already existed,
+read from instead of only written through.
+
+The asymmetry is therefore honest and structural, **decided once at
+construction and never sniffed per request** (`Mounts(repo=…)`,
+`http/gitdoor.py`):
+
+| host | root | /git |
+|---|---|---|
+| `taskops ui` | `<repo>/.taskops` — it IS in a checkout | mounted: `git/commit/<ref>`, `git/compare/<a>...<b>` |
+| `taskops serve` | a directory of boards, no checkout | **404 with the reason spelled out**, and nothing faked |
+
+The only viewer that ever meets that gap is a browser with no clone — a phone
+against a hosted board — and there the UI's declared cascade takes over:
+numstat from the event → patch from /git → the forge link if a slug exists →
+one honest sentence. No dead anchor, no empty pane pretending.
+
+What did NOT change: `events.jsonl` still stores references and measures and
+never content; the door DERIVES on demand and nothing it returns is written
+back; git still lives only in `gitwork/` (`gitwork/diff.py`), read-only, behind
+the same token door as `/rpc` and the same envelope as `rpc.py`. **A ref from a
+browser is refused by shape, then resolved by `git rev-parse --verify --quiet`
+as one argv element, and from there only the 40-hex sha is used** — nothing is
+ever interpolated. A commit is spelled `git diff <sha>^1 <sha>` (first parent
+only, so a merge does not explode into its whole branch; a root commit against
+git's empty tree), a compare is `merge-base(a, b) → b`, and an over-cap patch
+comes back `truncated: true` — flagged, never silently cut.
 
 ### A concept named by two cards is a seam — the fan-out rule, third notch
 
