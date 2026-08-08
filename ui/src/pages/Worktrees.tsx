@@ -71,7 +71,7 @@ import {
 } from "../components/monitor/panels";
 /* The second surface, in its own file. Re-exported here because this page is
  * what renders it and the smoke harness reaches for it through this module. */
-import { WorktreeDiff } from "./WorktreeDiff";
+import { WorktreeDiff, type ThreadProps } from "./WorktreeDiff";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
 import { ownerOf, shortActor } from "../format";
 import { Ext, compareUrl } from "../links";
@@ -469,18 +469,35 @@ function Column({
   );
 }
 
+/** The selection, optionally CONTROLLED — and the card behind it.
+ *
+ *  It used to be one `useState` in this file, on the reasoning that nothing
+ *  outside the page could act on it. Something can: the tab bar. Selecting
+ *  "Worktrees" while a tree is open has to return to the index, and that event
+ *  happens in `App.tsx`, so the state belongs there (`App.tsx::selectTab`).
+ *
+ *  Both props are OPTIONAL and the internal state remains the fallback, so a
+ *  caller that knows nothing about them — the smoke harness renders this page
+ *  with `groups` alone — gets exactly the page it had. `ThreadProps` rides
+ *  through untouched, straight to `WorktreeDiff`. */
+type Controlled = ThreadProps & {
+  openTree?: string | null;
+  onOpenTree?: (id: string | null) => void;
+};
+
 export function Worktrees({
   groups,
   milestones = [],
   repo,
   milestoneBranch = "",
   reader,
-}: WorktreesProps): React.JSX.Element {
-  /* THE VIEW STATE, and the whole of it: which tree is open, or none. It lives
-   * here and not in `App.tsx` because nothing outside this page can act on it —
-   * the diff is this view's second surface, not a fourth tab and not an overlay
-   * over the other two. */
-  const [openTree, setOpenTree] = useState<string | null>(null);
+  openTree,
+  onOpenTree,
+  ...thread
+}: WorktreesProps & Controlled): React.JSX.Element {
+  const [own, setOwn] = useState<string | null>(null);
+  const selected = onOpenTree ? (openTree ?? null) : own;
+  const select = onOpenTree ?? setOwn;
   const titles = new Map(milestones.map((m) => [m.id, m.title]));
 
   /* The early return: when a tree is selected the index is REPLACED, full
@@ -490,7 +507,7 @@ export function Worktrees({
    * the groups this page folds — falls through to the index instead of drawing a
    * page about nothing. The reader is where they would have landed by pressing
    * back, which is the honest resolution of a row that no longer exists. */
-  const open = openTree ? (rows(groups, milestones).find((w) => w.id === openTree) ?? null) : null;
+  const open = selected ? (rows(groups, milestones).find((w) => w.id === selected) ?? null) : null;
   if (open) {
     return (
       <WorktreeDiff
@@ -498,7 +515,8 @@ export function Worktrees({
         base={milestoneBranch}
         repo={repo}
         reader={reader}
-        onBack={() => setOpenTree(null)}
+        onBack={() => select(null)}
+        {...thread}
       />
     );
   }
@@ -521,7 +539,7 @@ export function Worktrees({
             blocks={c.blocks.map((b) => ({ title: b.title, rows: fold(groups, b, titles) }))}
             base={milestoneBranch}
             repo={repo}
-            onOpen={setOpenTree}
+            onOpen={select}
           />
         ))}
       </div>

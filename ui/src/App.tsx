@@ -58,9 +58,34 @@ const panel: React.CSSProperties = {
   animation: "tk-fade 240ms ease",
 };
 
+/** Selecting a tab, as a decision rather than as two setters.
+ *
+ *  Selecting the tab you are already on RETURNS TO THE INDEX: that was the bug —
+ *  `TabNav` set a tab that was already set, React re-rendered nothing, and the
+ *  open tree survived a click the reader could not tell had registered. Clearing
+ *  it on every tab change rather than only on the active one is the same rule
+ *  said once: leaving Worktrees and coming back lands on the index too, which is
+ *  what "the tab bar takes you to the tab" means.
+ *
+ *  Pure, and exported, for the reason `submit()` is (CLAUDE.md): no handler
+ *  fires under `react-dom/server`, so a rule left inside the closure would have
+ *  no test at all. `ui/smoke/main.tsx` §9. */
+export function onTab(next: TabId): { tab: TabId; tree: string | null } {
+  return { tab: next, tree: null };
+}
+
 export function App({ client }: { client: Client }): React.JSX.Element {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [tab, setTab] = useState<TabId>("monitor");
+  /* WHICH TREE IS OPEN — lifted out of `pages/Worktrees.tsx` and into the view
+   * state, because the thing that has to clear it is the TAB BAR, which is up
+   * here. Selecting "Worktrees" while a tree is open used to set a tab that was
+   * already set: React re-rendered nothing, the page kept its own `useState`,
+   * and the reader could not tell the click had registered. A `key` on the page
+   * would remount it into the same state one render later and would still be a
+   * component being reset from outside itself. The state moves to where the
+   * event is. */
+  const [tree, setTree] = useState<string | null>(null);
   // The chapter in focus lives HERE, next to the tab, for the same reason: it is
   // view state that decides an ARGUMENT to the one fetch, never a second fetch.
   const [milestone, setMilestone] = useState("");
@@ -68,6 +93,21 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     client,
     milestone,
   );
+
+  /* Opening a tree opens its CARD, through the one door the drawer uses. A
+   * worktree has no identity apart from its card, so the diff page shows that
+   * card's thread — and it must be the SAME dossier, arriving on the same
+   * refetch clock, or the page and the drawer would disagree about one card. */
+  function openTree(id: string | null): void {
+    setTree(id);
+    openCard(id);
+  }
+
+  function selectTab(next: TabId): void {
+    const view = onTab(next);
+    if (tree !== view.tree) openTree(view.tree);
+    setTab(view.tab);
+  }
 
   // A filter naming a chapter nobody can see would narrow the page with no way
   // back to it from the pill, so the focus falls back to "all chapters" — the
@@ -104,7 +144,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           theme={theme}
           onToggleTheme={flip}
         >
-          <TabNav tabs={TABS} active={tab} onSelect={setTab} />
+          <TabNav tabs={TABS} active={tab} onSelect={selectTab} />
         </Header>
         {board ? <KpiRail board={board} /> : null}
       </header>
@@ -149,6 +189,11 @@ export function App({ client }: { client: Client }): React.JSX.Element {
               repo={board.repo}
               milestoneBranch={board.milestone?.branch ?? ""}
               reader={client}
+              openTree={tree}
+              onOpenTree={openTree}
+              dossier={card}
+              team={board.team}
+              onComment={comment}
             />
           ) : (
             <Board board={board} openCard={openCard} />
@@ -156,7 +201,12 @@ export function App({ client }: { client: Client }): React.JSX.Element {
         ) : null}
       </main>
 
-      {openId ? (
+      {/* The drawer is NOT drawn over the diff page. Opening a tree opens its
+          card — that is where the page's thread comes from — and a drawer on top
+          of it would be the very bug this chapter exists to remove: the reader
+          back in a 900px column about the card they are already reading at full
+          width. */}
+      {openId && !tree ? (
         <Drawer
           dossier={card}
           openId={openId}
