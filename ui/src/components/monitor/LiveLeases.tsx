@@ -1,9 +1,15 @@
 /* Live leases — Taskops Nova.dc.html lines 176-217, transcribed.
  *
  * The pane the whole "derive, don't write" idea is visible in: `doing` is not a
- * stored status, it is somebody holding a 15-minute lease, and `stalled` is that
- * same card once nobody is renewing it. Both live in ONE pane on purpose
- * (panels.ts) — a lapsed lease is the fact this panel is about.
+ * stored status, it is somebody holding a 15-minute lease; `reviewing` is a
+ * verifier holding the SECOND mutex on the same card; and `stalled` is that same
+ * card once nobody is renewing anything. All three live in ONE pane on purpose
+ * (panels.ts) — a lapsed lease is the fact this panel is about, and it only
+ * reads as one next to the leases that are alive.
+ *
+ * The state this pane deliberately does NOT draw is `review`: handed in, no
+ * lease, nobody on it. It belongs on a pane about what is waiting, not on one
+ * about what is held.
  *
  * Row geometry is the design's, verbatim: a four-column grid
  * `minmax(150px,1.6fr) minmax(70px,1fr) 72px 78px`, gap 12, padding 14px 20px,
@@ -63,6 +69,42 @@ function held(row: BoardRow, now: number): LeaseProc {
   };
 }
 
+/** A card a VERIFIER is holding — the second mutex (`store/reviews.py`), not the
+ *  `review` group. A `review` card is handed in with no lease and nobody on it;
+ *  it is deliberately absent from this pane, because a pane about live leases
+ *  that drew a row with no lease would be drawing the wrong fact. `holder` on a
+ *  `reviewing` row is the verifier (`pulse.py`: `checking.get(card["id"])`), and
+ *  that is the actor Nova prints (`agent:berna/rv1`, design line 1168).
+ *
+ *  THE NUMBER, and what it is honestly: the review lease's own `acquired` is NOT
+ *  on the wire — `pulse.py::_row` sends `since` (the WORK lease's acquisition if
+ *  the worker is still alive beside the verifier, else the card's `updated`) and
+ *  sends the verifier only as a name. The review lease was claimed at or after
+ *  `since`, so `TTL - (now - since)` is a conservative FLOOR on what is left of
+ *  it: at least this much, never more than really remains, and 0 once `since` is
+ *  older than the TTL — at which point the lease is still live (the group's
+ *  definition guarantees it) and the payload simply cannot say by how much.
+ *  Making it exact is one field in `pulse.py`, not a computation this file can do.
+ *
+ *  Two spellings, both deliberate. The 10.5px label is Nova's verbatim `review`
+ *  (design line 1168, `remainLabel`). The PILL says `reviewing` — the board's own
+ *  name for this derived state (`core/types.py::DERIVED_STATES`) — because Nova's
+ *  shorthand `review` is the name of a different group, and the one thing this
+ *  row must not be read as is that group. */
+function checked(row: BoardRow, now: number): LeaseProc {
+  const left = Math.max(0, LEASE_TTL - (now - row.since));
+  return {
+    card: row.id,
+    actor: shortActor(row.holder ?? row.assignee),
+    title: row.title,
+    remain: ago(left),
+    remainLabel: "review",
+    state: "reviewing",
+    tone: "warn",
+    load: null,
+  };
+}
+
 /** A stalled card: an owner, nobody running it. The number that matters flips —
  *  not what is left of a lease (there is none) but how long the silence is. */
 function lapsed(row: BoardRow, now: number): LeaseProc {
@@ -79,11 +121,19 @@ function lapsed(row: BoardRow, now: number): LeaseProc {
   };
 }
 
+/** The states in this pane that ARE a live lease. The predicate, not a literal:
+ *  `level()` used to ask `p.state === "doing"`, which was the same question only
+ *  while `doing` was the pane's one live state. `reviewing` is a second one — a
+ *  verifier holding the review mutex — and the branch has to be about HOLDING A
+ *  LEASE, or a new live state silently falls into the silence reading and draws
+ *  a lapsing line under a perfectly healthy lease. */
+const LIVE: ReadonlySet<string> = new Set(["doing", "reviewing"]);
+
 /** The level the flat line sits at, per state — the only real quantity there is.
  *  Kept beside the row builders so the two readings of "the number" (left, and
  *  silence) cannot drift from the two shapes drawn for them. */
 function level(p: LeaseProc, row: BoardRow, now: number): number {
-  if (p.state === "doing") {
+  if (LIVE.has(p.state)) {
     return Math.max(
       0,
       Math.min(1, (LEASE_TTL - (now - row.since)) / LEASE_TTL),
@@ -128,13 +178,16 @@ const figureLabel: React.CSSProperties = {
 
 export function LiveLeases({
   doing,
+  reviewing,
   stalled,
   now,
   onOpen,
   standing,
 }: LiveLeasesProps): React.JSX.Element {
+  /* The design's order: live and fine, live and being checked, then lapsed. */
   const rows: { row: BoardRow; p: LeaseProc }[] = [
     ...doing.map((row) => ({ row, p: held(row, now) })),
+    ...reviewing.map((row) => ({ row, p: checked(row, now) })),
     ...stalled.map((row) => ({ row, p: lapsed(row, now) })),
   ];
 
@@ -145,7 +198,11 @@ export function LiveLeases({
       subtitle="15-minute TTL, renewed on every call. A dead process is a lapsing lease."
       aside={
         <span style={{ fontSize: "11.5px", color: "var(--text-3)" }}>
-          {`${doing.length} healthy · ${stalled.length} lapsed`}
+          {/* A review lease is a HEALTHY lease, and the design's own arithmetic
+              says so: five rows — 3 doing, 1 review, 1 stalled — read '4 healthy
+              · 1 lapsed' (line 1375). Counting only `doing` would have made it
+              '3 healthy'. */}
+          {`${doing.length + reviewing.length} healthy · ${stalled.length} lapsed`}
         </span>
       }
     >
