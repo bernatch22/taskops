@@ -425,10 +425,15 @@ def a_clone(root: Path) -> Path:
 def a_diff(root: Path) -> dict[str, Any]:
     """The /git door's OWN answers — the payload half of this chapter.
 
-    Both cases come from `http/gitdoor.py::answer`, not from `gitwork/diff.py`
-    directly and not from a shape written by hand: the words of the no-repo
-    refusal are what `links.tsx::noteGitRefusal` matches on, so a smoke test that
-    invented them would pass while the real cascade never flipped.
+    All THREE cases come from `http/gitdoor.py::answer`, not from
+    `gitwork/diff.py` directly and not from a shape written by hand: the words of
+    the no-repo refusal are what `links.tsx::noteGitRefusal` matches on and the
+    words of the stale-clone refusal are what the cascade QUOTES, so a smoke test
+    that invented either would pass while the real cascade never flipped.
+
+    The third one is the everyday case on a shared board: `tk-b22222` is another
+    dev's card, whose branch is on the server's board and on origin but has never
+    been fetched into this clone.
     """
     from taskops.http import gitdoor
     from taskops._errors import NotFound
@@ -441,7 +446,13 @@ def a_diff(root: Path) -> dict[str, Any]:
         no_repo = str(refusal)
     else:  # pragma: no cover - the door must refuse a host with no repo
         no_repo = ""
-    return {"compare": compare, "no_repo": no_repo}
+    try:
+        gitdoor.answer(clone, "compare/main...tk-b22222", "")
+    except NotFound as refusal:
+        stale = str(refusal)
+    else:  # pragma: no cover - the door must refuse a ref this clone lacks
+        stale = ""
+    return {"compare": compare, "no_repo": no_repo, "stale": stale}
 
 
 needs_node = pytest.mark.skipif(

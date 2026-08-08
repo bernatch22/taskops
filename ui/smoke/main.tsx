@@ -76,7 +76,7 @@ export interface Fixture {
   /** substrings that chapter must still be able to say for itself */
   expect_landed: string[];
   /** the /git door's own answer over a real clone, and its own no-repo refusal */
-  git: { compare: GitDiff; no_repo: string };
+  git: { compare: GitDiff; no_repo: string; stale: string };
   /** two cards the board actually CLOSED: the reviewed one, then the `no_code`
    *  one. Their histories are where `submitted`, `reviewed` and `status` bodies
    *  come from — see §9. */
@@ -1356,11 +1356,40 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     "before any refusal the sentence is about this read, not about the host",
     beforeRefusal.step === "none" && beforeRefusal.why.includes("could not read that diff"),
   );
+  /* The STALE CLONE — the everyday case once the board is shared. The card is
+   * closed and its branch is on origin; this clone has simply never fetched it.
+   * That is not an error and must not read as one, and only the door knows
+   * WHICH ref was missing, so the cascade quotes it rather than composing a
+   * sentence of its own. Asserted before the no-repo flag is flipped, because
+   * afterwards every pane would say the host has no clone. */
+  const stale = cascade(null, target, {
+    diff: null,
+    loading: false,
+    refusal: git.stale,
+  });
+  check(
+    "a ref this clone lacks is quoted in the door's own words",
+    stale.step === "none" && stale.why.includes("not in your clone yet"),
+  );
+  check(
+    "and it names the git fetch that brings it",
+    stale.step === "none" && stale.why.includes("git fetch origin tk-b22222"),
+  );
+  const staleForge = cascade(REPO, target, { diff: null, loading: false, refusal: git.stale });
+  check(
+    "the same words ride the forge step, which is still offered",
+    staleForge.step === "forge" && staleForge.why.includes("git fetch origin"),
+  );
+  check(
+    "a stale ref does NOT flip availability — ask again for the next one",
+    (noteGitRefusal(git.stale), gitAvailable()),
+  );
+
   noteGitRefusal(git.no_repo);
   check("the door's own words flip availability", !gitAvailable());
   check(
     "an unknown ref would NOT have flipped it",
-    (resetGitAvailability(), noteGitRefusal("this repo has no commit 'nope'"), gitAvailable()),
+    (resetGitAvailability(), noteGitRefusal(git.stale), gitAvailable()),
   );
   noteGitRefusal(git.no_repo);
 

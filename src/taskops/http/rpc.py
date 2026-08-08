@@ -17,7 +17,9 @@ import json
 from typing import Any, cast
 
 from .. import verbs
+from .auth import Credential, authorize
 from .._json import as_object
+from .mounts import Mounts
 from .._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
 from ..store.stores import Stores
 
@@ -38,6 +40,35 @@ def dispatch(stores: Stores, verb: str, actor: str, args: dict[str, Any]) -> dic
     except TaskopsError as err:
         return failure(err)
     return {"ok": True, "seq": stores.head(), "data": data}
+
+
+def answered(
+    mounts: Mounts,
+    board: str,
+    credential: Credential,
+    verb: str,
+    raw: bytes,
+    payload: dict[str, Any],
+) -> tuple[int, bytes]:
+    """WHO answers this call — the ONE local/remote switch, written once.
+
+    A board this process owns is run right here, exactly as it always was. A
+    board on somebody else's server is RELAYED, body and answer untouched
+    (`upstream.py` says why forwarding beat pointing the page at the remote).
+    Both branches hand back `(status, bytes)`, so the router has one way to
+    write a response and neither shape can drift from the other.
+
+    The credential above is always the LOCAL one — a window authenticates its
+    own browser; the team credential never leaves `mounts.upstream`."""
+    if mounts.upstream is not None:
+        return mounts.forward(board, verb, raw)
+    actor, args = rest_of(payload, credential.subject)
+    authorize(credential, actor)
+    body = dispatch(mounts.stores(board), verb, actor, args)
+    if body.get("ok") and needs(verb) == "write":
+        # AFTER the write is durable, never before (v1 published first).
+        mounts.hub.publish(board, {"type": "change", "verb": verb, "seq": body["seq"]})
+    return status_for(body), json.dumps(body).encode()
 
 
 def failure(err: TaskopsError) -> dict[str, Any]:

@@ -13,8 +13,12 @@ from __future__ import annotations
 import json
 import argparse
 import webbrowser
+from typing import TYPE_CHECKING
 from pathlib import Path
 from urllib.request import urlopen
+
+if TYPE_CHECKING:  # a NAME for the annotation, never an import at start-up
+    from ..http.upstream import Upstream
 
 from .. import _clock
 from .._json import as_object
@@ -64,23 +68,31 @@ def invite(args: argparse.Namespace) -> int:
 
 
 def ui(here: Path) -> int:
-    """The dashboard, in one command with no parameters.
+    """The dashboard, in one command with no parameters — ALWAYS served here.
 
-    Remote board: open its /ui/ WITH the credential from remote.json — the old
-    `open` sent people to a paste-a-token screen holding a token the machine
-    already had. Local board: serve it right here (the UI ships inside the
-    package) and open the browser with a freshly minted token. The port and
-    token persist in `.taskops/ui.json` (gitignored), so the link survives and
-    a second `taskops ui` while one is running just reopens the browser.
+    ONE window, and it stands in the checkout you ran it from. The UI ships
+    inside the package, so there is nothing to build; the browser gets a freshly
+    minted LOCAL token. The only thing a remote board changes is who answers
+    `/board/rpc`: the local stores, or the server that owns the board, forwarded
+    with the credential from `remote.json` (`http/upstream.py`, which is also
+    where forwarding is argued against pointing the page at the remote).
 
-    Serving blocks, like `taskops serve` — ctrl-c stops it. An agent runs it
-    in the background; a human leaves the terminal open. No daemon to forget."""
+    `/board/git/…` is mounted from THIS clone in both modes, and that is the
+    reason the command changed. It used to redirect a remote board to
+    `<server>/ui/?token=…` — a page served by a host that has no repository, so
+    every patch in it fell through to a forge link or a sentence. The window was
+    pointed at the wrong machine: the board is shared, the code is not, and a
+    diff is read from the clone the reader actually has (ARCHITECTURE.md §16).
+
+    The port and token persist in `.taskops/ui.json` (gitignored), so the link
+    survives and a second `taskops ui` while one is running just reopens the
+    browser. Serving blocks, like `taskops serve` — ctrl-c stops it. An agent
+    runs it in the background; a human leaves the terminal open. No daemon to
+    forget."""
     root = find_root(here)
-    config = read_config(root)
-    if config.get("url"):
-        return _open(f"{str(config['url']).rstrip('/')}/ui/?token={config.get('token', '')}")
     if not is_project(root):
         raise TaskopsError("no board here — taskops init starts one, taskops join connects one")
+    upstream = _upstream(root)
     state = as_object(json.loads((root / DIR / "ui.json").read_text())) if (
         root / DIR / "ui.json"
     ).exists() else {}
@@ -100,9 +112,9 @@ def ui(here: Path) -> int:
     # /git switch, decided here and passed once — `serve` below has a boards
     # directory instead and passes nothing, so its /git says so (§16).
     try:
-        httpd = make_server(root / DIR, "127.0.0.1", port, repo=root)
-    except OSError:
-        httpd = make_server(root / DIR, "127.0.0.1", 0, repo=root)  # the port moved on
+        httpd = make_server(root / DIR, "127.0.0.1", port, repo=root, upstream=upstream)
+    except OSError:  # the port moved on
+        httpd = make_server(root / DIR, "127.0.0.1", 0, repo=root, upstream=upstream)
     port = httpd.server_address[1]
     (root / DIR / "ui.json").write_text(json.dumps({"port": port, "token": token}) + "\n")
     _open(f"http://127.0.0.1:{port}/board/ui/?token={token}")
@@ -113,6 +125,27 @@ def ui(here: Path) -> int:
     finally:
         httpd.server_close()
     return 0
+
+
+def _upstream(root: Path) -> Upstream | None:
+    """The remote board this window looks at, or None for a board of our own.
+
+    The refusal is `board.py::open_board`'s, word for word and on purpose: an
+    address with no credential is the same broken join whichever door you came
+    through, and one sentence to recognise beats two that nearly match."""
+    from ..http.upstream import Upstream as Remote  # the CLI must start without a server
+
+    config = read_config(root)
+    url = str(config.get("url", ""))
+    if not url:
+        return None
+    token = str(config.get("token", ""))
+    if not token:
+        raise TaskopsError(
+            f"{root / DIR}/board.json points at {url} but there is no credential in "
+            "remote.json — run: taskops join <url with ?token= or ?invite=>"
+        )
+    return Remote(url, token)
 
 
 def _open(url: str) -> int:
