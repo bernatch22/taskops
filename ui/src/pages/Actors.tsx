@@ -31,18 +31,20 @@
  * this chapter refuses (`panels.ts`, the `ActorRow`/`DevRow` seam, says the same
  * in the type).
  *
- * What replaces it is `Hours worked today`, which is Nova's own second panel,
- * is true, and is a fold of the report the board already sends. It is grouped by
- * DEV with its agents inside it, and A ROW WORTH ZERO IS NOT DRAWN: a column of
- * em dashes is a list of nothing.
+ * Nothing replaces it ON THIS PAGE. An `Hours worked today` panel of BARS stood
+ * here for one wave and is deleted, not restyled: a bar chart exists to compare
+ * things against each other, and the things it compared were ephemeral agents —
+ * comparing two labels. The hours are still drawn, and drawn better, inside the
+ * dev's own panel, grouped by the one axis that is a fact: the calendar day.
  *
  * ── A dev opens into a full overlay ───────────────────────────────────────
  *
  * `components/actors/DevPanel.tsx`, which reuses `shared/Overlay` — the same
- * portal, the same scrim, the same ONE `overlayStack` that owns Escape. The
- * detail is a DRAWING (lanes on a shared time axis) and a drawing does not fit
- * in a 300px grid cell, which is why the earlier "reveal in place" is gone. What
- * did NOT happen is a second copy of the overlay plumbing.
+ * portal, the same scrim, the same ONE `overlayStack` that owns Escape. Inside
+ * it `Daysheet` is a pane per calendar day, newest first, with an hour that
+ * folds open — a document that does not fit in a 300px grid cell, which is why
+ * the earlier "reveal in place" is gone. What did NOT happen is a second copy of
+ * the overlay plumbing.
  *
  * ── Where every figure comes from ─────────────────────────────────────────
  *
@@ -60,15 +62,6 @@
  * nothing made. A dev's totals are dev + agents, and when one member cannot say
  * its own the sum is refused rather than quietly taken over the rest.
  *
- * ── Why "today" is the last DAY and not `by_actor` ────────────────────────
- *
- * `ReportPayload.by_actor` folds the WHOLE window — fourteen days, as `useBoard`
- * asks for it. Drawing that under the heading "Hours worked today" would be the
- * exact dishonesty this chapter exists to remove. `report.days` is the same fold
- * per calendar day (`verbs/report.py::_day`, bucketed between two local
- * midnights) and its LAST entry is today, so that is what the panel reads, and
- * its heading carries the day's own label to prove it.
- *
  * ── The ordering, which is this view's design decision ────────────────────
  *
  * Devs: most agents on a card right now first, then most time worked, then by
@@ -77,9 +70,9 @@
  * lapsed assignment, then history, most recently seen first within each. */
 import { useState } from "react";
 
-import { Pane, PaneEmpty, PaneRow } from "../components/monitor/Pane";
+import { PaneRow } from "../components/monitor/Pane";
 import { DevPanel } from "../components/actors/DevPanel";
-import { span } from "../components/actors/Timesheet";
+import { span } from "../components/actors/Daysheet";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
 import { ago, initials, ownerOf, shortActor } from "../format";
 import type {
@@ -90,7 +83,7 @@ import type {
   DevRow,
   Tone,
 } from "../components/monitor/panels";
-import type { ActorHours, ReportPayload } from "../types";
+import type { ActorHours } from "../types";
 
 export type { ActorsProps };
 
@@ -256,50 +249,18 @@ export function devRows(props: ActorsProps): DevRow[] {
   );
 }
 
-/** One bar of `Hours worked today` — the day's own fold, never the window's. */
-export interface HoursBar {
-  actor: string;
-  seconds: number;
-  human: string;
-}
-
-/** One dev's block of that panel: its own bar and its agents', nothing worth
- *  zero among them. */
-export interface HoursGroup {
-  dev: string;
-  seconds: number;
-  human: string;
-  bars: HoursBar[];
-}
-
-/** Today's hours, by dev and then by actor, longest first — `report.days`' LAST
- *  entry, which is today by construction (`core/hours.py::windows` ends at now's
- *  calendar day).
+/** Card id → title, for every card the board can name RIGHT NOW — the three
+ *  lease slices, which is all `ActorsProps` carries titles in. A session on a
+ *  card nobody holds any more is drawn as its id alone: the id is a fact, a
+ *  title this payload never sent would be a guess.
  *
- *  A row worth zero is dropped at BOTH levels: an actor that worked no
- *  measurable minute is not a row, and a dev all of whose actors were dropped is
- *  not a block. `null` when the answer carried no report at all: a heading with
- *  no bars under it is a pane that failed, and this view says so in words. */
-export function hoursToday(
-  report: ReportPayload | null,
-): { day: string; groups: HoursGroup[] } | null {
-  const day = report?.days[report.days.length - 1];
-  if (!day) return null;
-  const byDev = new Map<string, HoursBar[]>();
-  for (const [actor, h] of Object.entries(day.by_actor)) {
-    if (h.seconds <= 0) continue;
-    const dev = ownerOf(actor);
-    byDev.set(dev, [...(byDev.get(dev) ?? []), { actor, seconds: h.seconds, human: h.human }]);
+ *  Pure and exported for the same reason the two folds above are. */
+export function cardTitles(props: ActorsProps): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of [...props.doing, ...props.reviewing, ...props.stalled]) {
+    out[row.id] = row.title;
   }
-  const groups = [...byDev]
-    .map(([dev, bars]) => ({
-      dev,
-      bars: bars.sort((a, b) => b.seconds - a.seconds || a.actor.localeCompare(b.actor)),
-      seconds: bars.reduce((n, b) => n + b.seconds, 0),
-      human: span(bars.reduce((n, b) => n + b.seconds, 0)),
-    }))
-    .sort((a, b) => b.seconds - a.seconds || a.dev.localeCompare(b.dev));
-  return { day: day.day, groups };
+  return out;
 }
 
 /* ── the drawing ──────────────────────────────────────────────────────────── */
@@ -470,7 +431,7 @@ function Dev({
           onClick={onExpand}
           style={{ all: "unset", cursor: "pointer", color: "var(--accent)", fontSize: "11.5px" }}
         >
-          Open the timesheet, the agents and the arithmetic
+          Open the days worked, hour by hour
         </button>
       </PaneRow>
     </section>
@@ -479,11 +440,9 @@ function Dev({
 
 export function Actors(props: ActorsProps): React.JSX.Element {
   const rows = devRows(props);
-  const today = hoursToday(props.report);
   const days = props.report?.days.length ?? 0;
   const [open, setOpen] = useState<string | null>(null);
   const opened = rows.find((r) => r.dev === open) ?? null;
-  const max = Math.max(1, ...(today?.groups ?? []).flatMap((g) => g.bars.map((b) => b.seconds)));
 
   return (
     <div style={page} data-testid="actors">
@@ -520,89 +479,11 @@ export function Actors(props: ActorsProps): React.JSX.Element {
         </>
       )}
 
-      {/* Nova's second panel, and the one that REPLACES the worker slots: hours
-          are measured (`core/hours.py`), slots are not allocated. Per DEV, with
-          its agents inside it, and no row for an actor worth zero. */}
-      <Pane
-        testId="pane-hours-today"
-        title="Hours worked today"
-        subtitle={
-          today
-            ? `${today.day} — a gap longer than 30 minutes is dropped, never capped`
-            : "no report on this answer"
-        }
-        aside={
-          today && today.groups.length > 0 ? (
-            <span className="mono" style={{ fontSize: "11px", color: "var(--text-3)" }}>
-              {`${today.groups.length} ${today.groups.length === 1 ? "dev" : "devs"}`}
-            </span>
-          ) : undefined
-        }
-      >
-        {today === null ? (
-          <PaneEmpty>
-            The answer carried no <code>hours</code>. <code>pulse.py::run</code> builds that field
-            only when the <code>board</code> call passes <code>window=</code> — a missing question,
-            not an empty day.
-          </PaneEmpty>
-        ) : today.groups.length === 0 ? (
-          <PaneEmpty>Nobody has worked a measurable minute today.</PaneEmpty>
-        ) : (
-          <div style={{ padding: "6px 20px 18px" }}>
-            {today.groups.map((group) => (
-              <div key={group.dev} data-testid="hours-dev" data-dev={group.dev} style={{ padding: "8px 0" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: "12px",
-                    color: "var(--text-2)",
-                  }}
-                >
-                  <span className="mono">{group.dev}</span>
-                  <span className="num">{group.human}</span>
-                </div>
-                {group.bars.map((bar) => (
-                  <div
-                    key={bar.actor}
-                    data-testid="hours-bar"
-                    data-actor={bar.actor}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: "8px",
-                      padding: "5px 0 5px 14px",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div className="mono" style={{ ...clip, fontSize: "11px", color: "var(--text-3)" }}>
-                        {shortActor(bar.actor)}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "5px",
-                          height: "6px",
-                          borderRadius: "4px",
-                          background: "var(--accent)",
-                          width: `${Math.round((bar.seconds / max) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="num" style={{ fontSize: "12px", color: "var(--text-2)" }}>
-                      {bar.human}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-      </Pane>
-
       {opened ? (
         <DevPanel
           row={opened}
           report={props.report}
+          titles={cardTitles(props)}
           onOpen={props.onOpen}
           onClose={() => setOpen(null)}
         />

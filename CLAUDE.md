@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
-dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
+dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -338,16 +338,23 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    REUSES `shared/Overlay` — the same portal, the same `overlayStack` that owns
    Escape, one `width` prop apart — with `DevDetail` exported beside it exactly
    as `Dossier` is beside `Drawer`, so the harness reads the document a portal
-   cannot render. Inside it the **timesheet**
-   (`components/actors/Timesheet.tsx`) is a DRAWING and not a paragraph: a
-   wall-clock axis with hour marks, one placed and sized block per session, gaps
-   as visible space, and ONE LANE PER AGENT on the day's one shared axis, so two
-   lanes answer "who was working in parallel" by eye. The list of card ids
-   joined by dots that stood under the first version's axis is gone. The blocks
-   are `core/hours.py::sessions`, and `spent()` is a FOLD of that same list, so
-   the timeline and the total beside each lane are one computation and cannot
-   drift. The dropped gaps — a gap over 30 minutes is dropped whole, never
-   capped — are drawn as space and said as a figure, and the rule is stated on
-   screen in `core/hours.py`'s own words.
+   cannot render. Inside it, **`components/actors/Daysheet.tsx`** is a pane per
+   calendar DAY — newest FIRST and only the newest open, the day's counted total
+   on its header — and inside a day, one row per hour it actually SPANS, each
+   folding open to that hour's sessions (`HH:MM – HH:MM`, the duration, the card
+   and its title, each a door to the dossier). That is the SECOND design of the
+   panel: the first drew ONE LANE PER AGENT on a shared wall-clock axis with a
+   table of per-agent rows under it, and an "Hours worked today" panel of bars
+   beside it on the page. Both are DELETED, not restyled — a bar chart and a
+   lane comparison exist to compare things, and an agent is a name bound to the
+   RUN of a card, so they compared labels. `tests/test_ui.py::RETIRED_TIMESHEET`
+   asserts the committed bundle carries no marker of either.
+   A session belongs to the hour its START falls in and is never split
+   (splitting would invent intervals `core/hours.py::sessions` never produced),
+   and an hour with nothing counted is DRAWN and says so — that is where the
+   dropped gaps are, and why a day's total is smaller than last-minus-first. A
+   gap over 30 minutes is dropped whole, never capped; the gaps are counted and
+   measured under the hours and the rule is on screen in `core/hours.py`'s own
+   words.
 
    What the dashboard still cannot do is deploy itself: item 2 above.

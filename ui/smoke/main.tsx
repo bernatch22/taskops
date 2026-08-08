@@ -46,9 +46,9 @@ import { CommitPatch, DiffPane, FileList, FilesChanged, PatchText } from "../src
 import { Thread, detail, oneLine, prose } from "../src/components/card/Thread";
 import { split } from "../src/components/card/split";
 import { onTab } from "../src/App";
-import { Actors, RECENT, actorRows, devRows, hoursToday } from "../src/pages/Actors";
-import { AGENT_ROWS, DevDetail, DevPanel } from "../src/components/actors/DevPanel";
-import { RULE, Timesheet, span, timesheet } from "../src/components/actors/Timesheet";
+import { Actors, RECENT, actorRows, cardTitles, devRows } from "../src/pages/Actors";
+import { DevDetail, DevPanel, devCards } from "../src/components/actors/DevPanel";
+import { Daysheet, HourRow, RULE, dayLabel, daysheet, span } from "../src/components/actors/Daysheet";
 import { TABS } from "../src/components/chrome/TabNav";
 import type {
   ActorSession,
@@ -1977,20 +1977,16 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     actorsMarkup.includes("2 agents on a card right now") &&
       actorsMarkup.includes('data-testid="dev-live-card" data-card="tk-a11ffa"'),
   );
-  /* Hours worked today is the panel that REPLACES the slot roster: it is
-   * measured, it is the DAY's fold and not the window's, it is grouped by dev —
-   * and criterion 9, a row worth zero is NOT DRAWN (`agent:berna/zzz`). */
-  const todayHours = hoursToday(actorsProps.report);
+  /* THE BAR PANEL IS DELETED, not restyled, and deleted from the PAGE: it
+   * existed to compare actors against each other, and an ephemeral agent is a
+   * label. Nothing replaces it here — the hours moved into the dev's own panel,
+   * grouped by the one axis that is a fact about a person, the calendar day. */
   check(
-    "actors: today's hours are grouped by dev, longest first",
-    todayHours?.groups.map((g) => `${g.dev}=${g.human}`).join(" ") === "dev:berna=3h dev:ana=1h",
-    JSON.stringify(todayHours?.groups.map((g) => g.dev)),
-  );
-  check(
-    "actors: an actor that worked no measurable time today has no row",
-    !actorsMarkup.includes("agent:berna/zzz") &&
-      (actorsMarkup.match(/data-testid="hours-bar" data-actor="([^"]+)"/g) ?? []).join(" ") ===
-        'data-testid="hours-bar" data-actor="agent:berna/w1" data-testid="hours-bar" data-actor="dev:berna" data-testid="hours-bar" data-actor="agent:ana/a1"',
+    "actors: the hours bar panel is gone from the page, under any name",
+    !actorsMarkup.includes('data-testid="pane-hours-today"') &&
+      !actorsMarkup.includes('data-testid="hours-bar"') &&
+      !actorsMarkup.includes("Hours worked today") &&
+      !actorsMarkup.includes("agent:berna/zzz"),
   );
 
   /* Criterion 6: MORE AGENTS THAN THE CAP is said, never truncated in silence —
@@ -2016,15 +2012,6 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       (capMarkup.match(/agent:berna\/n\d+/g) ?? []).length === 0,
     capMarkup.split('data-testid="dev-recent"')[1]?.slice(0, 120),
   );
-  const capDetail = renderToStaticMarkup(
-    <DevDetail row={capped} report={capProps.report} onOpen={() => {}} onClose={() => {}} />,
-  );
-  check(
-    "actors: the detail caps its agent rows and says how many more",
-    (capDetail.match(/data-testid="dev-agent"/g) ?? []).length === AGENT_ROWS &&
-      capDetail.includes(`${30 - AGENT_ROWS} more agents not drawn`),
-  );
-
   /* Criterion 5: a board nobody has touched is ONE sentence, not an empty grid. */
   const actorsEmpty = renderToStaticMarkup(
     <Actors team={[]} doing={[]} reviewing={[]} stalled={[]} report={null} now={now} onOpen={() => {}} />,
@@ -2043,224 +2030,251 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     TABS.map((t) => t.id).join(" ") === "monitor board actors worktrees",
   );
 
-  /* ── 11. The detail: a real overlay, and a timesheet that is a DRAWING ────
+  /* ── 11. The detail: an overlay, and a pane per DATE with an hour inside ──
    *
-   * The first version of this screen revealed the detail in place and drew the
-   * sessions as a list of card ids joined by dots. Both are reversed here, and
-   * both are pinned: the panel is the SAME `shared/Overlay` the dossier uses —
-   * a portal, which under `react-dom/server` renders nothing at all, exactly as
-   * `Drawer` does — with `DevDetail` exported beside it so the document itself
-   * is readable headlessly.
+   * This section pinned a DRAWING — lanes per agent on a shared axis — and a
+   * panel of bars beside it. Both are deleted, and this is the redesign that
+   * replaced them: the window grouped by calendar day, newest FIRST and only the
+   * newest open, each day's hours a row, each row folding open to its sessions.
+   * A sub-agent adds nothing here; it is at most the name on a session.
    *
-   * `timesheet()` is exported pure for the same reason: the disclosure that
-   * opens it is a click, and no handler fires here. What IS reachable is
-   * everything that decides what the click has to land on — the shared axis, the
-   * lanes, the gaps, the blocks' doors and the empty case.
+   * The folds are clicks and no handler fires under `react-dom/server`, so the
+   * same two seams the rest of this dashboard uses carry the assertions:
+   * `daysheet()` is exported PURE (everything that decides what the click lands
+   * on), and `HourRow` takes `open` as a PROP, so an hour folded open is a tree
+   * this harness can render — exactly as `Dossier` is exported beside `Drawer`.
    *
-   * The sessions are the payload's, in `ActorSession`'s declared shape, so the
-   * compiler holds this fixture to what `verbs/report.py::_by_actor` writes. */
+   * The fixture is built from a LOCAL midnight, not a fixed epoch: an hour is
+   * the reader's own hour (`Date#getHours`), and a UTC constant would bucket
+   * differently in every timezone this suite runs in.
+   */
 
-  const T = 1_754_640_000; // a fixed instant: the axis maths must not drift with now
-  const sheetHours = (
-    seconds: number,
-    blocks: ActorSession[],
-    total = blocks.length,
-  ) => ({
-    seconds,
-    human: `${Math.floor(seconds / 3600)}h`,
+  const DAYSHEET_DAY = "2026-08-08";
+  const midnight = new Date(2026, 7, 8).getTime() / 1000;
+  const at = (h: number, m: number) => midnight + h * 3600 + m * 60;
+  const run = (
+    fromH: number,
+    fromM: number,
+    toH: number,
+    toM: number,
+    task: string,
+  ): ActorSession => ({
+    start: at(fromH, fromM),
+    end: at(toH, toM),
+    task,
+    seconds: at(toH, toM) - at(fromH, fromM),
+  });
+  const sheetHours = (blocks: ActorSession[], total = blocks.length) => ({
+    seconds: blocks.reduce((n, b) => n + b.seconds, 0),
+    human: "ignored — a merged day's total is this screen's own sum",
     cards: [...new Set(blocks.map((b) => b.task))],
     sessions: blocks,
     sessions_total: total,
   });
-  const block = (from: number, to: number, task: string): ActorSession => ({
-    start: T + from,
-    end: T + to,
-    task,
-    seconds: to - from,
-  });
 
-  /* w1 works the SAME card either side of a dropped gap; berna works in the
-   * middle of it, which is what the shared axis has to make visible. */
+  /* 10:38–11:12 is the session that CROSSES an hour boundary; 11:00 is then an
+   * hour inside the day's span with nothing counted, and 12:20 belongs to an
+   * AGENT — both are merged onto one list with no row of their own. */
   const sheetReport = {
-    from: T,
-    to: T + 10800,
+    from: midnight - 86400,
+    to: midnight + 86400,
     days: [
-      { day: "2026-08-07", by_actor: {}, closed: [], commits: 0 },
       {
-        day: "2026-08-08",
+        day: "2026-08-06",
+        by_actor: { "dev:berna": { seconds: 60, human: "1m", cards: [] } },
+        closed: [],
+        commits: 0,
+      },
+      {
+        day: "2026-08-07",
         by_actor: {
-          "agent:berna/w1": sheetHours(5400, [
-            block(0, 3600, "tk-a11ffa"),
-            block(9000, 10800, "tk-a11ffa"),
+          "dev:berna": sheetHours([
+            { ...run(15, 0, 15, 30, "tk-a11ffa"), start: at(15, 0) - 86400, end: at(15, 30) - 86400 },
           ]),
-          "dev:berna": sheetHours(1800, [block(7200, 9000, "tk-d34294")]),
-          "agent:berna/capped": sheetHours(7200, [block(0, 1800, "tk-f0aa12")], 9),
-          /* Two cards back to back: two blocks, and NO gap — a boundary
-             between cards is not time nobody counted. */
-          "agent:berna/touch": sheetHours(3600, [
-            block(0, 1800, "tk-f0aa12"),
-            block(1800, 3600, "tk-a11ffa"),
+        },
+        closed: [],
+        commits: 0,
+      },
+      {
+        day: DAYSHEET_DAY,
+        by_actor: {
+          "dev:berna": sheetHours([
+            run(9, 0, 9, 58, "tk-e5a340"),
+            run(10, 4, 10, 31, "tk-c4445b"),
+            run(10, 38, 11, 12, "tk-c4445b"),
           ]),
+          "agent:berna/w1": sheetHours([run(12, 20, 12, 40, "tk-d34294")], 4),
         },
         closed: [],
         commits: 0,
       },
     ],
     by_actor: {},
-    total: { seconds: 7200, closed: 0 },
+    total: { seconds: 0, closed: 0 },
   } satisfies ReportPayload;
 
-  /* Criterion 4: ONE LANE PER AGENT on ONE axis. That is the whole point — two
-   * lanes that overlap were working at the same time. */
-  const sheet = timesheet(sheetReport, ["dev:berna", "agent:berna/w1", "agent:berna/never"]);
-  const day = sheet[0];
-  check(
-    "timesheet: one lane per actor asked for, and none for one that did not work",
-    sheet.length === 1 &&
-      day?.lanes.map((l) => l.actor).join(" ") === "dev:berna agent:berna/w1",
-    JSON.stringify(sheet.map((d) => d.lanes.length)),
-  );
-  /* Criterion 3: the blocks are POSITIONED and SIZED on the axis. berna's single
-   * block sits two thirds along the DAY's extent — measured over every actor,
-   * not over the lane. Scaled to its own extent it would start at 0 and fill the
-   * row, and the two lanes would read as having worked at the same time. */
-  const solo = day?.lanes[0]?.blocks[0];
-  check(
-    "timesheet: the day's axis is shared, so two lanes compare by eye",
-    Math.round(solo?.left ?? -1) === 67 &&
-      Math.round(solo?.width ?? -1) === 17 &&
-      day?.from === T &&
-      day?.to === T + 10800,
-    `${solo?.left} +${solo?.width}`,
-  );
-  /* …and the axis stays the DAY's even when only ONE lane is asked for, which
-   * is the only way to catch an extent quietly measured over the lanes drawn:
-   * berna alone would start at 0 and fill the row, and two panels opened one
-   * after the other would no longer compare. */
-  const alone = timesheet(sheetReport, ["dev:berna"])[0];
-  check(
-    "timesheet: the axis is the day's, not the drawn lanes'",
-    alone?.from === T &&
-      alone?.to === T + 10800 &&
-      Math.round(alone?.lanes[0]?.blocks[0]?.left ?? -1) === 67,
-    `${alone?.from === T} ${alone?.lanes[0]?.blocks[0]?.left}`,
-  );
-  /* The axis is a REAL-TIME axis, so it carries wall-clock marks. */
-  check(
-    "timesheet: the axis is marked in wall-clock, not unitless",
-    day?.ticks.length === 2 &&
-      day?.ticks.map((t) => t.at - T).join(" ") === "3600 7200" &&
-      Math.round(day?.ticks[0]?.left ?? -1) === 33,
-    JSON.stringify(day?.ticks),
+  const sheetTitles = { "tk-c4445b": "the index: two columns" };
+  const sheet = daysheet(
+    sheetReport,
+    ["dev:berna", "agent:berna/w1", "agent:berna/never"],
+    sheetTitles,
   );
 
-  /* Criterion 2 of the previous card, kept: one card, a gap over GAP → TWO
-   * blocks, and the wall-clock between them is counted as NOT counted. */
-  const w1Lane = day?.lanes[1];
+  /* Criterion 1: one pane per calendar day, NEWEST FIRST — the panel this
+   * replaced drew the 7th above the 8th — and a day with no counted session at
+   * all (the 6th sends no `sessions` key) is not a pane. */
   check(
-    "timesheet: a dropped gap splits one card into two blocks and is measured",
-    w1Lane?.blocks.length === 2 &&
-      w1Lane?.blocks.every((b) => b.task === "tk-a11ffa") === true &&
-      w1Lane?.gaps.length === 1 &&
-      w1Lane?.dropped === 5400,
-    JSON.stringify(w1Lane?.gaps),
-  );
-  /* The counted total is the SERVER's wording, never re-derived; only the
-   * dropped time is this screen's own subtraction. */
-  check(
-    "timesheet: the counted total is the payload's own formatting",
-    w1Lane?.human === "1h" && w1Lane?.seconds === 5400,
-  );
-  check("timesheet: dropped time is worded like core/hours.py::human", span(5400) === "1h 30m");
-  /* A change of card ends a block; it does not create a gap. */
-  const touching = timesheet(sheetReport, ["agent:berna/touch"])[0];
-  check(
-    "timesheet: two blocks that touch are two cards, not a gap",
-    touching?.lanes[0]?.blocks.length === 2 &&
-      touching?.lanes[0]?.gaps.length === 0 &&
-      touching?.lanes[0]?.dropped === 0,
-    JSON.stringify(touching?.lanes[0]?.gaps),
+    "daysheet: one pane per date, newest first, and no pane for a day with nothing",
+    sheet.map((d) => d.day).join(" ") === "2026-08-08 2026-08-07",
+    JSON.stringify(sheet.map((d) => d.day)),
   );
   check(
-    "timesheet: a day with nothing dropped says so, and does not draw one",
-    renderToStaticMarkup(<Timesheet days={[touching!]} onOpen={() => {}} />).includes(">no gap<") &&
-      !renderToStaticMarkup(<Timesheet days={[touching!]} onOpen={() => {}} />).includes(
-        'data-testid="timesheet-gap"',
-      ),
-  );
-  check(
-    "timesheet: a truncated lane says so and still shows the whole total",
-    timesheet(sheetReport, ["agent:berna/capped"])[0]?.lanes[0]?.capped === true &&
-      w1Lane?.capped === false,
+    "daysheet: a pane is headed by its weekday and date, not by an ISO string",
+    sheet[0]?.label === "Saturday 8 August" && dayLabel("2026-08-07") === "Friday 7 August",
+    `${sheet[0]?.label}`,
   );
 
-  const opened2: string[] = [];
-  const sheetMarkup = renderToStaticMarkup(
-    <Timesheet days={sheet} onOpen={(id) => opened2.push(id)} />,
-  );
-  /* Criterion 3, drawn: blocks carry a left and a width, and the LIST OF CARD
-   * IDS JOINED BY DOTS that this card exists to delete is gone. */
+  /* Criterion 2: the hours the day SPANS — first session's hour to the last's —
+   * so the shape of the day is visible, and never 00–23. */
+  const dayOne = sheet[0]!;
   check(
-    "timesheet: the sessions are drawn as placed blocks, never as a list of ids",
-    /data-testid="timesheet-block"[^>]*style="[^"]*position:absolute;left:66\.6\d*%;width:16\.6\d*%/.test(
-      sheetMarkup,
-    ) &&
-      !sheetMarkup.includes('data-testid="timesheet-cards"') &&
-      !sheetMarkup.includes("tk-a11ffa · tk-a11ffa"),
-    sheetMarkup.split('data-testid="timesheet-block"')[1]?.slice(0, 200),
+    "daysheet: the rows are the hours the day spans, not a full clock",
+    dayOne.hours.map((h) => h.label).join(" ") === "09:00 10:00 11:00 12:00",
+    JSON.stringify(dayOne.hours.map((h) => h.label)),
   );
+  /* …and the hour with nothing in it is PRESENT. It is where the dropped gap
+   * is, and the reason the day's total is smaller than last minus first. */
   check(
-    "timesheet: each lane is labelled and totalled beside its own track",
-    (sheetMarkup.match(/data-testid="timesheet-lane" data-actor="([^"]+)"/g) ?? []).join(" ") ===
-      'data-testid="timesheet-lane" data-actor="dev:berna" data-testid="timesheet-lane" data-actor="agent:berna/w1"' &&
-      (sheetMarkup.match(/data-testid="timesheet-lane-total"/g) ?? []).length === 2,
-  );
-  /* Criterion 5: a block is a door to the CARD's dossier — the same `openCard`
-   * every view uses. The gap beside it is not: there is no event inside it. */
-  check(
-    "timesheet: a block opens its card and the gap between blocks does not",
-    (sheetMarkup.match(/data-testid="timesheet-block" data-card="tk-a11ffa"/g) ?? []).length === 2 &&
-      sheetMarkup.includes('data-testid="timesheet-block" data-card="tk-d34294"') &&
-      sheetMarkup.includes('data-testid="timesheet-gap"') &&
-      !/<button[^>]*data-testid="timesheet-gap"/.test(sheetMarkup),
-  );
-  check(
-    "timesheet: the gap is said as a figure, not only drawn as space",
-    sheetMarkup.includes("1 gap · 1h 30m not counted") &&
-      sheetMarkup.includes("1h 30m not counted —"),
-  );
-  /* The rule is ON SCREEN, in core/hours.py's own words. */
-  check(
-    "timesheet: the arithmetic is explained where the numbers are",
-    sheetMarkup.includes('data-testid="timesheet-rule"') &&
-      sheetMarkup.includes("credited to the card of the event that CLOSES it") &&
-      sheetMarkup.includes("dropped whole, never capped") &&
-      RULE.includes("The signal is the timestamp of the events themselves"),
+    "daysheet: an hour inside the span with nothing counted is a row, not a hole",
+    dayOne.hours[2]?.label === "11:00" && dayOne.hours[2]?.sessions.length === 0,
   );
 
-  /* No events in the window is a SENTENCE, never an empty axis. */
-  const sheetEmpty = renderToStaticMarkup(
-    <Timesheet days={timesheet(sheetReport, ["agent:berna/never"])} onOpen={() => {}} />,
+  /* Criterion 4: 10:38–11:12 belongs to the hour of its START and is ONE
+   * session. Split, it would put 22m in 10:00 and 12m in 11:00 — two intervals
+   * `core/hours.py` never produced, and 11:00 would stop being empty. */
+  check(
+    "daysheet: a session across an hour boundary stays whole, in the hour it started",
+    dayOne.hours[1]?.sessions.length === 2 &&
+      dayOne.hours[1]?.sessions[1]?.seconds === 34 * 60 &&
+      dayOne.hours[1]?.seconds === 61 * 60 &&
+      dayOne.hours[2]?.seconds === 0,
+    JSON.stringify(dayOne.hours.map((h) => h.seconds / 60)),
   );
   check(
-    "timesheet: an actor with no events says so instead of drawing an axis",
-    sheetEmpty.includes('data-testid="timesheet-none"') &&
-      !sheetEmpty.includes('data-testid="timesheet-axis"'),
+    "daysheet: the day's total is the sum of its hours, and the gaps are measured",
+    dayOne.seconds === 139 * 60 &&
+      dayOne.seconds === dayOne.hours.reduce((n, h) => n + h.seconds, 0) &&
+      dayOne.gaps === 3 &&
+      span(dayOne.dropped) === "1h 21m",
+    `${dayOne.seconds / 60} ${dayOne.gaps} ${span(dayOne.dropped)}`,
+  );
+  /* The dev's sessions and its agents' are ONE list. The agent is not a lane,
+   * not a row and not a heading — it is the name on a session. */
+  check(
+    "daysheet: the dev and its agents merge onto one list of sessions",
+    dayOne.hours[3]?.sessions[0]?.actor === "agent:berna/w1" &&
+      dayOne.hours[0]?.sessions[0]?.actor === "dev:berna",
+  );
+  check(
+    "daysheet: a truncated answer says so rather than shrinking the day",
+    dayOne.capped === true && sheet[1]?.capped === false,
   );
   /* A board one version behind sends no `sessions` at all — degraded, never
    * crashed (types.ts: both keys optional). */
   check(
-    "timesheet: a payload without sessions degrades to the empty sentence",
-    timesheet(
-      { ...sheetReport, days: [{ day: "2026-08-08", by_actor: { "dev:berna": { seconds: 60, human: "1m", cards: [] } }, closed: [], commits: 0 }] },
-      ["dev:berna"],
-    ).length === 0 && timesheet(null, ["dev:berna"]).length === 0,
+    "daysheet: a payload without sessions degrades to no pane at all",
+    daysheet(sheetReport, ["agent:berna/never"]).length === 0 &&
+      daysheet(null, ["dev:berna"]).length === 0,
   );
 
-  /* Criterion 2: the detail is a FULL OVERLAY reusing the existing machinery.
-   * `DevPanel` is `shared/Overlay` — a portal — so it renders nothing at all
-   * here, which is the same proof `Drawer` gives; `DevDetail` beside it is the
-   * document, and it is what the harness reads. */
+  const opened2: string[] = [];
+  const sheetMarkup = renderToStaticMarkup(
+    <Daysheet days={sheet} onOpen={(id) => opened2.push(id)} />,
+  );
+  /* Criterion 1, drawn: the NEWEST pane is the open one and the rest are shut —
+   * real buttons carrying `aria-expanded`, never a bare arrow glyph. */
+  check(
+    "daysheet: the newest pane is open and the older one is closed",
+    (sheetMarkup.match(/data-testid="day-fold" aria-expanded="(true|false)"/g) ?? []).join(" ") ===
+      'data-testid="day-fold" aria-expanded="true" data-testid="day-fold" aria-expanded="false"' &&
+      sheetMarkup.includes(">Saturday 8 August<"),
+    sheetMarkup.match(/aria-expanded="(true|false)"/g)?.join(" "),
+  );
+  /* Criterion 2, drawn: the empty hour SAYS so, and carries no fold — there is
+   * nothing behind it, and an arrow that opens nothing is not a control. */
+  check(
+    "daysheet: the empty hour says nothing counted and is not a fold",
+    sheetMarkup.includes('data-testid="hour-row" data-hour="11:00" data-empty="yes"') &&
+      sheetMarkup.includes(">nothing counted<") &&
+      (sheetMarkup.match(/data-testid="hour-fold"/g) ?? []).length === 3,
+    sheetMarkup.match(/data-hour="[^"]+" data-empty="[^"]+"/g)?.join(" "),
+  );
+  check(
+    "daysheet: an hour row carries its counted time and the cards touched",
+    sheetMarkup.includes(">tk-c4445b<") && sheetMarkup.includes(">1h 1m<") &&
+      sheetMarkup.includes(">58m<"),
+  );
+  /* An hour of the CLOSED pane is not drawn at all. */
+  check(
+    "daysheet: a closed date pane draws none of its hours",
+    (sheetMarkup.match(/data-testid="hour-row"/g) ?? []).length === 4,
+  );
+  /* Criterion 3: folded open, the hour lists its sessions — start, end,
+   * duration, card and title. `HourRow` takes `open` as a prop precisely so this
+   * is reachable with no click. */
+  const hourMarkup = renderToStaticMarkup(
+    <HourRow hour={dayOne.hours[1]!} open onFold={() => {}} onOpen={(id) => opened2.push(id)} />,
+  );
+  check(
+    "daysheet: an open hour lists its sessions with start, end, duration and card",
+    (hourMarkup.match(/data-testid="session-row"/g) ?? []).length === 2 &&
+      hourMarkup.includes("10:04 – 10:31") &&
+      hourMarkup.includes(">27m<") &&
+      hourMarkup.includes(">tk-c4445b</span>") &&
+      hourMarkup.includes("the index: two columns"),
+    hourMarkup.slice(0, 240),
+  );
+  /* Criterion 6: a session is a door to its CARD's dossier — the same `openCard`
+   * every other view uses — and it is a real button. */
+  check(
+    "daysheet: a session opens the dossier of the card it was credited to",
+    /<button[^>]*data-testid="session-row" data-card="tk-c4445b"/.test(hourMarkup),
+  );
+  /* A card the board cannot name right now is drawn as its ID ALONE, never with
+   * a title nothing sent. */
+  check(
+    "daysheet: a session on a card nobody holds is its id and no invented title",
+    renderToStaticMarkup(
+      <HourRow hour={dayOne.hours[0]!} open onFold={() => {}} onOpen={() => {}} />,
+    ).includes(">tk-e5a340</span></span>"),
+  );
+  /* The gaps are said as a figure, and the rule is on screen in
+   * `core/hours.py`'s own words. */
+  check(
+    "daysheet: the dropped time is a figure and the arithmetic is beside it",
+    sheetMarkup.includes("3 gaps · 1h 21m not counted") &&
+      sheetMarkup.includes('data-testid="daysheet-rule"') &&
+      sheetMarkup.includes("credited to the card that CLOSES it") &&
+      RULE.includes("dropped whole, never capped"),
+  );
+  /* Nothing counted in the window is a SENTENCE, never an empty pane. */
+  check(
+    "daysheet: an actor with no counted time says so instead of drawing a pane",
+    renderToStaticMarkup(<Daysheet days={[]} onOpen={() => {}} />).includes(
+      'data-testid="daysheet-none"',
+    ),
+  );
+  /* THE DELETED DESIGN, absent from the tree it was drawn in: no lane, no axis,
+   * no per-agent row anywhere in this panel. */
+  check(
+    "daysheet: the lane-per-agent drawing is gone, not hidden",
+    !sheetMarkup.includes("timesheet") && !sheetMarkup.includes("lane"),
+  );
+
+  /* Criterion 5 of the previous card, kept: the detail is a FULL OVERLAY reusing
+   * the existing machinery. `DevPanel` is `shared/Overlay` — a portal — so it
+   * renders nothing at all here, exactly as `Drawer` does; `DevDetail` beside it
+   * is the document, and it is what the harness reads. */
   const sheetDev = devRows({ ...actorsProps, report: sheetReport })[0]!;
   check(
     "actors: the dev detail is the shared portal overlay, not a second one",
@@ -2269,19 +2283,30 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     ) === "" && !actorsMarkup.includes('data-testid="dev-figures"'),
   );
   const detailMarkup = renderToStaticMarkup(
-    <DevDetail row={sheetDev} report={sheetReport} onOpen={() => {}} onClose={() => {}} />,
+    <DevDetail
+      row={sheetDev}
+      report={sheetReport}
+      titles={sheetTitles}
+      onOpen={() => {}}
+      onClose={() => {}}
+    />,
   );
   check(
-    "actors: the detail draws the dev's own lane and one per agent, on one axis",
-    detailMarkup.includes('data-testid="timesheet-lane" data-actor="dev:berna"') &&
-      detailMarkup.includes('data-testid="timesheet-lane" data-actor="agent:berna/w1"') &&
-      (detailMarkup.match(/data-testid="timesheet-ruler"/g) ?? []).length === 1,
+    "actors: the detail is the figures and the date panes, and NOTHING per agent",
+    detailMarkup.includes('data-testid="dev-figures"') &&
+      detailMarkup.includes('data-testid="day-pane" data-day="2026-08-08"') &&
+      !detailMarkup.includes('data-testid="dev-agent"') &&
+      !detailMarkup.includes('data-testid="dev-card"') &&
+      !detailMarkup.includes("timesheet"),
   );
+  /* `cards` is a UNION and not a sum, so it survives a member that cannot say
+   * its `closed`/`commits` — which is the case that refuses every other total. */
   check(
-    "actors: the detail lists the agents as ROWS, with a door to the card each holds",
-    detailMarkup.includes('data-testid="dev-agent" data-actor="agent:berna/w1"') &&
-      detailMarkup.includes('data-testid="dev-agent-card" data-card="tk-a11ffa"') &&
-      !detailMarkup.includes('data-testid="dev-card"'),
+    "actors: the rail counts the distinct cards carried, and says who is running now",
+    devCards(devs[0]!) === 1 &&
+      detailMarkup.includes("2 running now") &&
+      cardTitles(actorsProps)["tk-a11ffa"] === "tk-a11ffa does a thing",
+    `${devCards(devs[0]!)}`,
   );
   const partialDetail = renderToStaticMarkup(
     <DevDetail row={partial!} report={actorsProps.report} onOpen={() => {}} onClose={() => {}} />,
