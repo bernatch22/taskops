@@ -232,15 +232,47 @@ subdirectory of `--root` is a board, reachable as `/<name>`:
 
 It binds loopback on purpose; TLS and the public name are a reverse proxy's
 job, and the proxy must pass `Upgrade`/`Connection` through or the dashboard's
-live feed silently degrades. Upgrading is `pip install --force-reinstall` of a
-newer wheel and a restart — the boards are outside the install, so nothing
-about them is touched by it.
+live feed silently degrades.
+
+### Upgrading a host
+
+The boards are outside the install, so an upgrade is the package and nothing
+else — no migration, no rsync, nothing on disk to rewrite. If an upgrade path
+ever wants to touch a board directory, that is a decision to take to a human,
+not a step.
+
+```sh
+uv build --wheel                                    # from the commit you mean to ship
+python3 -c "import zipfile,sys
+w = zipfile.ZipFile(sys.argv[1]).read('taskops/ui/app.js').decode()
+print({m: w.count(m) for m in ('chapter-goal', 'markdown-inline')})" dist/taskops-*.whl
+ssh <host> 'cp /tmp/taskops-*.whl ~/taskops-v2-app/rollback/'   # THE ROLLBACK, first
+scp dist/taskops-*.whl <host>:/tmp/
+ssh <host> '~/taskops-v2-app/.venv/bin/pip install --force-reinstall /tmp/taskops-*.whl'
+ssh <host> 'pm2 restart taskops-v2'
+```
+
+Three things that are not optional, in this order:
+
+1. **Record the rollback before replacing anything** — keep the wheel that is
+   installed now, under a name that says when it was installed. If the new one
+   fails to serve, put it back first and report second: an outage is worse than
+   a stale render.
+2. **The wheel must carry the built dashboard.** `src/taskops/ui/` is committed
+   precisely so the wheel does; check the artefact for the markers of whatever
+   you are shipping (`tests/test_ui.py` names them) *before* it goes anywhere.
+3. **Verify by CONTENT at the real domain.** A 200 is not the claim. Fetch
+   `https://<host>/<board>/ui/app.js` and confirm it carries the marker you
+   built for — its md5 should equal the committed `src/taskops/ui/app.js`.
 
 Two things a host must have that no exit code will tell you:
 
 * `GET /healthz` answers `{"ok": true, …, "boards": N}` — **N is the number of
-  boards this process has actually opened**, which is the check that catches a
-  server that came up beside its data instead of on it.
+  boards this process has opened SO FAR**, not how many exist: a board is
+  mounted the first time somebody addresses it, so a freshly restarted process
+  honestly says `1` after one request and `4` once all four have been asked
+  for. It catches a server that came up beside its data instead of on it —
+  touch each board first, then read it.
 * A credential per board. `taskops invite <who> --board <name> --root <dir>`
   prints a one-time link; `taskops join` on the other end burns it and mints
   that machine's standing token into `.taskops/remote.json` (0600, gitignored).
