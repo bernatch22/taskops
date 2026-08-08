@@ -106,7 +106,7 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
 
           <div style={pair("1.25fr")}>
             <Throughput report={board.hours} />
-            <LeaseHealth doing={g.doing} stalled={g.stalled} now={now} />
+            <LeaseHealth doing={g.doing} reviewing={g.reviewing} stalled={g.stalled} now={now} />
           </div>
 
           <div style={pair("1.1fr")}>

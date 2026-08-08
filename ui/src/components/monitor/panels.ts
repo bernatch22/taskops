@@ -168,6 +168,16 @@ export interface HealthSlice {
 
 export interface LeaseHealthProps {
   doing: readonly BoardRow[];
+  /** `board.groups.reviewing` — the SECOND lease kind the board has. The pane
+   *  whose whole job is lease health has to count it, or it is blind to half of
+   *  what it claims to measure: a verifier holding the review mutex is a live
+   *  lease by the group's own definition.
+   *
+   *  It is not a fourth bucket. Nova's own arithmetic settles it — 3 doing + 1
+   *  review + 1 stalled reads '4 healthy · 1 lapsed' (design line 1375), so a
+   *  review lease is healthy exactly as a work lease is. See LeaseHealth.tsx
+   *  `bucket()` for why the row's `quiet_for` may not say so on its own. */
+  reviewing: readonly ReviewingRow[];
   stalled: readonly BoardRow[];
   now: number;
 }

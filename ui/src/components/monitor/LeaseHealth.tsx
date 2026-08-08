@@ -58,18 +58,35 @@ const label: React.CSSProperties = {
 };
 
 /** How quiet ONE row is. `quiet_for` is null exactly while somebody holds the
- *  lease — the server's own distinction, kept rather than flattened to 0. */
-function bucket(row: BoardRow): 0 | 1 | 2 {
-  if (row.quiet_for === null || row.quiet_for < GOING_QUIET) return 0;
+ *  WORK lease — the server's own distinction, kept rather than flattened to 0.
+ *
+ *  `live` says the row's liveness is known from the GROUP it arrived in rather
+ *  than from its own number, which is the case for a `reviewing` row and the
+ *  same floor-vs-exact caveat `LiveLeases.tsx::checked` already documents: the
+ *  review lease's `acquired` is not on the wire, and `pulse.py::_row` fills
+ *  `quiet_for` from the WORK lease — null only if a worker happens to still be
+ *  alive beside the verifier, otherwise `now - card.updated`, which for a card
+ *  handed in an hour ago reads `stale` while a verifier is actively holding the
+ *  mutex. The board's own definition of the group guarantees the lease IS live;
+ *  the payload just cannot say for how much longer. So the group is believed
+ *  over the number, and the row is fresh — a floor, never an overstatement,
+ *  because there is no bucket fresher than fresh to be wrong towards. Making it
+ *  exact is one field in `pulse.py`, not arithmetic this file can do. */
+function bucket(row: BoardRow, live = false): 0 | 1 | 2 {
+  if (live || row.quiet_for === null || row.quiet_for < GOING_QUIET) return 0;
   return row.quiet_for < STALE ? 1 : 2;
 }
 
 /** The three slices, always all three: a bucket with nobody in it is a legend
  *  row reading 0, not a row that vanishes. A disappearing category is how a
- *  reader stops noticing that "stale" exists at all. */
-function slices(rows: readonly BoardRow[]): HealthSlice[] {
+ *  reader stops noticing that "stale" exists at all.
+ *
+ *  Three, not four: a review lease is a HEALTHY lease by Nova's own arithmetic
+ *  (3 doing + 1 review + 1 stalled ⇒ '4 healthy · 1 lapsed', design line 1375),
+ *  so it needs no bucket of its own — it needs the fresh one. */
+function slices(rows: readonly { row: BoardRow; live: boolean }[]): HealthSlice[] {
   const n: [number, number, number] = [0, 0, 0];
-  for (const row of rows) n[bucket(row)] += 1;
+  for (const { row, live } of rows) n[bucket(row, live)] += 1;
   return [
     { label: "fresh", n: n[0], tone: "ok" },
     { label: "going quiet", n: n[1], tone: "warn" },
@@ -94,8 +111,14 @@ function arc(n: number, total: number, before: number): { array: string; offset:
  * clocks' skew to every bucket, and would move cards across a threshold on a
  * re-render with no new data. The panels that read `now` are the ones handed a
  * `since` timestamp. */
-export function LeaseHealth({ doing, stalled }: LeaseHealthProps): React.JSX.Element {
-  const rows = [...doing, ...stalled];
+export function LeaseHealth({ doing, reviewing, stalled }: LeaseHealthProps): React.JSX.Element {
+  /* Both lease kinds and the lapsed ones. `reviewing` carries `live: true` — its
+   * liveness is the group's, not its `quiet_for`'s (see `bucket`). */
+  const rows = [
+    ...doing.map((row) => ({ row, live: false })),
+    ...reviewing.map((row) => ({ row, live: true })),
+    ...stalled.map((row) => ({ row, live: false })),
+  ];
   const parts = slices(rows);
   const tracked = rows.length;
 
