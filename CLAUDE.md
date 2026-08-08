@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
-dashboard — **44 TypeScript files / ~11.000 lines under `ui/src`**, whose built
+dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -322,18 +322,32 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    `tk-<id>` as branch, directory and id at once), so a second thread would be
    two places to say one thing and the reader of the CARD would see half of it.
 
-   **Actors is the fourth view** — every actor bound to the cards it carried,
-   its role, its presence and its hours, ordered by what it is ON and never by
-   name. There is NO worker-slot roster and there must never be one: taskops
-   allocates no worker (`ui/src/pages/Actors.tsx` and
-   `components/monitor/panels.ts` both carry the post-mortem). An actor opens
-   IN PLACE into its **timesheet** (`components/actors/Timesheet.tsx`) — the
-   blocks of time it worked, per day, on one axis SHARED by every actor of that
-   day, so two rows answer "who was working in parallel" by eye. The blocks are
-   `core/hours.py::sessions`, and `spent()` is now a FOLD of that same list, so
-   the timeline and the total beside it are one computation and cannot drift.
-   The dropped gaps — a gap over 30 minutes is dropped whole, never capped — are
-   drawn as space and said as a figure, and the rule is stated on screen in
-   `core/hours.py`'s own words.
+   **Actors is the fourth view, and it is a page about DEVS** — an agent is a
+   LINE inside one. It shipped once as a grid of ACTOR tiles: sixty-seven of
+   them, sixty-six being ephemeral sub-agents that had died with their cards,
+   which contradicts the chapter's own goal (an actor is a name bound to the RUN
+   of a card). The top level is the dev, the durable identity, and two devs are
+   two cards each with its own agents. A dev card says how many of its agents
+   are on a card right now WITHOUT being opened, plus its figures over the
+   window and the most recent few agent names with the rest as a count. A dev's
+   totals are dev + agents, refused whole rather than summed over a subset when
+   one member cannot say its own. There is NO worker-slot roster and there must
+   never be one: taskops allocates no worker (`ui/src/pages/Actors.tsx` and
+   `components/monitor/panels.ts` both carry the post-mortem).
+   A dev opens into a **full overlay** (`components/actors/DevPanel.tsx`) that
+   REUSES `shared/Overlay` — the same portal, the same `overlayStack` that owns
+   Escape, one `width` prop apart — with `DevDetail` exported beside it exactly
+   as `Dossier` is beside `Drawer`, so the harness reads the document a portal
+   cannot render. Inside it the **timesheet**
+   (`components/actors/Timesheet.tsx`) is a DRAWING and not a paragraph: a
+   wall-clock axis with hour marks, one placed and sized block per session, gaps
+   as visible space, and ONE LANE PER AGENT on the day's one shared axis, so two
+   lanes answer "who was working in parallel" by eye. The list of card ids
+   joined by dots that stood under the first version's axis is gone. The blocks
+   are `core/hours.py::sessions`, and `spent()` is a FOLD of that same list, so
+   the timeline and the total beside each lane are one computation and cannot
+   drift. The dropped gaps — a gap over 30 minutes is dropped whole, never
+   capped — are drawn as space and said as a figure, and the rule is stated on
+   screen in `core/hours.py`'s own words.
 
    What the dashboard still cannot do is deploy itself: item 2 above.

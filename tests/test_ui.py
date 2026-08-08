@@ -42,7 +42,8 @@ RETIRED a marker of its own: see `RETIRED`) and `CHAPTERS_LISTED` (tk-13d115 —
 several open chapters listed as foldable rows instead of apologised for, which
 also retired a sentence: see `RETIRED_APOLOGY`) and `CLOSING_NOTE` (tk-a1b7f2 —
 a close's transition and the note the worker signed off with) and `ACTORS`
-(tk-63f919 + tk-d5e21e — the fourth view and the timesheet it opens into). All
+(tk-5fc887 — the fourth view as a page about DEVS, and the drawn timesheet a dev
+opens into; it also RETIRED the six markers of the draft it replaced). All
 nine lists are the check that the bundle is the CURRENT source's output and not
 the previous wave's: none of those strings existed in the bundle its
 chapter-close replaced, so a close that forgot to run `node build.mjs` fails
@@ -206,7 +207,23 @@ NOTHING_DRAWN = ("worktrees-none",)  # the both-empty message, centred in the pa
 #: …and what the same change REMOVED. `worktrees-empty` was the dotted field
 #: inside a column shell; it was in the bundle this close rebuilt over (checked),
 #: and it must not be in the one that replaces it.
-RETIRED = ("worktrees-empty",)
+#:
+#: The ACTORS row below retired six more, and for the same shape of reason: the
+#: first draft of that page drew one tile per ACTOR with the detail revealed in
+#: place, and tk-5fc887 replaced both with a dev card and a real overlay. A
+#: source tree that kept the old page beside the new one would carry both sets,
+#: so only the swap passes. `timesheet-cards` is the one this card exists for —
+#: it is the list of card ids joined by dots that stood where a drawing belongs.
+RETIRED = (
+    "worktrees-empty",
+    "actor-card",  # one tile per ephemeral sub-agent: sixty-seven of them
+    "actor-card-open",
+    "actor-pill",
+    "actor-carried",
+    "actor-history",
+    "actor-timesheet-toggle",  # the in-place reveal, replaced by a full overlay
+    "timesheet-cards",  # THE DEFECT: a timesheet drawn as a list of ids
+)
 
 #: The SEVENTH wave, and it is the Chapter pane's (tk-13d115). `_facts.in_scope`
 #: returns None for SEVERAL open chapters as well as for none — it refuses to
@@ -246,30 +263,34 @@ CLOSING_NOTE = (
     "event-prose",  # …and the writing underneath it
 )
 
-#: The NINTH wave, and it is this chapter's own: ACTORS, the fourth view
-#: (tk-63f919) and the timesheet an actor opens into in place (tk-d5e21e). Same
-#: terms as every row above — each is a `data-testid` written by exactly one
-#: card of this wave, and every one of them was verified ABSENT from the bundle
-#: this close rebuilt over, marker by marker, before the list was written.
+#: The NINTH wave, and it is this chapter's own: ACTORS, the fourth view. It
+#: shipped once as a grid of ACTOR tiles with an in-place reveal, and tk-5fc887
+#: reversed both — sixty-seven tiles for sixty-six dead sub-agents is not a page
+#: about who has been on this board — so these markers are that page's, not the
+#: first draft's: `dev-card` where `actor-card` was, `dev-open` where
+#: `actor-timesheet-toggle` was, `timesheet-lane` where a per-actor axis was.
 #:
 #: What the row is really pinning is the chapter's refusal (ARCHITECTURE.md §11):
-#: an actor is a name bound to the run of a card, so `actor-carried` and
-#: `actor-history` — what it carried, when it was last seen — are what the bundle
-#: carries INSTEAD of a held/free/lapsed slot roster. `actors-none` is the empty
-#: board's one sentence rather than an empty grid, and `timesheet-rule` is
-#: `core/hours.py`'s own wording of the dropped-gap arithmetic, on screen beside
-#: the figures it produced.
+#: an actor is a name bound to the run of a card, so `dev-agent-history` — what an
+#: agent carried, when it was last seen — is what the bundle carries INSTEAD of a
+#: held/free/lapsed slot roster. `actors-none` is the empty board's one sentence
+#: rather than an empty grid; `timesheet-lane` + `timesheet-tick` are the drawing
+#: itself, lanes on one wall-clock axis; and `timesheet-rule` is `core/hours.py`'s
+#: own wording of the dropped-gap arithmetic, on screen beside the figures it
+#: produced.
 ACTORS = (
     "actors",  # the fourth tab (pages/Actors.tsx)
-    "actor-card",  # one actor, bound to the card it carries
-    "actor-carried",  # …or to the cards it carried, when it holds none
-    "actor-history",  # an actor with no card is HISTORY, never a free slot
+    "dev-card",  # ONE card per dev — the durable identity, never per agent
+    "dev-live",  # how many of its agents are on a card RIGHT NOW, unopened
+    "dev-recent",  # the most recent few agents, and the rest as a count
+    "dev-open",  # the door into the full overlay (components/actors/DevPanel.tsx)
     "actors-none",  # a board nobody has touched: one sentence
-    "pane-hours-today",  # what replaced the roster: measured hours, longest first
-    "actor-timesheet-toggle",  # the disclosure, closed to begin with
-    "timesheet",  # the blocks of time, per day (components/actors/Timesheet.tsx)
-    "timesheet-axis",  # …on an axis SHARED by every actor of that day
-    "timesheet-block",  # one session, a door to its card
+    "pane-hours-today",  # what replaced the roster: measured hours, by dev
+    "timesheet",  # the drawing (components/actors/Timesheet.tsx)
+    "timesheet-lane",  # ONE LANE PER AGENT, on the day's one shared axis
+    "timesheet-tick",  # …and that axis is marked in real wall-clock
+    "timesheet-axis",  # the track a lane's blocks are placed on
+    "timesheet-block",  # one session, positioned and sized, a door to its card
     "timesheet-gap",  # a dropped gap, drawn as space and said as a figure
     "timesheet-rule",  # the arithmetic, in core/hours.py's own words
 )
