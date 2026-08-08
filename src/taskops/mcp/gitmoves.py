@@ -14,9 +14,34 @@ from . import brief, render
 from .._json import as_rows, as_object, as_strings
 from ..board import Board
 from .._errors import Refused, BadRequest
-from ..gitwork import trees
+from ..gitwork import trees, remote
 
 Args = dict[str, Any]
+
+
+def after_update(repo: Path, args: Args, data: Args) -> None:
+    """The git that follows an ACCEPTED update — today, exactly one move: a card
+    that closed `done` gets its branch pushed.
+
+    THE PLACEMENT. `done` travels through the generic `taskops_update` handler,
+    and the only place that knows both "this update carried status=done" and
+    "the board took it" is the point right after `board.call("update", …)`
+    returns: every refusal — not yours, no commit, needs review — raises out of
+    that call, so the refusal path never reaches here and pushes nothing. It
+    lives in `gitmoves` rather than in `tools._update` because this module is
+    where the MCP layer keeps its git, and it takes the RESULT rather than the
+    board because the fact it acts on is the answer, not a second question:
+    the branch is `card["id"]` (verbs/_facts.py::branch_of — a card's branch is
+    its id), so nothing has to be looked up and nothing can disagree.
+
+    Not in a verb: `verbs/` may not touch git and `tests/test_architecture.py`
+    enforces it. Not in the commit hook either — a push there would be on the
+    critical path of every commit, and the milestone's rule is that a push is
+    never a gate.
+    """
+    if str(args.get("status", "")) != "done":
+        return
+    remote.push(repo, str(as_object(data.get("card")).get("id", "")))
 
 
 def assign(board: Board, repo: Path, args: Args, now: float) -> str:

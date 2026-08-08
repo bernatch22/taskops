@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import run
+from . import run, remote
 from .._errors import Refused
 
 TREES = Path(".taskops") / "trees"
@@ -105,7 +105,9 @@ def merge_card(repo: Path, milestone_branch: str, card_branch: str, card: str) -
             f"\n      cd {card_tree(repo, card)} && git merge {milestone_branch}"
             f"\n    fix the conflict, commit, then taskops_merge task={card} again"
         )
-    run.git("push", "origin", milestone_branch, cwd=tree)  # best effort; local still merged
+    # The card branch too: its `done` push may have been offline, and a card is
+    # only readable as a PR on GitHub if both sides of the compare are there.
+    remote.push(repo, milestone_branch, card_branch, cwd=tree)  # best effort; local still merged
     return run.must("rev-parse", "HEAD", cwd=tree)
 
 
@@ -134,7 +136,7 @@ def land_milestone(repo: Path, milestone_branch: str) -> tuple[str, str]:
             + "\n".join(f"  {f}" for f in conflicts.splitlines())
             + f"\n  (merge aborted — {trunk} is untouched)\n  git said: {result.err or result.out}"
         )
-    run.git("push", "origin", trunk, cwd=repo)  # best effort; local still landed
+    remote.push(repo, trunk)  # best effort; local still landed
     return trunk, run.must("rev-parse", "HEAD", cwd=repo)
 
 
