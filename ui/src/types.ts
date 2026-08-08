@@ -219,8 +219,14 @@ export interface BoardGroups {
   /** Closed AND integrated — the only place finished work is visible. Capped at
    *  `pulse.DONE_SHOWN` (20) and newest first; `BoardPayload.done_total` is the
    *  real count behind the cap. Every other group is bounded by work in flight;
-   *  this one only grows, which is why it is the one group that is a tail. */
-  done: BoardRow[];
+   *  this one only grows, which is why it is the one group that is a tail.
+   *
+   *  OPTIONAL by the header's rule, and for exactly the reason `done_total` is:
+   *  the two arrived in the SAME commit (a1d1005, "closed work is visible"), so
+   *  every board older than that sends nine groups, not ten. The other eight
+   *  date from the first commit and no board that speaks this protocol omits
+   *  them. Consumers read `?? []`. */
+  done?: BoardRow[];
 }
 
 export const GROUP_ORDER = [
@@ -262,8 +268,18 @@ export interface BoardPayload {
   groups: BoardGroups;
   team: TeamMember[];
   hours: ReportPayload | null; // only when the call passed window=
-  /** How many closed cards the chapter really has, behind `groups.done`'s cap. */
-  done_total: number;
+  /** How many closed cards the chapter really has, behind `groups.done`'s cap.
+   *
+   *  OPTIONAL, and not because `pulse.py::run` may omit it — at this version it
+   *  always sends the key. It is optional because a board one version BEHIND
+   *  does not: the field was added in a1d1005 alongside the `done` group itself,
+   *  and a dashboard `join`ed to a board that has not been redeployed since gets
+   *  neither. This is the third instance of the drift the header describes
+   *  (`Milestone.criteria` crashed with `Cannot read properties of undefined`
+   *  before it was made optional; `ReviewingRow.review_since` was written
+   *  optional from the start). Consumers read `?? 0` — absent and `0` say the
+   *  same thing to a reader: nothing closed that this screen can count. */
+  done_total?: number;
   seq: number;
   pulse: Pulse;
 }
