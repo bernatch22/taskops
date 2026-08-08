@@ -881,15 +881,21 @@ The asymmetry is therefore honest and structural, **decided once at
 construction and never sniffed per request** (`Mounts(repo=…)`,
 `http/gitdoor.py`):
 
-| host | root | /git |
-|---|---|---|
-| `taskops ui` | `<repo>/.taskops` — it IS in a checkout | mounted: `git/commit/<ref>`, `git/compare/<a>...<b>` |
-| `taskops serve` | a directory of boards, no checkout | **404 with the reason spelled out**, and nothing faked |
+| host | root | /git | /ui/ |
+|---|---|---|---|
+| `taskops ui` | `<repo>/.taskops` — it IS in a checkout | mounted: `git/commit/<ref>`, `git/compare/<a>...<b>` | the bundle |
+| `taskops serve` | a directory of boards, no checkout | **404 with the reason spelled out**, and nothing faked | **410 and one sentence** |
 
-The only viewer that ever meets that gap is a browser with no clone — a phone
-against a hosted board — and there the UI's declared cascade takes over:
-numstat from the event → patch from /git → the forge link if a slug exists →
-one honest sentence. No dead anchor, no empty pane pretending.
+The `/ui/` column arrived later, and it is the same `repo` deciding both — see
+"API ONLY is now literal" below.
+
+A viewer meets that gap whenever this clone cannot answer — a ref not fetched
+yet, a shallow checkout, a commit from before this repo had the branch — and
+there the UI's declared cascade takes over: numstat from the event → patch from
+/git → the forge link if a slug exists → one honest sentence. No dead anchor, no
+empty pane pretending. (The gap used to have a second, worse shape: a browser
+with no clone at all, pointed at the hosted page. There is no hosted page any
+more — see below.)
 
 That cascade is ONE function — `ui/src/links.tsx::cascade`, beside the slug and
 the link templates it already owned — and `ui/src/components/card/Patch.tsx`
@@ -974,8 +980,32 @@ The routes do not change, so the committed bundle is untouched by any of this:
                           │  the server: API ONLY    │
                           │   /<board>/rpc   events  │
                           │   /<board>/feed  signal  │
+                          │   /healthz               │
+                          │   /<board>/ui/   410 —   │
+                          │     "run taskops ui"     │
                           └──────────────────────────┘
 ```
+
+**"API ONLY" is now literal** (decided 2026-08-08, the other half of the same
+decision). The server used to serve the bundle too, from a `--ui` flag with a
+packaged default — so the box above answered `/ui/` with a real dashboard, and
+that dashboard could not draw a single patch, because the machine it was served
+from deliberately has no clone. It was a degraded window presented as *the*
+window; the redirect above merely pointed people at it. **The binary serves the
+window; the server serves the truth.**
+
+So: `Mounts.ui` is not a parameter, it is `repo`'s shadow — one construction-time
+switch mounts `/git` AND the bundle, and only a process standing in a checkout
+has either. `/ui/` on a board host answers `static.py::NO_UI` as plain text with
+**410 Gone**, not 404: 404 says "no idea, maybe later", and this page was
+withdrawn on purpose and is never coming back to a host with no clone. Plain
+text and not the JSON envelope because the only reader who reaches that door is
+a human with a browser. The `--ui` flag is REMOVED, not deprecated: there is no
+command line that puts the decision back. The bundle still ships inside the
+wheel — `pip install taskops` + `taskops ui` still needs no node toolchain; only
+the server-side mount went. `tests/test_topology.py` pins all of it: the
+sentence and its 410 on a `serve` host, the bundle still served by a host that
+sits in a repo, and `serve --help` carrying no `--ui`.
 
 The whole difference is one `if`, in `http/rpc.py::answered`: a config with a
 `url` relays the /rpc body to `<url>/rpc` with the bearer from `remote.json`
@@ -1075,6 +1105,15 @@ written down. One doc claim was wrong and is fixed there: `/healthz`'s `boards`
 counts boards OPENED so far, not boards on disk — a board mounts on first
 request (`http/mounts.py::stores`), so a just-restarted process says `1`, not
 `4`, until each board has been addressed.
+
+**That md5-of-the-served-bundle check is history, not the procedure any more.**
+Since §16's "API ONLY" amendment the host serves no bundle: `/<board>/ui/`
+answers `410` and one sentence, so there is nothing at the domain to md5. The
+wheel is still checked for its markers *before* it ships — it is the same wheel
+teammates install to get `taskops ui` — and the domain is verified by DATA,
+through `/rpc`. Production is still running the wheel from tk-c86312 and will
+keep serving its `/ui/` until the chapter's own deploy card replaces it; the
+tree is what changed here, not the box.
 
 The four boards migrated as: axion 926 v1 events → 845 + 81 named drops (86
 cards, one chapter `ms-fe528b`, its 4252-character goal and 9 rules intact),

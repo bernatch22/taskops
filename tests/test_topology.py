@@ -307,6 +307,21 @@ def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
     assert len(body) < 400
 
 
+def test_serve_has_no_ui_flag_left_to_configure_a_dashboard_with(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Removed, not left dead: there is no option that puts a bundle back on a
+    board host, so the decision cannot be undone by a command line. Read off
+    `--help` rather than by feeding `--ui` in: a run that PARSED would go on to
+    serve forever, and a test must fail, not hang."""
+    from taskops.cli.main import main
+
+    with pytest.raises(SystemExit):
+        main(["serve", "--help"])
+    printed = capsys.readouterr().out
+    assert "--port" in printed and "--ui" not in printed
+
+
 def test_the_window_still_serves_the_bundle_it_ships_with(
     repo_server: BoardServer,
 ) -> None:
