@@ -353,6 +353,21 @@ export interface WorktreeRow {
    *  extra events read per card per poll, on the hot path that every open tab
    *  hits on a timer. Adding it is a server card, not this one. */
   commits: number | null;
+  /** WHO carries this tree, as two distinguishable facts.
+   *
+   *  `dev` is `format.ts::ownerOf` applied to the row's actor — the PERSON to
+   *  talk to, the same fold the header's AvatarStack does (a row of processes
+   *  says nothing about who is around). `worker` is `shortActor` of that same
+   *  actor — WHICH process holds the directory — and is `null` when the actor
+   *  is a dev already, because then there is no process to name and
+   *  `dev:berna · berna` would only be saying it twice.
+   *
+   *  BOTH are `null` when the row has neither a live `holder` nor an
+   *  `assignee`: a `take` row nobody is on. The cell says so in words rather
+   *  than rendering blank — an empty cell in an ownership column reads as a
+   *  payload that failed, not as "free". */
+  dev: string | null;
+  worker: string | null;
   /** the design's `{{ w.merged }}` pill */
   status: string;
   tone: Tone;
