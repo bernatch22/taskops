@@ -63,6 +63,7 @@ import type {
   Milestone,
   ReportPayload,
   ReviewingRow,
+  TeamMember,
 } from "../../types";
 import type { Tone } from "../board/CardTile";
 /** Type-only, and it is the door's client as `links.tsx` declares it —
@@ -446,4 +447,76 @@ export interface WorktreeDiffProps {
   /** Back to the table. The page owns no router and no history entry — the
    *  selection is one `useState` in `pages/Worktrees.tsx` and this clears it. */
   onBack: () => void;
+}
+
+/* ── 9. Swarm topology ────────────────────────────────────────────────────── */
+
+/** What a circle on the ring IS. Four of these are actors and one is a card;
+ *  the legend at the foot of the pane names the four actor kinds only, exactly
+ *  as the mock draws it — a card is the thing they are attached TO, not a role.
+ *
+ *  `verifier` is its own kind and not a shade of `worker` for the reason the
+ *  board itself keeps two mutexes: a REVIEW lease (`store/reviews.py`) is a
+ *  SECOND lease on the same card, so an actor holding one is not doing the same
+ *  thing as the actor holding the work lease, and a card carrying both has two
+ *  honest edges rather than a duplicate. */
+export type SwarmKind = "orchestrator" | "worker" | "verifier" | "lapsed" | "card";
+
+/** A node, already placed. The position is computed by `topology()` — a pure
+ *  function of the payload, deterministic by index around one circle — because a
+ *  force simulation is an animation loop whose output no headless harness can
+ *  assert. `Math.random()` appears nowhere in this pane. */
+export interface SwarmNode {
+  /** the actor string, or the card id — the two namespaces cannot collide */
+  id: string;
+  kind: SwarmKind;
+  /** what is drawn beside the circle: `shortActor()`, or the card id */
+  label: string;
+  /** the `<title>`: the actor AND its card, because a circle with no text is
+   *  unreachable to a screen reader otherwise */
+  title: string;
+  x: number;
+  y: number;
+}
+
+/** `lease` is an actor attached to a card — one edge per lease, and the lapsed
+ *  variety is an assignment with no lease behind it, drawn faint.
+ *
+ *  `contested` is a DASHED edge between two CARDS that declare a path in common
+ *  (`BoardRow.files`). It is the same fact the Edit surface pane states, in the
+ *  same words: a warning, never a lock. `files` is what a card DECLARED, never
+ *  what a worker actually edited — the board never parses source
+ *  (`docs/fan-out.md`), so this edge can be silent while the tree is wrong and
+ *  loud while nothing is. */
+export interface SwarmEdge {
+  from: string;
+  to: string;
+  kind: "lease" | "lapsed" | "contested";
+}
+
+export interface SwarmGraph {
+  nodes: SwarmNode[];
+  edges: SwarmEdge[];
+  /** how many `contested` edges — the header count says it out loud */
+  contested: number;
+  /** nothing is running: no lease, no review, no stalled assignment. The pane
+   *  draws one sentence and NO graph — an empty ring pretending to be a graph
+   *  is the worst reading of a quiet board. */
+  quiet: boolean;
+}
+
+/** Every field is a slice the board already sends. No verb, no payload key, no
+ *  store, no second fetch — the pane's own subtitle is its contract. */
+export interface SwarmProps {
+  /** `board.team` — where the `dev:` actors come from. A dev never holds a card
+   *  (the role rule, `verbs/__init__.py`), so the centre of this diagram is the
+   *  one node that is in it without an edge of its own. */
+  team: readonly TeamMember[];
+  /** `board.groups.doing` — a live WORK lease, and `holder` is the worker */
+  doing: readonly BoardRow[];
+  /** `board.groups.reviewing` — a live REVIEW lease, and `holder` is the verifier */
+  reviewing: readonly ReviewingRow[];
+  /** `board.groups.stalled` — an `assignee` and no holder anywhere. Nothing
+   *  running, nothing written; the state the board has no repair verb for. */
+  stalled: readonly BoardRow[];
 }

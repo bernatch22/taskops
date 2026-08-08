@@ -161,6 +161,23 @@ const PILL: Record<Exclude<GroupName, "mentions">, readonly [string, Tone]> = {
 
 type Block = { title: string; groups: readonly (keyof typeof PILL)[] };
 
+/** What a column with nothing in it says, per column — the sentence, and under
+ *  it the ONE call that would fill it.
+ *
+ *  BOTH columns get it and not only the left: a chapter with nothing merged yet
+ *  has the mirror-image problem, and that is the far more common state at the
+ *  START of a chapter — exactly when somebody is watching this screen. */
+const EMPTY: Record<string, { said: string; move: string }> = {
+  "In progress": {
+    said: "No card is open on this chapter, so no worktree is pinned to one. A directory appears here the moment a card exists, and it keeps it.",
+    move: "taskops_assign hands a card to a worker",
+  },
+  Merged: {
+    said: "Nothing has been integrated yet. A card lands here the moment taskops_merge task= takes it into the chapter.",
+    move: "taskops_merge task= is the orchestrator's call",
+  },
+};
+
 /** The two columns and their sub-blocks. Every group list is in `GROUP_ORDER`,
  *  so the rows inside a block arrive in the order the board builds them. */
 const COLUMNS: readonly { title: string; blocks: readonly Block[] }[] = [
@@ -244,20 +261,57 @@ const head: React.CSSProperties = {
   marginBottom: "14px",
 };
 
+/** The column SHELL. `display: flex` + `column` is not decoration: it is what
+ *  lets the empty body claim `flex: 1` and centre itself inside whatever height
+ *  the row hands this panel. */
 const shell: React.CSSProperties = {
   borderRadius: "16px",
   background: "var(--pane)",
   border: "1px solid var(--hair)",
   overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
 };
 
 /** 50/50 as drawn — but `auto-fit` with a 360px floor, so the pair collapses to
- *  ONE column on a narrow window instead of squeezing two unreadable ones. */
+ *  ONE column on a narrow window instead of squeezing two unreadable ones.
+ *
+ *  `stretch`, NOT `start`. It used to be `start`, and on a landed chapter that
+ *  read as a render that failed: `IN PROGRESS` collapsed to the height of one
+ *  sentence while `MERGED` ran 900px down beside it. Two panels of wildly
+ *  different height, one of them almost empty, is not a layout. Stretched, the
+ *  two shells are one object and the empty one has space to fill — which is why
+ *  the empty body below is centred rather than pinned to the top. When both
+ *  columns carry rows nothing changes: a grid item that is as tall as the row
+ *  stretches to exactly its own height. */
 const split: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
   gap: "16px",
-  alignItems: "start",
+  alignItems: "stretch",
+};
+
+/** The empty body — centred in whatever the sibling column made this panel.
+ *
+ *  A dashed `--hair` field marks the area as INTENTIONALLY empty; the design
+ *  system's own hairline, no invented hue, no illustration and no icon. The
+ *  heading and its count above are untouched, so the two columns still rhyme. */
+const emptyBody: React.CSSProperties = {
+  flex: "1 1 auto",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "8px",
+  textAlign: "center",
+  minHeight: "180px",
+  margin: "0 20px 20px",
+  padding: "26px 22px",
+  border: "1px dashed var(--hair)",
+  borderRadius: "12px",
+  fontSize: "12.5px",
+  color: "var(--text-3)",
+  lineHeight: 1.6,
 };
 
 const columnHead: React.CSSProperties = {
@@ -430,6 +484,7 @@ function Column({
   onOpen: (id: string) => void;
 }): React.JSX.Element {
   const total = blocks.reduce((n, b) => n + b.rows.length, 0);
+  const empty = EMPTY[title] ?? EMPTY["In progress"]!;
   return (
     <section style={shell} data-testid="worktree-column" data-column={title}>
       <div style={columnHead}>
@@ -437,19 +492,15 @@ function Column({
         <span>{total === 1 ? "1 tree" : `${total} trees`}</span>
       </div>
       {total === 0 ? (
-        <div
-          data-testid="worktrees-empty"
-          style={{
-            padding: "20px 20px 24px",
-            borderTop: "1px solid var(--hair)",
-            fontSize: "12.5px",
-            color: "var(--text-3)",
-            lineHeight: 1.6,
-          }}
-        >
-          {title === "Merged"
-            ? "Nothing has been integrated yet. A card lands here the moment taskops_merge task= takes it into the chapter."
-            : "No card is open on this chapter, so no worktree is pinned to one. A directory appears here the moment a card exists, and it keeps it."}
+        <div data-testid="worktrees-empty" style={emptyBody}>
+          <span style={{ maxWidth: "34em" }}>{empty.said}</span>
+          {/* The move that would fill this column — NAMED, not offered. This
+              dashboard has exactly ONE write and it is the comment box, so a
+              button here would be a second one; the call belongs in the
+              orchestrator's session, which is where it is refused or works. */}
+          <span className="mono" style={{ fontSize: "11.5px", color: "var(--text-2)" }}>
+            {empty.move}
+          </span>
         </div>
       ) : (
         blocks

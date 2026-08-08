@@ -34,6 +34,7 @@ import { Menu as MilestoneMenu } from "../src/components/chrome/MilestonePicker"
 import { WorktreeDiff, Worktrees, rows } from "../src/pages/Worktrees";
 import { pageView } from "../src/pages/WorktreeDiff";
 import { LEASE_TTL } from "../src/components/monitor/panels";
+import { Swarm, topology } from "../src/components/monitor/Swarm";
 import {
   cascade,
   gitAvailable,
@@ -62,8 +63,10 @@ export interface Fixture {
   git: { compare: GitDiff; no_repo: string };
 }
 
-/** The eight panes Monitor draws. Nova's own count: nothing merged, nothing
- *  dropped for lack of a verb (`components/monitor/panels.ts`). */
+/** The panes Monitor draws. Nova's own eight — nothing merged, nothing dropped
+ *  for lack of a verb (`components/monitor/panels.ts`) — plus `pane-swarm`,
+ *  which is this chapter's and is NOT one of Nova's: the topology pane is the
+ *  ninth section, at the foot of the left column. */
 const PANES = [
   "pane-leases",
   "pane-throughput",
@@ -73,6 +76,7 @@ const PANES = [
   "pane-chapter",
   "pane-mentions",
   "pane-events",
+  "pane-swarm",
 ];
 
 export async function smoke(fixture: Fixture): Promise<string[]> {
@@ -349,6 +353,30 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check(
     "an empty column is a sentence, not a blank panel",
     olderMarkup.includes('data-testid="worktrees-empty"'),
+  );
+  /* …and it HOLDS ITS SHAPE. Two panels of wildly different height, one of them
+   * almost empty, reads as a render that failed. Three facts, all of them in
+   * reach of a static render: the grid stretches its items (it used to say
+   * `start`, which is what let the empty column collapse), the shell is a
+   * flex column so the empty body can claim the space, and that body centres
+   * itself in it rather than sitting at the top. */
+  const emptyBoth = renderToStaticMarkup(<Worktrees groups={{} as BoardPayload["groups"]} />);
+  check(
+    "the two column shells share a height when one is empty",
+    // The grid stretches its items — it used to say `start`, which is exactly
+    // what let the empty column collapse to the height of one sentence…
+    emptyBoth.includes("align-items:stretch") &&
+      !emptyBoth.includes("align-items:start") &&
+      // …and each shell is a flex column, which is what lets the empty body
+      // claim the space the row handed the panel.
+      (emptyBoth.match(/flex-direction:column[^>]*data-testid="worktree-column"/g) ?? []).length ===
+        2,
+  );
+  check(
+    "an empty column centres its text and names the move that would fill it",
+    (emptyBoth.match(/data-testid="worktrees-empty"[^>]*justify-content:center/g) ?? []).length === 2 &&
+      emptyBoth.includes("taskops_assign hands a card to a worker") &&
+      emptyBoth.includes("taskops_merge task= is the orchestrator&#x27;s call"),
   );
 
   /* THE SECOND SURFACE. A tree is a pull request, so clicking one opens ITS
@@ -1144,6 +1172,113 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check("the tab asked for is the tab you get", onTab("board").tab === "board");
 
   resetGitAvailability();
+
+  /* ── 9. Swarm topology: who is attached to what ──────────────────────────
+   *
+   * The pane's whole claim is that it invents nothing — it folds four slices
+   * the board already sends into nodes and edges. `topology()` is that fold,
+   * exported as a pure function precisely so it can be asserted here WITHOUT
+   * rendering, which is also why the layout is arithmetic and not a force
+   * simulation: a simulation settles over frames and this harness has none.
+   *
+   * The rows are built here rather than taken from the fixture for the reason
+   * §2b builds its own: this repo's board cannot be made to hold a live work
+   * lease AND a live review lease on one card AND two cards declaring one path,
+   * all at the same instant, from a test. The SHAPES are the payload's own
+   * (`BoardRow`, `ReviewingRow`, `TeamMember` — the compiler checks that), and
+   * the pane against the real fixture is asserted in §1 with the other panes. */
+
+  const swarmRow = (id: string, holder: string | null, files: string[]) =>
+    ({
+      id,
+      title: id + " does a thing",
+      priority: 1,
+      assignee: holder ?? "agent:berna/x",
+      holder,
+      since: now - 100,
+      quiet_for: null,
+      files,
+      labels: [],
+    }) satisfies BoardPayload["groups"]["doing"][number];
+
+  const swarmTeam: TeamMember[] = [
+    { actor: "dev:berna", seen: now, ago: 0 },
+    { actor: "agent:berna/s1", seen: now, ago: 0 },
+  ];
+  const swarmDoing = [
+    swarmRow("tk-aaa111", "agent:berna/s1", ["ui/src/shared.ts"]),
+    swarmRow("tk-bbb222", "agent:berna/s2", ["ui/src/shared.ts", "ui/src/other.ts"]),
+  ];
+  const swarmReviewing = [
+    { ...swarmRow("tk-aaa111", "agent:berna/rv1", ["ui/src/shared.ts"]), review_since: now - 30 },
+  ] as unknown as ReviewingRow[];
+  const swarmLapsed = [swarmRow("tk-ccc333", null, [])];
+
+  const swarmGraph = topology({ team: swarmTeam, doing: swarmDoing, reviewing: swarmReviewing, stalled: swarmLapsed });
+  const swarmEdge = (from: string, to: string, kind: string) =>
+    swarmGraph.edges.some((e) => e.from === from && e.to === to && e.kind === kind);
+
+  check(
+    "swarm: the orchestrator is the centre and holds nothing",
+    swarmGraph.nodes[0]?.id === "dev:berna" &&
+      swarmGraph.nodes[0]?.kind === "orchestrator" &&
+      !swarmGraph.edges.some((e) => e.from === "dev:berna"),
+  );
+  check("swarm: a live lease is an edge from its worker", swarmEdge("agent:berna/s1", "tk-aaa111", "lease"));
+  check(
+    "swarm: a card under review has TWO edges, and the verifier is its own kind",
+    swarmEdge("agent:berna/rv1", "tk-aaa111", "lease") &&
+      swarmGraph.edges.filter((e) => e.to === "tk-aaa111" && e.kind === "lease").length === 2 &&
+      swarmGraph.nodes.find((n) => n.id === "agent:berna/rv1")?.kind === "verifier" &&
+      swarmGraph.nodes.find((n) => n.id === "agent:berna/s1")?.kind === "worker",
+  );
+  check(
+    "swarm: a stalled card draws its lapsed owner",
+    swarmGraph.nodes.find((n) => n.id === "agent:berna/x")?.kind === "lapsed" &&
+      swarmEdge("agent:berna/x", "tk-ccc333", "lapsed"),
+  );
+  check(
+    "swarm: two cards on one declared path are one dashed edge, counted once",
+    swarmGraph.contested === 1 && swarmEdge("tk-aaa111", "tk-bbb222", "contested"),
+  );
+  check("swarm: a card nobody declared a shared file with has no dashed edge",
+    !swarmGraph.edges.some((e) => e.kind === "contested" && (e.from === "tk-ccc333" || e.to === "tk-ccc333")));
+
+  /* Criterion 5, and the reason `Math.random()` is banned in that file: the same
+   * payload twice is the same markup, byte for byte. */
+  const drawSwarm = () =>
+    renderToStaticMarkup(
+      <Swarm team={swarmTeam} doing={swarmDoing} reviewing={swarmReviewing} stalled={swarmLapsed} />,
+    );
+  const swarmFirst = drawSwarm();
+  check("swarm: the same payload renders identically twice", swarmFirst === drawSwarm());
+  check(
+    "swarm: the header counts nodes and contested edges",
+    swarmFirst.includes(`${swarmGraph.nodes.length} nodes · 1 contested edge`),
+  );
+  const swarmDrawn = (swarmFirst.match(/data-testid="swarm-node"/g) ?? []).length;
+  check(
+    "swarm: every node carries an accessible <title>",
+    swarmDrawn === swarmGraph.nodes.length && (swarmFirst.match(/<title>/g) ?? []).length === swarmDrawn,
+  );
+  check("swarm: the dashed edge is drawn dashed", swarmFirst.includes('stroke-dasharray="5 4"'));
+  check(
+    "swarm: the caveat is on the pane, in the Edit surface's own words",
+    swarmFirst.includes("a warning, never a lock") &&
+      swarmFirst.includes("never what a worker actually edited"),
+  );
+
+  /* Nothing running is the COMMON state, not an edge case: one sentence and no
+   * graph — never an empty ring pretending to be a topology. */
+  const swarmQuiet = renderToStaticMarkup(
+    <Swarm team={swarmTeam} doing={[]} reviewing={[]} stalled={[]} />,
+  );
+  check(
+    "swarm: nothing running is one sentence and no graph",
+    swarmQuiet.includes('data-testid="pane-empty"') &&
+      !swarmQuiet.includes('data-testid="swarm-graph"') &&
+      !swarmQuiet.includes('data-testid="swarm-count"'),
+  );
 
   return failures;
 }
