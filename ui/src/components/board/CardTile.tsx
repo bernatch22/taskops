@@ -52,6 +52,16 @@ export interface CardTileProps {
   note?: string | undefined;
   /** blocked only: the cards this one is waiting for */
   waitingOn?: readonly string[] | undefined;
+  /** WHICH CHAPTER this card belongs to — the milestone's TITLE, already
+   *  resolved, and only when the view actually holds more than one of them.
+   *
+   *  The tile does not resolve it and does not decide whether to show it, for
+   *  the same reason it does not know about groups: both answers are about the
+   *  WHOLE view — which chapters are on screen — and a tile can only see itself.
+   *  `Board.tsx::chapterLabels` owns both, computed once for the page. Absent is
+   *  the normal case (a chapter in focus), and the line is then not drawn at all
+   *  rather than drawn empty — the tile keeps its height. */
+  chapter?: string | undefined;
   onOpen: (id: string) => void;
 }
 
@@ -114,7 +124,7 @@ const pill: React.CSSProperties = {
 };
 
 export function CardTile(props: CardTileProps): React.JSX.Element {
-  const { row, chip, marker, note, waitingOn, onOpen } = props;
+  const { row, chip, marker, note, waitingOn, chapter, onOpen } = props;
   const [lift, setLift] = useState(false);
   const [ring, setRing] = useState(false);
   const when = meta(row);
@@ -185,6 +195,27 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
       >
         {row.title}
       </div>
+
+      {/* The chapter — the Worktrees row's vocabulary, verbatim: the same `⌗`
+          prefix, the same `--text-3` ink, one line, clipped. A chapter title is
+          a sentence and a column is 278px wide. Not a link and not clickable:
+          the header picker is the one way to narrow the board, and a second one
+          is a second thing that can disagree with the first. */}
+      {chapter ? (
+        <div
+          data-testid="tile-chapter"
+          style={{
+            fontSize: "11.5px",
+            color: "var(--text-3)",
+            marginTop: "6px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {`⌗ ${chapter}`}
+        </div>
+      ) : null}
 
       {note ? (
         <div style={{ fontSize: "11.5px", color: "var(--text-2)", marginTop: "8px" }}>{note}</div>
