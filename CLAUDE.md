@@ -31,7 +31,7 @@ live (fan-out.md §10): the ordering rule is a sentence in
 until the human answers `criteria_met=true`.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**257 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
+**260 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
 strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on

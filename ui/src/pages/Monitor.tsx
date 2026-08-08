@@ -85,6 +85,14 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
   const g = board.groups;
   /** Every open row that can name a file, for the Edit surface. */
   const rows = [...g.take, ...g.doing, ...g.stalled, ...g.blocked];
+  /* The chapter in focus is HISTORY, not a quiet live board. `!== "open"` and
+   * not `=== "landed"`: a status this bundle has never heard of is safer read
+   * as not-in-flight than drawn as work somebody could pick up. */
+  const finished = board.milestone !== null && board.milestone.status !== "open";
+  /* Open chapters only — `board.milestones` carries the landed ones too since
+   * they stopped being invisible (types.ts), and this count is what the Chapter
+   * pane says is in flight when the server could not focus one. */
+  const open = board.milestones.filter((m) => m.status === "open").length;
 
   return (
     <div style={scroll} data-testid="monitor">
@@ -104,6 +112,7 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
               // (types.ts) — the standing reads 0 closed rather than crashing.
               closed: board.done_total ?? 0,
             }}
+            finished={finished}
           />
 
           <div style={pair("1.25fr")}>
@@ -122,7 +131,7 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
         </div>
 
         <div style={right}>
-          <Chapter milestone={board.milestone} chapters={board.milestones.length} />
+          <Chapter milestone={board.milestone} chapters={open} />
           <Mentions mentions={g.mentions} now={now} onOpen={openCard} />
           {/* No verb streams the log: `[]` and `null` are the honest arguments,
               and the pane says so rather than being dropped. panels.ts, note 1. */}

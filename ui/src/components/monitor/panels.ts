@@ -121,6 +121,18 @@ export interface LiveLeasesProps {
    *  when a lease exists none of this is read, and nothing about the populated
    *  pane changes. */
   standing: { ready: number; blocked: number; closed: number };
+  /** The chapter in focus has LANDED — read only when no lease is held, like
+   *  `standing`, and for the same reason one step further.
+   *
+   *  "Nobody holds a lease right now · 0 ready to pick up · 0 blocked" is true
+   *  of a finished chapter and reads as a live board that has gone quiet, which
+   *  is the opposite of what happened. A landed chapter has nothing to pick up
+   *  BY DEFINITION — `taskops_merge milestone=` refuses while any card is open
+   *  — so the two figures that are calls to action are not drawn at all and the
+   *  sentence names the state. Optional and defaulting to false: a board one
+   *  version behind sends no landed chapter to focus, so the question never
+   *  arises there. */
+  finished?: boolean;
 }
 
 /* ── 2. Throughput ────────────────────────────────────────────────────────── */
