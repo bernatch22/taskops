@@ -46,9 +46,25 @@
  * A third block would have to split `blocked` off `take`, or `stalled` off
  * `doing` — and both of those distinctions are already the row's own pill and
  * tone, in colour, on every row. A heading that repeats the pill is one more
- * thing to read and no more information. An empty sub-block is not drawn at all
- * (a heading over nothing is a fact about the layout, not about the board); an
- * empty COLUMN says so in a sentence.
+ * thing to read and no more information.
+ *
+ * NOTHING EMPTY IS DRAWN, at either level. An empty sub-block gets no heading (a
+ * heading over nothing is a fact about the layout, not about the board), and an
+ * empty COLUMN gets no shell: the grid is built from the columns that HAVE rows,
+ * so one populated column is one full-width panel. That REPLACES the previous
+ * answer, which gave the empty column a stretched shell with a dotted field and
+ * a sentence inside it. Seen on a real landed chapter — everything merged,
+ * nothing in flight — it was still half the screen spent on the absence of
+ * something, beside the half that had the content. Half a screen of styled
+ * nothing is not more honest than no panel, it is only bigger.
+ * `align-items: stretch` stays: with one column it changes nothing, with two it
+ * is what keeps them level.
+ *
+ * BOTH empty is the one case that still has words, and they are the whole state
+ * of the view rather than a hole in a layout — so they are centred in the PAGE,
+ * with no heading, no count and no column shell. The three note cards stay in
+ * every case, this one included: they state the rule the board enforces, which
+ * is true whether or not a tree exists.
  *
  * Read-only, absolutely: a row is a button, and what it opens is THIS view's own
  * full-width diff page — not the card Dossier. That was the bug: clicking a tree
@@ -162,22 +178,16 @@ const PILL: Record<Exclude<GroupName, "mentions">, readonly [string, Tone]> = {
 
 type Block = { title: string; groups: readonly (keyof typeof PILL)[] };
 
-/** What a column with nothing in it says, per column — the sentence, and under
- *  it the ONE call that would fill it.
+/** The ONE sentence left, for the ONE state that is nothing but words: no tree
+ *  exists at all, in either column.
  *
- *  BOTH columns get it and not only the left: a chapter with nothing merged yet
- *  has the mirror-image problem, and that is the far more common state at the
- *  START of a chapter — exactly when somebody is watching this screen. */
-const EMPTY: Record<string, { said: string; move: string }> = {
-  "In progress": {
-    said: "No card is open on this chapter, so no worktree is pinned to one. A directory appears here the moment a card exists, and it keeps it.",
-    move: "taskops_assign hands a card to a worker",
-  },
-  Merged: {
-    said: "Nothing has been integrated yet. A card lands here the moment taskops_merge task= takes it into the chapter.",
-    move: "taskops_merge task= is the orchestrator's call",
-  },
-};
+ *  There is no per-column variant any more. A per-column sentence was the text
+ *  INSIDE a shell that is no longer drawn, and it answered a question nobody has
+ *  when the other column is full of rows — the populated column already says
+ *  what the chapter is doing. This one is not about a column: it is the state of
+ *  the view, so it is not offered a call to fill it either. */
+const NOTHING =
+  "No card is open on this chapter, so no worktree is pinned to one. A directory appears here the moment a card exists, and it keeps it.";
 
 /** The two columns and their sub-blocks. Every group list is in `GROUP_ORDER`,
  *  so the rows inside a block arrive in the order the board builds them. */
@@ -262,9 +272,11 @@ const head: React.CSSProperties = {
   marginBottom: "14px",
 };
 
-/** The column SHELL. `display: flex` + `column` is not decoration: it is what
- *  lets the empty body claim `flex: 1` and centre itself inside whatever height
- *  the row hands this panel. */
+/** The column SHELL — only ever drawn around rows now, never around an absence.
+ *
+ *  `display: flex` + `column` stays: a shell stretched to the taller sibling's
+ *  height still has to lay its head, its sub-blocks and its rows out down that
+ *  height rather than assuming it is exactly as tall as they are. */
 const shell: React.CSSProperties = {
   borderRadius: "16px",
   background: "var(--pane)",
@@ -275,16 +287,13 @@ const shell: React.CSSProperties = {
 };
 
 /** 50/50 as drawn — but `auto-fit` with a 360px floor, so the pair collapses to
- *  ONE column on a narrow window instead of squeezing two unreadable ones.
+ *  ONE column on a narrow window instead of squeezing two unreadable ones. The
+ *  same declaration is what makes a SINGLE surviving column full width: with one
+ *  item there is one track, and `1fr` is the whole row.
  *
- *  `stretch`, NOT `start`. It used to be `start`, and on a landed chapter that
- *  read as a render that failed: `IN PROGRESS` collapsed to the height of one
- *  sentence while `MERGED` ran 900px down beside it. Two panels of wildly
- *  different height, one of them almost empty, is not a layout. Stretched, the
- *  two shells are one object and the empty one has space to fill — which is why
- *  the empty body below is centred rather than pinned to the top. When both
- *  columns carry rows nothing changes: a grid item that is as tall as the row
- *  stretches to exactly its own height. */
+ *  `stretch`, NOT `start`. With one column it decides nothing; with two it is
+ *  what keeps them level. It used to say `start`, and two panels of wildly
+ *  different height read as a render that failed. */
 const split: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
@@ -292,27 +301,19 @@ const split: React.CSSProperties = {
   alignItems: "stretch",
 };
 
-/** The empty body — centred in whatever the sibling column made this panel.
- *
- *  A dashed `--hair` field marks the area as INTENTIONALLY empty; the design
- *  system's own hairline, no invented hue, no illustration and no icon. The
- *  heading and its count above are untouched, so the two columns still rhyme. */
-const emptyBody: React.CSSProperties = {
-  flex: "1 1 auto",
+/** The both-empty state: the sentence, centred in the PAGE. No panel, no dashed
+ *  field, no heading and no count — there is no column for it to be the inside
+ *  of. It is given room above the notes and nothing else. */
+const nothing: React.CSSProperties = {
   display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
   justifyContent: "center",
-  gap: "8px",
   textAlign: "center",
-  minHeight: "180px",
-  margin: "0 20px 20px",
-  padding: "26px 22px",
-  border: "1px dashed var(--hair)",
-  borderRadius: "12px",
-  fontSize: "12.5px",
+  padding: "70px 22px",
+  maxWidth: "34em",
+  margin: "0 auto",
+  fontSize: "13px",
   color: "var(--text-3)",
-  lineHeight: 1.6,
+  lineHeight: 1.7,
 };
 
 const columnHead: React.CSSProperties = {
@@ -484,39 +485,26 @@ function Column({
   repo: WorktreesProps["repo"];
   onOpen: (id: string) => void;
 }): React.JSX.Element {
+  // Never zero: the caller only builds a Column for a column that has rows.
   const total = blocks.reduce((n, b) => n + b.rows.length, 0);
-  const empty = EMPTY[title] ?? EMPTY["In progress"]!;
   return (
     <section style={shell} data-testid="worktree-column" data-column={title}>
       <div style={columnHead}>
         <span>{title}</span>
         <span>{total === 1 ? "1 tree" : `${total} trees`}</span>
       </div>
-      {total === 0 ? (
-        <div data-testid="worktrees-empty" style={emptyBody}>
-          <span style={{ maxWidth: "34em" }}>{empty.said}</span>
-          {/* The move that would fill this column — NAMED, not offered. This
-              dashboard has exactly ONE write and it is the comment box, so a
-              button here would be a second one; the call belongs in the
-              orchestrator's session, which is where it is refused or works. */}
-          <span className="mono" style={{ fontSize: "11.5px", color: "var(--text-2)" }}>
-            {empty.move}
-          </span>
-        </div>
-      ) : (
-        blocks
-          .filter((b) => b.rows.length > 0)
-          .map((b) => (
-            <div key={b.title}>
-              <div style={blockHead} data-testid="worktree-block">
-                {b.title}
-              </div>
-              {b.rows.map((w) => (
-                <Row key={w.id} w={w} base={base} repo={repo} onOpen={onOpen} />
-              ))}
+      {blocks
+        .filter((b) => b.rows.length > 0)
+        .map((b) => (
+          <div key={b.title}>
+            <div style={blockHead} data-testid="worktree-block">
+              {b.title}
             </div>
-          ))
-      )}
+            {b.rows.map((w) => (
+              <Row key={w.id} w={w} base={base} repo={repo} onOpen={onOpen} />
+            ))}
+          </div>
+        ))}
     </section>
   );
 }
@@ -551,6 +539,14 @@ export function Worktrees({
   const selected = onOpenTree ? (openTree ?? null) : own;
   const select = onOpenTree ?? setOwn;
   const titles = new Map(milestones.map((m) => [m.id, m.title]));
+  /* THE GRID IS BUILT FROM WHAT HAS ROWS. Each column is folded first and the
+   * empty ones are dropped here, before anything is drawn — which is what makes
+   * a single surviving column full width (`split`) and the both-empty case a
+   * sentence rather than two shells of nothing. */
+  const drawn = COLUMNS.map((c) => ({
+    title: c.title,
+    blocks: c.blocks.map((b) => ({ title: b.title, rows: fold(groups, b, titles) })),
+  })).filter((c) => c.blocks.some((b) => b.rows.length > 0));
 
   /* The early return: when a tree is selected the index is REPLACED, full
    * width. Not a modal over it, not a drawer beside it.
@@ -583,18 +579,24 @@ export function Worktrees({
         </span>
       </div>
 
-      <div style={split}>
-        {COLUMNS.map((c) => (
-          <Column
-            key={c.title}
-            title={c.title}
-            blocks={c.blocks.map((b) => ({ title: b.title, rows: fold(groups, b, titles) }))}
-            base={milestoneBranch}
-            repo={repo}
-            onOpen={select}
-          />
-        ))}
-      </div>
+      {drawn.length === 0 ? (
+        <div style={nothing} data-testid="worktrees-none">
+          <span>{NOTHING}</span>
+        </div>
+      ) : (
+        <div style={split}>
+          {drawn.map((c) => (
+            <Column
+              key={c.title}
+              title={c.title}
+              blocks={c.blocks}
+              base={milestoneBranch}
+              repo={repo}
+              onOpen={select}
+            />
+          ))}
+        </div>
+      )}
 
       <div style={notes}>
         {NOTES.map((n) => (

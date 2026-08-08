@@ -658,9 +658,17 @@ files that answer it:
   clear it is the tab bar (`App.tsx::onTab`, pure and tested: selecting a tab,
   including the one already active, returns to the index). `Worktrees` takes it
   as an OPTIONAL controlled pair, so a caller that passes neither still gets the
-  page it had. The two columns are equal-height by construction, so a chapter
-  with nothing merged yet does not draw one tall column beside a stub; an empty
-  side keeps its full height and centres its own sentence. The diff page itself
+  page it had. **A column with nothing in it is not drawn at all**: the grid is
+  built from the columns that HAVE rows, so a chapter with nothing merged yet is
+  ONE full-width panel rather than a tall column beside a stub, and both columns
+  empty is one sentence centred in the page with no shell, no heading and no
+  count. That reverses the first answer — an equal-height shell with a dotted
+  empty field and its own sentence inside — which on a landed chapter was still
+  half a screen spent on an absence; half a screen of styled nothing is not more
+  honest than no panel, only bigger. `align-items: stretch` stays, because with
+  two columns it is what keeps them level. The three note cards are drawn in
+  every state, both-empty included: they state the rule the board enforces,
+  which is true whether or not a tree exists. The diff page itself
   reads side by side (§16) and carries **the card's own thread** — there is no
   worktree comment and there must never be one, because a worktree has no
   identity apart from its card and a second thread would be two places to say

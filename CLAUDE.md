@@ -310,8 +310,9 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    into two columns (`components/card/split.ts`, pure — anything it cannot parse
    returns `[]` and the unified view is drawn instead, which is the whole safety
    of the feature), the measurements are a prop (`PatchSize = "drawer" | "page"`,
-   so the drawer's pane is byte-for-byte what it was), the two index columns hold
-   equal height with one side empty, and the page carries **the card's own
+   so the drawer's pane is byte-for-byte what it was), a column with nothing in
+   it is not drawn at all — one populated column is one full-width panel, both
+   empty is one centred sentence and no shell — and the page carries **the card's own
    thread** — the same `Thread`, the same `CommentBox`, the same `update
    comment=`. There is no worktree comment and there must never be one: a
    worktree has no identity apart from its card (`gitwork/trees.py` pins
