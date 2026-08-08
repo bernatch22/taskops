@@ -25,10 +25,16 @@ from ..store.stores import Stores
 
 ORDER = 0.001  # the spacing between two cards of the same plan call
 
+# A chapter whose work the trunk does not carry yet. `done` counts: finished is
+# not landed, and the new branch will not see it either. Only `landed` (it is in
+# the trunk) and `dropped` (there is nothing to miss) are silent.
+UNLANDED = ("open", "done")
+
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     now = _clock.now()
     events: list[Event] = []
+    before = dict(stores.state()["milestones"])
     stone = _milestone(stores, actor, args, now, events)
     rows = _args.rows(args, "tasks")
     if not rows:
@@ -65,8 +71,42 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         "milestone": stone,
         "cards": list(fresh.values()),
         "seq": seq,
+        "notes": _unlanded(before, stone),
         "pulse": _context.pulse(stores, actor, now, stone["id"]),
     }
+
+
+def _unlanded(before: dict[str, Milestone], stone: Milestone) -> list[str]:
+    """What a NEW chapter will not see, named — a warning, never a refusal.
+
+    A milestone branch is cut from the trunk (`gitwork/trees.py::base_ref`) and
+    nothing checks the trunk is current. The Monitor chapter was cut from a
+    `master` missing 27 commits of unlanded UI work; a worker found it when its
+    worktree had no `ui/` at all, and the repair was hand-rolled git this
+    project bans everywhere else (2026-08-07).
+
+    "Unlanded" is knowable two ways: the board's own record, or git — is the
+    milestone branch an ancestor of the trunk. `verbs/` may not touch git at
+    all (`tests/test_architecture.py` enforces it), so this reads the record:
+    a landed chapter is `status: "landed"` since the fold fix, so anything
+    still `open` is exactly what the new branch will not carry.
+
+    Opening a second chapter deliberately is normal — refusing would be wrong.
+    Being told what the branch will and will not see is the whole value.
+    """
+    if stone["id"] in before:  # named an existing chapter — nothing was opened
+        return []
+    others = sorted(
+        (m for m in before.values() if m["status"] in UNLANDED), key=lambda m: m["created"]
+    )
+    if not others:
+        return []
+    lines = [f'{m["id"]} "{m["title"]}" is {m["status"]} and has not landed.' for m in others]
+    lines.append(
+        f"{stone['branch']} is cut from the trunk, so it will not see "
+        + ("those chapters' work." if len(others) > 1 else "that chapter's work.")
+    )
+    return lines
 
 
 def _milestone(
