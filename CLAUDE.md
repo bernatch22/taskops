@@ -2,8 +2,8 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **68 Python files / ~6.700 lines under `src/taskops`**, plus the
-dashboard — **23 TypeScript files / ~3.000 lines under `ui/src`**, whose built
+~340 files) as **71 Python files / ~7.000 lines under `src/taskops`**, plus the
+dashboard — **36 TypeScript files / ~6.400 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -31,7 +31,7 @@ live (fan-out.md §10): the ordering rule is a sentence in
 until the human answers `criteria_met=true`.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**215 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
+**216 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
 strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
@@ -190,6 +190,15 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 - **Mutation-check every fix**: break it on purpose, watch the test fail, put it
   back. Two tests here looked green with the fix removed until this was done.
+  Break the sites ONE AT A TIME: a chapter-close card mutated five fallbacks
+  together, saw the suite go red, and only a per-site pass showed that four of
+  the five were not covered at all. A batch mutation proves *something* is
+  pinned, never *which*.
+- **Name a throwaway probe after the card**: `tk-<id>-probe.mjs`, never
+  `probe.tsx`. Worktrees are separate but the scratchpad is shared, and a worker
+  in this wave (tk-342486) unknowingly ran a sibling's probe of the same name for
+  two turns. A probe that silently runs somebody else's code is the worst kind of
+  green. Delete it before the card closes.
 - **Docs must not lie.** `ARCHITECTURE.md`, `README.md`, `MENTIONS.md` and this
   file are part of the diff — counts, "not yet" and status tables all expire.
   `docs/implement-reviewer.md` and `docs/fan-out.md` are different: dated paper
@@ -203,9 +212,9 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   what makes `pip install taskops` serve a dashboard with no node toolchain.
   React is bundled, never a CDN. `npm run check` in `ui/` is the closure:
   typecheck + build + smoke + `git diff --exit-code ../src/taskops/ui`. All four
-  steps run; the diff clause is red while a wave of `.tsx`-only cards is in
-  flight and goes green at the chapter-close rebuild, which is the drift it
-  exists to report.
+  steps run and all four are green. The diff clause goes red while a wave of
+  `.tsx`-only cards is in flight and green again at the chapter-close rebuild —
+  that drift is what it exists to report, not a fault.
 - **Do not run browser/UI demos unless asked.** The UI is tested headlessly —
   `tests/test_ui.py` builds a real board and hands the server's own payload to
   `ui/smoke/run.mjs`, which renders the modules `src/main.tsx` bundles through
@@ -234,19 +243,22 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    written and tested; it has never been run on the real board, and the 66
    events carrying `mentions` want a human eye after (MENTIONS.md §5).
 2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
-3. The React dashboard (milestone "UI — React dashboard (Nova)") has its data
-   layer, its chrome (header, tabs, KPI rail), the Board page and the card
-   dossier drawer — which renders the acceptance criteria no v1 screen ever
-   drew, and carries the dashboard's ONE write, the comment box with its
-   mention picker. **Two views, in Nova's order: Monitor then Board** — an
-   "Attention" screen that is in no Nova section, and an "Hours" tab that in
-   Nova is the Throughput panel *inside* Monitor, were built by mistake and
-   deleted. Monitor — Nova's first and central section, and the DEFAULT tab —
-   has its SEAM: the layout (`ui/src/pages/Monitor.tsx`), the shared pane chrome
-   (`components/monitor/Pane.tsx`) and **`components/monitor/panels.ts`, where
-   every panel's props are a declared interface** rather than a comment, which
-   is the fix `docs/fan-out.md` prescribes. Its eight sections are stubs, one
-   file each, replaced by one card per panel. Throughput is rebuilt there, as
-   the panel Nova draws. The smoke harness (`ui/smoke/run.mjs`) and
-   `tests/test_ui.py` are built and green; `npm run check` runs every step, and
-   its `git diff` clause reports the bundle drift a chapter-close card clears.
+3. The React dashboard is BUILT — the milestone "Monitor — Nova, panel by panel"
+   closed it. It has its data layer, its chrome (header, the milestone picker,
+   tabs, KPI rail) and the card dossier drawer — which renders the acceptance
+   criteria no v1 screen ever drew, and carries the dashboard's ONE write, the
+   comment box with its mention picker. **Three views, in Nova's order: Monitor,
+   Board, Worktrees** — an "Attention" screen that is in no Nova section, and an
+   "Hours" tab that in Nova is the Throughput panel *inside* Monitor, were built
+   by mistake and deleted. Monitor — Nova's first and central section, and the
+   DEFAULT tab — kept its SEAM (`components/monitor/panels.ts`, where every
+   panel's props are a declared interface rather than a comment, the fix
+   `docs/fan-out.md` prescribes), and its eight panes are filled, one card each.
+   Only the Event stream still draws an empty state, because there is no events
+   verb to feed it: the pane is built to its full shape and says so, which is
+   the milestone's rule rather than an omission. The smoke harness
+   (`ui/smoke/run.mjs`) and `tests/test_ui.py` are green; `npm run check` runs
+   every step including the `git diff` clause, which is green now that the
+   chapter-close rebuild has cleared the wave's bundle drift.
+
+   What the dashboard still cannot do is deploy itself: item 2 above.

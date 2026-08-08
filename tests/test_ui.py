@@ -27,12 +27,12 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-TODO(tk-fadcdc, the chapter-close rebuild): the committed bundle is one wave of
-`.tsx`-only cards behind its source on purpose — that card rebuilds it once.
-When it lands, the Worktrees tab (`data-testid="worktrees"`) and the header's
-milestone picker are in the bundle and belong in PANES/`test_the_committed_
-bundle_carries_the_dashboard` here. Asserting them before that rebuild would
-leave this suite red between the two cards.
+The wave of `.tsx`-only cards that this file's TODO used to name is rebuilt
+(tk-fadcdc), so `VIEWS` below now asserts what only the finished code emits:
+the Worktrees tab, the header's milestone picker, and the Chapter pane's
+criteria list. Those three are the check that the bundle is the CURRENT source's
+output and not the previous wave's — none of them exists in the bundle this card
+replaced, so a chapter-close that forgot to run `node build.mjs` fails here.
 """
 
 from __future__ import annotations
@@ -64,6 +64,21 @@ PANES = (
     "pane-chapter",
     "pane-mentions",
     "pane-events",
+)
+
+#: What only the FINISHED code emits — the markers a stub never carried.
+#:
+#: A subtitle proves nothing here: the eight pane stubs shipped with Nova's
+#: subtitle strings already in them, so `PANES` alone passes against a bundle
+#: built before any panel had content. Each of these is a `data-testid` that
+#: exists in exactly one component written by this wave, and none of the five
+#: is in the bundle this chapter-close rebuilt over.
+VIEWS = (
+    "worktrees",  # the third tab (pages/Worktrees.tsx)
+    "worktree-commits",  # its per-branch commit cell
+    "milestone-menu",  # the header's picker, open (chrome/MilestonePicker.tsx)
+    "chapter-criteria",  # the chapter's criteria list (monitor/Chapter.tsx)
+    "standing",  # Live leases' three-figure empty state
 )
 
 needs_node = pytest.mark.skipif(
@@ -182,6 +197,8 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
+    for testid in VIEWS:
+        assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     # The empty state of the pane with no verb behind it, verbatim in the bytes.
     assert "no events verb" in app
 

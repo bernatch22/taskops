@@ -29,8 +29,10 @@ export function kpis(board: BoardPayload): Kpi[] {
     { key: "mentions", label: "mentions", n: g.mentions.length, dot: "var(--warn)" },
     { key: "merge", label: "to merge", n: g.merge.length, dot: "var(--ok)" },
     // The count behind the cap, not the tail: the rail is a measure, and
-    // `groups.done` only carries the newest 20.
-    { key: "closed", label: "closed", n: board.done_total, dot: "var(--text-3)" },
+    // `groups.done` only carries the newest 20. `?? 0` because a board older
+    // than a1d1005 sends no such key (types.ts) and a rail tile that renders
+    // `undefined` is worse than one that renders the 0 the payload implies.
+    { key: "closed", label: "closed", n: board.done_total ?? 0, dot: "var(--text-3)" },
   ];
 }
 

@@ -100,7 +100,9 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
               ready: g.take.length,
               blocked: g.blocked.length,
               // The count behind the cap, not the tail `groups.done` carries.
-              closed: board.done_total,
+              // `?? 0` for a board older than a1d1005, which sends neither
+              // (types.ts) — the standing reads 0 closed rather than crashing.
+              closed: board.done_total ?? 0,
             }}
           />
 

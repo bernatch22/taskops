@@ -69,7 +69,10 @@ export function rows(groups: WorktreesProps["groups"]): WorktreeRow[] {
     ...groups.doing.map((r) => tree(r, "in progress", "accent")),
     ...groups.reviewing.map((r) => tree(r, "in progress", "accent")),
     ...groups.blocked.map((r) => tree(r, "blocked", "danger")),
-    ...groups.done.map((r) => tree(r, "merged", "ok")),
+    // `?? []`: the `done` group postdates the other nine (types.ts), so a board
+    // older than a1d1005 sends no such key and this table simply has no merged
+    // rows to draw — which is the truth about what that payload can say.
+    ...(groups.done ?? []).map((r) => tree(r, "merged", "ok")),
   ];
 }
 
