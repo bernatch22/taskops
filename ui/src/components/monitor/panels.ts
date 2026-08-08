@@ -53,6 +53,7 @@
  */
 import type {
   BlockedRow,
+  BoardGroups,
   BoardRow,
   Event,
   MentionRow,
@@ -247,4 +248,54 @@ export interface EventStreamProps {
   /** the design's `1,284` counter. `null` — nothing reports the log's length. */
   total: number | null;
   now: number;
+}
+
+/* ── 9. Worktrees ─────────────────────────────────────────────────────────── */
+
+/** Where `gitwork/trees.py` pins a card's worktree: `.taskops/trees/<id>`, for
+ *  life. The path is a CONSTRUCTION, not a field — `BoardRow` carries no
+ *  directory and no verb reports one, and there is nothing to fetch because
+ *  there is nothing to disagree with: one branch, one directory, permanent. */
+export const TREE_DIR = ".taskops/trees/";
+
+/** One line of the Worktrees table — the design's `trees`.
+ *
+ *  `id` is BOTH the card and the branch: a branch name is the card id and
+ *  nothing else (no slug — `ARCHITECTURE.md` §11), so the Branch column and the
+ *  row's identity are the same string, which is why there is no `branch` field
+ *  here to drift from it. */
+export interface WorktreeRow {
+  id: string;
+  title: string;
+  /** `TREE_DIR + id` */
+  dir: string;
+  /** ALWAYS `null`, and the column draws `—`.
+   *
+   *  A fourth binding with no source, on the same rule as the three above: the
+   *  pane is built to its full drawn shape and says what is missing rather than
+   *  inventing a number. `BoardRow` (`pulse.py::_row`) carries no commit count,
+   *  and commits are not a card field at all — each one is a `commit` EVENT on
+   *  the card (`CardPayload.commits` is `_facts.commits_of` folding them, and
+   *  only the dossier pays for that).
+   *
+   *  What it would take: a `commits: int` on the row, counted in
+   *  `pulse.py::_row` from the card's commit events. The cost is the reason it
+   *  is not here — `_row` runs per row on every board poll, so that is ONE
+   *  extra events read per card per poll, on the hot path that every open tab
+   *  hits on a timer. Adding it is a server card, not this one. */
+  commits: number | null;
+  /** the design's `{{ w.merged }}` pill */
+  status: string;
+  tone: Tone;
+}
+
+export interface WorktreesProps {
+  /** The whole grouping, unsliced — and the ONE place in this seam where that is
+   *  the narrowest honest slice: the table's five states are folded from SEVEN
+   *  groups (`take`, `doing`, `stalled`, `reviewing`, `blocked`, `merge`,
+   *  `done`), which is every group except `mentions` (not a card row) and
+   *  `changes`. Naming seven fields would be listing `BoardGroups` with two
+   *  holes in it. */
+  groups: BoardGroups;
+  onOpen: (id: string) => void;
 }
