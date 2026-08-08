@@ -71,6 +71,15 @@ caught the incident); per tool call (v1's latency bug: this costs a round
 trip)."""
 TIMEOUT = 2.0  # a remote board that is slow must cost the turn nothing
 DEFAULT_EVENT = "PostToolUse"
+"""Only used when the payload does not say; the two events `install` registers
+are unchanged, and that is the judgement, not an omission. `UserPromptSubmit`
+IS the start of a turn — the orchestrator's natural moment to be told what it is
+sitting on — and `PostToolUse` is the only thing that reaches somebody already
+ten calls deep. `Stop` was considered for "the end of each turn" and rejected
+twice over: context injected there is not something the turn can still act on,
+and a `Stop` hook is the one kind that can hold a session open — the exact
+opposite of "never block". Adding an event would also mean every joined repo
+re-running `join` before it saw any of this."""
 
 # `<repo>/.taskops/trees/tk-a1b2c3` — a worktree is named after its card, and
 # that is the whole chain by which a sub-agent can be identified at all.
