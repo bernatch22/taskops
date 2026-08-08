@@ -51,6 +51,12 @@ export interface MonitorProps {
    *  harness renders this page with no wire at all, and a page that demanded a
    *  client would be a page that cannot be tested headlessly. */
   client?: Client | null;
+  /** The header picker's own `onSelect`, handed straight through to the Chapter
+   *  pane so its `focus` action and the picker are ONE state (`App.tsx`). This
+   *  page still holds nothing: it passes a prop it was given, exactly as it
+   *  passes `openCard`. Optional for the harness, which renders this page with
+   *  no wire at all. */
+  onFocusChapter?: ((id: string) => void) | undefined;
 }
 
 const scroll: React.CSSProperties = {
@@ -88,7 +94,13 @@ const pair = (ratio: string): React.CSSProperties => ({
   gap: "16px",
 });
 
-export function Monitor({ board, openCard, now, client }: MonitorProps): React.JSX.Element {
+export function Monitor({
+  board,
+  openCard,
+  now,
+  client,
+  onFocusChapter,
+}: MonitorProps): React.JSX.Element {
   const g = board.groups;
   /** Every open row that can name a file, for the Edit surface. */
   const rows = [...g.take, ...g.doing, ...g.stalled, ...g.blocked];
@@ -97,9 +109,25 @@ export function Monitor({ board, openCard, now, client }: MonitorProps): React.J
    * as not-in-flight than drawn as work somebody could pick up. */
   const finished = board.milestone !== null && board.milestone.status !== "open";
   /* Open chapters only — `board.milestones` carries the landed ones too since
-   * they stopped being invisible (types.ts), and this count is what the Chapter
-   * pane says is in flight when the server could not focus one. */
-  const open = board.milestones.filter((m) => m.status === "open").length;
+   * they stopped being invisible (types.ts), and these are what the Chapter pane
+   * LISTS when the server could not focus one (several open, `_facts.in_scope`
+   * refusing to guess). A landed chapter is history and is not in that list. */
+  const open = board.milestones.filter((m) => m.status === "open");
+  /* Every OPEN card row, for the Chapter pane's per-chapter counts. One more
+   * slice, not a derivation: the fold by chapter is the panel's own (panels.ts).
+   * `mentions` is not a card row and `done` is a capped tail, so neither is in
+   * it — the count this feeds is "open cards", which is the only one that can
+   * be true. */
+  const openRows = [
+    ...g.take,
+    ...g.doing,
+    ...g.stalled,
+    ...g.blocked,
+    ...g.reviewing,
+    ...g.review,
+    ...g.changes,
+    ...g.merge,
+  ];
 
   return (
     <div style={scroll} data-testid="monitor">
@@ -150,7 +178,13 @@ export function Monitor({ board, openCard, now, client }: MonitorProps): React.J
         </div>
 
         <div style={right}>
-          <Chapter milestone={board.milestone} chapters={open} repo={board.repo} />
+          <Chapter
+            milestone={board.milestone}
+            open={open}
+            rows={openRows}
+            repo={board.repo}
+            onFocus={onFocusChapter}
+          />
           <Mentions mentions={g.mentions} now={now} onOpen={openCard} />
           {/* The one pane that reads the LOG and not the board snapshot, so it
               is the one pane handed the client: it pages `events` itself

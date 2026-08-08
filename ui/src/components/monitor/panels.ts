@@ -258,8 +258,43 @@ export interface ChapterProps {
    *  it. The narrow-slice rule above applies to the PAYLOAD, not to a stored
    *  row that already is one thing. */
   milestone: Milestone | null;
-  /** `board.milestones.length` — how many chapters are open. */
-  chapters: number;
+  /** Every OPEN chapter — `board.milestones` filtered by `status === "open"`,
+   *  because that list carries the landed ones too (types.ts) and a landed
+   *  chapter is history, not something in flight.
+   *
+   *  This REPLACED a `chapters: number` count. When the server cannot focus one
+   *  the pane no longer says how many there are and stops, it LISTS them, one
+   *  foldable row each — so it needs the chapters themselves, and a count beside
+   *  them would be a second spelling of `open.length`.
+   *
+   *  Not optional and not nullable: an empty list is the honest "no chapter is
+   *  open", which is a state this pane already drew. */
+  open: readonly Milestone[];
+  /** Every OPEN card row, across groups — `take` + `doing` + `stalled` +
+   *  `blocked` + `reviewing` + `review` + `changes` + `merge`, which is every
+   *  group except `mentions` (not a card) and `done` (a capped tail, so it
+   *  cannot be counted).
+   *
+   *  The pane folds these by `BoardRow.milestone` to say how many open cards
+   *  each row of the accordion carries. The FOLD is the panel's, as this seam's
+   *  rule says — Monitor slices and nothing else — and it is a fold and not an
+   *  invention: a chapter with no rows reads `0 open`, and a payload where NO
+   *  row carries a `milestone` at all (the field is optional, types.ts) draws no
+   *  counts on any row rather than `0 open` on all of them.
+   *
+   *  Only read in the accordion, which only renders when NO chapter is in focus
+   *  — and that is exactly when these groups are unfiltered. Focus a chapter and
+   *  the server narrows the groups to it, but then `milestone` is non-null and
+   *  the pane is drawing one chapter, not counting several. */
+  rows: readonly BoardRow[];
+  /** Focus a chapter — THE SAME setter the header's milestone picker calls
+   *  (`App.tsx::setMilestone`, threaded down through Monitor).
+   *
+   *  Not a pane-local selection and not a copy of that state: after this fires
+   *  the picker and this pane agree because they ARE one fact. Optional so the
+   *  pane renders under a harness with no wire; absent, no focus control is
+   *  drawn at all — a button that selects nothing is worse than no button. */
+  onFocus?: ((id: string) => void) | undefined;
   /** `board.repo` — where this repo lives on the web, so the integration branch
    *  in the footer can be the chapter's diff against the trunk (`links.tsx`).
    *

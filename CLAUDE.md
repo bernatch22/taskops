@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
-dashboard — **42 TypeScript files / ~9.500 lines under `ui/src`**, whose built
+dashboard — **42 TypeScript files / ~10.000 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -265,7 +265,10 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    panel's props are a declared interface rather than a comment, the fix
    `docs/fan-out.md` prescribes), and its NINE panes are filled, one card each
    — the ninth, Swarm, drawing who is attached to what right now from slices the
-   board already sends (ARCHITECTURE.md §15).
+   board already sends (ARCHITECTURE.md §15). Chapter in focus no longer
+   apologises when several chapters are open: it lists every OPEN one as a
+   foldable row, first expanded, and each row's `focus` calls the header
+   picker's own `setMilestone` — a door, not a second selection.
    The Event stream — the last pane still empty, because nothing returned the
    log — is fed: `events` is a read verb and the pane pages it by keyset on
    `seq` (`store/cache.py::page`), through the ONE fetch in this dashboard that

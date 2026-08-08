@@ -27,7 +27,7 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Six waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+Seven waves of `.tsx`-only cards have now been rebuilt into that bundle, and
 each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
@@ -38,7 +38,9 @@ that replaced the five-column table) and `SIDE_BY_SIDE` (tk-d0fc41 — the secon
 close of that same chapter: the page read side by side, with the card's own
 thread on it, and Monitor's ninth pane) and `NOTHING_DRAWN` (tk-81c980 — a
 column with nothing in it is not drawn at all, which is the one wave that also
-RETIRED a marker of its own: see `RETIRED`). All six
+RETIRED a marker of its own: see `RETIRED`) and `CHAPTERS_LISTED` (tk-13d115 —
+several open chapters listed as foldable rows instead of apologised for, which
+also retired a sentence: see `RETIRED_APOLOGY`). All seven
 lists are the check that the bundle is the CURRENT source's output and not the
 previous wave's: none of those strings existed in the bundle its chapter-close
 replaced, so a close that forgot to run `node build.mjs` fails here.
@@ -202,6 +204,27 @@ NOTHING_DRAWN = ("worktrees-none",)  # the both-empty message, centred in the pa
 #: inside a column shell; it was in the bundle this close rebuilt over (checked),
 #: and it must not be in the one that replaces it.
 RETIRED = ("worktrees-empty",)
+
+#: The SEVENTH wave, and it is the Chapter pane's (tk-13d115). `_facts.in_scope`
+#: returns None for SEVERAL open chapters as well as for none — it refuses to
+#: guess — and the pane read that refusal as a fault: a paragraph telling the
+#: reader to close one, and nothing at all about either chapter. It now lists
+#: every OPEN chapter, one foldable row each, first expanded, each row's `focus`
+#: calling the header picker's own setter.
+#:
+#: Both halves again, and here the retired half is a SENTENCE rather than a
+#: `data-testid`: the apology is what this card deleted, it was in the bundle
+#: this close rebuilt over (checked), and a rebuild that missed this card would
+#: carry it.
+CHAPTERS_LISTED = (
+    "chapter-row",  # one open chapter, one row
+    "chapter-fold",  # …a real button with aria-expanded, not an arrow glyph
+    "chapter-open-count",  # how many open cards it carries, folded from the rows
+    "chapter-focus",  # the door to the header picker's own setter
+)
+
+#: …and what it removed: the apology for a board that is merely working.
+RETIRED_APOLOGY = ("Land or drop the finished ones",)
 
 
 def a_clone(root: Path) -> Path:
@@ -401,10 +424,17 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
-    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN:
+    markers = (
+        VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
+    ) + CHAPTERS_LISTED
+    for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     for testid in RETIRED:
         assert f'"{testid}"' not in app, f"{testid} was retired but is still in the bundle"
+    # A sentence, not a `data-testid`, so it is read as a plain substring: the
+    # minifier keeps the literal but not the quotes around a JSX text node.
+    for phrase in RETIRED_APOLOGY:
+        assert phrase not in app, f"{phrase!r} was retired but is still in the bundle"
     # The pane that used to say "no events verb" no longer can: the verb exists
     # (`verbs/events.py`), so an empty pane now means an empty LOG and says that.
     assert "no events verb" not in app
