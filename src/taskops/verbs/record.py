@@ -36,6 +36,12 @@ def bind(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         "files": _args.strings(args, "files"),
         "branch": _args.text(args, "branch", default=""),
     }
+    counted = _args.counts(args, "numstat")
+    if counted:
+        # Additive and OPTIONAL: an old hook (or a queued commit written before
+        # this key existed) sends none, and every reader treats the absence as
+        # absence — never as zeros.
+        body["numstat"] = counted
     ts = _timestamp(args, now)
     seq = stores.write([make(task, actor, "commit", body, ts)])
     stores.live.renew(actor, now)

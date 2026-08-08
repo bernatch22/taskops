@@ -196,6 +196,47 @@ def test_a_commit_carries_its_card_its_sha_and_its_files(tmp_path: Path) -> None
     assert facts["subject"] == "feat: tk-a11111" and len(facts["sha"]) == 40
 
 
+def test_a_commit_carries_plus_minus_per_file_beside_its_files(tmp_path: Path) -> None:
+    """Additive: `files` is byte-identical to what it always was — the edit
+    surface and collisions() read it — and `numstat` rides beside it."""
+    root = repo(tmp_path)
+    (root / "grew.py").write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
+    (root / "README.md").write_text("bye\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "feat: two\n\nTask: tk-a11111", cwd=root)
+
+    facts = bind.commit_facts(root)
+    assert facts is not None
+    assert facts["files"] == ["README.md", "grew.py"]
+    assert facts["numstat"] == {"README.md": [1, 1], "grew.py": [3, 0]}
+
+
+def test_a_binary_file_counts_as_null_not_zero(tmp_path: Path) -> None:
+    """git prints `-` for a binary. "cannot be counted" is not "nothing
+    changed", and 0 would say the second."""
+    root = repo(tmp_path)
+    (root / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02\x03")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "feat: logo\n\nTask: tk-a11111", cwd=root)
+
+    facts = bind.commit_facts(root)
+    assert facts is not None
+    assert facts["numstat"] == {"logo.png": None}
+
+
+def test_a_rename_is_keyed_by_the_path_files_reports(tmp_path: Path) -> None:
+    """The human --numstat writes `{old => new}` on a rename; -z gives the real
+    new path, so the key matches the name in `files`."""
+    root = repo(tmp_path)
+    run.must("mv", "README.md", "READ.md", cwd=root)
+    run.must("commit", "-q", "-m", "chore: rename\n\nTask: tk-a11111", cwd=root)
+
+    facts = bind.commit_facts(root)
+    assert facts is not None
+    assert facts["files"] == ["READ.md"]
+    assert set(facts["numstat"]) == {"READ.md"}
+
+
 def test_a_commit_with_no_card_is_still_facts_with_no_task(tmp_path: Path) -> None:
     """Nobody is forced to take a card to commit. The board just learns that
     this sha happened outside any card — task is empty, and the bind verb files
