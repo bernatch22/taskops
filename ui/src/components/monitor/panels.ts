@@ -572,7 +572,15 @@ export interface SwarmNode {
 }
 
 /** `lease` is an actor attached to a card — one edge per lease, and the lapsed
- *  variety is an assignment with no lease behind it, drawn faint.
+ *  variety is an assignment with no lease behind it, drawn faint. Both start at
+ *  an AGENT: a `dev:` is refused `take` by the registry, so an edge from a dev
+ *  to a card is a claim the server makes impossible.
+ *
+ *  `owns` is the dev→agent edge, and it is a different KIND of fact — a standing
+ *  property of the name (`agent:<dev>/<name>`, `format.ts::ownerOf`, the same
+ *  relation `http/auth.py::authorize` enforces on the wire) rather than a live
+ *  claim that expires. Drawn hair-thin for exactly that reason, and left out of
+ *  the header count: a name is not work.
  *
  *  `contested` is a DASHED edge between two CARDS that declare a path in common
  *  (`BoardRow.files`). It is the same fact the Edit surface pane states, in the
@@ -583,12 +591,15 @@ export interface SwarmNode {
 export interface SwarmEdge {
   from: string;
   to: string;
-  kind: "lease" | "lapsed" | "contested";
+  kind: "lease" | "lapsed" | "contested" | "owns";
 }
 
 export interface SwarmGraph {
   nodes: SwarmNode[];
   edges: SwarmEdge[];
+  /** how many LIVE work/review leases — counted apart from the lapsed and the
+   *  ownership edges, which are not somebody working */
+  leases: number;
   /** how many `contested` edges — the header count says it out loud */
   contested: number;
   /** nothing is running: no lease, no review, no stalled assignment. The pane
@@ -600,9 +611,11 @@ export interface SwarmGraph {
 /** Every field is a slice the board already sends. No verb, no payload key, no
  *  store, no second fetch — the pane's own subtitle is its contract. */
 export interface SwarmProps {
-  /** `board.team` — where the `dev:` actors come from. A dev never holds a card
-   *  (the role rule, `verbs/__init__.py`), so the centre of this diagram is the
-   *  one node that is in it without an edge of its own. */
+  /** `board.team` — where the `dev:` actors come from, and the only place they
+   *  do: a dev absent from presence is never conjured to hang an agent off. A
+   *  dev never holds a card (the role rule, `verbs/__init__.py`), so the centre
+   *  of this diagram is the one node with no edge to a CARD — its edges are the
+   *  `owns` hairlines out to its own agents. */
   team: readonly TeamMember[];
   /** `board.groups.doing` — a live WORK lease, and `holder` is the worker */
   doing: readonly BoardRow[];

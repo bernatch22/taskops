@@ -630,7 +630,15 @@ files that answer it:
   on one ring, an edge per LEASE (work and review are two mutexes, so a card
   under review has two edges and the verifier is its own kind), a faint edge for
   a stalled assignment, and a dashed one between two cards that DECLARED a path
-  in common. Its placement is `topology()`, a pure function deterministic by
+  in common. **A lease edge starts at the AGENT, never at its dev**: the pane
+  once drew `s14 — dev:berna — tk-13d115`, the lease line crossing the centre,
+  which is the one attachment the server makes impossible (`verbs/__init__.py`
+  refuses `take` to a `dev:`). A dev reaches a card only through its agents, so
+  the diagram carries a second KIND of edge — `owns`, dev → agent, derived from
+  the name alone (`format.ts::ownerOf`, the relation `http/auth.py::authorize`
+  enforces on the wire), drawn `--hair-2` and thinner and left out of the header
+  count, because a standing fact about a name is not work in flight. An agent
+  whose dev is not on `team` stands alone; no orchestrator is invented for it. Its placement is `topology()`, a pure function deterministic by
   index — `Math.random()` and a force simulation are both absent on purpose,
   because an animation loop is what no headless harness can assert. It reads
   only slices the board already sends: no verb, no payload key, no second fetch.

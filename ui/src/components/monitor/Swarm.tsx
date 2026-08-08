@@ -26,6 +26,41 @@
  * over frames is a layout the harness can only render blank. Rendering the same
  * payload twice yields byte-identical coordinates, which is criterion 5.
  *
+ * ── The chain, and why it was wrong ───────────────────────────────────────
+ *
+ * With one worker running, this pane used to read, on screen:
+ *
+ *     s14 ─── dev:berna ─── tk-13d115        ← what it drew
+ *     dev:berna ─── s14 ─── tk-13d115        ← what is true
+ *
+ * The orchestrator sat between the worker and its card, touching the card. It
+ * never touches one: `verbs/__init__.py::REGISTRY` refuses `take` to a `dev:`
+ * in those exact words — "you are the orchestrator — you dispatch, you do not
+ * hold cards". A pane whose whole subject is who is attached to what may not
+ * draw the one attachment the server makes impossible.
+ *
+ * So the two edges around an actor are two different KINDS of fact:
+ *
+ *   dev:berna → agent:berna/s14   OWNERSHIP. It is in the name — `agent:<dev>/
+ *                                 <name>` (`core/types.py::role_of`,
+ *                                 `format.ts::ownerOf`) — and it is what
+ *                                 `http/auth.py::authorize` enforces on the
+ *                                 wire: a dev may act as its own agents and
+ *                                 nobody else's. A standing fact about a name.
+ *   agent:berna/s14 → tk-13d115   the LEASE. The live fact, the one that makes
+ *                                 a card `doing`, and the one that expires.
+ *
+ * A dev's edges therefore go to its AGENTS and never to a card, and every card
+ * edge starts at the agent that holds it. Nothing new is stored and nothing new
+ * is fetched: `ownerOf()` on the actor id is the whole derivation. Drawn
+ * differently on purpose (`--hair-2`, thinner) so an ownership edge cannot be
+ * misread as "berna is working on that", and NOT counted in the header for the
+ * same reason — the count is about live work, and a name is not work.
+ *
+ * An agent whose dev is not on `team` still draws: the ownership edge simply
+ * has nothing at its far end and is not emitted. An orchestrator node is never
+ * invented for a `dev:` the presence list does not carry.
+ *
  * ── The caveat that must stay on screen ───────────────────────────────────
  *
  * A dashed edge means two cards DECLARED a path in common. `files` is typed
@@ -37,7 +72,7 @@
  */
 import { Pane, PaneEmpty } from "./Pane";
 import { TONE_FG } from "../board/CardTile";
-import { shortActor } from "../../format";
+import { ownerOf, shortActor } from "../../format";
 import type { Tone } from "../board/CardTile";
 import type { SwarmEdge, SwarmGraph, SwarmKind, SwarmNode, SwarmProps } from "./panels";
 
@@ -69,7 +104,7 @@ const LEGEND: { kind: SwarmKind; label: string; what: string }[] = [
   {
     kind: "orchestrator",
     label: "Orchestrator",
-    what: "plans and dispatches; never holds a card",
+    what: "plans and dispatches; its edges go to its agents, never to a card",
   },
   { kind: "worker", label: "Worker", what: "holds a live work lease right now" },
   {
@@ -150,14 +185,28 @@ export function topology(props: SwarmProps): SwarmGraph {
     }
   });
 
-  /* The centre is an orchestrator, and it is the one node in the diagram with no
-   * edge of its own — a `dev:` never holds a card (the role rule). Sorted, so
-   * "the first dev" does not depend on presence ordering. */
+  /* The centre is an orchestrator. Its edges go to its AGENTS and to nothing
+   * else — a `dev:` never holds a card (the role rule, refused by
+   * `verbs/__init__.py::REGISTRY`). Sorted, so "the first dev" does not depend
+   * on presence ordering. */
   const devs = team
     .map((member) => member.actor)
     .filter((actor) => actor.startsWith("dev:"))
     .sort();
   const centre = devs[0];
+
+  /* OWNERSHIP, one edge per drawn agent: `agent:<dev>/<name>` says whose it is,
+   * and that is the whole derivation. Only to a dev `team` actually carries —
+   * an agent whose dev is absent stands on its own rather than conjuring an
+   * orchestrator that is not there. Emitted after the leases so an ownership
+   * edge draws UNDER nothing it could be confused with and the lease edges keep
+   * their order. */
+  const present = new Set(devs);
+  for (const id of order) {
+    if (kinds.get(id) === "card") continue;
+    const dev = ownerOf(id);
+    if (dev !== id && present.has(dev)) edges.push({ from: dev, to: id, kind: "owns" });
+  }
 
   /* Any FURTHER dev joins the ring rather than fighting for the centre — one
    *  board, one middle. Real boards have one dev; two is not an error. */
@@ -193,7 +242,13 @@ export function topology(props: SwarmProps): SwarmGraph {
     });
   }
 
-  return { nodes, edges, contested: edges.filter((e) => e.kind === "contested").length, quiet };
+  return {
+    nodes,
+    edges,
+    leases: edges.filter((e) => e.kind === "lease").length,
+    contested: edges.filter((e) => e.kind === "contested").length,
+    quiet,
+  };
 }
 
 /* ── the drawing ──────────────────────────────────────────────────────────── */
@@ -240,7 +295,11 @@ function Node({ node }: { node: SwarmNode }): React.JSX.Element {
 export function Swarm(props: SwarmProps): React.JSX.Element {
   const graph = topology(props);
   const at = new Map(graph.nodes.map((n) => [n.id, n]));
-  const count = `${graph.nodes.length} ${graph.nodes.length === 1 ? "node" : "nodes"} · ${graph.contested} contested ${graph.contested === 1 ? "edge" : "edges"}`;
+  /* Nodes, LIVE LEASES, contested edges. Leases are counted apart now that two
+   * kinds of line meet at an actor: an ownership edge is not work and is not in
+   * this number, and a lapsed assignment is not a lease either — that is the
+   * pane's own distinction, spent here rather than lumped. */
+  const count = `${graph.nodes.length} ${graph.nodes.length === 1 ? "node" : "nodes"} · ${graph.leases} live ${graph.leases === 1 ? "lease" : "leases"} · ${graph.contested} contested ${graph.contested === 1 ? "edge" : "edges"}`;
 
   return (
     <Pane
@@ -283,6 +342,10 @@ export function Swarm(props: SwarmProps): React.JSX.Element {
               const b = at.get(edge.to);
               if (a === undefined || b === undefined) return null;
               const contested = edge.kind === "contested";
+              /* An ownership edge is a standing fact about a NAME, not work in
+               * flight: hair-thin and quiet, so it can never be read as "this
+               * dev is on that card". */
+              const owns = edge.kind === "owns";
               return (
                 <line
                   key={`${edge.kind}:${edge.from}->${edge.to}`}
@@ -294,10 +357,10 @@ export function Swarm(props: SwarmProps): React.JSX.Element {
                   y1={a.y}
                   x2={b.x}
                   y2={b.y}
-                  stroke={contested ? TONE_FG.warn : TONE_FG.neutral}
-                  strokeWidth={contested ? 1.4 : 1}
+                  stroke={contested ? TONE_FG.warn : owns ? "var(--hair-2)" : TONE_FG.neutral}
+                  strokeWidth={contested ? 1.4 : owns ? 0.7 : 1}
                   strokeDasharray={contested ? "5 4" : undefined}
-                  opacity={edge.kind === "lapsed" ? 0.35 : contested ? 0.9 : 0.55}
+                  opacity={owns ? 1 : edge.kind === "lapsed" ? 0.35 : contested ? 0.9 : 0.55}
                 />
               );
             })}
@@ -328,6 +391,12 @@ export function Swarm(props: SwarmProps): React.JSX.Element {
                 </div>
               </div>
             ))}
+            <div style={{ gridColumn: "1 / -1", fontSize: "11px", color: "var(--text-3)", lineHeight: 1.6 }}>
+              A solid edge is a lease: the agent holding that card right now. The{" "}
+              <strong style={{ fontWeight: 500 }}>hairline</strong> from a dev to an
+              agent is ownership — it is in the name, <span className="mono">agent:&lt;dev&gt;/&lt;name&gt;</span>{" "}
+              — and it is not work.
+            </div>
             <div style={{ gridColumn: "1 / -1", fontSize: "11px", color: "var(--text-3)", lineHeight: 1.6 }}>
               A dashed edge is two cards declaring a file in common:{" "}
               <strong style={{ fontWeight: 500 }}>a warning, never a lock</strong>. It

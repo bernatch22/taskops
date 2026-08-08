@@ -1491,11 +1491,51 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   const swarmEdge = (from: string, to: string, kind: string) =>
     swarmGraph.edges.some((e) => e.from === from && e.to === to && e.kind === kind);
 
+  const swarmCards = new Set(swarmGraph.nodes.filter((n) => n.kind === "card").map((n) => n.id));
+
+  /* The orchestrator's edges go to its AGENTS and to no card — the registry
+   * refuses `take` to a `dev:`, so a dev→card edge is a claim the server makes
+   * impossible. It is NOT "no edges at all": that was the bug, drawing
+   * `s14 — dev:berna — tk-13d115` by letting the lease line cross the centre. */
   check(
-    "swarm: the orchestrator is the centre and holds nothing",
+    "swarm: the orchestrator is the centre and touches no card",
     swarmGraph.nodes[0]?.id === "dev:berna" &&
       swarmGraph.nodes[0]?.kind === "orchestrator" &&
-      !swarmGraph.edges.some((e) => e.from === "dev:berna"),
+      !swarmGraph.edges.some((e) => e.from === "dev:berna" && swarmCards.has(e.to)) &&
+      !swarmGraph.edges.some((e) => e.to === "dev:berna" && swarmCards.has(e.from)),
+  );
+  check(
+    "swarm: every card edge starts at the agent that holds it, never at a dev",
+    swarmGraph.edges
+      .filter((e) => e.kind === "lease" || e.kind === "lapsed")
+      .every((e) => e.from.startsWith("agent:") && swarmCards.has(e.to)),
+  );
+  check(
+    "swarm: every drawn agent hangs off its dev by an ownership edge",
+    swarmGraph.nodes
+      .filter((n) => n.kind !== "card" && n.kind !== "orchestrator")
+      .every((n) => swarmEdge("dev:berna", n.id, "owns")),
+  );
+  /* Ownership is a standing fact about a name and not work, so it is drawn
+   * apart (`--hair-2`, thinner) and left out of the header count. */
+  check(
+    "swarm: an ownership edge is not counted as a lease",
+    swarmGraph.leases === swarmGraph.edges.filter((e) => e.kind === "lease").length &&
+      swarmGraph.edges.some((e) => e.kind === "owns"),
+  );
+  /* An agent whose dev is not on `team` still draws; the far end is simply not
+   * there. An orchestrator is never invented for an absent dev. */
+  const swarmOrphan = topology({
+    team: [{ actor: "dev:other", seen: now, ago: 0 }],
+    doing: [swarmRow("tk-ddd444", "agent:berna/s9", [])],
+    reviewing: [],
+    stalled: [],
+  });
+  check(
+    "swarm: an agent whose dev is absent draws itself and no ownership edge",
+    swarmOrphan.nodes.some((n) => n.id === "agent:berna/s9") &&
+      !swarmOrphan.nodes.some((n) => n.id === "dev:berna") &&
+      !swarmOrphan.edges.some((e) => e.kind === "owns"),
   );
   check("swarm: a live lease is an edge from its worker", swarmEdge("agent:berna/s1", "tk-aaa111", "lease"));
   check(
@@ -1503,7 +1543,11 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     swarmEdge("agent:berna/rv1", "tk-aaa111", "lease") &&
       swarmGraph.edges.filter((e) => e.to === "tk-aaa111" && e.kind === "lease").length === 2 &&
       swarmGraph.nodes.find((n) => n.id === "agent:berna/rv1")?.kind === "verifier" &&
-      swarmGraph.nodes.find((n) => n.id === "agent:berna/s1")?.kind === "worker",
+      swarmGraph.nodes.find((n) => n.id === "agent:berna/s1")?.kind === "worker" &&
+      /* three true edges around one card: two leases, and each agent's own
+       * ownership edge back to the dev */
+      swarmEdge("dev:berna", "agent:berna/s1", "owns") &&
+      swarmEdge("dev:berna", "agent:berna/rv1", "owns"),
   );
   check(
     "swarm: a stalled card draws its lapsed owner",
@@ -1526,8 +1570,8 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   const swarmFirst = drawSwarm();
   check("swarm: the same payload renders identically twice", swarmFirst === drawSwarm());
   check(
-    "swarm: the header counts nodes and contested edges",
-    swarmFirst.includes(`${swarmGraph.nodes.length} nodes · 1 contested edge`),
+    "swarm: the header counts nodes, live leases and contested edges",
+    swarmFirst.includes(`${swarmGraph.nodes.length} nodes · ${swarmGraph.leases} live leases · 1 contested edge`),
   );
   const swarmDrawn = (swarmFirst.match(/data-testid="swarm-node"/g) ?? []).length;
   check(
@@ -1535,6 +1579,15 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     swarmDrawn === swarmGraph.nodes.length && (swarmFirst.match(/<title>/g) ?? []).length === swarmDrawn,
   );
   check("swarm: the dashed edge is drawn dashed", swarmFirst.includes('stroke-dasharray="5 4"'));
+  /* Criterion 2: the two kinds are two different claims, so they may not be one
+   * line. An ownership edge is `--hair-2` and thinner than any lease. */
+  check(
+    "swarm: an ownership edge is drawn quieter than a lease",
+    swarmFirst.includes('data-kind="owns"') &&
+      swarmFirst.includes('stroke="var(--hair-2)"') &&
+      swarmFirst.includes('stroke-width="0.7"') &&
+      !/data-kind="lease"[^>]*stroke="var\(--hair-2\)"/.test(swarmFirst),
+  );
   check(
     "swarm: the caveat is on the pane, in the Edit surface's own words",
     swarmFirst.includes("a warning, never a lock") &&
