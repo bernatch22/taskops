@@ -31,7 +31,7 @@ import { LiveLeases } from "../src/components/monitor/LiveLeases";
 import { EventStream, FIXTURE_EVENTS } from "../src/components/monitor/EventStream";
 import { KpiRail } from "../src/components/chrome/KpiRail";
 import { Menu as MilestoneMenu } from "../src/components/chrome/MilestonePicker";
-import { Worktrees } from "../src/pages/Worktrees";
+import { Worktrees, rows } from "../src/pages/Worktrees";
 import { LEASE_TTL } from "../src/components/monitor/panels";
 import type { BoardPayload, CardPayload, ReviewingRow } from "../src/types";
 
@@ -230,6 +230,30 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   );
   check("the KPI rail is on screen too", olderMarkup.includes('data-testid="kpis"'));
   check("the worktrees table is on screen too", olderMarkup.includes('data-testid="worktrees"'));
+
+  /* WHO carries each tree (`pages/Worktrees.tsx::owner`). e4 shipped the line
+   * and said plainly that nothing asserted its `data-testid` — its branch was
+   * cut before this harness could reach the table with real rows. Pinned here,
+   * and pinned as the TWO facts the cell answers rather than as its presence:
+   * the dev to talk to, and — only when an agent holds it — which process. The
+   * unowned row is the other case and the one a `??` chain gets wrong silently:
+   * it must read as a sentence, never as an empty cell.
+   *
+   * `owner()`'s third branch — a dev with no worker half — is NOT asserted, and
+   * deliberately: a `dev:` never holds or is handed a card (the role rule the
+   * verb registry enforces), so no board can produce that row and building one
+   * here would be the hand-written fixture this file exists to avoid. */
+  const owners = [...olderMarkup.matchAll(/data-testid="worktree-owner"[^>]*>(.*?)<\/span>\s*<\/span>/gs)]
+    .map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""));
+  check("every worktree row names who carries it", owners.length === rows(older.groups).length);
+  check(
+    "the dev is the subject of the line, the worker its qualifier",
+    owners.some((c) => c === "dev:berna · w1"),
+  );
+  check(
+    "an unowned tree says so in words, never as an empty cell",
+    owners.some((c) => c === "nobody — free to take"),
+  );
   check(
     "a board with no done_total still draws every page",
     olderMarkup.includes('data-testid="monitor"') && olderMarkup.includes('data-testid="board"'),
