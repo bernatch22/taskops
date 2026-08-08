@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **79 Python files / ~8.200 lines under `src/taskops`**, plus the
+~340 files) as **80 Python files / ~8.500 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**304 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 303+1; see below), ruff +
+**316 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 315+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` serves
 this, four boards, since 2026-08-08 (ARCHITECTURE.md §17).
 
@@ -161,7 +161,7 @@ presence.
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees remote trailer bind install      the ONLY git (client-side)
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread
-   http/    server mounts rpc auth feed static
+   http/    server mounts rpc auth feed static gitdoor upstream
 6  cli/     commands (init join hook) · serving (serve invite ui) · claude wording
 ```
 
@@ -298,6 +298,19 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    done / integrate / land. The whole switch is `git remote get-url origin` —
    **without one, nothing pushes, nothing links, and nothing degrades**, which
    is this repo's own board, so that is the case the harness pins.
+
+   And the window it is served in is ALWAYS local (§16, decided 2026-08-08):
+   `taskops ui` serves the bundle and mounts `/git` from the checkout it stands
+   in whether the board is this repo's or a server's, and the ONLY difference is
+   that `/board/rpc` is forwarded to `<url>/rpc` with the bearer from
+   `remote.json` (`http/upstream.py`, `http/rpc.py::answered`). The routes never
+   change, so the committed bundle knows nothing about it. It used to redirect a
+   remote board to the server's own `/ui/` — a page on a machine with no clone,
+   where every diff fell through to a link. The live signal there is a POLL of
+   the remote `seq` poking the socket already served, never a relayed
+   WebSocket, and a ref this clone has not fetched says so and names the `git
+   fetch origin tk-<id>` that brings it — it is not an error and nothing is
+   fetched for the reader.
 
    It also shows the **real diff, read from your own clone** (§16's amendment,
    decided 2026-08-08): the dossier gained **Files changed** — the card as a PR,

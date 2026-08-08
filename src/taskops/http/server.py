@@ -8,6 +8,11 @@
     GET  /healthz
 
 The boards themselves live in `mounts.py`; this file is only the router.
+
+The SAME routes serve a window onto a remote board (`taskops ui` in a joined
+checkout): only `/rpc` changes hands, forwarded to the server that owns the
+board (`upstream.py`), while /ui and /git stay local. The page cannot tell, and
+that is why the committed bundle is untouched by any of it.
 """
 
 from __future__ import annotations
@@ -19,9 +24,10 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 from . import rpc, feed, static, gitdoor
 from .. import _clock
-from .auth import Credential, token_in, authorize
+from .auth import Credential, token_in
 from .mounts import Mounts
 from .._errors import Refused, BadRequest, TaskopsError
+from .upstream import Upstream
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -69,24 +75,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _rpc(self, board: str) -> None:
         try:
-            payload = self._body()
+            raw = self._raw()
+            payload = rpc.decode(raw)
             verb = rpc.verb_of(payload)
-            stores = self.mounts.stores(board)
+            self.mounts.check(board)
             credential = self._credential(board, rpc.needs(verb))
-            actor, args = rpc.rest_of(payload, credential.subject)
-            authorize(credential, actor)
+            status, answer = rpc.answered(self.mounts, board, credential, verb, raw, payload)
         except TaskopsError as err:
             self._fail(rpc.status_for(rpc.failure(err)), err)
             return
-        body = rpc.dispatch(stores, verb, actor, args)
-        if body.get("ok") and rpc.needs(verb) == "write":
-            # AFTER the write is durable, never before (v1 published first).
-            self.mounts.hub.publish(board, {"type": "change", "verb": verb, "seq": body["seq"]})
-        self._json(rpc.status_for(body), body)
+        self._send(status, answer, "application/json")
 
     def _redeem(self, board: str) -> None:
         try:
-            payload = self._body()
+            payload = rpc.decode(self._raw())
             who = str(payload.get("who", "")).strip()
             token = str(payload.get("invite", "")).strip()
             if not who or not token:
@@ -99,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _feed(self, board: str) -> None:
         try:
-            self.mounts.stores(board)
+            self.mounts.check(board)
             self._credential(board, "read")
         except TaskopsError as err:
             self._fail(rpc.status_for(rpc.failure(err)), err)
@@ -111,8 +113,10 @@ class Handler(BaseHTTPRequestHandler):
         feed.attach(self, self.mounts.hub, board, *wanted)
 
     def _git(self, board: str, rest: str) -> None:  # same token door as /rpc
+        # Mounted from the LOCAL clone whether the board is local or remote:
+        # that is the whole point of serving the window here (§16).
         try:
-            self.mounts.stores(board)
+            self.mounts.check(board)
             self._credential(board, "read")
             data = gitdoor.answer(self.mounts.repo, rest, self.path.partition("?")[2])
         except TaskopsError as err:
@@ -135,11 +139,13 @@ class Handler(BaseHTTPRequestHandler):
             raise Refused("no credential — run: taskops join <url with ?token= or ?invite=>")
         return self.mounts.credentials.check(token, board, need, _clock.now())
 
-    def _body(self) -> dict[str, Any]:
+    def _raw(self) -> bytes:
+        """The body as BYTES. `/rpc` needs them unparsed: a forwarded call is
+        relayed exactly as the page wrote it, never re-serialised from a dict."""
         length = int(self.headers.get("Content-Length", "0") or 0)
         if length > rpc.MAX_BODY:
             raise BadRequest("that request is too large for a board call")
-        return rpc.decode(self.rfile.read(length))
+        return self.rfile.read(length)
 
     def _json(self, status: int, body: dict[str, Any]) -> None:
         self._send(status, json.dumps(body).encode(), "application/json")
@@ -185,7 +191,9 @@ def serve(
     port: int = 8787,
     ui: Path | None = None,
     repo: Path | None = None,
+    upstream: Upstream | None = None,
 ) -> BoardServer:
-    """A server, not yet running. The caller decides the thread and the lifetime —
-    and whether it sits in a repo (`repo`), which is what mounts /git (§16)."""
-    return BoardServer((host, port), Mounts(root, ui, repo))
+    """A server, not yet running. The caller decides the thread and the lifetime,
+    whether it sits in a repo (`repo`), which is what mounts /git (§16), and
+    whether it OWNS the board or is a window onto somebody else's (`upstream`)."""
+    return BoardServer((host, port), Mounts(root, ui, repo, upstream))

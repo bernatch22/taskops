@@ -117,18 +117,33 @@ taskops ui        # the dashboard: serves it if nothing is, opens the browser, t
 ```
 
 `taskops ui` is the whole story of the dashboard — no port, no token, no flags.
-Local board: it serves right there (blocking, ctrl-c stops it; an agent runs it
-in the background) and opens the browser with a minted token; run it again and
-it just reopens the running one. Remote board: it opens the server's /ui/ with
-the credential `join` already saved. The old `taskops open` sent you to a
-paste-a-token screen holding a token the machine already had.
+It **always serves right there**, in the checkout you ran it from (blocking,
+ctrl-c stops it; an agent runs it in the background) and opens the browser with
+a minted local token; run it again and it just reopens the running one.
+
+A board on a server changes exactly one thing: who answers `/board/rpc`. The
+window forwards it, with the credential `join` saved in `.taskops/remote.json`,
+and the page never sees that credential — it holds only the local token. It used
+to redirect you to the server's own `/ui/` instead, and that page is served by a
+machine with no repository, so every diff in it fell through to a link.
 
 The diffs the dossier shows — **Files changed** on a card, the patch under a
 commit — come from **your own clone**, read on demand by the host `taskops ui`
-started inside it; nothing is stored on the board and nothing goes to the
-network. A host with no checkout (`taskops serve`, which sits in a directory of
-boards) mounts no such door and says so, and the page falls back to the GitHub
-link when the repo has an origin, or to one plain sentence when it does not.
+started inside it; nothing is stored on the board, in either mode. A host with
+no checkout (`taskops serve`, which sits in a directory of boards) mounts no
+such door and says so, and the page falls back to the GitHub link when the repo
+has an origin, or to one plain sentence when it does not.
+
+On a shared board most branches belong to other people's cards, and a card's
+branch reaches `origin` when it closes. Until you fetch, it is simply not on
+your disk — so the pane says exactly that and names the command:
+
+```
+tk-91a27e is not in your clone yet — `git fetch origin tk-91a27e` brings it.
+```
+
+Nothing is ever fetched for you: that would move a branch under a worktree
+somebody is sitting in.
 
 ### Working on the dashboard itself
 
