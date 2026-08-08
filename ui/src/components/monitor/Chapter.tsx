@@ -9,10 +9,30 @@
  *
  * So `Pane` is used WITHOUT `title` here — that is why the prop is optional.
  *
- * A milestone now also carries `criteria` (docs/fan-out.md §10), and Nova has NO
- * slot for it. It is deliberately NOT drawn here: the design predates the field,
- * and inventing a place for it is the substitution that cost the previous
- * chapter a full rollback. Raised on tk-60334f as a design question. */
+ * A milestone also carries `criteria` (docs/fan-out.md §10), and Nova has NO
+ * slot for it: the design predates the field. tk-60334f raised it as a design
+ * question and tk-77dc9c answered it — the field now reaches the browser
+ * (`types.ts::Milestone.criteria`) and is drawn HERE, as a second numbered list
+ * under the rules, subordinate: smaller type, `--pane-3` instead of `--pane-2`,
+ * `--text-2` instead of `--text`.
+ *
+ * **This placement is provisional and belongs to Berna.** It is a deliberate
+ * departure from the .dc.html, made rather than silently dropping a field the
+ * board already gates a merge on. Two things about it are open:
+ *
+ *   · the placement — it could equally be a row above the "Integration branch"
+ *     footer, its own pane, or a disclosure. Moving it is this one `<div>`;
+ *     nothing else in the pane depends on where it sits.
+ *   · the LABELS. The design draws the rules unlabelled, because they were the
+ *     only list. Two adjacent numbered lists with no labels are confusable, and
+ *     the card's own criterion is that they must not be — so both lists get a
+ *     small eyebrow ("Rules — every card in this chapter" / "Accepted against —
+ *     the chapter as a whole"). Adding one to the rules touches drawn design;
+ *     if Berna wants Nova's bare rules back, make `NumberedList`'s `label`
+ *     optional and drop it from the rules call.
+ *
+ * A chapter with no criteria draws NO section and no label — an empty heading
+ * is the "pane somebody forgot" that `PaneEmpty` exists to prevent. */
 import { Pane, PaneEmpty, PaneRow, PaneTile } from "./Pane";
 import type { ChapterProps } from "./panels";
 
@@ -39,6 +59,10 @@ export function Chapter({ milestone, chapters }: ChapterProps): React.JSX.Elemen
       </Pane>
     );
   }
+  /* `?? []` and not a non-null read: a board one version behind sends no
+   * `criteria` key at all (types.ts::Milestone). Absent and empty are the same
+   * fact here — no section. */
+  const criteria = milestone.criteria ?? [];
   return (
     <Pane testId="pane-chapter">
       <div style={{ padding: "20px 20px 16px" }}>
@@ -49,30 +73,24 @@ export function Chapter({ milestone, chapters }: ChapterProps): React.JSX.Elemen
         </div>
       </div>
       {milestone.rules.length > 0 ? (
-        <div
-          style={{
-            padding: "0 20px 16px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "9px",
-          }}
-        >
-          {milestone.rules.map((rule, i) => (
-            <PaneTile
-              key={rule}
-              pad="9px 12px"
-              style={{ display: "flex", alignItems: "baseline", gap: "11px", background: "var(--pane-2)" }}
-            >
-              <span
-                className="mono"
-                style={{ fontSize: "10.5px", color: "var(--faint)", flex: "none" }}
-              >
-                {i + 1}
-              </span>
-              <span style={{ fontSize: "13px", letterSpacing: "-0.015em" }}>{rule}</span>
-            </PaneTile>
-          ))}
-        </div>
+        <NumberedList
+          testId="chapter-rules"
+          label="Rules — every card in this chapter"
+          items={milestone.rules}
+          background="var(--pane-2)"
+          fontSize="13px"
+          color="var(--text)"
+        />
+      ) : null}
+      {criteria.length > 0 ? (
+        <NumberedList
+          testId="chapter-criteria"
+          label="Accepted against — the chapter as a whole"
+          items={criteria}
+          background="var(--pane-3)"
+          fontSize="12.5px"
+          color="var(--text-2)"
+        />
       ) : null}
       <PaneRow
         pad="14px 20px"
@@ -86,6 +104,61 @@ export function Chapter({ milestone, chapters }: ChapterProps): React.JSX.Elemen
     </Pane>
   );
 }
+
+/** One numbered list under the goal. The rules and the criteria are the same
+ *  shape drawn at two weights — one component rather than two blocks, so the
+ *  day the tile changes it changes for both. */
+function NumberedList({
+  testId,
+  label,
+  items,
+  background,
+  fontSize,
+  color,
+}: {
+  testId: string;
+  label: string;
+  items: readonly string[];
+  background: string;
+  fontSize: string;
+  color: string;
+}): React.JSX.Element {
+  return (
+    <div
+      data-testid={testId}
+      style={{
+        padding: "0 20px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "9px",
+      }}
+    >
+      <div style={listLabel}>{label}</div>
+      {items.map((item, i) => (
+        <PaneTile
+          key={item}
+          pad="9px 12px"
+          style={{ display: "flex", alignItems: "baseline", gap: "11px", background }}
+        >
+          <span
+            className="mono"
+            style={{ fontSize: "10.5px", color: "var(--faint)", flex: "none" }}
+          >
+            {i + 1}
+          </span>
+          <span style={{ fontSize, color, letterSpacing: "-0.015em" }}>{item}</span>
+        </PaneTile>
+      ))}
+    </div>
+  );
+}
+
+const listLabel: React.CSSProperties = {
+  fontSize: "11px",
+  color: "var(--text-3)",
+  letterSpacing: "0.01em",
+  marginBottom: "-1px",
+};
 
 const eyebrow: React.CSSProperties = {
   fontSize: "11.5px",
