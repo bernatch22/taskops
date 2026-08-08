@@ -6,7 +6,10 @@
  * own fetch would only manage to paint a board half a second older than the rail
  * above it. Pages receive data; they never ask for it.
  *
- * Two pages: Monitor and the Board. Monitor is Nova's first and central section
+ * Three pages, in TabNav's order: Monitor, the Board and Worktrees — the tab list
+ * and the branch below it are two halves of one fact, and a tab with no branch
+ * here silently falls through to the Board, which is a dead tab that still looks
+ * alive. Monitor is Nova's first and central section
  * and therefore the DEFAULT — including the Throughput panel that a short-lived
  * "Hours" tab wrongly promoted to a view of its own, which lives inside Monitor
  * where the design puts it.
@@ -24,7 +27,7 @@
  * to a page — the same card will open from Monitor and from the Board, and two
  * drawers would be two of everything below them (two escape owners, two comment
  * boxes, two fetches of the same dossier). */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Drawer } from "./components/card/Drawer";
 import { Header } from "./components/chrome/Header";
@@ -33,6 +36,7 @@ import { TABS, TabNav, type TabId } from "./components/chrome/TabNav";
 import type { Client } from "./client";
 import { Board } from "./pages/Board";
 import { Monitor } from "./pages/Monitor";
+import { Worktrees } from "./pages/Worktrees";
 import { applyTheme, readTheme, type Theme } from "./theme/theme";
 import { useBoard } from "./useBoard";
 
@@ -57,7 +61,22 @@ const panel: React.CSSProperties = {
 export function App({ client }: { client: Client }): React.JSX.Element {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [tab, setTab] = useState<TabId>("monitor");
-  const { board, card, live, error, loading, openCard, openId, comment } = useBoard(client);
+  // The chapter in focus lives HERE, next to the tab, for the same reason: it is
+  // view state that decides an ARGUMENT to the one fetch, never a second fetch.
+  const [milestone, setMilestone] = useState("");
+  const { board, card, live, error, loading, openCard, openId, comment } = useBoard(
+    client,
+    milestone,
+  );
+
+  // A chapter that closes stops being pickable, and a filter naming a chapter
+  // nobody can see would narrow the page with no way back to it from the pill.
+  // Falling back to "all chapters" is the honest state, not a stored correction.
+  const chapters = board?.milestones;
+  useEffect(() => {
+    if (!chapters || !milestone) return;
+    if (!chapters.some((m) => m.id === milestone)) setMilestone("");
+  }, [chapters, milestone]);
 
   function flip(): void {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -70,7 +89,9 @@ export function App({ client }: { client: Client }): React.JSX.Element {
       <header style={{ padding: "0 24px" }}>
         <Header
           milestone={board?.pulse.milestone ?? ""}
-          chapters={board?.milestones.length ?? 0}
+          milestones={board?.milestones ?? []}
+          selected={milestone}
+          onSelect={setMilestone}
           live={live}
           team={board?.team ?? []}
           theme={theme}
@@ -114,6 +135,8 @@ export function App({ client }: { client: Client }): React.JSX.Element {
         ) : board ? (
           tab === "monitor" ? (
             <Monitor board={board} openCard={openCard} now={Date.now() / 1000} />
+          ) : tab === "worktrees" ? (
+            <Worktrees groups={board.groups} onOpen={openCard} />
           ) : (
             <Board board={board} openCard={openCard} />
           )

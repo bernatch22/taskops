@@ -2,22 +2,31 @@
  * still connected, who else is here, and the theme switch.
  *
  * Pure presentation — everything arrives as a prop and nothing here fetches. The
- * milestone pill is a DIV and not Nova's button: switching milestone is not a
- * thing this read-only dashboard can do, and a button that does nothing is worse
- * than no button.
+ * milestone pill IS Nova's button (a `▾` and all), and it was a dead `div` until
+ * this card: "this dashboard cannot switch milestone, and a dead button is worse
+ * than none" stopped being true the moment `board` learned `milestone=`. With
+ * several chapters open the server refuses to guess between them, so choosing one
+ * from here is the ONLY way to see a chapter at all. The choice is not stored:
+ * it is an ARGUMENT that App holds beside the tab and hands to the one fetcher.
  *
  * The live dot is the one piece of state the payload cannot carry: it is the feed
  * socket's own health, so it comes from useBoard's `live`, green when connected
  * and red when the page may be stale. */
-import type { TeamMember } from "../../types";
+import type { Milestone, TeamMember } from "../../types";
 import type { Theme } from "../../theme/theme";
 import { AvatarStack } from "./AvatarStack";
+import { MilestonePicker } from "./MilestonePicker";
 
 export interface HeaderProps {
   /** The milestone in scope, "" when none is open. */
   milestone: string;
-  /** How many milestones are open — `board.milestones.length`. */
-  chapters: number;
+  /** Every OPEN chapter — `board.milestones`, which the server returns whole
+   *  whatever the call filtered by, so the menu never shrinks to its own choice. */
+  milestones: Milestone[];
+  /** The chosen chapter's id, "" for "all chapters" (no `milestone=` is sent). */
+  selected: string;
+  /** Choose a chapter, or "" for all of them. */
+  onSelect: (id: string) => void;
   /** The feed socket is connected. */
   live: boolean;
   team: TeamMember[];
@@ -46,19 +55,6 @@ const mark: React.CSSProperties = {
   boxShadow: "0 2px 10px var(--accent-soft)",
 };
 
-const pill: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "11px",
-  padding: "8px 13px 8px 11px",
-  borderRadius: "11px",
-  background: "var(--pane)",
-  border: "1px solid var(--hair)",
-  marginLeft: "10px",
-  whiteSpace: "nowrap",
-  flex: "none",
-};
-
 const toggle: React.CSSProperties = {
   all: "unset",
   boxSizing: "border-box",
@@ -76,7 +72,8 @@ const toggle: React.CSSProperties = {
 };
 
 export function Header(props: HeaderProps): React.JSX.Element {
-  const { milestone, chapters, live, team, theme, onToggleTheme, children } = props;
+  const { milestone, milestones, selected, onSelect, live, team, theme, onToggleTheme, children } =
+    props;
   const dot = live ? "var(--ok)" : "var(--danger)";
   const dotSoft = live ? "var(--ok-soft)" : "var(--danger-soft)";
 
@@ -100,30 +97,12 @@ export function Header(props: HeaderProps): React.JSX.Element {
           </div>
         </div>
 
-        <div style={pill} data-testid="milestone">
-          <span
-            style={{
-              width: "7px",
-              height: "7px",
-              borderRadius: "50%",
-              background: "var(--accent)",
-              boxShadow: "0 0 0 3px var(--accent-soft)",
-              flex: "none",
-            }}
-          />
-          <div style={{ textAlign: "left", minWidth: 0 }}>
-            <div style={{ fontSize: "13px", fontWeight: 500, letterSpacing: "-0.02em" }}>
-              {/* board.milestone is null for ZERO open chapters and for SEVERAL —
-                  the server refuses to guess between them. The count tells the
-                  two apart; saying "no open milestone" over "2 open chapters"
-                  was the visible contradiction that exposed the landed-op bug. */}
-              {milestone || (chapters > 1 ? `${chapters} chapters open` : "no open milestone")}
-            </div>
-            <div style={{ fontSize: "10.5px", color: "var(--text-3)" }}>
-              {chapters} open chapter{chapters === 1 ? "" : "s"}
-            </div>
-          </div>
-        </div>
+        <MilestonePicker
+          milestone={milestone}
+          milestones={milestones}
+          selected={selected}
+          onSelect={onSelect}
+        />
       </div>
 
       {/* The centre column is TabNav's, handed in as children: the header owns the
