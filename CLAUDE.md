@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
+~340 files) as **79 Python files / ~8.200 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,9 +37,10 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**293 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 292+1; see below), ruff +
-pyright strict clean. Not deployed yet (see "What is left").
+**304 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 303+1; see below), ruff +
+pyright strict clean. Deployed: `taskops.bernardocastro.dev` serves
+this, four boards, since 2026-08-08 (ARCHITECTURE.md §17).
 
 ## The four ideas everything rests on
 
@@ -256,10 +257,16 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    `tests/fixtures/axion-v1/`) — then run: 926 v1 events → 845 v2 events + 81
    named drops into `~/axion-v3/.taskops/board`, verified count by count.
    Mentions: 82 in v1, 17 survive, and that is correct (MENTIONS.md §5).
-   Still open there: v1's `.taskops/remote.json` in that clone carries the v1
-   server url, so `taskops ui` would redirect until it is retired — the board
-   is served by hand for now.
-2. Deploy (`shipway`) and point `taskops.bernardocastro.dev` at v2.
+   The other three v1 boards followed on the deploy (item 2): agenda 43 → 35,
+   notas 59 → 48, probe 31 → 17, each reconciled against its own v1
+   `db.sqlite`. `~/axion-v3`'s v1 `remote.json` is gone and that clone is
+   re-joined against v2.
+2. ~~Deploy and point `taskops.bernardocastro.dev` at v2.~~ DONE (tk-5d3ccc,
+   2026-08-08). The domain serves v2 with all four boards; v1's process and
+   install are removed. **Not via `shipway`** — a board host is a wheel plus a
+   directory of board logs, not a code tree to rsync: `ARCHITECTURE.md` §17 is
+   the deploy, the order it was done in, and how to upgrade it. The four v1
+   board directories are still on the box, untouched, as the last backup.
 3. The React dashboard is BUILT — the milestone "Monitor — Nova, panel by panel"
    closed it. It has its data layer, its chrome (header, the milestone picker,
    tabs, KPI rail) and the card dossier drawer — which renders the acceptance
@@ -364,4 +371,5 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    measured under the hours and the rule is on screen in `core/hours.py`'s own
    words.
 
-   What the dashboard still cannot do is deploy itself: item 2 above.
+   It is live: `taskops.bernardocastro.dev/<board>/ui/` is this dashboard,
+   served by the same package that hosts the boards (ARCHITECTURE.md §17).
