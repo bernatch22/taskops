@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **68 Python files / ~6.700 lines under `src/taskops`**, plus the
+~340 files) as **73 Python files / ~7.200 lines under `src/taskops`**, plus the
 dashboard — **23 TypeScript files / ~3.000 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -31,8 +31,9 @@ live (fan-out.md §10): the ordering rule is a sentence in
 until the human answers `criteria_met=true`.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**215 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
-strict clean. Not deployed yet (see "What is left").
+**221 passed, 1 skipped** — the skip is `tests/test_ui.py`'s node harness,
+which runs only where `ui/node_modules` exists (`npm ci` in `ui/`); with it,
+222 pass and nothing skips. ruff + pyright strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
 
@@ -128,9 +129,12 @@ hook and no settings file to be trusted (`mcp/hello.py`) —, `taskops_board`
 also what carry a mention — `✉ 1 mention for you` rides on EVERY result
 (`MENTIONS.md`). One Claude hook exists, and only one: `taskops hook claude`
 (MENTIONS.md §9, Berna's own narrowing of his own rule, 2026-08-06) — it
-DELIVERS a pending mention into the turn of a worker that has not touched a
-taskops tool in twenty minutes, and it may never decide, store, or write.
-Delete it and nothing breaks but immediacy. `taskops_take`
+DELIVERS, into the turn of somebody who has not touched a taskops tool in
+twenty minutes, two things and only two: a pending mention, to anybody; and
+MERGE / REVIEW / STALLED — one line each, count plus the call that clears it —
+to a `dev:` only (MENTIONS.md §9f, after two dispatched cards sat `stalled` and
+unread for twelve minutes). It may never decide, store, or write, and both its
+reads renew no lease. Delete it and nothing breaks but immediacy. `taskops_take`
 returns the WHOLE world — the milestone's goal and `rules`, the card — spec, criteria, the resolved epic, the whole thread,
 commits with subjects, collisions, the previous worker's `released` note, its
 worktree. plus who else is working right now. **The section order is design**:
@@ -146,12 +150,12 @@ presence.
             hours mentions review
 2  store/   log cache live reviews creds stores       the ONLY SQL
 3  verbs/   plan take update card pulse assign         + the REGISTRY
-            record report review                       no git, no render, no net
+            record report review waiting               no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees trailer bind install             the ONLY git (client-side)
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread
    http/    server mounts rpc auth feed static
-6  cli/     init join serve invite tidy ui hook
+6  cli/     init join serve invite tidy ui hook wording
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
