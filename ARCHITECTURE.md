@@ -723,6 +723,20 @@ against a hosted board — and there the UI's declared cascade takes over:
 numstat from the event → patch from /git → the forge link if a slug exists →
 one honest sentence. No dead anchor, no empty pane pretending.
 
+That cascade is ONE function — `ui/src/links.tsx::cascade`, beside the slug and
+the link templates it already owned — and `ui/src/components/card/Patch.tsx`
+only DRAWS the step it is handed, so no component holds a fallback order of its
+own. It feeds the dossier's **Files changed** (the card as a PR:
+`compare/ms/<slug>...tk-<id>`, the file list from `stat`, each file's patch on
+expand via `?path=`) and the fold on every commit row. Availability is
+DISCOVERED, not configured: the first refusal whose words are
+`gitdoor.py::NO_REPO` flips a module-level flag for the session and nothing asks
+again — an unknown ref does not flip it, because that means "ask again for
+another ref". All four steps are drawn from the door's own payload in
+`ui/smoke/main.tsx` §8; what no headless harness reaches is `useGitDiff`'s
+effect firing, and that half is covered against a real server in
+`tests/test_topology.py`.
+
 What did NOT change: `events.jsonl` still stores references and measures and
 never content; the door DERIVES on demand and nothing it returns is written
 back; git still lives only in `gitwork/` (`gitwork/diff.py`), read-only, behind
