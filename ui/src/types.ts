@@ -467,6 +467,13 @@ export interface ActorHours {
   seconds: number;
   human: string; // already formatted by core/hours.py — never re-derive it
   cards: string[];
+  /** cards this actor closed INSIDE the report's window — not a lifetime figure.
+   *  @source `verbs/report.py::_by_actor` (optional: a board one version behind
+   *  sends neither key, and absent is not zero) */
+  closed?: number;
+  /** commits by this actor inside the same window.
+   *  @source `verbs/report.py::_by_actor` */
+  commits?: number;
 }
 
 /** @source `verbs/report.py::_day` */
