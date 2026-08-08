@@ -28,7 +28,13 @@ function onKey(event: KeyboardEvent): void {
   event.stopPropagation();
 }
 
-function useOverlayStack(onClose: Close): void {
+/** Own Escape while mounted, as the top-most overlay. Exported because a popover
+ *  is an overlay too: the milestone dropdown has no scrim and no portal, so it
+ *  does not render an `<Overlay>`, but "Escape closes the TOP-MOST one" must stay
+ *  ONE mechanism — a second keydown listener somewhere else is exactly the bug
+ *  `overlayStack.ts` was written to prevent. This file stays the only thing that
+ *  knows what a keyboard is. */
+export function useOverlayStack(onClose: Close): void {
   // The close handler is re-made on every render of the parent; the stack entry
   // must not be, or the pop below could remove a stranger's slot. So the entry is
   // a stable thunk that reads the latest handler through a ref.

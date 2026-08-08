@@ -50,8 +50,16 @@ const COALESCE_MS = 150;
  * calendar day between two local midnights, so a hardcoded UTC silently shifts
  * every bar. `""` from a runtime with no zone data falls back to the board's own
  * default rather than to a guess. */
-function boardArgs(): Record<string, unknown> {
-  return { window: THROUGHPUT_WINDOW, tz: browserZone() };
+/* `milestone` joins them for the same reason and by the same route: the chapter
+ * in focus is an ARGUMENT to the one `board` call, held by App beside the tab and
+ * carried by every refetch the socket triggers. It is OMITTED when empty rather
+ * than sent as `""` — `verbs/pulse.py::_which` reads an absent milestone as
+ * "resolve the open one yourself", which is exactly the unfiltered behaviour that
+ * "all chapters" has to keep reaching. */
+function boardArgs(milestone: string): Record<string, unknown> {
+  const args: Record<string, unknown> = { window: THROUGHPUT_WINDOW, tz: browserZone() };
+  if (milestone) args["milestone"] = milestone;
+  return args;
 }
 
 function browserZone(): string {
@@ -82,7 +90,10 @@ export interface Board {
   refresh: () => void;
 }
 
-export function useBoard(client: Client): Board {
+/** @param milestone the chapter in focus, "" for all of them. Changing it makes a
+ *  new `fetchAll`, which the mount effect depends on — so a pick refetches at
+ *  once, and every later socket frame carries the same choice. */
+export function useBoard(client: Client, milestone: string = ""): Board {
   const [board, setBoard] = useState<BoardPayload | null>(null);
   const [card, setCard] = useState<CardPayload | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -99,7 +110,7 @@ export function useBoard(client: Client): Board {
 
   const fetchAll = useCallback(async () => {
     try {
-      const next = await client.rpc<BoardPayload>("board", boardArgs());
+      const next = await client.rpc<BoardPayload>("board", boardArgs(milestone));
       if (!alive.current) return;
       setBoard(next);
       setError(null);
@@ -115,7 +126,7 @@ export function useBoard(client: Client): Board {
     } finally {
       if (alive.current) setLoading(false);
     }
-  }, [client]);
+  }, [client, milestone]);
 
   /** Every reason to refetch goes through here, so N reasons in one window are
    *  one request. Criterion 1: a frame arrives → exactly one refetch. */
