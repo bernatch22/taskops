@@ -22,6 +22,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { Dossier } from "../src/components/card/Drawer";
+import { Markdown } from "../src/components/shared/Markdown";
 import { CommentBox, submit } from "../src/components/card/CommentBox";
 import { RpcError, createClient } from "../src/client";
 import { depth, escape, push } from "../src/components/shared/overlayStack";
@@ -105,6 +106,81 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   for (const pane of PANES) {
     check("pane " + pane, monitor.includes(`data-testid="${pane}"`));
   }
+
+  /* ── 1b. Prose is rendered as prose (tk-382948) ────────────────────────
+   *
+   * The bug, on the freshly migrated axion board: a chapter goal of 4.252
+   * characters of real markdown printed as one raw paragraph with the asterisks
+   * and the backticks visible. Three claims, and they fail separately:
+   *
+   *   · the GOAL renders as elements — bold, heading, code, list — and none of
+   *     the source markers survives as a character;
+   *   · nothing is CUT. A tall goal gets its own scroll, so the last sentence of
+   *     the fixture goal must be in the markup;
+   *   · a RULE keeps its numbering. This is the one that needed a new mode:
+   *     block-rendered, the fixture's second rule (`1. …`) becomes an `<ol>`
+   *     inside a tile that already numbers itself.
+   *
+   * All three read the SAME `monitor` markup rendered above, from the server's
+   * own payload — the goal, the rules and the criteria on it are what
+   * `tests/test_ui.py::a_board` put on a real board. */
+
+  const slice = (markup: string, from: string, to: string): string => {
+    const start = markup.indexOf(from);
+    if (start < 0) return "";
+    const end = markup.indexOf(to, start);
+    return markup.slice(start, end < 0 ? markup.length : end);
+  };
+
+  const goal = slice(monitor, 'data-testid="chapter-goal"', 'data-testid="chapter-rules"');
+  check("the chapter goal has its own box", goal !== "");
+  check(
+    "the goal renders as markdown, not as characters",
+    goal.includes("<strong") &&
+      goal.includes("<code") &&
+      goal.includes("<ul") &&
+      goal.includes("Dónde está el frente hoy"),
+    goal,
+  );
+  check(
+    "no source marker survives as text",
+    !goal.includes("**") && !goal.includes("###") && !goal.includes("`"),
+    goal,
+  );
+  check(
+    "a long goal scrolls and is never cut",
+    goal.includes("max-height") &&
+      goal.includes("overflow-y:auto") &&
+      // The last words of the fixture goal. A clamp or an ellipsis loses them.
+      goal.includes("la restricción que ata es el"),
+    goal,
+  );
+
+  /* The mentions pane draws a COMMENT — the same string the thread draws — and
+   * it was the third screen printing prose raw. Inline, because the row is one
+   * line between an author and a card line. */
+  const mention = slice(monitor, 'data-testid="pane-mentions"', 'data-testid="pane-events"');
+  check(
+    "the mention row reads the comment's markdown",
+    mention.includes("<code") && mention.includes("round()") && !mention.includes("`"),
+    mention,
+  );
+
+  const rules = slice(monitor, 'data-testid="chapter-rules"', 'data-testid="chapter-criteria"');
+  check(
+    "a rule reads its inline markdown",
+    rules.includes("<code") && rules.includes("node build.mjs"),
+    rules,
+  );
+  check(
+    "…and keeps the tile's numbering: no second list, no block wrapper",
+    !rules.includes("<ol") && !rules.includes("<p") && rules.includes("1. The feed socket"),
+    rules,
+  );
+  check(
+    "the chapter's criteria go through the same one renderer",
+    slice(monitor, 'data-testid="chapter-criteria"', "Integration branch").includes("<code"),
+  );
 
   /* ── 2. The Event stream: rows when it has them, honesty when it does not ─
    *
@@ -659,6 +735,11 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     check(
       "the expanded body is the whole chapter, criteria included",
       many.includes(second.goal) &&
+        // …through the SAME `Goal` the focused pane draws (tk-382948): the
+        // accordion was the second of the two sites printing it raw, and a fix
+        // applied to one of two call sites is the drift this pane already has a
+        // post-mortem about.
+        many.includes('data-testid="chapter-goal"') &&
         many.includes('data-testid="chapter-rules"') &&
         many.includes('data-testid="chapter-criteria"') &&
         many.includes("Integration branch") &&
@@ -667,7 +748,13 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     );
     check(
       "the collapsed one shows its title and NOT its goal",
-      many.includes(first.title) && !many.includes(first.goal),
+      // A RENDERED fragment, not the raw string: since the goal became markdown
+      // the source text appears nowhere at all, so `!includes(first.goal)` is
+      // true even for a pane that draws the whole thing. A heading the renderer
+      // emits verbatim is what can still tell the two apart.
+      many.includes(first.title) &&
+        !many.includes(first.goal) &&
+        !many.includes("Dónde está el frente hoy"),
       many,
     );
     check(
@@ -759,6 +846,27 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     focused,
   );
 
+  /* A tile's NOTE — the submit note or the reviewer's words, "verbatim, never
+   * summarised" — was the fourth screen printing prose raw (tk-382948). The
+   * payload is the server's own with one open row moved into `review`, the
+   * group `Board.tsx` reads `row.text` for; the text moved with it is a real
+   * released note off the same board. */
+  const reviewed = JSON.parse(JSON.stringify(fixture.board)) as BoardPayload;
+  const handed = reviewed.groups.take[0] ?? reviewed.groups.doing[0];
+  if (handed) {
+    reviewed.groups.review = [
+      { ...handed, holder: null, text: "got to the rounding — see `src/tax.py::half_up`" },
+    ];
+    const withNote = renderToStaticMarkup(<Board board={reviewed} openCard={() => {}} />);
+    check(
+      "a tile's note reads its markdown instead of printing the backticks",
+      withNote.includes("<code") &&
+        withNote.includes("src/tax.py::half_up") &&
+        !withNote.includes("`src/tax.py"),
+      withNote,
+    );
+  }
+
   const spanBoard = JSON.parse(JSON.stringify(fixture.board)) as BoardPayload;
   const other = fixture.board_landed.milestone;
   const here = spanBoard.milestone;
@@ -811,9 +919,38 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check("criteria are on screen", dossier.includes('data-testid="criteria"'));
   check(
     "every criterion is drawn, numbered",
-    fixture.card.card.criteria.every((text) => dossier.includes(text)),
+    // Split on the backticks: a criterion is drawn through the ONE renderer now
+    // (tk-382948), so a code span reaches the page as `<code>…</code>` and the
+    // criterion is no longer one raw substring. Every piece of it is still
+    // there, which is the claim — "drawn" was never "drawn as plain text".
+    fixture.card.card.criteria.every((text) =>
+      text.split("`").every((piece) => piece === "" || dossier.includes(piece)),
+    ),
   );
   check("the comment box is the foot", dossier.includes('data-testid="comment-box"'));
+
+  /* CRITERION 3 of tk-382948: the spec and the thread render EXACTLY as they
+   * did. The proof is byte-level and it is the strongest one available here —
+   * the dossier must CONTAIN, verbatim, what `<Markdown>` produces for the very
+   * same string on its own. Had the inline mode leaked into the default path
+   * (or had the spec been switched to it), the substring would not be there. */
+  const spec = fixture.card.card.spec;
+  check(
+    "the spec is still the block renderer's own output, byte for byte",
+    spec !== "" && dossier.includes(renderToStaticMarkup(<Markdown text={spec} />)),
+  );
+  const said = fixture.card.history.find((e) => e.kind === "comment");
+  const saidText = typeof said?.body["text"] === "string" ? said.body["text"] : "";
+  check(
+    "a comment is too — the thread is untouched",
+    saidText !== "" && dossier.includes(renderToStaticMarkup(<Markdown text={saidText} />)),
+  );
+  /* The released note and the reviewer's verdict were the other raw draws in
+   * this document. Both are prose and both now read their markdown. */
+  check(
+    "the previous worker's released note reads its markdown",
+    dossier.includes("<code") && dossier.includes("src/tax.py::half_up"),
+  );
 
   /* ── 5. The one write: the comment box posts `update` ──────────────────── */
 

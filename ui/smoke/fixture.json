@@ -9,15 +9,15 @@
       "src/pdf.py"
      ],
      "holder": null,
-     "id": "tk-6a46bb",
+     "id": "tk-3c6287",
      "labels": [],
-     "milestone": "ms-a39203",
+     "milestone": "ms-7fec6f",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
      "title": "PDF",
      "waiting_on": [
-      "tk-c099c3"
+      "tk-58622b"
      ]
     }
    ],
@@ -27,8 +27,8 @@
    "mentions": [
     {
      "by": "agent:berna/w2",
-     "id": "tk-c099c3",
-     "text": "Decimal or float?",
+     "id": "tk-58622b",
+     "text": "Decimal or float? `round()` truncates",
      "title": "the reduced rate",
      "ts": 1770000000.0
     }
@@ -43,11 +43,11 @@
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-e1a7ec",
+     "id": "tk-95e818",
      "labels": [
       "backend"
      ],
-     "milestone": "ms-a39203",
+     "milestone": "ms-7fec6f",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -61,9 +61,9 @@
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-c099c3",
+     "id": "tk-58622b",
      "labels": [],
-     "milestone": "ms-a39203",
+     "milestone": "ms-7fec6f",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -75,7 +75,7 @@
    "by_actor": {
     "agent:berna/w2": {
      "cards": [
-      "tk-c099c3"
+      "tk-58622b"
      ],
      "human": "\u2014",
      "seconds": 0
@@ -83,10 +83,10 @@
     "dev:berna": {
      "cards": [
       "project",
-      "tk-6a46bb",
-      "tk-c099c3",
-      "tk-e1a7ec",
-      "tk-e50dc7"
+      "tk-3c6287",
+      "tk-58622b",
+      "tk-95e818",
+      "tk-f97843"
      ],
      "human": "\u2014",
      "seconds": 0.002000093460083008
@@ -175,7 +175,7 @@
      "by_actor": {
       "agent:berna/w2": {
        "cards": [
-        "tk-c099c3"
+        "tk-58622b"
        ],
        "human": "\u2014",
        "seconds": 0
@@ -183,10 +183,10 @@
       "dev:berna": {
        "cards": [
         "project",
-        "tk-6a46bb",
-        "tk-c099c3",
-        "tk-e1a7ec",
-        "tk-e50dc7"
+        "tk-3c6287",
+        "tk-58622b",
+        "tk-95e818",
+        "tk-f97843"
        ],
        "human": "\u2014",
        "seconds": 0.002000093460083008
@@ -208,11 +208,16 @@
   "milestone": {
    "branch": "ms/mvp-facturador",
    "created": 1770000000.0,
-   "criteria": [],
-   "goal": "read a bank CSV and issue invoices with VAT",
-   "id": "ms-a39203",
+   "criteria": [
+    "Every number is a Decimal \u2014 `float` appears nowhere"
+   ],
+   "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
+   "id": "ms-7fec6f",
    "reviews": false,
-   "rules": [],
+   "rules": [
+    "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
+    "1. The feed socket is a signal, not data: never render from a frame."
+   ],
    "status": "open",
    "title": "MVP facturador"
   },
@@ -220,11 +225,16 @@
    {
     "branch": "ms/mvp-facturador",
     "created": 1770000000.0,
-    "criteria": [],
-    "goal": "read a bank CSV and issue invoices with VAT",
-    "id": "ms-a39203",
+    "criteria": [
+     "Every number is a Decimal \u2014 `float` appears nowhere"
+    ],
+    "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
+    "id": "ms-7fec6f",
     "reviews": false,
-    "rules": [],
+    "rules": [
+     "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
+     "1. The feed socket is a signal, not data: never render from a frame."
+    ],
     "status": "open",
     "title": "MVP facturador"
    },
@@ -235,7 +245,7 @@
      "every pane is filled"
     ],
     "goal": "the dashboard, pane by pane",
-    "id": "ms-64baed",
+    "id": "ms-118596",
     "reviews": false,
     "rules": [
      "ts-only diffs, the chapter-close rebuilds"
@@ -252,7 +262,7 @@
     "ready": 1,
     "stalled": 1
    },
-   "goal": "read a bank CSV and issue invoices with VAT",
+   "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
    "mentions": 1,
    "milestone": "MVP facturador"
   },
@@ -281,8 +291,8 @@
    "mentions": [
     {
      "by": "agent:berna/w2",
-     "id": "tk-c099c3",
-     "text": "Decimal or float?",
+     "id": "tk-58622b",
+     "text": "Decimal or float? `round()` truncates",
      "title": "the reduced rate",
      "ts": 1770000000.0
     }
@@ -296,9 +306,9 @@
      "assignee": "",
      "files": [],
      "holder": null,
-     "id": "tk-e50dc7",
+     "id": "tk-f97843",
      "labels": [],
-     "milestone": "ms-64baed",
+     "milestone": "ms-118596",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -310,7 +320,7 @@
    "by_actor": {
     "agent:berna/w2": {
      "cards": [
-      "tk-c099c3"
+      "tk-58622b"
      ],
      "human": "\u2014",
      "seconds": 0
@@ -318,10 +328,10 @@
     "dev:berna": {
      "cards": [
       "project",
-      "tk-6a46bb",
-      "tk-c099c3",
-      "tk-e1a7ec",
-      "tk-e50dc7"
+      "tk-3c6287",
+      "tk-58622b",
+      "tk-95e818",
+      "tk-f97843"
      ],
      "human": "\u2014",
      "seconds": 0.002000093460083008
@@ -410,7 +420,7 @@
      "by_actor": {
       "agent:berna/w2": {
        "cards": [
-        "tk-c099c3"
+        "tk-58622b"
        ],
        "human": "\u2014",
        "seconds": 0
@@ -418,10 +428,10 @@
       "dev:berna": {
        "cards": [
         "project",
-        "tk-6a46bb",
-        "tk-c099c3",
-        "tk-e1a7ec",
-        "tk-e50dc7"
+        "tk-3c6287",
+        "tk-58622b",
+        "tk-95e818",
+        "tk-f97843"
        ],
        "human": "\u2014",
        "seconds": 0.002000093460083008
@@ -447,7 +457,7 @@
     "every pane is filled"
    ],
    "goal": "the dashboard, pane by pane",
-   "id": "ms-64baed",
+   "id": "ms-118596",
    "reviews": false,
    "rules": [
     "ts-only diffs, the chapter-close rebuilds"
@@ -459,11 +469,16 @@
    {
     "branch": "ms/mvp-facturador",
     "created": 1770000000.0,
-    "criteria": [],
-    "goal": "read a bank CSV and issue invoices with VAT",
-    "id": "ms-a39203",
+    "criteria": [
+     "Every number is a Decimal \u2014 `float` appears nowhere"
+    ],
+    "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
+    "id": "ms-7fec6f",
     "reviews": false,
-    "rules": [],
+    "rules": [
+     "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
+     "1. The feed socket is a signal, not data: never render from a frame."
+    ],
     "status": "open",
     "title": "MVP facturador"
    },
@@ -474,7 +489,7 @@
      "every pane is filled"
     ],
     "goal": "the dashboard, pane by pane",
-    "id": "ms-64baed",
+    "id": "ms-118596",
     "reviews": false,
     "rules": [
      "ts-only diffs, the chapter-close rebuilds"
@@ -515,27 +530,28 @@
   "blocks": [
    {
     "assignee": "",
-    "id": "tk-6a46bb",
+    "id": "tk-3c6287",
     "status": "blocked",
     "title": "PDF"
    }
   ],
-  "branch": "tk-c099c3",
+  "branch": "tk-58622b",
   "card": {
    "after": [],
    "assignee": "",
    "created": 1769999999.999,
    "created_by": "dev:berna",
    "criteria": [
-    "Decimal, never float"
+    "Decimal, never float",
+    "WHEN `npm run typecheck` runs in ui/ THEN it passes strict"
    ],
    "files": [
     "src/tax.py"
    ],
-   "id": "tk-c099c3",
+   "id": "tk-58622b",
    "labels": [],
-   "milestone": "ms-a39203",
-   "parent": "tk-e1a7ec",
+   "milestone": "ms-7fec6f",
+   "parent": "tk-95e818",
    "priority": 2,
    "review": false,
    "spec": "10% for food",
@@ -549,7 +565,7 @@
      "src/tax.py"
     ],
     "holder": "agent:berna/w1",
-    "id": "tk-e1a7ec",
+    "id": "tk-95e818",
     "started": false,
     "title": "VAT"
    }
@@ -564,7 +580,7 @@
   ],
   "elsewhere": [],
   "epic": {
-   "id": "tk-e1a7ec",
+   "id": "tk-95e818",
    "spec": "the whole tax",
    "status": "stalled",
    "title": "VAT"
@@ -579,15 +595,16 @@
       "created": 1769999999.999,
       "created_by": "dev:berna",
       "criteria": [
-       "Decimal, never float"
+       "Decimal, never float",
+       "WHEN `npm run typecheck` runs in ui/ THEN it passes strict"
       ],
       "files": [
        "src/tax.py"
       ],
-      "id": "tk-c099c3",
+      "id": "tk-58622b",
       "labels": [],
-      "milestone": "ms-a39203",
-      "parent": "tk-e1a7ec",
+      "milestone": "ms-7fec6f",
+      "parent": "tk-95e818",
       "priority": 2,
       "review": false,
       "spec": "10% for food",
@@ -596,19 +613,19 @@
       "updated": 1769999999.999
      }
     },
-    "id": "aa61c831993fa4981155f8ecc3e2e9be",
+    "id": "5ea048e265d1d29e20bc20115b698e72",
     "kind": "created",
-    "task": "tk-c099c3",
+    "task": "tk-58622b",
     "ts": 1769999999.999
    },
    {
     "actor": "agent:berna/w2",
     "body": {
-     "branch": "tk-c099c3"
+     "branch": "tk-58622b"
     },
-    "id": "b97a05607b4c448f67df15cbbf1ee77f",
+    "id": "a920f7770c071bff52732ead0b9010b7",
     "kind": "claimed",
-    "task": "tk-c099c3",
+    "task": "tk-58622b",
     "ts": 1770000000.0
    },
    {
@@ -619,9 +636,9 @@
      "sha": "a3f9c21b",
      "subject": "feat: rates"
     },
-    "id": "4c706a0441e4bdfcd3985481b189df22",
+    "id": "cf84e23a90bd285db2727f83695787c0",
     "kind": "commit",
-    "task": "tk-c099c3",
+    "task": "tk-58622b",
     "ts": 1770000000.0
    },
    {
@@ -630,21 +647,21 @@
      "mentions": [
       "dev:berna"
      ],
-     "text": "Decimal or float?"
+     "text": "Decimal or float? `round()` truncates"
     },
-    "id": "4f83a626958d6e4ea3f0395d47a45913",
+    "id": "3bc1c158b9dee790efe4dbe90261fdcb",
     "kind": "comment",
-    "task": "tk-c099c3",
+    "task": "tk-58622b",
     "ts": 1770000000.0
    },
    {
     "actor": "agent:berna/w2",
     "body": {
-     "note": "got to the rounding"
+     "note": "got to the rounding \u2014 see `src/tax.py::half_up`"
     },
-    "id": "65c45a9cf099a92b85b572fbfd8169f7",
+    "id": "557f2a7c19ba6d7ad8bf04d68175ef03",
     "kind": "released",
-    "task": "tk-c099c3",
+    "task": "tk-58622b",
     "ts": 1770000000.0
    }
   ],
@@ -653,11 +670,16 @@
   "milestone": {
    "branch": "ms/mvp-facturador",
    "created": 1770000000.0,
-   "criteria": [],
-   "goal": "read a bank CSV and issue invoices with VAT",
-   "id": "ms-a39203",
+   "criteria": [
+    "Every number is a Decimal \u2014 `float` appears nowhere"
+   ],
+   "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
+   "id": "ms-7fec6f",
    "reviews": false,
-   "rules": [],
+   "rules": [
+    "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
+    "1. The feed socket is a signal, not data: never render from a frame."
+   ],
    "status": "open",
    "title": "MVP facturador"
   },
@@ -669,21 +691,21 @@
     "ready": 1,
     "stalled": 1
    },
-   "goal": "read a bank CSV and issue invoices with VAT",
+   "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
    "mentions": 1,
    "milestone": "MVP facturador"
   },
-  "resume": "got to the rounding",
+  "resume": "got to the rounding \u2014 see `src/tax.py::half_up`",
   "seconds": 0,
   "standing": null,
   "state": "ready",
   "subtasks": [],
-  "worktree": ".taskops/trees/tk-c099c3"
+  "worktree": ".taskops/trees/tk-58622b"
  },
  "expect": [
   "the reduced rate",
   "10% for food",
-  "Criteria \u00b7 1",
+  "Criteria \u00b7 2",
   "Decimal, never float",
   "got to the rounding",
   "VAT",
@@ -701,9 +723,9 @@
  ],
  "git": {
   "compare": {
-   "base": "ff1fe8ae96a8ffe4b8f5aea6aa23ebf1310a5c43",
+   "base": "fb0bcb502b695819a2b72291377efaff7eb4b6cf",
    "cap": 524288,
-   "head": "5794783773b544dbf0f11d7993ada13ba61fdd7b",
+   "head": "f606ef579bf9b9a3a26a7bf31e35f92e39b96abe",
    "patch": "diff --git a/pdf.py b/pdf.py\nnew file mode 100644\nindex 0000000..50162bc\n--- /dev/null\n+++ b/pdf.py\n@@ -0,0 +1 @@\n+def render() -> None: ...\ndiff --git a/tax.py b/tax.py\nindex c1c6c95..d5a2d14 100644\n--- a/tax.py\n+++ b/tax.py\n@@ -1 +1,2 @@\n RATE = 0.22\n+REDUCED = 0.10",
    "stat": {
     "pdf.py": [

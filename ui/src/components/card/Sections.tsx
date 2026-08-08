@@ -70,7 +70,13 @@ export function Criteria({ criteria }: { criteria: string[] }): React.JSX.Elemen
           <span className="mono" style={{ fontSize: "11px", color: "var(--faint)" }}>
             {n + 1}
           </span>
-          <span style={{ lineHeight: 1.6 }}>{text}</span>
+          {/* Inline, for the reason the chapter's rules are inline: the number
+              in the first grid column IS the numbering, and the block renderer
+              would move this cell off its baseline and renumber any criterion
+              that opens with a digit. */}
+          <span style={{ lineHeight: 1.6 }}>
+            <Markdown text={text} inline />
+          </span>
         </div>
       ))}
     </div>
@@ -119,7 +125,12 @@ export function Body({
           <div style={{ fontSize: "12px", color: "var(--danger)", marginBottom: "6px", fontWeight: 500 }}>
             Changes requested · {shortActor(stood.reviewed_by)}
           </div>
-          <div style={{ fontSize: "13.5px", lineHeight: 1.6 }}>{stood.note}</div>
+          {/* A verdict is prose a verifier wrote — it quotes files, calls and
+              test names constantly — so it reads through the one renderer, in
+              blocks: nothing around it owns its shape. */}
+          <div style={{ fontSize: "13.5px", lineHeight: 1.6 }}>
+            <Markdown text={stood.note} />
+          </div>
         </div>
       ) : null}
 
@@ -142,8 +153,11 @@ export function Body({
 
       {dossier.resume ? (
         <Section title="Resume note · previous worker">
+          {/* The previous worker's released note: prose, written by an agent
+              handing over, and the one section a reader is asked to act on. It
+              is markdown for the same reason the spec is. */}
           <div style={{ ...soft, fontSize: "14.5px", color: "var(--text-2)", lineHeight: 1.65 }}>
-            {dossier.resume}
+            <Markdown text={dossier.resume} />
           </div>
         </Section>
       ) : null}
