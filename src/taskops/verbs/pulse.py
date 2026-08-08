@@ -174,6 +174,9 @@ def _row(stores: Stores, card: Card, now: float, live: dict[str, str]) -> dict[s
     return {
         "id": card["id"],
         "title": card["title"],
+        # The chapter's ID, never its title: `milestones` already carries the
+        # words, so a reader joins the two and neither can age past the other.
+        "milestone": card["milestone"],
         "priority": card["priority"],
         "assignee": card["assignee"],
         "holder": holder,

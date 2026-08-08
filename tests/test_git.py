@@ -601,6 +601,71 @@ def test_a_compare_is_what_the_head_adds_over_the_merge_base(tmp_path: Path) -> 
     assert sorted(counted) == ["a.txt", "b.txt"]
 
 
+def test_an_integrated_card_compares_against_the_merge_s_first_parent(
+    tmp_path: Path,
+) -> None:
+    """THE bug the Worktrees screen showed: every row said "no files differ".
+    Once `side` is merged, merge-base(main, side) IS side's head and the range
+    is empty — correct and useless. The base comes off the merge that landed
+    it, so the card still reads as the pull request it was: a.txt and b.txt,
+    and NOT `later.txt`, which the CHAPTER gained while the card was open and
+    which a bare first parent would render as this card deleting it."""
+    root = repo(tmp_path)
+    sha = merged(root)
+    found = diff.compare_range(root, "main", "side")
+    assert found is not None
+    assert found[0] == run.must("rev-parse", f"{sha}^1~1", cwd=root)
+    assert found[1] == run.must("rev-parse", "side", cwd=root)
+    counted = diff.stat(root, *found)
+    assert sorted(counted) == ["a.txt", "b.txt"]
+
+
+def test_the_merge_that_counts_is_the_one_that_brought_the_card_in(
+    tmp_path: Path,
+) -> None:
+    """A card is merged into its chapter and the chapter is later merged into
+    main, so the ancestry path from the card carries TWO merges. Only the
+    OLDEST one landed this card; the newest landed the whole chapter, and
+    reading its first parent would put the base out on main and drag the
+    chapter's other work into the card's diff."""
+    root = repo(tmp_path)
+    run.must("checkout", "-q", "-b", "chapter", cwd=root)
+    (root / "sibling.txt").write_text("sibling\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "a sibling card", cwd=root)
+    branch_point = run.must("rev-parse", "HEAD", cwd=root)
+    run.must("checkout", "-q", "-b", "side", cwd=root)
+    (root / "a.txt").write_text("a\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "add a", cwd=root)
+    run.must("checkout", "-q", "chapter", cwd=root)
+    run.must("merge", "-q", "--no-ff", "-m", "merge side", "side", cwd=root)
+    run.must("checkout", "-q", "main", cwd=root)
+    run.must("merge", "-q", "--no-ff", "-m", "merge chapter", "chapter", cwd=root)
+
+    found = diff.compare_range(root, "main", "side")
+    assert found is not None and found[0] == branch_point
+    assert sorted(diff.stat(root, *found)) == ["a.txt"]
+
+
+def test_a_fast_forwarded_branch_keeps_the_empty_range_rather_than_guess(
+    tmp_path: Path,
+) -> None:
+    """No merge commit on the ancestry path — this board never fast-forwards,
+    another clone might. There is no "as it stood before" to point at, so the
+    honest answer is the empty range, not an invented base."""
+    root = repo(tmp_path)
+    run.must("checkout", "-q", "-b", "side", cwd=root)
+    (root / "a.txt").write_text("a\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "add a", cwd=root)
+    run.must("checkout", "-q", "main", cwd=root)
+    run.must("merge", "-q", "--ff-only", "side", cwd=root)
+    head = run.must("rev-parse", "side", cwd=root)
+    assert diff.compare_range(root, "main", "side") == (head, head)
+    assert diff.stat(root, head, head) == {}
+
+
 def test_the_numstat_vocabulary_is_the_one_bind_already_writes(tmp_path: Path) -> None:
     """[added, deleted] per file, None for a binary — one vocabulary for +/-
     everywhere in the UI, whether it came from an event or from this door."""

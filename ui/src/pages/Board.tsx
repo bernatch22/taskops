@@ -134,6 +134,44 @@ export function columns(board: BoardPayload): Col[] {
   ];
 }
 
+/** Which tile draws its chapter, and with what words — decided ONCE for the
+ *  whole view, keyed by card id.
+ *
+ *  Two rules, and both are about the view rather than the tile:
+ *
+ *  1. The JOIN. `BoardRow.milestone` is the chapter's ID (`verbs/pulse.py::_row`)
+ *     and `board.milestones` carries `{id, title, …}` — the same join
+ *     `pages/Worktrees.tsx::chapter()` does, against the same list, and there is
+ *     no second behaviour: an id that does not resolve draws NOTHING. A board
+ *     one version behind sends no `milestone` on the row, and a chapter aged
+ *     past `milestones`' cap is an id this payload cannot name; `ms-9f21` on a
+ *     tile is not information, it is the join failing out loud.
+ *
+ *  2. WHETHER to draw at all: only when the rows IN VIEW span more than one
+ *     chapter. With a chapter in focus every tile would carry the same label and
+ *     the header already says which chapter you are reading — noise on every
+ *     card in every column. So the count is over what is on SCREEN, not over how
+ *     many chapters the board has: the picker sends "All milestones" and one
+ *     chapter's worth of rows just as easily.
+ *
+ *  A row that does not resolve is not counted either: it contributes no chapter
+ *  to the view, so it cannot be the second one that turns every label on. */
+export function chapterLabels(board: BoardPayload, cols: readonly Col[]): Map<string, string> {
+  const titles = new Map(board.milestones.map((m) => [m.id, m.title]));
+  const labels = new Map<string, string>();
+  const seen = new Set<string>();
+  for (const col of cols) {
+    for (const tile of col.tiles) {
+      const id = tile.row.milestone ?? "";
+      const title = id ? titles.get(id) : undefined;
+      if (!title) continue;
+      labels.set(tile.row.id, title);
+      seen.add(id);
+    }
+  }
+  return seen.size > 1 ? labels : new Map();
+}
+
 const scroll: React.CSSProperties = {
   height: "100%",
   overflowX: "auto",
@@ -151,10 +189,12 @@ const rail: React.CSSProperties = {
 };
 
 export function Board({ board, openCard }: BoardProps): React.JSX.Element {
+  const cols = columns(board);
+  const chapters = chapterLabels(board, cols);
   return (
     <div style={scroll} data-testid="board">
       <div style={rail}>
-        {columns(board).map((col) => (
+        {cols.map((col) => (
           <Column key={col.name} name={col.name} tone={col.tone} count={col.tiles.length}>
             {col.tiles.map((tile) => (
               <CardTile
@@ -164,6 +204,7 @@ export function Board({ board, openCard }: BoardProps): React.JSX.Element {
                 marker={tile.marker}
                 note={tile.note}
                 waitingOn={tile.waitingOn}
+                chapter={chapters.get(tile.row.id)}
                 onOpen={openCard}
               />
             ))}

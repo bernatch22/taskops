@@ -147,6 +147,16 @@ export type CardState =
 export interface BoardRow {
   id: string;
   title: string;
+  /** Which chapter this card belongs to — the milestone's ID, never its title.
+   *  `BoardPayload.milestones` carries `{id, title, …}`, so a view that wants
+   *  the words maps id → title from that list; a row that is not in it (aged
+   *  past the cap) shows nothing rather than a raw id.
+   *
+   *  OPTIONAL by the header's rule: a board one version behind sends no such
+   *  key and every reader must render, degraded, never crash.
+   *
+   *  @source `verbs/pulse.py::_row` */
+  milestone?: string;
   priority: number;
   assignee: string;
   holder: string | null;

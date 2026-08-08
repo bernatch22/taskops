@@ -16,11 +16,29 @@
  * a day is not somebody you reach by writing to them. The addresses travel as the
  * `mentions` argument, not as text spliced into the comment — the server
  * validates each one against the actor grammar and refuses a typo at the write,
- * and a mention parsed back out of prose could never be validated at all. */
+ * and a mention parsed back out of prose could never be validated at all.
+ *
+ * A DAY WAS THE WRONG CLOCK. `verbs/pulse.py::_team` answers "who has been
+ * around today", which is the right question for the header's avatar stack and
+ * the wrong one here: on this repo's own board it drew ~44 chips wrapped over
+ * four lines, every actor that ever ran, with no reply among them. The clock this
+ * box needs is the board's own — `LEASE_TTL`, the line past which a lease is dead
+ * and a card reads STALLED — so it offers exactly the actors still inside it
+ * (`reachable`). The 24h window upstream is untouched: narrowing it would empty
+ * the avatar stack too, and this is a filter at the one place that asks "who can
+ * I address RIGHT NOW", derived from data already on the payload. No verb, no
+ * payload key, no store. What the SERVER accepts is unchanged — an agent naming
+ * an agent still travels as the `mentions` argument and is still validated
+ * against the actor grammar there. */
 import { useState } from "react";
 
 import { RpcError } from "../../client";
 import { shortActor } from "../../format";
+// The board's own constant, mirrored once in the UI at the seam that already
+// owns it (`monitor/panels.ts::LEASE_TTL` = 900). The payload does not carry it,
+// and adding a key to ship a constant would be worse than a named mirror that
+// says where it comes from. @source `core/types.py::LEASE_TTL`
+import { LEASE_TTL } from "../monitor/panels";
 import type { TeamMember } from "../../types";
 
 /** `useBoard.comment` — resolves on ok, rejects with the board's own refusal. */
@@ -58,6 +76,12 @@ export async function submit(draft: string, picked: readonly string[], send: Sen
   }
 }
 
+/** Who is addressable right now: seen within one lease TTL. Pure, and exported
+ *  so the rule can be read (and mutated) without rendering anything. */
+export function reachable(team: TeamMember[]): TeamMember[] {
+  return team.filter((member) => member.ago <= LEASE_TTL);
+}
+
 const chip: React.CSSProperties = {
   all: "unset",
   boxSizing: "border-box",
@@ -73,6 +97,7 @@ export function CommentBox({ team, onSend }: CommentBoxProps): React.JSX.Element
   const [picked, setPicked] = useState<readonly string[]>([]);
   const [failed, setFailed] = useState<string>("");
   const [sending, setSending] = useState(false);
+  const live = reachable(team);
 
   function toggle(actor: string): void {
     setPicked((now) => (now.includes(actor) ? now.filter((a) => a !== actor) : [...now, actor]));
@@ -96,7 +121,12 @@ export function CommentBox({ team, onSend }: CommentBoxProps): React.JSX.Element
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
         <span style={{ fontSize: "12px", color: "var(--text-3)" }}>Reply</span>
-        {team.map((member) => {
+        {live.length === 0 ? (
+          <span data-testid="nobody-live" style={{ fontSize: "11.5px", color: "var(--text-3)" }}>
+            nobody is working right now — a comment with no address still lands on the card
+          </span>
+        ) : null}
+        {live.map((member) => {
           const on = picked.includes(member.actor);
           return (
             <button

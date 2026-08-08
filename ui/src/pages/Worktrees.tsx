@@ -1,18 +1,27 @@
-/* The third view — Nova's WORKTREES section (Taskops Nova.dc.html lines 536-568).
+/* The third view — Nova's WORKTREES section, as an INDEX OF PULL REQUESTS.
  *
- * One table, five columns, and under it three note cards. It answers the one
+ * Two columns, 50/50, and under them three note cards. It answers the one
  * question the kanban cannot: not "what state is this card in" but "what is on
- * disk right now, who is carrying it, and has it reached the trunk". The WHO is
- * two facts on one mono line inside the Card cell — the dev to talk to and the
- * worker process holding the directory; see `GRID` for why it is not a column.
+ * disk right now, who is carrying it, and has it reached the trunk". The left
+ * column is what is still in flight, the right one is what is finished — and
+ * that is the whole fold, because a worktree only ever means one of those two
+ * things to the reader looking for it.
+ *
+ * It used to be a five-column TABLE — branch, card, directory, commits, status —
+ * and clicking a row opened the card Dossier. Both are gone. A tree is a pull
+ * request, so a row is a tile carrying the four facts you choose one by (branch,
+ * title, author, chapter) and its ONLY action is opening ITS diff, full width,
+ * in this view's own second surface. The directory is `TREE_DIR + id` by
+ * construction and the commit count has never had a source (`panels.ts`) — two
+ * columns' worth of width spent on a string nobody reads and an em dash.
  *
  * DERIVED FROM `board.groups`, exactly like `pages/Board.tsx::columns` — same
  * mechanism, different fold. There is no second read, no client-side status
  * computation and no worktree verb: `pulse.py::run` already grouped every card
- * by the move it needs, and this file only says which pill each group wears.
- * The rows are emitted in `GROUP_ORDER` (`types.ts`), which is the order the
- * board itself builds them in and therefore the order to ACT in — a view that
- * reorders them is contradicting the board.
+ * by the move it needs, and this file only says which block and which pill each
+ * group gets. Inside a block the groups keep `GROUP_ORDER` (`types.ts`), which
+ * is the order the board itself builds them in and therefore the order to ACT
+ * in — a view that reorders them is contradicting the board.
  *
  *     ready        take                          neutral
  *     in progress  doing · reviewing             accent
@@ -26,25 +35,69 @@
  * it. Drawn identically to a running one it reads as progress; it is the
  * opposite.
  *
- * Read-only, absolutely: a row is a button and the only thing it does is open
- * the Dossier. `LIST_CAP` deliberately does NOT apply — this is a full-height
- * view like the Board, not a pane inside a grid, so the table grows and the
- * page scrolls. */
+ * TWO SUB-BLOCKS PER COLUMN, and not three. Each column splits on the ONE fact
+ * its pills do not already carry:
+ *   · left — somebody is on this tree, or nobody is. `working` is every group
+ *     with an owner (`doing`, `reviewing`, `stalled`, `review`, `changes`);
+ *     `waiting` is every group without one (`take`, `blocked`). That is what
+ *     decides whether you may pick it up, and it is not readable off a pill.
+ *   · right — it is finished and NOT in the trunk, or it is in it. `merge` leads
+ *     because it is the group the board is WAITING for.
+ * A third block would have to split `blocked` off `take`, or `stalled` off
+ * `doing` — and both of those distinctions are already the row's own pill and
+ * tone, in colour, on every row. A heading that repeats the pill is one more
+ * thing to read and no more information.
+ *
+ * NOTHING EMPTY IS DRAWN, at either level. An empty sub-block gets no heading (a
+ * heading over nothing is a fact about the layout, not about the board), and an
+ * empty COLUMN gets no shell: the grid is built from the columns that HAVE rows,
+ * so one populated column is one full-width panel. That REPLACES the previous
+ * answer, which gave the empty column a stretched shell with a dotted field and
+ * a sentence inside it. Seen on a real landed chapter — everything merged,
+ * nothing in flight — it was still half the screen spent on the absence of
+ * something, beside the half that had the content. Half a screen of styled
+ * nothing is not more honest than no panel, it is only bigger.
+ * `align-items: stretch` stays: with one column it changes nothing, with two it
+ * is what keeps them level.
+ *
+ * BOTH empty is the one case that still has words, and they are the whole state
+ * of the view rather than a hole in a layout — so they are centred in the PAGE,
+ * with no heading, no count and no column shell. The three note cards stay in
+ * every case, this one included: they state the rule the board enforces, which
+ * is true whether or not a tree exists.
+ *
+ * Read-only, absolutely: a row is a button, and what it opens is THIS view's own
+ * full-width diff page — not the card Dossier. That was the bug: clicking a tree
+ * landed the reader in a 900px drawer about the CARD, with the diff crammed into
+ * a pane inside it. The selection is one `useState` here; when it is set, the
+ * index is replaced (an early return), and `onBack` clears it. There is no
+ * router, no history entry and no modal. `onOpen` is gone from the props
+ * deliberately: the drawer is not reachable from this view at all, so it cannot
+ * come back by accident.
+ *
+ * `LIST_CAP` deliberately does NOT apply — this is a full-height view like the
+ * Board, not a pane inside a grid, so the columns grow and the page scrolls. */
+import { useState } from "react";
 import { PaneButton } from "../components/monitor/Pane";
 import {
   TREE_DIR,
+  type ThreadProps,
   type Tone,
   type WorktreeRow,
   type WorktreesProps,
 } from "../components/monitor/panels";
+/* The second surface, in its own file. Re-exported here because this page is
+ * what renders it and the smoke harness reaches for it through this module. */
+import { WorktreeDiff } from "./WorktreeDiff";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
 import { ownerOf, shortActor } from "../format";
-import { Ext, compareUrl, hasRepo } from "../links";
-import type { BoardRow } from "../types";
+import { Ext, compareUrl } from "../links";
+import type { BoardGroups, BoardRow, GroupName, Milestone } from "../types";
 
 export type { WorktreesProps };
+export { WorktreeDiff };
 
-/** WHO carries a tree, from the row the table already has.
+/** WHO carries a tree, from the row the index already has.
  *
  *  `holder` first, then `assignee`, and that order is the fact itself: `holder`
  *  is the LIVE lease — the process that has the directory open right now —
@@ -67,13 +120,50 @@ function owner(row: BoardRow): { dev: string | null; worker: string | null } {
   };
 }
 
-function tree(row: BoardRow, status: string, tone: Tone): WorktreeRow {
+/** The chapter a row belongs to, RESOLVED — id from the row, words AND BRANCH
+ *  from the payload's own `milestones` list, joined here and nowhere else.
+ *
+ *  Two ways to get nothing, and neither one prints the id: a board one version
+ *  behind sends no `milestone` on the row at all, and a chapter that has aged
+ *  past `milestones`' cap is an id this payload cannot name. `ms-9f21` on screen
+ *  is not information, it is the join failing out loud.
+ *
+ *  The BRANCH comes from here for the same reason the title does, and that is
+ *  the whole fix of tk-6e7003: it is a fact about the CARD's chapter, so it is
+ *  resolved once, where the row is built, against the same list, at the same
+ *  time — not looked up in a renderer and not threaded down from whatever the
+ *  header has in focus. With "All milestones" selected the focused branch is
+ *  `""` and every diff on this screen asked the door for `compare("", tk-x)`,
+ *  which cannot be answered. Order of truth, and there are only two steps: the
+ *  row's OWN chapter branch, else no base at all. */
+function chapter(row: BoardRow, chapters: Map<string, Milestone>): WorktreeRow["milestone"] {
+  const id = row.milestone ?? "";
+  const ms = id ? chapters.get(id) : undefined;
+  return ms?.title ? { id, title: ms.title, branch: ms.branch ?? "" } : null;
+}
+
+/** The base a tree is compared against: its OWN chapter's integration branch,
+ *  or nothing. Never another chapter's — that would render one chapter's work
+ *  as another's diff, which is worse than the empty state it would replace. */
+function baseOf(w: WorktreeRow): string {
+  return w.milestone?.branch ?? "";
+}
+
+function treeRow(
+  row: BoardRow,
+  status: string,
+  tone: Tone,
+  chapters: Map<string, Milestone>,
+): WorktreeRow {
   return {
     id: row.id,
     title: row.title,
+    milestone: chapter(row, chapters),
     ...owner(row),
     // Construction, not a fetch: `gitwork/trees.py` pins every card's worktree
-    // to `.taskops/trees/<id>` for life. There is no directory on the wire.
+    // to `.taskops/trees/<id>` for life. There is no directory on the wire, and
+    // no row draws it any more — it is kept because it is the tree's identity
+    // on disk and `WorktreeDiffProps.row` is this same shape.
     dir: TREE_DIR + row.id,
     // No source on the row — see the field's own note in panels.ts.
     commits: null,
@@ -82,26 +172,84 @@ function tree(row: BoardRow, status: string, tone: Tone): WorktreeRow {
   };
 }
 
-export function rows(groups: WorktreesProps["groups"]): WorktreeRow[] {
-  return [
-    ...groups.merge.map((r) => tree(r, "done, not merged", "warn")),
-    // `review` and `changes` are not in the five states Nova's pill draws, and
-    // they are not dropped either: a handed-in card still inhabits its worktree
-    // and its branch still exists, so it is IN PROGRESS on this table — that is
-    // the fact this view reports. The Board page is where their three review
-    // sub-states are told apart; here they are one directory on disk.
-    ...groups.review.map((r) => tree(r, "in progress", "accent")),
-    ...groups.changes.map((r) => tree(r, "in progress", "accent")),
-    ...groups.stalled.map((r) => tree(r, "in progress · stalled", "danger")),
-    ...groups.take.map((r) => tree(r, "ready", "neutral")),
-    ...groups.doing.map((r) => tree(r, "in progress", "accent")),
-    ...groups.reviewing.map((r) => tree(r, "in progress", "accent")),
-    ...groups.blocked.map((r) => tree(r, "blocked", "danger")),
+/** The pill each group wears — the tone table above, as code, ONCE.
+ *
+ *  `review` and `changes` are not among the five states Nova's pill draws, and
+ *  they are not dropped either: a handed-in card still inhabits its worktree and
+ *  its branch still exists, so it is IN PROGRESS here — that is the fact this
+ *  view reports. The Board page is where their three review sub-states are told
+ *  apart; here they are one directory on disk. `mentions` is the one group with
+ *  no entry: it is not a card row. */
+const PILL: Record<Exclude<GroupName, "mentions">, readonly [string, Tone]> = {
+  merge: ["done, not merged", "warn"],
+  review: ["in progress", "accent"],
+  changes: ["in progress", "accent"],
+  stalled: ["in progress · stalled", "danger"],
+  take: ["ready", "neutral"],
+  doing: ["in progress", "accent"],
+  reviewing: ["in progress", "accent"],
+  blocked: ["blocked", "danger"],
+  done: ["merged", "ok"],
+};
+
+type Block = { title: string; groups: readonly (keyof typeof PILL)[] };
+
+/** The ONE sentence left, for the ONE state that is nothing but words: no tree
+ *  exists at all, in either column.
+ *
+ *  There is no per-column variant any more. A per-column sentence was the text
+ *  INSIDE a shell that is no longer drawn, and it answered a question nobody has
+ *  when the other column is full of rows — the populated column already says
+ *  what the chapter is doing. This one is not about a column: it is the state of
+ *  the view, so it is not offered a call to fill it either. */
+const NOTHING =
+  "No card is open on this chapter, so no worktree is pinned to one. A directory appears here the moment a card exists, and it keeps it.";
+
+/** The two columns and their sub-blocks. Every group list is in `GROUP_ORDER`,
+ *  so the rows inside a block arrive in the order the board builds them. */
+const COLUMNS: readonly { title: string; blocks: readonly Block[] }[] = [
+  {
+    title: "In progress",
+    blocks: [
+      { title: "working", groups: ["review", "changes", "stalled", "doing", "reviewing"] },
+      { title: "waiting", groups: ["take", "blocked"] },
+    ],
+  },
+  {
+    title: "Merged",
+    blocks: [
+      { title: "done, not merged", groups: ["merge"] },
+      { title: "merged", groups: ["done"] },
+    ],
+  },
+];
+
+function fold(
+  groups: BoardGroups,
+  block: Block,
+  chapters: Map<string, Milestone>,
+): WorktreeRow[] {
+  return block.groups.flatMap((name) => {
+    const [status, tone] = PILL[name];
     // `?? []`: the `done` group postdates the other nine (types.ts), so a board
-    // older than a1d1005 sends no such key and this table simply has no merged
-    // rows to draw — which is the truth about what that payload can say.
-    ...(groups.done ?? []).map((r) => tree(r, "merged", "ok")),
-  ];
+    // older than a1d1005 sends no such key and that block simply has no rows to
+    // draw — which is the truth about what that payload can say.
+    return (groups[name] ?? []).map((r) => treeRow(r, status, tone, chapters));
+  });
+}
+
+/** `milestones` is OPTIONAL and defaults to none: a caller that has not been
+ *  taught to pass the chapters gets exactly the index it got before, with every
+ *  row's chapter `null`.
+ *
+ *  Exported flat, every tree in one array, because that is what a caller asking
+ *  "which trees exist" wants; the screen asks the same question per block. */
+export function rows(
+  groups: WorktreesProps["groups"],
+  milestones: readonly Milestone[] = [],
+): WorktreeRow[] {
+  const chapters = new Map(milestones.map((m) => [m.id, m]));
+  return COLUMNS.flatMap((c) => c.blocks.flatMap((b) => fold(groups, b, chapters)));
 }
 
 /** The three note cards — the design's `treeNotes`.
@@ -127,44 +275,6 @@ const NOTES: readonly { title: string; body: string }[] = [
 
 /* ── the design's own geometry, transcribed ───────────────────────────────── */
 
-const GRID = "130px minmax(0,1fr) 240px 92px 124px";
-
-/* WHO carries the tree is folded INTO the Card cell — a mono line under the
- * title — and is NOT a sixth column. The five widths above are Nova's, drawn;
- * the table already spends its ONE elastic track on the title, so a real column
- * would have to take its width from that track (`minmax(0,1fr)` is what makes
- * the long titles legible) and every other cell is a fixed pixel width the
- * design chose.
- *
- * The mono second line is the design's OWN vocabulary for exactly this pair:
- * Live leases prints `<card-id> → <actor>` as an 11px mono line under its title
- * (`components/monitor/LiveLeases.tsx`), so a reader who has seen the Monitor
- * has already learnt to read this line. Here the id is redundant — it is the
- * Branch column, one cell to the left — so the line carries the two halves of
- * the answer instead: `dev:berna · e4`.
- *
- * And it has to compose with tk-3939c9's SIXTH column, which is real and
- * conditional: `LINK_COL` is appended to `GRID` only when the board carries a
- * slug. A second conditional column would make the grid string a four-way
- * product of two unrelated switches, and the compare anchor is laid out
- * ABSOLUTELY against the row's right edge — a column that only sometimes sits
- * between the pill and that anchor would move a link that is positioned in
- * pixels. Folding leaves that geometry untouched: the grid is the same string,
- * with or without ownership. */
-
-/* The compare column, added ONLY when the board carries a slug.
- *
- * A row is a `<button>` — it opens the dossier — and an `<a>` inside a
- * `<button>` is invalid HTML and unreachable by keyboard, so the link cannot
- * simply be dropped into the Status cell. It is a RESERVED sixth column in the
- * grid (header and row alike, so the five columns stay aligned to the pixel)
- * with the anchor laid over it, absolutely, from the row's own wrapper.
- *
- * With no slug the column does not exist: `linked` is false, both templates are
- * `GRID` verbatim, no wrapper cell is emitted and the table is byte-for-byte
- * what it was. That is the chapter's third rule as a layout. */
-const LINK_COL = "46px";
-
 const page: React.CSSProperties = {
   height: "100%",
   overflowY: "auto",
@@ -178,35 +288,68 @@ const head: React.CSSProperties = {
   marginBottom: "14px",
 };
 
+/** The column SHELL — only ever drawn around rows now, never around an absence.
+ *
+ *  `display: flex` + `column` stays: a shell stretched to the taller sibling's
+ *  height still has to lay its head, its sub-blocks and its rows out down that
+ *  height rather than assuming it is exactly as tall as they are. */
 const shell: React.CSSProperties = {
   borderRadius: "16px",
   background: "var(--pane)",
   border: "1px solid var(--hair)",
   overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
 };
 
-const headerRow: React.CSSProperties = {
+/** 50/50 as drawn — but `auto-fit` with a 360px floor, so the pair collapses to
+ *  ONE column on a narrow window instead of squeezing two unreadable ones. The
+ *  same declaration is what makes a SINGLE surviving column full width: with one
+ *  item there is one track, and `1fr` is the whole row.
+ *
+ *  `stretch`, NOT `start`. With one column it decides nothing; with two it is
+ *  what keeps them level. It used to say `start`, and two panels of wildly
+ *  different height read as a render that failed. */
+const split: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: GRID,
+  gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
   gap: "16px",
-  padding: "13px 20px",
-  fontSize: "11.5px",
+  alignItems: "stretch",
+};
+
+/** The both-empty state: the sentence, centred in the PAGE. No panel, no dashed
+ *  field, no heading and no count — there is no column for it to be the inside
+ *  of. It is given room above the notes and nothing else. */
+const nothing: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  textAlign: "center",
+  padding: "70px 22px",
+  maxWidth: "34em",
+  margin: "0 auto",
+  fontSize: "13px",
   color: "var(--text-3)",
-  borderBottom: "1px solid var(--hair)",
+  lineHeight: 1.7,
 };
 
-/** The row itself. `PaneButton` already owns the hover, the `all: unset` reset
- *  and the hairline; the grid is this table's, so it rides in as `style`. The
- *  design's separator is a border-BOTTOM and PaneButton draws a border-top, so
- *  the two are swapped here — same hairline between the same rows, and the
- *  header's own bottom border stands in for the first one. */
-const rowGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: GRID,
-  gap: "16px",
-  alignItems: "center",
-  borderTop: "none",
-  borderBottom: "1px solid var(--hair)",
+const columnHead: React.CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
+  gap: "12px",
+  padding: "14px 20px",
+  fontSize: "11.5px",
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: "var(--text-3)",
+};
+
+const blockHead: React.CSSProperties = {
+  padding: "9px 20px",
+  borderTop: "1px solid var(--hair)",
+  background: "var(--pane-2)",
+  fontSize: "11px",
+  color: "var(--text-3)",
 };
 
 const clip: React.CSSProperties = {
@@ -222,15 +365,224 @@ const notes: React.CSSProperties = {
   gap: "12px",
 };
 
+/** One tree: the four facts, and one action.
+ *
+ *  The whole tile is a `<button>` that selects the tree. The compare anchor is
+ *  its SIBLING and not its child — an `<a>` inside a `<button>` is invalid HTML
+ *  and unreachable by keyboard — and it sits in the row's own flex layout, so a
+ *  board with no slug simply has one fewer flex item and nothing shifts. */
+function Row({
+  w,
+  repo,
+  onOpen,
+}: {
+  w: WorktreeRow;
+  repo: WorktreesProps["repo"];
+  onOpen: (id: string) => void;
+}): React.JSX.Element {
+  // The row's branch IS its card id (`WorktreeRow`); the base is THIS row's own
+  // chapter branch (`baseOf`), never the chapter in focus, and when it cannot be
+  // resolved the forge falls back to its own default branch. No slug → `null` →
+  // no anchor at all, which is the chapter's rule: a dead link is worse than
+  // none.
+  const base = baseOf(w);
+  const diff = compareUrl(repo, w.id, base);
+  return (
+    <div style={{ display: "flex", alignItems: "stretch" }}>
+      <PaneButton
+        cardId={w.id}
+        onOpen={onOpen}
+        testId="worktree-row"
+        pad="13px 20px"
+        style={{ flex: "1 1 auto", minWidth: 0, width: "auto" }}
+      >
+        <span
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: "10px",
+          }}
+        >
+          <span className="mono" style={{ fontSize: "12px", color: "var(--accent)" }}>
+            {w.id}
+          </span>
+          <span
+            data-status={w.status}
+            style={{
+              fontSize: "10.5px",
+              padding: "3px 10px",
+              borderRadius: "20px",
+              background: TONE_BG[w.tone],
+              color: TONE_FG[w.tone],
+              whiteSpace: "nowrap",
+            }}
+          >
+            {w.status}
+          </span>
+        </span>
+        <span
+          style={{
+            ...clip,
+            display: "block",
+            marginTop: "6px",
+            fontSize: "14px",
+            fontWeight: 450,
+            letterSpacing: "-0.025em",
+          }}
+        >
+          {w.title}
+        </span>
+        {/* The dev is the sentence's subject and the worker its qualifier, so
+            they are drawn in that weight: the person in `--text-2`, the process
+            a shade back in `--text-3`. Same line, two colours — distinguishable
+            without a column and without a label nobody needs twice per row. */}
+        <span
+          className="mono"
+          data-testid="worktree-owner"
+          style={{
+            ...clip,
+            display: "block",
+            fontSize: "11px",
+            marginTop: "5px",
+            color: w.dev ? "var(--text-2)" : "var(--text-3)",
+          }}
+        >
+          {w.dev ?? "nobody — free to take"}
+          {w.worker ? <span style={{ color: "var(--text-3)" }}>{` · ${w.worker}`}</span> : null}
+        </span>
+        {/* The chapter, or NOTHING. An unresolvable id is not drawn at all
+            (`chapter()`), so this line is absent rather than showing `ms-9f21`. */}
+        {w.milestone ? (
+          <span
+            data-testid="worktree-chapter"
+            style={{
+              ...clip,
+              display: "block",
+              fontSize: "11.5px",
+              marginTop: "4px",
+              color: "var(--text-3)",
+            }}
+          >
+            {`⌗ ${w.milestone.title}`}
+          </span>
+        ) : null}
+      </PaneButton>
+      {diff ? (
+        <Ext
+          href={diff}
+          title={`${base || "the trunk"}...${w.id}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "0 18px",
+            borderTop: "1px solid var(--hair)",
+            color: "var(--accent)",
+            fontSize: "12px",
+          }}
+        >
+          <span data-testid="worktree-compare">↗</span>
+        </Ext>
+      ) : null}
+    </div>
+  );
+}
+
+function Column({
+  title,
+  blocks,
+  repo,
+  onOpen,
+}: {
+  title: string;
+  blocks: readonly { title: string; rows: WorktreeRow[] }[];
+  repo: WorktreesProps["repo"];
+  onOpen: (id: string) => void;
+}): React.JSX.Element {
+  // Never zero: the caller only builds a Column for a column that has rows.
+  const total = blocks.reduce((n, b) => n + b.rows.length, 0);
+  return (
+    <section style={shell} data-testid="worktree-column" data-column={title}>
+      <div style={columnHead}>
+        <span>{title}</span>
+        <span>{total === 1 ? "1 tree" : `${total} trees`}</span>
+      </div>
+      {blocks
+        .filter((b) => b.rows.length > 0)
+        .map((b) => (
+          <div key={b.title}>
+            <div style={blockHead} data-testid="worktree-block">
+              {b.title}
+            </div>
+            {b.rows.map((w) => (
+              <Row key={w.id} w={w} repo={repo} onOpen={onOpen} />
+            ))}
+          </div>
+        ))}
+    </section>
+  );
+}
+
+/** The selection, optionally CONTROLLED — and the card behind it.
+ *
+ *  It used to be one `useState` in this file, on the reasoning that nothing
+ *  outside the page could act on it. Something can: the tab bar. Selecting
+ *  "Worktrees" while a tree is open has to return to the index, and that event
+ *  happens in `App.tsx`, so the state belongs there (`App.tsx::selectTab`).
+ *
+ *  Both props are OPTIONAL and the internal state remains the fallback, so a
+ *  caller that knows nothing about them — the smoke harness renders this page
+ *  with `groups` alone — gets exactly the page it had. `ThreadProps` rides
+ *  through untouched, straight to `WorktreeDiff`. */
+type Controlled = ThreadProps & {
+  openTree?: string | null;
+  onOpenTree?: (id: string | null) => void;
+};
+
 export function Worktrees({
   groups,
-  onOpen,
+  milestones = [],
   repo,
-  milestoneBranch = "",
-}: WorktreesProps): React.JSX.Element {
-  const list = rows(groups);
-  const linked = hasRepo(repo);
-  const columns = linked ? `${GRID} ${LINK_COL}` : GRID;
+  reader,
+  openTree,
+  onOpenTree,
+  ...thread
+}: WorktreesProps & Controlled): React.JSX.Element {
+  const [own, setOwn] = useState<string | null>(null);
+  const selected = onOpenTree ? (openTree ?? null) : own;
+  const select = onOpenTree ?? setOwn;
+  const chapters = new Map(milestones.map((m) => [m.id, m]));
+  /* THE GRID IS BUILT FROM WHAT HAS ROWS. Each column is folded first and the
+   * empty ones are dropped here, before anything is drawn — which is what makes
+   * a single surviving column full width (`split`) and the both-empty case a
+   * sentence rather than two shells of nothing. */
+  const drawn = COLUMNS.map((c) => ({
+    title: c.title,
+    blocks: c.blocks.map((b) => ({ title: b.title, rows: fold(groups, b, chapters) })),
+  })).filter((c) => c.blocks.some((b) => b.rows.length > 0));
+
+  /* The early return: when a tree is selected the index is REPLACED, full
+   * width. Not a modal over it, not a drawer beside it.
+   *
+   * A selection whose row is gone — the board polled and the card merged out of
+   * the groups this page folds — falls through to the index instead of drawing a
+   * page about nothing. The reader is where they would have landed by pressing
+   * back, which is the honest resolution of a row that no longer exists. */
+  const open = selected ? (rows(groups, milestones).find((w) => w.id === selected) ?? null) : null;
+  if (open) {
+    return (
+      <WorktreeDiff
+        row={open}
+        // THE CARD'S OWN CHAPTER, not the one in focus. `open` came out of
+        // `rows()`, which already resolved it against `milestones`.
+        base={baseOf(open)}
+        repo={repo}
+        reader={reader}
+        onBack={() => select(null)}
+        {...thread}
+      />
+    );
+  }
   return (
     <div style={page} data-testid="worktrees">
       <div style={head}>
@@ -242,135 +594,23 @@ export function Worktrees({
         </span>
       </div>
 
-      <div style={shell}>
-        <div style={{ ...headerRow, gridTemplateColumns: columns }}>
-          <div>Branch</div>
-          <div>Card</div>
-          <div>Directory</div>
-          <div style={{ textAlign: "right" }}>Commits</div>
-          <div style={{ textAlign: "right" }}>Status</div>
-          {linked ? <div /> : null}
+      {drawn.length === 0 ? (
+        <div style={nothing} data-testid="worktrees-none">
+          <span>{NOTHING}</span>
         </div>
-        {list.length === 0 ? (
-          <div
-            data-testid="worktrees-empty"
-            style={{
-              padding: "22px 20px 26px",
-              fontSize: "12.5px",
-              color: "var(--text-3)",
-              lineHeight: 1.6,
-            }}
-          >
-            No card is open on this chapter, so no worktree is pinned to one. A
-            directory appears here the moment a card exists, and it keeps it.
-          </div>
-        ) : (
-          list.map((w) => {
-            // The row's branch IS its card id (`WorktreeRow`); the base is the
-            // chapter's integration branch, and with no chapter in focus the
-            // forge falls back to its own default branch.
-            const diff = compareUrl(repo, w.id, milestoneBranch);
-            return (
-          <div key={w.id} style={{ position: "relative" }}>
-            <PaneButton
-              cardId={w.id}
-              onOpen={onOpen}
-              testId="worktree-row"
-              pad="14px 20px"
-              style={{ ...rowGrid, gridTemplateColumns: columns }}
-            >
-              <span className="mono" style={{ fontSize: "12px", color: "var(--accent)" }}>
-                {w.id}
-              </span>
-              <span style={{ minWidth: 0, display: "block" }}>
-                <span
-                  style={{
-                    ...clip,
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: 450,
-                    letterSpacing: "-0.025em",
-                  }}
-                >
-                  {w.title}
-                </span>
-                {/* The dev is the sentence's subject and the worker its
-                    qualifier, so they are drawn in that weight: the person in
-                    `--text-2`, the process a shade back in `--text-3`. Same
-                    line, two colours — distinguishable without a second column
-                    and without a label nobody needs twice per row. */}
-                <span
-                  className="mono"
-                  data-testid="worktree-owner"
-                  style={{
-                    ...clip,
-                    display: "block",
-                    fontSize: "11px",
-                    marginTop: "4px",
-                    color: w.dev ? "var(--text-2)" : "var(--text-3)",
-                  }}
-                >
-                  {w.dev ?? "nobody — free to take"}
-                  {w.worker ? (
-                    <span style={{ color: "var(--text-3)" }}>{` · ${w.worker}`}</span>
-                  ) : null}
-                </span>
-              </span>
-              <span
-                className="mono"
-                style={{ ...clip, fontSize: "11px", color: "var(--text-3)" }}
-              >
-                {w.dir}
-              </span>
-              {/* No payload behind this column — it renders the em dash, never a
-                  number nobody sent. */}
-              <span
-                className="mono num"
-                data-testid="worktree-commits"
-                style={{ fontSize: "13px", textAlign: "right", color: "var(--text-3)" }}
-              >
-                {w.commits ?? "—"}
-              </span>
-              <span style={{ textAlign: "right" }}>
-                <span
-                  data-status={w.status}
-                  style={{
-                    fontSize: "10.5px",
-                    padding: "3px 10px",
-                    borderRadius: "20px",
-                    background: TONE_BG[w.tone],
-                    color: TONE_FG[w.tone],
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {w.status}
-                </span>
-              </span>
-              {linked ? <span /> : null}
-            </PaneButton>
-            {diff ? (
-              <Ext
-                href={diff}
-                title={`${milestoneBranch || "the trunk"}...${w.id}`}
-                style={{
-                  position: "absolute",
-                  right: "20px",
-                  top: 0,
-                  bottom: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  color: "var(--accent)",
-                  fontSize: "12px",
-                }}
-              >
-                <span data-testid="worktree-compare">↗</span>
-              </Ext>
-            ) : null}
-          </div>
-            );
-          })
-        )}
-      </div>
+      ) : (
+        <div style={split}>
+          {drawn.map((c) => (
+            <Column
+              key={c.title}
+              title={c.title}
+              blocks={c.blocks}
+              repo={repo}
+              onOpen={select}
+            />
+          ))}
+        </div>
+      )}
 
       <div style={notes}>
         {NOTES.map((n) => (

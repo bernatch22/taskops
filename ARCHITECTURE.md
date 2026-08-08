@@ -623,9 +623,32 @@ files that answer it:
   (`components/monitor/Pane.tsx`) landed FIRST, with every panel's props
   declared as an interface in `components/monitor/panels.ts` — the seam
   serialized ahead of the fan-out, which is `docs/fan-out.md`'s own prescription
-  applied to the milestone that produced it. Nova draws **eight** `<section>`
-  panes in six layout slots (three stacked blocks left, three panes right), and
-  all eight are filled, one card per panel — the Event stream last, which drew
+  applied to the milestone that produced it. Nova drew **eight** `<section>`
+  panes in six layout slots (three stacked blocks left, three panes right); the
+  **ninth is Swarm** (`components/monitor/Swarm.tsx`), who is attached to what
+  right now — the team's `dev:` at the centre, a circle per actor and per card
+  on one ring, an edge per LEASE (work and review are two mutexes, so a card
+  under review has two edges and the verifier is its own kind), a faint edge for
+  a stalled assignment, and a dashed one between two cards that DECLARED a path
+  in common. **A lease edge starts at the AGENT, never at its dev**: the pane
+  once drew `s14 — dev:berna — tk-13d115`, the lease line crossing the centre,
+  which is the one attachment the server makes impossible (`verbs/__init__.py`
+  refuses `take` to a `dev:`). A dev reaches a card only through its agents, so
+  the diagram carries a second KIND of edge — `owns`, dev → agent, derived from
+  the name alone (`format.ts::ownerOf`, the relation `http/auth.py::authorize`
+  enforces on the wire), drawn `--hair-2` and thinner and left out of the header
+  count, because a standing fact about a name is not work in flight. An agent
+  whose dev is not on `team` stands alone; no orchestrator is invented for it.
+  The DRAWING is the mockup's SVG transcribed number for number — a 600×400
+  viewBox rendered 440 tall, guide rings at r=100 and r=130 with the nodes on
+  the outer one, r=26 discs with a halo RING at r=34, two texts per node (the
+  glyphs inside, the sub-label at `dy=46`) and a 28px grid as a CSS background
+  on the wrapper rather than an SVG `<pattern>`; every one of those numbers
+  turns a smoke assertion red on its own. Its placement is `topology()`, a pure function deterministic by
+  index — `Math.random()` and a force simulation are both absent on purpose,
+  because an animation loop is what no headless harness can assert. It reads
+  only slices the board already sends: no verb, no payload key, no second fetch.
+  All nine are filled, one card per panel — the Event stream among them, which drew
   an honest empty state for a chapter because nothing returned the log ("layout
   first, data second"), and is now fed by the `events` verb. That pane is the
   ONE place the dashboard fetches outside `useBoard`, and deliberately so: the
@@ -634,10 +657,67 @@ files that answer it:
   (`EventStreamPane` beside the pure `EventStream`, `ui/src/useEvents.ts`). It
   opens no second socket — the board payload's identity is its change signal,
   so a frame on the one feed resets it to page one.
+  **Chapter in focus** carries the pane-level version of the same "an honest
+  empty state, never an apology" rule (`components/monitor/Chapter.tsx`):
+  `verbs/_facts.py::in_scope` returns `None` for SEVERAL open chapters as well
+  as for none — it refuses to guess between them, and that refusal stays — but
+  the pane used to read the refusal as a fault and drew a paragraph telling the
+  reader to land or drop one, saying nothing about either. It now LISTS every
+  open chapter, one foldable row each (a real `<button>` with `aria-expanded`),
+  the first expanded, the body identical to the single-chapter pane's because it
+  IS that component. An accordion and not tabs: choosing a chapter is the header
+  picker's job, and a second control that selected would be a second source of
+  one fact with the unchosen entry hidden. Each row's `focus` therefore calls the
+  picker's OWN setter (`App.tsx::setMilestone`, threaded down) — a door, not a
+  copy. Landed chapters are not listed; per-chapter counts are folded from
+  `board.groups` and are drawn nowhere if no row names a chapter.
 * **Board** — the nine groups of `docs/design.md` §4, as the board reports them.
-* **Worktrees** — the branch-per-card table (`ui/src/pages/Worktrees.tsx`): one
-  row per inhabited directory, which is idea 2 made visible.
-* **the card dossier drawer**, opening over any tab through `App`'s
+* **Worktrees** — an INDEX OF PULL REQUESTS (`ui/src/pages/Worktrees.tsx`): one
+  tile per inhabited directory, which is idea 2 made visible, in two 50/50
+  columns — *In progress* and *Merged* — each split into two sub-blocks, and a
+  row carries the four facts you choose one by (branch, title, who carries it,
+  which chapter). It was a five-column table whose commit cell had no source;
+  that cell and its `worktree-commits` marker are gone. A tree is a pull
+  request, so a row opens THIS view's own full-width diff surface
+  (`WorktreeDiff`, its props declared in `components/monitor/panels.ts` as
+  `WorktreeDiffProps`) and never the card drawer: the index is replaced, not
+  floated over. The selection lives in `App.tsx`, next to the tab — it started
+  as one `useState` in the page and had to move, because the thing that must
+  clear it is the tab bar (`App.tsx::onTab`, pure and tested: selecting a tab,
+  including the one already active, returns to the index). `Worktrees` takes it
+  as an OPTIONAL controlled pair, so a caller that passes neither still gets the
+  page it had. **A column with nothing in it is not drawn at all**: the grid is
+  built from the columns that HAVE rows, so a chapter with nothing merged yet is
+  ONE full-width panel rather than a tall column beside a stub, and both columns
+  empty is one sentence centred in the page with no shell, no heading and no
+  count. That reverses the first answer — an equal-height shell with a dotted
+  empty field and its own sentence inside — which on a landed chapter was still
+  half a screen spent on an absence; half a screen of styled nothing is not more
+  honest than no panel, only bigger. `align-items: stretch` stays, because with
+  two columns it is what keeps them level. The three note cards are drawn in
+  every state, both-empty included: they state the rule the board enforces,
+  which is true whether or not a tree exists. **The compare BASE belongs to the
+  row's chapter, never to the one in focus**: it is resolved in `rows()` out of
+  the same `board.milestones` list the title comes from and rides on
+  `WorktreeRow.milestone.branch`. It was `board.milestone?.branch` threaded down
+  as one prop, and with the header on "All milestones" that is `""`
+  (`verbs/_facts.py::in_scope` returns `None` for zero or several rather than
+  guessing), so every tree on the screen asked the door for `compare("", tk-x)`
+  and got the cascade's last step — "this host could not read that diff". A card
+  belongs to a chapter regardless of who is looking at it. There are only two
+  steps and no fallback: the row's own chapter branch, else NO base (the
+  forge's own default branch, the local door asked nothing) — substituting
+  another chapter's branch would draw one chapter's work as another's diff. The
+  diff page itself reads side by side (§16) and carries **the card's own
+  thread** — there is no
+  worktree comment and there must never be one, because a worktree has no
+  identity apart from its card and a second thread would be two places to say
+  one thing. `WorktreeDiffProps` and `ThreadProps` both live in
+  `components/monitor/panels.ts`: `ThreadProps` spent one wave declared inside
+  `WorktreeDiff.tsx` because the seam was held by another card, and came back at
+  the chapter close. The seam is where a props contract lives; a page-local copy
+  is a wave-length exception with a date on it, never the resting place.
+* **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
   (`MENTIONS.md` §9c). The header's milestone picker scopes every tab at once.
@@ -688,8 +768,9 @@ local-vs-remote mode.** With no origin: nothing pushes, no link renders, and
 nothing degrades — a board without a remote behaves byte-for-byte like the
 taskops that predates this chapter, with no dead anchors and no column reserved
 for one. That case is pinned headlessly (`ui/smoke/main.tsx` §7: *not one anchor
-is rendered*, and the Worktrees grid keeps its five columns) because it is the
-default, not the exception: this repo's own board records no origin.
+is rendered*, and the Worktrees index still draws both its columns and every row
+in them) because it is the default, not the exception: this repo's own board
+records no origin.
 
 The rules this chapter was held to are the milestone's own: LOCAL == REMOTE BY
 CONSTRUCTION (a git fact enters the board only as an EVENT written by the side
@@ -740,6 +821,37 @@ another ref". All four steps are drawn from the door's own payload in
 `ui/smoke/main.tsx` §8; what no headless harness reaches is `useGitDiff`'s
 effect firing, and that half is covered against a real server in
 `tests/test_topology.py`.
+
+**The same cascade now feeds a SECOND surface** (the worktrees-as-pull-requests
+chapter): `pages/WorktreeDiff.tsx`, the full-width page a Worktrees row opens,
+hands its whole range `<milestone branch>...tk-<id>` to the very same
+`FilesChanged` — plus a summary bar, which is a prop on it and not a second ask.
+Nothing else moved to do that: **no verb, no stored key, no change to the door**,
+and no component fetches a patch outside `cascade()`. The one seam this cost is
+`FileList` exported beside `FilesChanged` — the pure half, given a step — for
+exactly the reason `Dossier` is exported beside `Drawer`: the asking half is a
+`useEffect`, and `react-dom/server` fires none, so the drawn list would otherwise
+have no headless test at all.
+
+**And that surface reads like a page, not like a pane in a drawer.** Three
+things, none of which stores anything or adds a verb. (1) The pane's
+measurements are a PROP with two named values — `PatchSize = "drawer" | "page"`,
+defaulted to `drawer`, so the dossier's pane is byte-for-byte what it was
+(11.5px, 360px cap) while the page gets a page's typography and a cap on the
+*viewport*. (2) Side by side: `components/card/split.ts` folds a unified patch
+into `Hunk[]` of aligned rows with a line number per side, reading exactly the
+prefixes `Patch.tsx::tone` reads and pairing a run of `-` with the run of `+`
+after it POSITIONALLY. Anything it cannot parse returns `[]` and the component
+draws the unified view it already had — an empty two-column table reads as "no
+changes" and means "I did not understand", so that fallback is the whole safety
+of the feature. The toggle is on the page, defaults to split, and remembers
+nothing. (3) The card's OWN thread is on the page: the same `Thread` and the
+same `CommentBox`, fed the dossier `App` already opened when it opened the tree,
+writing through the same `update comment=`. There is **no worktree comment and
+there must never be one** — a worktree has no identity apart from its card
+(`gitwork/trees.py` pins `tk-<id>` as branch, directory and id at once), and a
+second thread would be two places to say one thing. `ui/smoke/main.tsx` §9 pins
+all of it, `split()` against the door's own patch.
 
 What did NOT change: `events.jsonl` still stores references and measures and
 never content; the door DERIVES on demand and nothing it returns is written
