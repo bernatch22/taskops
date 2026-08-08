@@ -121,32 +121,24 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
   const who = row.holder ?? row.assignee;
   const style: React.CSSProperties = {
     ...tile,
-    /* Hover: `--accent`, not the `--accent-line` the design names — the one
-     * deliberate colour change in this tile, and it is a correction, not taste.
-     * `--accent-line` is `rgba(145,132,217,0.32)`; composited over the tile's
-     * own `--pane` (#191b28) that resolves to rgb(63,60,96) — a violet so
-     * desaturated it reads as a grey outline, which is what a hover is NOT
-     * supposed to say. The solid accent is the same hue at full strength, so
-     * the tile lifts toward the brand colour instead of toward grey. The glow
-     * is the design's own `box-shadow: 0 0 0 3px var(--accent-soft)`, borrowed
-     * from the dots it uses to mark a live thing. */
+    /* THE HOVER DOES NOT TOUCH THE BORDER. Asked for three times, and the first
+     * two answers were both wrong because I kept hearing "make it a different
+     * colour" instead of "stop changing it": Nova's `--accent-line` composites
+     * over `--pane` to rgb(63,60,96) and reads grey, and swapping it for solid
+     * `--accent` only made the change louder. A border that recolours under the
+     * cursor is the complaint, whatever colour it lands on.
+     *
+     * So the affordance is ELEVATION, which is what the design was already
+     * saying with the half of the hover I kept: the 2px rise, plus the glow
+     * borrowed from the dots Nova uses to mark a live thing. The tile lifts off
+     * the column; its edges stay exactly where they were. The marker bar is
+     * untouched by construction now — nothing repaints a border at all. */
     ...(lift
-      ? {
-          borderTopColor: "var(--accent)",
-          borderRightColor: "var(--accent)",
-          borderBottomColor: "var(--accent)",
-          boxShadow: "0 0 0 3px var(--accent-soft)",
-          transform: "translateY(-2px)",
-        }
+      ? { boxShadow: "0 0 0 3px var(--accent-soft)", transform: "translateY(-2px)" }
       : {}),
-    /* The fourth side belongs to the marker when there is one — Nova draws no
-     * stalled or to-merge edge, so that bar is ours and must survive a hover.
-     * With no marker the left side hovers like the other three. */
-    ...(marker
-      ? { borderLeftWidth: "3px", borderLeftColor: TONE_FG[marker] }
-      : lift
-        ? { borderLeftColor: "var(--accent)" }
-        : {}),
+    /* The marker owns the left side, always — hover or not, there is no longer
+     * anything competing for it. */
+    ...(marker ? { borderLeftWidth: "3px", borderLeftColor: TONE_FG[marker] } : {}),
     ...(ring ? focusRing : {}),
   };
 
