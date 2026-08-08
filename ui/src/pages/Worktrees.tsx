@@ -36,6 +36,7 @@ import {
   type WorktreesProps,
 } from "../components/monitor/panels";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
+import { Ext, compareUrl, hasRepo } from "../links";
 import type { BoardRow } from "../types";
 
 export type { WorktreesProps };
@@ -101,6 +102,19 @@ const NOTES: readonly { title: string; body: string }[] = [
 
 const GRID = "130px minmax(0,1fr) 240px 92px 124px";
 
+/* The compare column, added ONLY when the board carries a slug.
+ *
+ * A row is a `<button>` — it opens the dossier — and an `<a>` inside a
+ * `<button>` is invalid HTML and unreachable by keyboard, so the link cannot
+ * simply be dropped into the Status cell. It is a RESERVED sixth column in the
+ * grid (header and row alike, so the five columns stay aligned to the pixel)
+ * with the anchor laid over it, absolutely, from the row's own wrapper.
+ *
+ * With no slug the column does not exist: `linked` is false, both templates are
+ * `GRID` verbatim, no wrapper cell is emitted and the table is byte-for-byte
+ * what it was. That is the chapter's third rule as a layout. */
+const LINK_COL = "46px";
+
 const page: React.CSSProperties = {
   height: "100%",
   overflowY: "auto",
@@ -158,8 +172,15 @@ const notes: React.CSSProperties = {
   gap: "12px",
 };
 
-export function Worktrees({ groups, onOpen }: WorktreesProps): React.JSX.Element {
+export function Worktrees({
+  groups,
+  onOpen,
+  repo,
+  milestoneBranch = "",
+}: WorktreesProps): React.JSX.Element {
   const list = rows(groups);
+  const linked = hasRepo(repo);
+  const columns = linked ? `${GRID} ${LINK_COL}` : GRID;
   return (
     <div style={page} data-testid="worktrees">
       <div style={head}>
@@ -172,12 +193,13 @@ export function Worktrees({ groups, onOpen }: WorktreesProps): React.JSX.Element
       </div>
 
       <div style={shell}>
-        <div style={headerRow}>
+        <div style={{ ...headerRow, gridTemplateColumns: columns }}>
           <div>Branch</div>
           <div>Card</div>
           <div>Directory</div>
           <div style={{ textAlign: "right" }}>Commits</div>
           <div style={{ textAlign: "right" }}>Status</div>
+          {linked ? <div /> : null}
         </div>
         {list.length === 0 ? (
           <div
@@ -193,14 +215,19 @@ export function Worktrees({ groups, onOpen }: WorktreesProps): React.JSX.Element
             directory appears here the moment a card exists, and it keeps it.
           </div>
         ) : (
-          list.map((w) => (
+          list.map((w) => {
+            // The row's branch IS its card id (`WorktreeRow`); the base is the
+            // chapter's integration branch, and with no chapter in focus the
+            // forge falls back to its own default branch.
+            const diff = compareUrl(repo, w.id, milestoneBranch);
+            return (
+          <div key={w.id} style={{ position: "relative" }}>
             <PaneButton
-              key={w.id}
               cardId={w.id}
               onOpen={onOpen}
               testId="worktree-row"
               pad="14px 20px"
-              style={rowGrid}
+              style={{ ...rowGrid, gridTemplateColumns: columns }}
             >
               <span className="mono" style={{ fontSize: "12px", color: "var(--accent)" }}>
                 {w.id}
@@ -245,8 +272,29 @@ export function Worktrees({ groups, onOpen }: WorktreesProps): React.JSX.Element
                   {w.status}
                 </span>
               </span>
+              {linked ? <span /> : null}
             </PaneButton>
-          ))
+            {diff ? (
+              <Ext
+                href={diff}
+                title={`${milestoneBranch || "the trunk"}...${w.id}`}
+                style={{
+                  position: "absolute",
+                  right: "20px",
+                  top: 0,
+                  bottom: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  color: "var(--accent)",
+                  fontSize: "12px",
+                }}
+              >
+                <span data-testid="worktree-compare">↗</span>
+              </Ext>
+            ) : null}
+          </div>
+            );
+          })
         )}
       </div>
 

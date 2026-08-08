@@ -2,8 +2,8 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **76 Python files / ~7.400 lines under `src/taskops`**, plus the
-dashboard — **36 TypeScript files / ~6.400 lines under `ui/src`**, whose built
+~340 files) as **77 Python files / ~7.700 lines under `src/taskops`**, plus the
+dashboard — **38 TypeScript files / ~7.100 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -31,7 +31,7 @@ live (fan-out.md §10): the ordering rule is a sentence in
 until the human answers `criteria_met=true`.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**261 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
+**265 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
 strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
@@ -149,7 +149,7 @@ presence.
             hours mentions review
 2  store/   log cache live reviews creds stores       the ONLY SQL
 3  verbs/   plan take update card pulse assign         + the REGISTRY
-            record report review waiting project       no git, no render, no net
+            record report review waiting project events    no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees remote trailer bind install      the ONLY git (client-side)
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread
@@ -257,9 +257,11 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    DEFAULT tab — kept its SEAM (`components/monitor/panels.ts`, where every
    panel's props are a declared interface rather than a comment, the fix
    `docs/fan-out.md` prescribes), and its eight panes are filled, one card each.
-   Only the Event stream still draws an empty state, because there is no events
-   verb to feed it: the pane is built to its full shape and says so, which is
-   the milestone's rule rather than an omission. The smoke harness
+   The Event stream — the last pane still empty, because nothing returned the
+   log — is fed: `events` is a read verb and the pane pages it by keyset on
+   `seq` (`store/cache.py::page`), through the ONE fetch in this dashboard that
+   is not `useBoard`, with no second socket (`ui/src/useEvents.ts` says why the
+   rule is narrowed and not broken). The smoke harness
    (`ui/smoke/run.mjs`) and `tests/test_ui.py` are green; `npm run check` runs
    every step including the `git diff` clause, which is green now that the
    chapter-close rebuild has cleared the wave's bundle drift.

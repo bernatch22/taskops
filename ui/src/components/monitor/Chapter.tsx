@@ -34,9 +34,10 @@
  * A chapter with no criteria draws NO section and no label — an empty heading
  * is the "pane somebody forgot" that `PaneEmpty` exists to prevent. */
 import { Pane, PaneEmpty, PaneRow, PaneTile } from "./Pane";
+import { Ext, compareUrl } from "../../links";
 import type { ChapterProps } from "./panels";
 
-export function Chapter({ milestone, chapters }: ChapterProps): React.JSX.Element {
+export function Chapter({ milestone, chapters, repo }: ChapterProps): React.JSX.Element {
   if (milestone === null) {
     return (
       <Pane testId="pane-chapter">
@@ -63,6 +64,9 @@ export function Chapter({ milestone, chapters }: ChapterProps): React.JSX.Elemen
    * `criteria` key at all (types.ts::Milestone). Absent and empty are the same
    * fact here — no section. */
   const criteria = milestone.criteria ?? [];
+  /* No base: the trunk is not on the board and the UI must not guess "main" —
+   * the forge resolves its own default branch (`links.tsx`). */
+  const chapterDiff = compareUrl(repo, milestone.branch);
   return (
     <Pane testId="pane-chapter">
       <div style={{ padding: "20px 20px 16px" }}>
@@ -97,8 +101,18 @@ export function Chapter({ milestone, chapters }: ChapterProps): React.JSX.Elemen
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
         <span style={{ fontSize: "12px", color: "var(--text-3)" }}>Integration branch</span>
+        {/* The chapter's whole diff, against the trunk. The branch NAME is the
+            anchor rather than a second control beside it: the footer keeps its
+            two-item shape, and with no slug it is the same mono text it always
+            was — no icon, no underline, no extra row. */}
         <span className="mono" style={{ fontSize: "12px", color: "var(--accent)" }}>
-          {milestone.branch}
+          {chapterDiff === null ? (
+            milestone.branch
+          ) : (
+            <Ext href={chapterDiff} title={`the trunk...${milestone.branch}`}>
+              <span data-testid="chapter-compare">{milestone.branch} ↗</span>
+            </Ext>
+          )}
         </span>
       </PaneRow>
     </Pane>

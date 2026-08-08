@@ -11,6 +11,7 @@ from typing import Any, Callable
 import pytest
 
 from taskops import verbs, _clock
+from taskops.store import log
 from taskops.verbs import pulse, _facts
 from taskops._errors import Refused, NotFound, BadRequest
 from taskops.core.types import LEASE_TTL
@@ -981,3 +982,73 @@ def test_a_changed_origin_wins_by_being_later(
 def test_an_unknown_project_fact_is_refused_by_name(stores: Stores) -> None:
     with pytest.raises(BadRequest, match="not a project fact"):
         call(stores, "project", BERNA, op="mascot", slug="a/b")
+
+
+# ── the log itself: the events verb and its keyset paging ───────────────────
+
+
+def _noisy(stores: Stores) -> list[str]:
+    """A board whose log is worth paging, and the truth to compare against.
+
+    Every event lands at the SAME instant — the `clock` fixture is frozen — so
+    this is exactly the case a `ts` cursor cannot survive. Ground truth comes
+    from `events.jsonl` itself, in file order, never from the cache the verb
+    reads: comparing a query with itself proves nothing.
+    """
+    planned(stores)
+    card = call(stores, "board", BERNA)["groups"]["take"][0]["id"]
+    for i in range(12):
+        call(stores, "update", BERNA, task=card, comment=f"c{i}")
+    call(stores, "project", BERNA, op="remote", host="github.com", slug="a/b")
+    written, _ = log.read(stores.log_path)
+    return [e["id"] for e in reversed(written)]  # newest first, as the pane reads
+
+
+def test_the_events_verb_answers_with_the_log_newest_first_and_its_real_total(
+    stores: Stores,
+) -> None:
+    newest_first = _noisy(stores)
+    page = call(stores, "events", BERNA, limit=5)
+    assert [e["id"] for e in page["events"]] == newest_first[:5]
+    # The counter is the LOG's length, not this page's.
+    assert page["total"] == len(newest_first) > 5
+    assert page["head"] == stores.head()
+
+
+def test_paging_the_log_crosses_a_boundary_without_dropping_or_repeating_a_row(
+    stores: Stores,
+) -> None:
+    """THE test this verb exists to pass. Every event shares one `ts`, so a
+    cursor on the timestamp would either skip the rows tying at the boundary or
+    serve them twice; the cursor is the rowid and neither can happen."""
+    newest_first = _noisy(stores)
+    seen: list[str] = []
+    cursor: int | None = None
+    pages = 0
+    while True:
+        args: dict[str, Any] = {"limit": 4}
+        if cursor is not None:
+            args["before"] = cursor
+        page = call(stores, "events", BERNA, **args)
+        seen += [e["id"] for e in page["events"]]
+        pages += 1
+        cursor = page["next"]
+        if cursor is None:
+            break
+    assert pages > 3, "the fixture must actually cross several boundaries"
+    assert seen == newest_first  # order kept, nothing dropped
+    assert len(set(seen)) == len(seen)  # nothing served twice
+
+
+def test_the_stream_carries_board_history_and_not_only_cards(stores: Stores) -> None:
+    """`task="project"` rows — a repo bound, a chapter opened — are the board's
+    own history and belong in the stream. A card-shaped filter would hide them."""
+    _noisy(stores)
+    everything = call(stores, "events", BERNA, limit=200)["events"]
+    assert any(e["task"] == "project" for e in everything)
+
+
+def test_a_page_is_refused_a_size_it_cannot_serve(stores: Stores) -> None:
+    _noisy(stores)
+    with pytest.raises(BadRequest, match="outside 1..200"):
+        call(stores, "events", BERNA, limit=5000)

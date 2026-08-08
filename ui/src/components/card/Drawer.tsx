@@ -20,6 +20,7 @@ import { Overlay } from "../shared/Overlay";
 import { Body } from "./Sections";
 import { CommentBox } from "./CommentBox";
 import { PRIORITY, STATE, pill } from "./tokens";
+import type { Repo } from "../../links";
 import type { CardPayload, TeamMember } from "../../types";
 
 export interface DrawerProps {
@@ -31,6 +32,11 @@ export interface DrawerProps {
   now: number;
   onClose: () => void;
   onComment: (text: string, mentions: string[]) => Promise<void>;
+  /** Where the repo lives on the web — `BoardPayload.repo`, handed down from
+   *  App because it is a fact about the BOARD and not about this card. Optional
+   *  and nullable both, for the two reasons `links.tsx` sets out; absent, the
+   *  dossier is character-for-character the document it was before. */
+  repo?: Repo | null | undefined;
 }
 
 /** The drawer: the dossier, inside the overlay that owns Escape.
@@ -50,7 +56,7 @@ export function Drawer(props: DrawerProps): React.JSX.Element {
 }
 
 export function Dossier(props: DrawerProps): React.JSX.Element {
-  const { dossier, openId, team, now, onClose, onComment } = props;
+  const { dossier, openId, team, now, onClose, onComment, repo } = props;
   const card = dossier?.card;
   const tone = dossier ? (STATE[dossier.state] ?? "neutral") : "neutral";
   const holder = dossier?.lease?.actor ?? "";
@@ -138,7 +144,7 @@ export function Dossier(props: DrawerProps): React.JSX.Element {
       </div>
 
       <div style={{ overflowY: "auto", padding: "22px 28px 26px", display: "flex", flexDirection: "column", gap: "22px" }}>
-        {dossier && card ? <Body dossier={dossier} now={now} /> : null}
+        {dossier && card ? <Body dossier={dossier} now={now} repo={repo} /> : null}
       </div>
 
       <CommentBox team={team} onSend={onComment} />
