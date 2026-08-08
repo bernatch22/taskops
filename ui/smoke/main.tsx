@@ -28,6 +28,8 @@ import { depth, escape, push } from "../src/components/shared/overlayStack";
 import { Board } from "../src/pages/Board";
 import { Monitor } from "../src/pages/Monitor";
 import { LiveLeases } from "../src/components/monitor/LiveLeases";
+import { KpiRail } from "../src/components/chrome/KpiRail";
+import { Worktrees } from "../src/pages/Worktrees";
 import { LEASE_TTL } from "../src/components/monitor/panels";
 import type { BoardPayload, CardPayload, ReviewingRow } from "../src/types";
 
@@ -154,22 +156,57 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   const older = JSON.parse(JSON.stringify(fixture.board)) as BoardPayload;
   delete older.done_total;
   delete older.groups.done;
+
+  // All THREE consumers, and getting here took a correction worth recording:
+  // rendering Monitor + Board alone left two of the three `?? 0` sites dead.
+  // Monitor's standing is drawn only when NOBODY holds a lease (LiveLeases'
+  // empty branch), and the fixture has a live card — so the leases are emptied
+  // on this copy to reach it. `KpiRail` is not on either page at all; it is
+  // App's chrome, so it is rendered directly. Mutating each site one at a time
+  // is what showed this: with only the two pages, breaking Monitor or KpiRail
+  // alone still passed.
+  const quiet = JSON.parse(JSON.stringify(older)) as BoardPayload;
+  quiet.groups.doing = [];
+  quiet.groups.reviewing = [];
+  quiet.groups.stalled = [];
+
   const olderMarkup = renderToStaticMarkup(
     <>
       <Monitor board={older} openCard={() => {}} now={now} />
+      <Monitor board={quiet} openCard={() => {}} now={now} />
       <Board board={older} openCard={() => {}} />
+      <Worktrees groups={older.groups} onOpen={() => {}} />
+      <KpiRail board={older} />
     </>,
   );
+
+  // Every assertion below is POSITIVE — it names the figure that must be on
+  // screen — and that is a correction, not a style. The first version asserted
+  // `!markup.includes("undefined")`, which can never fail: TypeScript's `!`
+  // erases at runtime and React renders `undefined` as NOTHING, so a broken
+  // fallback leaves an EMPTY element, not the word. Mutating each of the five
+  // `?? 0` / `?? []` sites one at a time is what exposed it — four stayed green.
   check(
-    "a board with no done_total still draws both pages",
+    "the standing is actually on screen (else the figure check proves nothing)",
+    olderMarkup.includes('data-testid="standing"'),
+  );
+  check("the KPI rail is on screen too", olderMarkup.includes('data-testid="kpis"'));
+  check("the worktrees table is on screen too", olderMarkup.includes('data-testid="worktrees"'));
+  check(
+    "a board with no done_total still draws every page",
     olderMarkup.includes('data-testid="monitor"') && olderMarkup.includes('data-testid="board"'),
   );
   check(
-    "the closed figures read 0, never undefined or NaN",
-    !olderMarkup.includes("undefined") && !olderMarkup.includes("NaN"),
+    "the standing's closed figure reads 0",
+    /<div class="num"[^>]*>0<\/div><div[^>]*>closed this chapter</.test(olderMarkup),
+  );
+  check(
+    "the rail's closed tile reads 0",
+    /data-kpi="closed".*?class="num"[^>]*>0<\/span>/s.test(olderMarkup),
   );
   // The header collapses to the plain word: there is no "n of m" to state.
   check("the Done column keeps its plain header", olderMarkup.includes(">Done<"));
+  check("nothing rendered NaN", !olderMarkup.includes("NaN"));
 
   /* ── 3. The Board page draws its columns ──────────────────────────────── */
 
