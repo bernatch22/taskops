@@ -750,6 +750,30 @@ def test_a_reviewer_that_keeps_talking_never_loses_its_review(
     assert [r["id"] for r in call(stores, "board", BERNA)["groups"]["reviewing"]] == [card]
 
 
+def test_a_reviewing_row_carries_the_review_leases_own_acquired(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """`since` is the WORK lease's (or the card's `updated`) and `review_since`
+    is the REVIEW lease's — two leases on one card, and a screen counting the
+    second one down from the first can only state a floor that reads 0 while the
+    review is provably still live (`ui/.../LiveLeases.tsx::checked`).
+
+    The gap is the whole point: the card was handed in long before anybody
+    started checking it, so the two timestamps are a TTL apart.
+    """
+    card = handed_in(stores)
+    clock(LEASE_TTL + 60)  # the work lease lapses; the card waits, unchecked
+    call(stores, "review", R1, task=card)
+    row = call(stores, "board", BERNA)["groups"]["reviewing"][0]
+
+    assert row["id"] == card and row["holder"] == R1
+    assert row["review_since"] == _clock.now()  # the review began just now
+    assert row["since"] <= _clock.now() - LEASE_TTL  # and the card is far older
+    # the floor the UI falls back to would say 0 left; the real lease is full
+    assert LEASE_TTL - (_clock.now() - row["since"]) <= 0
+    assert LEASE_TTL - (_clock.now() - row["review_since"]) == LEASE_TTL
+
+
 def test_two_reviewers_one_card_one_winner(stores: Stores) -> None:
     """§3.1 — the PK is the mutex, exactly like the work lease."""
     card = handed_in(stores)

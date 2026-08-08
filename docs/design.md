@@ -78,6 +78,12 @@ attributes exist to express that, and both are on every board row:
   somebody is actively holding it. This is what makes `stalled` actionable: not
   a guess about why, a fact.
 
+A `reviewing` row carries a third, because that card has TWO leases held by two
+actors: `review_since` — when the VERIFIER's lease was acquired. `since` on the
+same row is still the work lease's, and the worker may well be alive beside the
+verifier, so the two are not interchangeable: counting the review lease down
+from `since` yields a floor that reads zero while the review is still live.
+
 ---
 
 ## 3. The entities, with every attribute

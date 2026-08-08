@@ -20,7 +20,7 @@ import { ago, shortActor } from "../../format";
 import { TONE_BG, TONE_FG } from "../board/CardTile";
 import { Pane, PaneEmpty, PaneButton, PaneRow, LIST_CAP } from "./Pane";
 import { LEASE_TTL } from "./panels";
-import type { BoardRow } from "../../types";
+import type { BoardRow, ReviewingRow } from "../../types";
 import type { LeaseProc, LiveLeasesProps, Tone } from "./panels";
 
 /* ── the sparkline ────────────────────────────────────────────────────────────
@@ -53,6 +53,23 @@ function spark(level: number): { line: string; area: string } {
 
 /* ── rows ─────────────────────────────────────────────────────────────────── */
 
+/** A row of this pane: any board row, plus the `reviewing` group's extra key.
+ *  Written as one union-ish shape rather than a discriminated union because the
+ *  three builders below already discriminate — this type only has to let the
+ *  shared helpers read `review_since` without asserting it. */
+type LeaseRow = BoardRow & { review_since?: number | null };
+
+/** When the lease a row's countdown is ABOUT was acquired.
+ *
+ *  For every row but one, `since` is it — the card has a single lease and that
+ *  is its acquisition. A `reviewing` row has two, held by two actors, and the
+ *  one being counted down is the REVIEW lease: `review_since`. Absent (a board
+ *  one version behind, or a lease that lapsed mid-call) falls back to `since`,
+ *  which is the floor `checked()` documents — never a crash, never a `NaN`. */
+function leaseStart(row: LeaseRow): number {
+  return typeof row.review_since === "number" ? row.review_since : row.since;
+}
+
 /** A held card: the lease is live, and what is worth reading is how much of the
  *  TTL is left. `since` is the lease's `acquired` for a row with a holder. */
 function held(row: BoardRow, now: number): LeaseProc {
@@ -76,23 +93,29 @@ function held(row: BoardRow, now: number): LeaseProc {
  *  `reviewing` row is the verifier (`pulse.py`: `checking.get(card["id"])`), and
  *  that is the actor Nova prints (`agent:berna/rv1`, design line 1168).
  *
- *  THE NUMBER, and what it is honestly: the review lease's own `acquired` is NOT
- *  on the wire — `pulse.py::_row` sends `since` (the WORK lease's acquisition if
- *  the worker is still alive beside the verifier, else the card's `updated`) and
- *  sends the verifier only as a name. The review lease was claimed at or after
- *  `since`, so `TTL - (now - since)` is a conservative FLOOR on what is left of
- *  it: at least this much, never more than really remains, and 0 once `since` is
- *  older than the TTL — at which point the lease is still live (the group's
- *  definition guarantees it) and the payload simply cannot say by how much.
- *  Making it exact is one field in `pulse.py`, not a computation this file can do.
+ *  THE NUMBER, and what it is exactly: `review_since` is the REVIEW lease's own
+ *  `acquired` (`pulse.py::run`'s reviewing branch, from `store/reviews.py::Held`),
+ *  so `TTL - (now - review_since)` is what is really left of it. It is a second
+ *  key and not a better `since` deliberately: `since` is the WORK lease's
+ *  acquisition (or the card's `updated`), a different lease on the same card,
+ *  and reading one as the other is the bug this row had.
+ *
+ *  The FALLBACK is that former bug, kept on purpose and only for a board one
+ *  version behind, which sends no such key: the review lease was claimed at or
+ *  after `since`, so `TTL - (now - since)` is a conservative FLOOR — at least
+ *  this much, never more than really remains, and 0 once `since` is older than
+ *  the TTL, at which point the lease is still live (the group's definition
+ *  guarantees it) and that payload simply cannot say by how much. Asserting the
+ *  new key instead of falling back is what crashed this dashboard twice against
+ *  an older server (types.ts, the drift convention).
  *
  *  Two spellings, both deliberate. The 10.5px label is Nova's verbatim `review`
  *  (design line 1168, `remainLabel`). The PILL says `reviewing` — the board's own
  *  name for this derived state (`core/types.py::DERIVED_STATES`) — because Nova's
  *  shorthand `review` is the name of a different group, and the one thing this
  *  row must not be read as is that group. */
-function checked(row: BoardRow, now: number): LeaseProc {
-  const left = Math.max(0, LEASE_TTL - (now - row.since));
+function checked(row: ReviewingRow, now: number): LeaseProc {
+  const left = Math.max(0, LEASE_TTL - (now - leaseStart(row)));
   return {
     card: row.id,
     actor: shortActor(row.holder ?? row.assignee),
@@ -132,11 +155,18 @@ const LIVE: ReadonlySet<string> = new Set(["doing", "reviewing"]);
 /** The level the flat line sits at, per state — the only real quantity there is.
  *  Kept beside the row builders so the two readings of "the number" (left, and
  *  silence) cannot drift from the two shapes drawn for them. */
-function level(p: LeaseProc, row: BoardRow, now: number): number {
+function level(
+  p: LeaseProc,
+  row: LeaseRow,
+  now: number,
+): number {
   if (LIVE.has(p.state)) {
+    /* `leaseStart`, not `since`: the line drawn under a `reviewing` row is the
+     * same quantity its figure prints, and a floor here sank a healthy review
+     * lease's line to the baseline. */
     return Math.max(
       0,
-      Math.min(1, (LEASE_TTL - (now - row.since)) / LEASE_TTL),
+      Math.min(1, (LEASE_TTL - (now - leaseStart(row))) / LEASE_TTL),
     );
   }
   const quiet = row.quiet_for ?? now - row.since;
@@ -185,7 +215,7 @@ export function LiveLeases({
   standing,
 }: LiveLeasesProps): React.JSX.Element {
   /* The design's order: live and fine, live and being checked, then lapsed. */
-  const rows: { row: BoardRow; p: LeaseProc }[] = [
+  const rows: { row: LeaseRow; p: LeaseProc }[] = [
     ...doing.map((row) => ({ row, p: held(row, now) })),
     ...reviewing.map((row) => ({ row, p: checked(row, now) })),
     ...stalled.map((row) => ({ row, p: lapsed(row, now) })),
