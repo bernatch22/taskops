@@ -15,5 +15,6 @@
     "skipLibCheck": true,
     "types": ["react", "react-dom"]
   },
-  "include": ["src"]
+  "comment": "`smoke` is included on purpose: the harness renders the real components, so a prop contract that changes under it must be a compile error here and not a red suite an hour later.",
+  "include": ["src", "smoke"]
 }

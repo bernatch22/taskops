@@ -149,10 +149,16 @@ cd ui && node build.mjs && git add ../src/taskops/ui && git commit --no-edit
 (`docs/fan-out.md` §11 — five parallel cards each rebuilding the bundle cost a
 milestone six merge round trips.)
 
-`npm run check` does not pass yet: its `smoke` step runs `ui/smoke/run.mjs`,
-which is not written — the headless harness is still a card on the board, and
-`tests/test_ui.py` is skipped for the same reason. `npm run build` is the step
-that matters today.
+`npm run check` is the closure and its four steps run: typecheck, build,
+`ui/smoke/run.mjs` (the headless harness — `react-dom/server`, no browser and
+no jsdom), then `git diff --exit-code ../src/taskops/ui`. That last clause is
+red in the current tree ON PURPOSE: this wave of cards ships `.tsx`-only diffs
+and one chapter-close card rebuilds the bundle once, which is exactly the drift
+the clause exists to report. It goes green with that rebuild.
+
+The harness runs on its own captured payload (`npm run smoke`, which needs no
+Python) and on a live one — `tests/test_ui.py` builds a real board and hands it
+over. It needs `ui/node_modules`; without it, or without node, that test skips.
 
 Two tabs today, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
 default) and **Board** (`ui/src/pages/Board.tsx`) — plus the card dossier drawer
@@ -269,10 +275,15 @@ the page refetches, so it can never show something the board never said.
 ./scripts/test     # architecture, core, store, verbs, git, http topology, mcp, migration, ui
 ```
 
-`tests/test_ui.py` is the one skip: it drove the inline script of the old
-single-file page, and the dashboard is a built bundle now. The file is kept
-whole — it is the list of what the UI has to prove — and a smoke-harness card
-restores it against the bundle.
+`tests/test_ui.py` runs the dashboard headlessly, from both ends: it hands a
+real `LocalBoard` payload to `ui/smoke/run.mjs`, which renders the very modules
+`src/main.tsx` bundles through `react-dom/server` — the eight Monitor panes, a
+pane with no verb showing its empty state instead of a zero, the Board's
+columns, the acceptance criteria in the dossier, the comment box posting
+`update` and nothing else, the draft surviving a refusal, Escape closing the
+top-most overlay only — and it reads the COMMITTED bundle for the same panes,
+which is what `pip install taskops` serves. The first half needs node and
+`ui/node_modules` and skips without them; the second always runs.
 
 `tests/test_architecture.py` pins the layering by AST — imports only point
 down, SQL only in `store/`, `subprocess` only in `gitwork/run.py`, the clock

@@ -31,7 +31,7 @@ live (fan-out.md §10): the ordering rule is a sentence in
 until the human answers `criteria_met=true`.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**202 passed, 1 skipped** (`tests/test_ui.py` — see below), ruff + pyright
+**215 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
 strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
@@ -202,13 +202,21 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   `style.css` into `src/taskops/ui/`, and **that output is committed** — that is
   what makes `pip install taskops` serve a dashboard with no node toolchain.
   React is bundled, never a CDN. `npm run check` in `ui/` is the closure:
-  typecheck + build + smoke + `git diff --exit-code ../src/taskops/ui`.
+  typecheck + build + smoke + `git diff --exit-code ../src/taskops/ui`. All four
+  steps run; the diff clause is red while a wave of `.tsx`-only cards is in
+  flight and goes green at the chapter-close rebuild, which is the drift it
+  exists to report.
 - **Do not run browser/UI demos unless asked.** The UI is tested headlessly —
-  `tests/test_ui.py`, currently **skipped**: it reached into the old
-  single-file page's inline script, which the bundle no longer has. A smoke
-  harness card, to be re-planned once Monitor lands, restores headless coverage
-  against the built bundle. The file is kept whole, not gutted: it is the list of what the UI
-  has to prove.
+  `tests/test_ui.py` builds a real board and hands the server's own payload to
+  `ui/smoke/run.mjs`, which renders the modules `src/main.tsx` bundles through
+  **`react-dom/server`, with no browser and no jsdom**. That is possible because
+  three seams were designed for it: `Dossier` exported beside `Drawer` (a portal
+  renders nothing under `renderToStaticMarkup`), `submit()` (the send rule as a
+  pure function — "the draft survives a refusal" with no DOM), and
+  `overlayStack` (no listener in it). No event handler ever fires there, so a
+  click that does nothing is still out of reach; everything that decides whether
+  the click has something to land on is not. A second test reads the COMMITTED
+  bundle for the same panes — those bytes are what `pip install taskops` serves.
 - Never re-introduce: a reviewer ROLE, a stored review STATUS, or automatic
   reviewer assignment (optional per-card review exists — docs/implement-reviewer.md
   is the paper trail; what stays banned is v1's shape: a role that ate the
@@ -239,6 +247,6 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    every panel's props are a declared interface** rather than a comment, which
    is the fix `docs/fan-out.md` prescribes. Its eight sections are stubs, one
    file each, replaced by one card per panel. Throughput is rebuilt there, as
-   the panel Nova draws. The smoke harness (`ui/smoke/run.mjs`, and
-   `tests/test_ui.py` against the built bundle) is still a card on the board,
-   so `npm run check` fails at its `smoke` step until it lands.
+   the panel Nova draws. The smoke harness (`ui/smoke/run.mjs`) and
+   `tests/test_ui.py` are built and green; `npm run check` runs every step, and
+   its `git diff` clause reports the bundle drift a chapter-close card clears.
