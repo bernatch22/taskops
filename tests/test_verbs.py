@@ -80,6 +80,50 @@ def test_landing_a_milestone_closes_it(stores: Stores) -> None:
     assert board["milestone"]["id"] == second["milestone"]["id"]
 
 
+def test_a_new_chapter_is_warned_about_the_unlanded_one_it_will_not_see(stores: Stores) -> None:
+    """The Monitor chapter was cut from a `master` missing 27 commits of unlanded
+    UI work; a worker found out when its worktree had no `ui/` at all. A warning,
+    never a refusal — opening a second chapter deliberately is normal."""
+    first = planned(stores)["milestone"]
+    second = call(stores, "plan", BERNA, milestone="Monitor", goal="g", tasks=[{"title": "t"}])
+    assert second["cards"], "the plan still went through — this is a warning, not a refusal"
+    note = "\n".join(second["notes"])
+    assert f'{first["id"]} "MVP facturador" is open and has not landed.' in note
+    assert "ms/monitor is cut from the trunk, so it will not see that chapter's work." in note
+
+
+def test_a_landed_chapter_is_not_warned_about(stores: Stores) -> None:
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "merged", BERNA, milestone=ident, into="master", sha="abc123")
+    assert call(stores, "plan", BERNA, milestone="Monitor", tasks=[{"title": "t"}])["notes"] == []
+
+
+def test_a_dropped_chapter_is_not_warned_about(stores: Stores) -> None:
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "update", BERNA, milestone=ident, status="dropped")
+    assert call(stores, "plan", BERNA, milestone="Monitor", tasks=[{"title": "t"}])["notes"] == []
+
+
+def test_a_finished_but_unlanded_chapter_is_still_warned_about(stores: Stores) -> None:
+    """`done` is not `landed`: the work exists on a branch the trunk does not
+    carry, which is exactly what the new branch will not see."""
+    ident = planned(stores)["milestone"]["id"]
+    call(stores, "update", BERNA, milestone=ident, status="done")
+    out = call(stores, "plan", BERNA, milestone="Monitor", tasks=[{"title": "t"}])
+    assert f'{ident} "MVP facturador" is done and has not landed.' in out["notes"]
+
+
+def test_adding_cards_to_an_existing_chapter_warns_about_nothing(stores: Stores) -> None:
+    """The warning is about the branch a NEW chapter is cut from. Planning into a
+    chapter that already exists cuts no branch, so there is nothing to say."""
+    first = planned(stores)["milestone"]
+    call(stores, "plan", BERNA, milestone="Monitor", goal="g", tasks=[{"title": "t"}])
+    by_id = call(stores, "plan", BERNA, milestone=first["id"], tasks=[{"title": "more"}])
+    assert by_id["notes"] == []
+    by_title = call(stores, "plan", BERNA, milestone="MVP facturador", tasks=[{"title": "yet"}])
+    assert by_title["notes"] == []
+
+
 def test_planning_the_same_title_twice_adds_to_the_same_milestone(stores: Stores) -> None:
     """Two chapters with one name would split the board: two goals, two branches,
     and two possible answers to "the open milestone"."""
