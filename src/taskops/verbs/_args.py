@@ -58,6 +58,36 @@ def strings(args: Args, key: str) -> list[str]:
     return [x.strip() for x in cast("list[str]", value) if x.strip()]
 
 
+def counts(args: Args, key: str) -> dict[str, list[int] | None]:
+    """`{"src/x.py": [3, 1], "logo.png": null}` — +/- per file, null for a file
+    that cannot be counted (git prints `-` for a binary). Never coerced to 0:
+    "not countable" and "nothing changed" are different facts."""
+    value = args.get(key)
+    if value is None or value == "":
+        return {}
+    shape = f'{key}= must be {{"src/x.py": [added, deleted], "logo.png": null}}'
+    if not isinstance(value, dict):
+        raise BadRequest(shape)
+    out: dict[str, list[int] | None] = {}
+    for path, pair in cast("dict[Any, Any]", value).items():
+        if not isinstance(path, str) or not path.strip():
+            raise BadRequest(shape)
+        if pair is None:
+            out[path.strip()] = None
+            continue
+        if (
+            not isinstance(pair, list)
+            or len(cast("list[Any]", pair)) != 2
+            or not all(
+                isinstance(n, int) and not isinstance(n, bool) and n >= 0
+                for n in cast("list[Any]", pair)
+            )
+        ):
+            raise BadRequest(shape)
+        out[path.strip()] = list(cast("list[int]", pair))
+    return out
+
+
 def rows(args: Args, key: str) -> list[Args]:
     value = args.get(key, [])
     if not isinstance(value, list) or not all(

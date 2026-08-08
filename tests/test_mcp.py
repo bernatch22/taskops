@@ -363,6 +363,25 @@ def test_a_spawned_worker_speaks_through_actor_on_the_call(repo: Path, boards: A
     assert "done" in done
 
 
+def test_the_dossier_shows_the_size_of_each_commit_beside_its_files(
+    repo: Path, boards: Any
+) -> None:
+    """An agent with no GitHub still sees how big the change was — and a file
+    whose counts nobody has (an old event) is printed bare, never as +0-0."""
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    dev.call("bind", {"task": card, "sha": "a1b2c3d4e5", "subject": "feat: model",
+                      "files": ["src/models.py", "logo.png"],
+                      "numstat": {"src/models.py": [12, 3], "logo.png": None}})
+    dev.call("bind", {"task": card, "sha": "f6a7b8c9", "subject": "chore: old",
+                      "files": ["src/legacy.py"]})
+
+    text = call(dev, repo, "taskops_card", task=card)
+    assert "src/models.py +12-3" in text
+    assert "logo.png bin" in text
+    assert "(src/legacy.py)" in text and "+0-0" not in text
+
+
 def test_without_actor_the_refusal_says_to_pass_it(repo: Path, boards: Any) -> None:
     dev, cards = seeded(boards)
     with pytest.raises(Refused, match=r"actor=agent:<dev>/<name>"):

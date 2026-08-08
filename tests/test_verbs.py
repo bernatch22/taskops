@@ -802,6 +802,50 @@ def test_a_board_that_never_sets_review_behaves_exactly_as_today(stores: Stores)
     assert [c["id"] for c in board["groups"]["merge"]] == [card]
 
 
+def test_a_bound_commit_keeps_its_per_file_counts_and_a_binary_stays_null(
+    stores: Stores,
+) -> None:
+    planned(stores)
+    card = call(stores, "card", BERNA, query="invoice model")["matches"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(
+        stores,
+        "bind",
+        W1,
+        task=card,
+        sha="a1b2c3",
+        subject="feat: model",
+        files=["src/models.py", "logo.png"],
+        numstat={"src/models.py": [12, 3], "logo.png": None},
+    )
+    body = [e["body"] for e in stores.events(card) if e["kind"] == "commit"][0]
+    assert body["files"] == ["src/models.py", "logo.png"]  # unchanged, byte for byte
+    assert body["numstat"] == {"src/models.py": [12, 3], "logo.png": None}
+
+
+def test_a_commit_bound_without_counts_carries_no_numstat_at_all(stores: Stores) -> None:
+    """An old hook, or a commit queued before the key existed. Absent is
+    absent: no key, and nothing invents zeros for it."""
+    planned(stores)
+    call(stores, "bind", W1, sha="deadbee", subject="chore: gitignore", files=[".gitignore"])
+    body = [e["body"] for e in stores.events("project") if e["kind"] == "commit"][0]
+    assert "numstat" not in body
+
+
+def test_counts_that_are_not_a_pair_of_numbers_are_refused(stores: Stores) -> None:
+    planned(stores)
+    with pytest.raises(BadRequest, match="added, deleted"):
+        call(
+            stores,
+            "bind",
+            W1,
+            sha="deadbee",
+            subject="chore",
+            files=["a.py"],
+            numstat={"a.py": "3/1"},
+        )
+
+
 def test_a_commit_with_no_card_is_recorded_at_project_level(stores: Stores) -> None:
     """Nobody is forced to take a card to commit — the board just knows the sha
     happened. The `done` guard is untouched: it still demands a card-bound one.
