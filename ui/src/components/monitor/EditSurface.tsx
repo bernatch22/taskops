@@ -154,7 +154,11 @@ export function EditSurface({ rows }: EditSurfaceProps): React.JSX.Element {
                   color: file.contended ? TONE_FG.warn : TONE_FG.neutral,
                 }}
               >
-                {file.claims === 1 ? "1 claim" : `${file.claims} claims`}
+                {/* "claims" read as "someone is holding this right now", which
+                    is exactly what the pane does NOT say — the detail line
+                    below can read `unclaimed · unclaimed`. What the number
+                    counts is open cards that DECLARED the path in files=. */}
+                {file.claims === 1 ? "1 card plans this" : `${file.claims} cards plan this`}
               </span>
             </PaneTile>
           ))}
