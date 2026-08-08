@@ -26,6 +26,7 @@ from . import (
     report,
     review,
     update,
+    project,
     _waiting,
     _mentions,
 )
@@ -98,6 +99,9 @@ REGISTRY: dict[str, Verb] = {
     # BOTH roles — a verifier is an ordinary agent; there is no reviewer ROLE.
     "review": Verb(review.run, "write", BOTH, ""),
     "bind": Verb(record.bind, "write", BOTH, ""),
+    # A fact about the repo itself, written by init/join — the only side that
+    # has a clone. BOTH roles: whoever ran the command owns the checkout.
+    "project": Verb(project.run, "write", BOTH, ""),
 }
 
 

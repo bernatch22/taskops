@@ -434,3 +434,67 @@ def test_a_bare_taskops_directory_above_is_not_a_project(tmp_path: Path) -> None
     deep = project / "src" / "deep"
     deep.mkdir(parents=True)
     assert board.find_root(deep) == project
+
+
+# ── the repo's web home (gitwork/remote.py) ─────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("git@github.com:owner/repo.git", ("github.com", "owner/repo")),
+        ("ssh://git@github.com/owner/repo.git", ("github.com", "owner/repo")),
+        ("https://github.com/owner/repo", ("github.com", "owner/repo")),
+        ("https://user:token@gitlab.com/group/sub/repo.git", ("gitlab.com", "group/sub/repo")),
+        ("ssh://git@ssh.gitlab.com:2222/group/repo.git", ("ssh.gitlab.com", "group/repo")),
+        ("git://github.com/owner/repo.git", ("github.com", "owner/repo")),
+    ],
+)
+def test_every_origin_form_parses_to_the_same_shape(
+    url: str, expected: tuple[str, str]
+) -> None:
+    found = remote.parse(url)
+    assert found is not None
+    assert (found["host"], found["slug"]) == expected
+    assert found["url"] == f"https://{expected[0]}/{expected[1]}"
+
+
+@pytest.mark.parametrize("url", ["", "   ", "/srv/mirrors/repo.git", "../sibling", "github.com"])
+def test_an_origin_that_is_not_a_web_home_parses_to_nothing(url: str) -> None:
+    """A local path or a bare host is not a page anybody can link to."""
+    assert remote.parse(url) is None
+
+
+def test_init_records_the_origin_and_join_updates_it(tmp_path: Path) -> None:
+    """The write comes from the side that HAS the repo, at the two commands that
+    already touch the board — and a re-run with a changed origin wins."""
+    root = repo(tmp_path)
+    run.must("remote", "add", "origin", "git@github.com:owner/repo.git", cwd=root)
+    from taskops.cli import commands
+
+    commands.init(root)
+    opened = board.open_board(root, "dev:berna")
+    assert opened.call("board", {})["repo"] == {
+        "host": "github.com",
+        "slug": "owner/repo",
+        "url": "https://github.com/owner/repo",
+    }
+    opened.close()
+
+    run.must("remote", "set-url", "origin", "https://gitlab.com/team/repo.git", cwd=root)
+    commands.init(root)
+    opened = board.open_board(root, "dev:berna")
+    assert opened.call("board", {})["repo"]["slug"] == "team/repo"
+    opened.close()
+
+
+def test_no_origin_records_nothing_and_nothing_appears(tmp_path: Path) -> None:
+    """The chapter's third rule: a board without a remote behaves like today."""
+    root = repo(tmp_path)
+    from taskops.cli import commands
+
+    commands.init(root)
+    opened = board.open_board(root, "dev:berna")
+    assert opened.call("board", {})["repo"] is None
+    assert opened.call("board", {})["seq"] == 0  # not one event was written
+    opened.close()

@@ -572,3 +572,28 @@ def test_a_card_that_requires_review_cannot_be_closed_without_a_pass() -> None:
     machine.check_transition(card, passed, "dev:berna", "done")
     with pytest.raises(Refused, match="held by"):
         machine.check_transition(card, handed, "dev:berna", "done")
+
+
+def test_a_project_fact_is_newest_wins_however_the_log_arrives() -> None:
+    """A project fact has no card, so it has no `updated` to arbitrate with —
+    property 3 of `replay` has to hold through `project_at` instead.
+
+    The INCREMENTAL fold is what needs it: `Stores.state()` applies whatever is
+    new in the cache on top of a state it already holds, in seq order, and seq
+    order is arrival order — an older event written by another clone arrives
+    after the newer one it must not resurrect. A single `fold` sorts by ts and
+    would never notice."""
+    old = ev.make("project", "dev:berna", "project", {"op": "remote", "value": {"slug": "a/b"}}, 1000.0)
+    new = ev.make("project", "dev:berna", "project", {"op": "remote", "value": {"slug": "c/d"}}, 2000.0)
+    state = replay.fold([new])
+    replay.fold([old], state)  # a second pass, the way Stores.state() applies it
+    assert state["project"]["remote"] == {"slug": "c/d"}
+    assert state["project"] == replay.fold([old, new])["project"]
+
+
+def test_a_project_fact_never_lands_on_a_card() -> None:
+    """It is board-level by construction: nothing in `cards` moves, and a board
+    that never recorded one has an empty dict, not a missing key."""
+    state = replay.fold([ev.make("project", "dev:berna", "project", {"op": "remote", "value": None}, 1000.0)])
+    assert state["cards"] == {} and state["project"] == {"remote": None}
+    assert replay.empty()["project"] == {}

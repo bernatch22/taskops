@@ -280,6 +280,21 @@ export interface BoardPayload {
    *  optional from the start). Consumers read `?? 0` — absent and `0` say the
    *  same thing to a reader: nothing closed that this screen can count. */
   done_total?: number;
+  /** Where this repo lives on the web, so a sha can become a link.
+   *
+   *  Written ONCE by the side that has a clone (`taskops init` / `taskops join`
+   *  read `git remote get-url origin`), never read from a repo at render time —
+   *  a remote dashboard has none. TWICE optional, and both reasons are real:
+   *  a board one version behind never recorded it, and a repo with NO origin
+   *  never will. Absent means exactly one thing to a reader — draw plain text,
+   *  no links — so there is nothing to distinguish and no fallback beyond `?.`.
+   *
+   *  `host` is the key that picks a link template (`github.com` → `/commit/x`,
+   *  `gitlab.com` → `/-/commit/x`), which is why it is stored beside `url`
+   *  instead of being re-parsed out of it by every consumer.
+   *
+   *  @source `verbs/project.py::_value`, via `verbs/pulse.py::run` */
+  repo?: { host: string; slug: string; url: string } | null;
   seq: number;
   pulse: Pulse;
 }

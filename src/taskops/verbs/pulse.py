@@ -130,6 +130,10 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     window = _args.text(args, "window", default="")
     return {
         "done_total": done_total,
+        # Where this repo lives on the web, or absent — `verbs/project.py`.
+        # A board that never recorded one sends nothing, and every consumer
+        # falls back to plain text: no origin, no links, no noise.
+        "repo": state["project"].get("remote"),
         "milestone": stone,
         "milestones": [m for m in state["milestones"].values() if m["status"] == "open"],
         "groups": groups,

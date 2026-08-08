@@ -20,7 +20,7 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import claude, commands
+from . import claude, serving, commands
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -65,15 +65,15 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "join":
         return commands.join(here, str(args.url), str(args.actor))
     if args.command == "serve":
-        return commands.serve(args)
+        return serving.serve(args)
     if args.command == "invite":
-        return commands.invite(args)
+        return serving.invite(args)
     if args.command == "tidy":
         removed = trees.tidy(find_root(here), str(args.trunk))
         print("\n".join(removed) if removed else "nothing to tidy — no integrated worktrees")
         return 0
     if args.command == "ui":
-        return commands.ui(here)
+        return serving.ui(here)
     if str(args.which) == "claude":
         # Routed here and not through `commands` so the delivery hook owns its
         # own error policy end to end: it prints NOTHING, ever, including the

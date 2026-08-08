@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **73 Python files / ~7.200 lines under `src/taskops`**, plus the
+~340 files) as **76 Python files / ~7.400 lines under `src/taskops`**, plus the
 dashboard — **36 TypeScript files / ~6.400 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -31,7 +31,7 @@ live (fan-out.md §10): the ordering rule is a sentence in
 until the human answers `criteria_met=true`.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**230 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
+**257 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
 strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
@@ -149,12 +149,12 @@ presence.
             hours mentions review
 2  store/   log cache live reviews creds stores       the ONLY SQL
 3  verbs/   plan take update card pulse assign         + the REGISTRY
-            record report review waiting               no git, no render, no net
+            record report review waiting project       no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees remote trailer bind install      the ONLY git (client-side)
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread
    http/    server mounts rpc auth feed static
-6  cli/     init join serve invite tidy ui hook wording
+6  cli/     commands (init join hook) · serving (serve invite ui) · claude wording
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
