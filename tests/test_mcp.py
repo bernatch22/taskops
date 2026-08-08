@@ -382,6 +382,58 @@ def test_merge_refuses_before_git_ever_runs_when_the_card_is_not_done(
     assert not (repo / ".taskops" / "trees").exists()  # git never even started
 
 
+def test_merge_names_a_stale_branch_instead_of_reporting_its_conflict(
+    repo: Path, boards: Any
+) -> None:
+    """A card that never pulled its chapter in came back as a CONFLICT about a
+    file, and "you are behind" was nowhere in it — one session paid six round
+    trips to that, four workers each told by hand what `merge-base
+    --is-ancestor` says. The refusal names the branch, the distance, and the two
+    commands; it does not merge or rebase on the worker's behalf."""
+    from taskops.gitwork import run, trees
+
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+    dev.call("bind", {"task": card, "sha": "a1b2c3", "subject": "feat: model"})
+    w1.call("update", {"task": card, "status": "done", "comment": "model + tests"})
+
+    dossier = dev.call("card", {"task": card})
+    stone_branch = str(dossier["milestone"]["branch"])
+    card_branch = str(dossier["branch"])
+
+    run.must("init", "-q", "-b", "main", str(repo))
+    run.must("config", "user.email", "test@example.com", cwd=repo)
+    run.must("config", "user.name", "Test", cwd=repo)
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    run.must("add", "README.md", cwd=repo)
+    run.must("commit", "-q", "-m", "first", cwd=repo)
+
+    # the chapter moves on; the card's branch is cut from where main was
+    tree = trees.ensure_card(repo, card, card_branch, stone_branch)
+    integration = trees.integration_tree(repo, stone_branch)
+    (integration / "shared.py").write_text("VAT = 21\n", encoding="utf-8")
+    run.must("add", "-A", cwd=integration)
+    run.must("commit", "-q", "-m", "chapter moves", cwd=integration)
+
+    with pytest.raises(Refused) as refusal:
+        call(dev, repo, "taskops_merge", task=card)
+    said = str(refusal.value)
+    assert f"{card} is 1 commit behind {stone_branch}" in said  # counted, not just "behind"
+    assert f"cd {trees.card_tree(repo, card)} && git merge {stone_branch}" in said
+    assert f"taskops_merge task={card} again" in said
+    # refused, never repaired: the card's branch is still the worker's, untouched
+    assert trees.behind(repo, stone_branch, card_branch) == 1
+
+    # ...and once the worker does exactly that, the merge proceeds as before
+    run.must("merge", "-q", "--no-edit", stone_branch, cwd=tree)
+    out = call(dev, repo, "taskops_merge", task=card)
+    assert stone_branch in out
+    assert (integration / "shared.py").exists()
+
+
 def test_a_milestones_criteria_travel_into_every_take_the_way_rules_do(
     repo: Path, boards: Any
 ) -> None:

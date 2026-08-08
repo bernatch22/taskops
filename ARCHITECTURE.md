@@ -412,6 +412,7 @@ sequenceDiagram
     Dev->>Board: taskops_board
     Board-->>Dev: group MERGE: [tk-a1]
     Dev->>Board: taskops_merge task=tk-a1
+    Board->>Git: trees.behind() — refuses first if tk-a1 lacks the ms/* head, naming the count and the two commands
     Board->>Git: merge_card() --no-ff into ms/<milestone>, in the integration worktree
     Git-->>Board: sha (or refused, conflict files named, ms/* untouched)
     Board-->>Dev: merged
