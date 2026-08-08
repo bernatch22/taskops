@@ -82,6 +82,26 @@ class Cache:
     def since(self, seq: int) -> list[tuple[int, Event]]:
         return self._events("WHERE seq > ? ORDER BY seq", (seq,))
 
+    def page(self, before: int | None, limit: int) -> list[tuple[int, Event]]:
+        """One page of the whole log, NEWEST FIRST, by keyset on `seq`.
+
+        `before=None` is the newest page; otherwise the page is the rows
+        strictly older than that cursor, and the caller passes back the `seq`
+        of the last row it received.
+
+        **Page by `seq`, never by `ts`, and do not "fix" this to a timestamp.**
+        `seq` is `INTEGER PRIMARY KEY AUTOINCREMENT` — the rowid: unique,
+        monotonic in arrival order, and a descending scan of it needs no index.
+        `ts` is a float wall clock that ties constantly here (a plan of nine
+        writes nine events inside one millisecond), and a cursor that ties at a
+        page boundary either drops the rows sharing the boundary instant or
+        serves them twice. `OFFSET` has the same defect for a different reason:
+        the log grows under the reader, so every append shifts every offset.
+        """
+        if before is None:
+            return self._events("ORDER BY seq DESC LIMIT ?", (limit,))
+        return self._events("WHERE seq < ? ORDER BY seq DESC LIMIT ?", (before, limit))
+
     def by_task(self, task: str) -> list[Event]:
         """A card's thread, in ARRIVAL order.
 

@@ -33,16 +33,19 @@
  *
  * ── What the board cannot answer (say it, do not substitute) ──────────────
  *
- * Three of the design's bindings have no source in the payload. They are typed
+ * Three of the design's bindings had no source in the payload, and TWO of them
+ * still do not (1 was closed by tk-1c407a; the rule and its reading are kept
+ * because they are what that card followed). They are typed
  * as nullable HERE rather than dropped, because the milestone rule is that a
  * pane whose data does not exist is still built to its full drawn shape with an
  * honest empty state:
  *
- *   1. `EventStreamProps.events` — there is NO event-stream verb. The client's
- *      registry is `board | card | report | mentions | update` (`types.ts`,
- *      `RpcVerb`), and `BoardPayload` carries no event list. `Event[]` is the
- *      shape the log would arrive in (`core/types.py`), so the panel is built
- *      against the real type and handed `[]`.
+ *   1. RESOLVED (tk-1c407a) — `EventStreamProps.events` was `[]` forever
+ *      because no verb returned the log. `events` is now in the registry and in
+ *      `RpcVerb`, and the pane pages it by keyset on `seq`. Kept in this list
+ *      because it is the one of the four that a card actually closed, and the
+ *      shape it was built against turned out to be the shape it got: `Event[]`
+ *      from `core/types.py`, unchanged.
  *   2. `ThroughDay.reviews` — `ReportDay` has `closed` and `commits` and no
  *      review count, so the warn-coloured review line and the "reviews passed"
  *      total in the design have no source. `null` means "not knowable", which is
@@ -274,13 +277,25 @@ export interface StreamEvent {
 }
 
 export interface EventStreamProps {
-  /** ALWAYS `[]` today: no verb streams the log (note 1 above). The panel is
-   *  built to its full drawn shape and says on its face that the verb is
-   *  missing — it is not omitted, and it is not faked. */
+  /** One keyset page of the log at a time, newest first, from the `events` verb
+   *  (`EventPage` in types.ts). Note 1 above is now history: the pane is fed.
+   *
+   *  The panel stays PURE — it is handed rows and a callback and owns no fetch,
+   *  which is what keeps it renderable under `react-dom/server` with no wire.
+   *  `EventStreamPane` in EventStream.tsx is the container that has the client,
+   *  exactly as `Dossier` is exported beside `Drawer`. */
   events: readonly Event[];
-  /** the design's `1,284` counter. `null` — nothing reports the log's length. */
+  /** the design's `1,284` counter: the LOG's length, not this page's. `null`
+   *  until the first answer — an unfetched log and an empty one are not the
+   *  same picture. */
   total: number | null;
   now: number;
+  /** an older page exists behind the last row */
+  more: boolean;
+  /** a page is in flight */
+  loading: boolean;
+  /** ask for it. The design draws no infinite scroll, so neither does this. */
+  onMore: () => void;
 }
 
 /* ── 9. Worktrees ─────────────────────────────────────────────────────────── */

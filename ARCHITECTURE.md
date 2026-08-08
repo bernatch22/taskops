@@ -284,6 +284,7 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 | `waiting` | read | `dev` | *"these are the orchestrator's moves, not yours. Your own picture: `taskops_board`"* — the other non-renewing read: MERGE / REVIEW / STALLED for the delivery hook (`MENTIONS.md` §9f) |
 | `card` | read | both | — |
 | `report` | read | both | — |
+| `events` | read | both | — (the LOG, one keyset page at a time, newest first; board-wide by construction — see `verbs/events.py`) |
 | `plan` | write | `dev` | *"workers do not plan the board. Report what you found instead: `taskops_update`…"* |
 | `assign` | write | `dev` | *"dispatching is the orchestrator's move. Take what is yours: `taskops_take`"* |
 | `merged` | write | `dev` | *"workers do not integrate branches. Close your card and the orchestrator merges it"* |
@@ -624,10 +625,15 @@ files that answer it:
   serialized ahead of the fan-out, which is `docs/fan-out.md`'s own prescription
   applied to the milestone that produced it. Nova draws **eight** `<section>`
   panes in six layout slots (three stacked blocks left, three panes right), and
-  all eight are filled, one card per panel. The Event stream alone keeps its
-  empty state: there is no events verb in the registry to feed it, so the pane
-  is drawn to its full shape and says what is missing — the milestone's rule
-  ("layout first, data second"), not an unfinished panel.
+  all eight are filled, one card per panel — the Event stream last, which drew
+  an honest empty state for a chapter because nothing returned the log ("layout
+  first, data second"), and is now fed by the `events` verb. That pane is the
+  ONE place the dashboard fetches outside `useBoard`, and deliberately so: the
+  log is a scrollback, not a snapshot, so it is paged by keyset on `seq`
+  (`store/cache.py::page`, `verbs/events.py`) by the pane's own container
+  (`EventStreamPane` beside the pure `EventStream`, `ui/src/useEvents.ts`). It
+  opens no second socket — the board payload's identity is its change signal,
+  so a frame on the one feed resets it to page one.
 * **Board** — the nine groups of `docs/design.md` §4, as the board reports them.
 * **Worktrees** — the branch-per-card table (`ui/src/pages/Worktrees.tsx`): one
   row per inhabited directory, which is idea 2 made visible.
