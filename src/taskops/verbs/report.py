@@ -63,6 +63,13 @@ def _day(stores: Stores, label: str, start: float, end: float) -> dict[str, Any]
 
 
 def _by_actor(events: list[Event]) -> dict[str, dict[str, Any]]:
+    """Everything an actor did INSIDE THE WINDOW — hours, cards touched, cards
+    closed, commits. All four are the same pass over the same events: `closed`
+    and `commits` are counts of events already in hand, never a stored figure
+    and never a lifetime one. The screen says "today" or "7 days" beside them
+    because that is exactly what they measure.
+    """
+    closed, commits = _counts(events)
     out: dict[str, dict[str, Any]] = {}
     for actor, points in _stamps(events).items():
         seconds = hours.total(points)
@@ -70,8 +77,21 @@ def _by_actor(events: list[Event]) -> dict[str, dict[str, Any]]:
             "seconds": seconds,
             "human": hours.human(seconds),
             "cards": sorted({task for _, task in points}),
+            "closed": closed.get(actor, 0),
+            "commits": commits.get(actor, 0),
         }
     return out
+
+
+def _counts(events: list[Event]) -> tuple[dict[str, int], dict[str, int]]:
+    closed: dict[str, int] = {}
+    commits: dict[str, int] = {}
+    for event in events:
+        if _closed(event):
+            closed[event["actor"]] = closed.get(event["actor"], 0) + 1
+        elif event["kind"] == "commit":
+            commits[event["actor"]] = commits.get(event["actor"], 0) + 1
+    return closed, commits
 
 
 def _stamps(events: list[Event]) -> dict[str, list[tuple[float, str]]]:
