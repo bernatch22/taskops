@@ -668,8 +668,20 @@ files that answer it:
   honest than no panel, only bigger. `align-items: stretch` stays, because with
   two columns it is what keeps them level. The three note cards are drawn in
   every state, both-empty included: they state the rule the board enforces,
-  which is true whether or not a tree exists. The diff page itself
-  reads side by side (§16) and carries **the card's own thread** — there is no
+  which is true whether or not a tree exists. **The compare BASE belongs to the
+  row's chapter, never to the one in focus**: it is resolved in `rows()` out of
+  the same `board.milestones` list the title comes from and rides on
+  `WorktreeRow.milestone.branch`. It was `board.milestone?.branch` threaded down
+  as one prop, and with the header on "All milestones" that is `""`
+  (`verbs/_facts.py::in_scope` returns `None` for zero or several rather than
+  guessing), so every tree on the screen asked the door for `compare("", tk-x)`
+  and got the cascade's last step — "this host could not read that diff". A card
+  belongs to a chapter regardless of who is looking at it. There are only two
+  steps and no fallback: the row's own chapter branch, else NO base (the
+  forge's own default branch, the local door asked nothing) — substituting
+  another chapter's branch would draw one chapter's work as another's diff. The
+  diff page itself reads side by side (§16) and carries **the card's own
+  thread** — there is no
   worktree comment and there must never be one, because a worktree has no
   identity apart from its card and a second thread would be two places to say
   one thing. `WorktreeDiffProps` and `ThreadProps` both live in

@@ -294,6 +294,15 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     "with no chapters to join against, no row invents one",
     rows(fixture.board.groups).every((w) => w.milestone === null),
   );
+  /* THE BASE RIDES IN THE SAME JOIN (tk-6e7003). A card belongs to a chapter
+   * regardless of who is looking at it, so the branch a tree is compared
+   * against comes off the ROW's chapter and never off the header's focus —
+   * which is `null` under "All milestones" and made every diff on this screen
+   * say "this host could not read that diff". */
+  check(
+    "a worktree row carries its own chapter's branch, not the one in focus",
+    named.some((w) => w.milestone?.id === chapter?.id && w.milestone?.branch === chapter?.branch),
+  );
   const amnesiac = JSON.parse(JSON.stringify(fixture.board)) as BoardPayload;
   for (const group of Object.values(amnesiac.groups)) {
     for (const r of group) delete (r as { milestone?: string }).milestone;
@@ -717,7 +726,6 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
           groups={payload.groups}
           milestones={payload.milestones}
           repo={payload.repo}
-          milestoneBranch={payload.milestone?.branch ?? ""}
         />
         <Dossier
           dossier={dossierCard}
@@ -1173,6 +1181,38 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     told.includes('data-testid="worktree-diff"') &&
       told.includes(`data-branch="${named[0]!.id}"`) &&
       !told.includes('data-testid="worktrees"'),
+  );
+  /* THE BUG A READER HIT (tk-6e7003): nothing above passes a focused chapter —
+   * there is no such prop any more — and this is exactly the "All milestones"
+   * case, where the page used to compare against `""` and every tree answered
+   * "this host could not read that diff". The range line must name the ROW's
+   * own chapter branch, which is also criterion 3: it names the base actually
+   * used. */
+  const chaptered = named.find((w) => w.milestone) ?? named[0]!;
+  const ownBase = chaptered.milestone?.branch ?? "";
+  const unfocused = renderToStaticMarkup(
+    <Worktrees
+      groups={fixture.board.groups}
+      milestones={fixture.board.milestones}
+      openTree={chaptered.id}
+      onOpenTree={() => {}}
+    />,
+  );
+  check(
+    "with no chapter in focus, a tree still compares against ITS OWN chapter",
+    ownBase !== "" &&
+      new RegExp(`data-testid="worktree-diff-range"[^>]*>${ownBase}[\\s\\S]*?${chaptered.id}`).test(
+        unfocused,
+      ) &&
+      !unfocused.includes("the trunk this board does not name"),
+  );
+  // The other half, and the line the spec drew: a row whose chapter cannot be
+  // resolved gets NO base — the honest sentence — rather than a borrowed one.
+  check(
+    "a tree whose chapter cannot be resolved borrows nobody's branch",
+    renderToStaticMarkup(
+      <Worktrees groups={fixture.board.groups} openTree={chaptered.id} onOpenTree={() => {}} />,
+    ).includes("the trunk this board does not name"),
   );
   // The card behind the tree rides through the index untouched — `App` fetches
   // it once, for the drawer and for this page alike, and the page that forgot to
