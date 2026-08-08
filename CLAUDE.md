@@ -2,8 +2,8 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **77 Python files / ~7.700 lines under `src/taskops`**, plus the
-dashboard — **38 TypeScript files / ~7.400 lines under `ui/src`**, whose built
+~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
+dashboard — **39 TypeScript files / ~8.000 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -37,8 +37,9 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**265 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
-strict clean. Not deployed yet (see "What is left").
+**283 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 282+1; see below), ruff +
+pyright strict clean. Not deployed yet (see "What is left").
 
 ## The four ideas everything rests on
 
@@ -278,5 +279,20 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    done / integrate / land. The whole switch is `git remote get-url origin` —
    **without one, nothing pushes, nothing links, and nothing degrades**, which
    is this repo's own board, so that is the case the harness pins.
+
+   It also shows the **real diff, read from your own clone** (§16's amendment,
+   decided 2026-08-08): the dossier gained **Files changed** — the card as a PR,
+   `compare/ms/<slug>...tk-<id>`, +/− per file, each file's patch on expand —
+   and every commit row folds open its own. The content comes from a read-only
+   `/git` door that `taskops ui` mounts because it sits in a checkout;
+   `taskops serve` sits in a directory of boards, mounts nothing and says so.
+   Nothing is stored: `events.jsonl` still holds references and measures only,
+   and the door derives on demand. One cascade decides what a reader gets —
+   `ui/src/links.tsx::cascade`: numstat → the patch → the forge link → one
+   honest sentence — and `components/card/Patch.tsx` only draws the step it is
+   handed. All four steps are pinned headlessly (`ui/smoke/main.tsx` §8, from
+   the door's OWN payload); `useGitDiff`'s effect firing is not reachable under
+   `react-dom/server` and is covered against a real server in
+   `tests/test_topology.py` instead.
 
    What the dashboard still cannot do is deploy itself: item 2 above.

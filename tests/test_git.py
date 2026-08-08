@@ -9,7 +9,7 @@ import pytest
 
 from taskops import board
 from taskops._errors import Refused, NotFound, TaskopsError
-from taskops.gitwork import run, bind, trees, remote, install, trailer
+from taskops.gitwork import run, bind, diff, trees, remote, install, trailer
 
 
 def repo(path: Path, name: str = "work") -> Path:
@@ -498,3 +498,151 @@ def test_no_origin_records_nothing_and_nothing_appears(tmp_path: Path) -> None:
     assert opened.call("board", {})["repo"] is None
     assert opened.call("board", {})["seq"] == 0  # not one event was written
     opened.close()
+
+
+# ── diff: the read-only door's engine ───────────────────────────────────────
+
+
+def merged(root: Path) -> str:
+    """A repo with a REAL merge commit: main gains a file, a side branch gains
+    two, and main merges it --no-ff. That is the shape a landed card has."""
+    (root / "on-main.txt").write_text("main\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "on main", cwd=root)
+    run.must("checkout", "-q", "-b", "side", cwd=root)
+    for name in ("a.txt", "b.txt"):
+        (root / name).write_text(f"{name}\n", encoding="utf-8")
+        run.must("add", "-A", cwd=root)
+        run.must("commit", "-q", "-m", f"add {name}", cwd=root)
+    run.must("checkout", "-q", "main", cwd=root)
+    (root / "later.txt").write_text("later\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "later on main", cwd=root)
+    run.must("merge", "-q", "--no-ff", "-m", "merge side", "side", cwd=root)
+    return run.must("rev-parse", "HEAD", cwd=root)
+
+
+def test_a_ref_the_repo_lacks_resolves_to_none_and_runs_no_diff(tmp_path: Path) -> None:
+    """The refusal is BEFORE any diff — an unknown ref never becomes a range."""
+    root = repo(tmp_path)
+    assert diff.resolve(root, "nope") is None
+    assert diff.commit_range(root, "nope") is None
+    assert diff.compare_range(root, "main", "nope") is None
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "--upload-pack=touch /tmp/pwned",
+        "-o",
+        "main; touch /tmp/pwned",
+        "main && rm -rf /",
+        "$(whoami)",
+        "`id`",
+        "main\nHEAD",
+        "main | cat",
+        "'main'",
+        "main\x00",
+    ],
+)
+def test_an_injection_shaped_ref_never_reaches_git(tmp_path: Path, hostile: str) -> None:
+    """THE security test. A ref arrives from a browser: it is refused by shape
+    (an option, or a byte a ref may not carry) and, past that, only the resolved
+    40-hex sha is ever used. Nothing is ever interpolated into a command."""
+    root = repo(tmp_path)
+    assert not diff.usable(hostile), f"{hostile!r} passed the shape guard"
+    assert diff.resolve(root, hostile) is None
+    assert diff.commit_range(root, hostile) is None
+    assert diff.compare_range(root, "main", hostile) is None
+
+
+def test_a_legitimate_branch_name_with_slashes_still_resolves(tmp_path: Path) -> None:
+    """The guard must not be so tight it refuses `ms/<slug>` — taskops' own
+    branch shape — or the door would be useless on every real board."""
+    root = repo(tmp_path)
+    run.must("branch", "ms/the-chapter", cwd=root)
+    got = diff.resolve(root, "ms/the-chapter")
+    assert got is not None and len(got) == 40
+
+
+def test_a_merge_commit_diffs_against_its_first_parent_only(tmp_path: Path) -> None:
+    """The whole point of the chosen spelling: `git diff <sha>^1 <sha>`. A merge
+    that exploded into its branch's whole diff would make every landed card's
+    patch useless — here the merge shows the side branch's two files, and NOT
+    `later.txt`, which main gained on the first-parent side."""
+    root = repo(tmp_path)
+    sha = merged(root)
+    found = diff.commit_range(root, sha)
+    assert found is not None
+    counted = diff.stat(root, *found)
+    assert sorted(counted) == ["a.txt", "b.txt"]
+    assert "later.txt" not in counted
+
+
+def test_a_root_commit_diffs_against_the_empty_tree(tmp_path: Path) -> None:
+    """No parent is not "no diff": the first commit of a repo is everything it
+    added, and git's own empty tree is what says so."""
+    root = repo(tmp_path)
+    first = run.must("rev-list", "--max-parents=0", "HEAD", cwd=root)
+    found = diff.commit_range(root, first)
+    assert found == (diff.EMPTY_TREE, first)
+    assert "README.md" in diff.stat(root, *found)
+
+
+def test_a_compare_is_what_the_head_adds_over_the_merge_base(tmp_path: Path) -> None:
+    """The card-as-PR read, taken as of the moment the card was still open —
+    the milestone tip is the merge's first parent. `later.txt` landed on that
+    side AFTER the branch point, so it is not part of what the branch adds."""
+    root = repo(tmp_path)
+    sha = merged(root)
+    found = diff.compare_range(root, f"{sha}^1", "side")
+    assert found is not None
+    counted = diff.stat(root, *found)
+    assert sorted(counted) == ["a.txt", "b.txt"]
+
+
+def test_the_numstat_vocabulary_is_the_one_bind_already_writes(tmp_path: Path) -> None:
+    """[added, deleted] per file, None for a binary — one vocabulary for +/-
+    everywhere in the UI, whether it came from an event or from this door."""
+    root = repo(tmp_path)
+    (root / "text.txt").write_text("one\ntwo\n", encoding="utf-8")
+    (root / "blob.bin").write_bytes(b"\x00\x01\x02\xff")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "mixed", cwd=root)
+    found = diff.commit_range(root, "HEAD")
+    assert found is not None
+    assert diff.stat(root, *found) == {"text.txt": [2, 0], "blob.bin": None}
+
+
+def test_a_patch_over_the_cap_is_truncated_AND_flagged(tmp_path: Path) -> None:
+    """Never silently cut: a cut patch that does not say so is a lie."""
+    root = repo(tmp_path)
+    (root / "big.txt").write_text("a line that is quite long\n" * 400, encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "big", cwd=root)
+    found = diff.commit_range(root, "HEAD")
+    assert found is not None
+    text, cut = diff.patch(root, *found, cap=500)
+    assert cut and len(text.encode()) <= 500
+    whole, uncut = diff.patch(root, *found)
+    assert not uncut and len(whole) > 500
+    payload = diff.between(root, *found, cap=500)
+    assert payload["truncated"] is True and payload["cap"] == 500
+
+
+def test_a_path_filter_narrows_the_patch_and_is_never_an_option(tmp_path: Path) -> None:
+    root = repo(tmp_path)
+    for name in ("one.txt", "two.txt"):
+        (root / name).write_text(f"{name}\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "two files", cwd=root)
+    found = diff.commit_range(root, "HEAD")
+    assert found is not None
+    text, _ = diff.patch(root, *found, path="one.txt")
+    assert "one.txt" in text and "two.txt" not in text
+    # A path is user input too. After `--` git cannot read it as an option —
+    # and the proof is a file that is NOT written. It lives under tmp_path, so
+    # a mutant that DOES write it cannot poison the next run.
+    written = tmp_path / "tk-d50e0a-pwned"
+    hostile, _ = diff.patch(root, *found, path=f"--output={written}")
+    assert hostile == "" and not written.exists()

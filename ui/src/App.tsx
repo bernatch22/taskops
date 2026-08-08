@@ -164,6 +164,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           onClose={() => openCard(null)}
           onComment={comment}
           repo={board?.repo}
+          reader={client}
         />
       ) : null}
     </div>

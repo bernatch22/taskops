@@ -41,3 +41,11 @@ def resolve(root: Path, rest: str) -> Path | None:
 
 def content_type(path: Path) -> str:
     return TYPES.get(path.suffix, "application/octet-stream")
+
+
+def payload(root: Path, rest: str) -> tuple[bytes, str] | None:
+    """(bytes, content-type) for a URL tail, or None. The bundle is small and
+    read per request on purpose: `taskops ui` is a developer's own process, and
+    a cache would serve the previous build after every `node ui/build.mjs`."""
+    path = resolve(root, rest)
+    return (path.read_bytes(), content_type(path)) if path else None

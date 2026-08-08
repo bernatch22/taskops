@@ -30,6 +30,9 @@ def serve(args: argparse.Namespace) -> int:
 
     root = Path(str(args.root)).expanduser()
     ui_path = Path(str(args.ui)).expanduser() if args.ui else None
+    # No `repo=`: this root is a directory of boards, not a checkout. /git
+    # refuses here and says which case it is, rather than sniffing for a repo
+    # that would be the wrong one anyway (ARCHITECTURE.md §16).
     httpd = make_server(root, str(args.host), int(args.port), ui_path)
     host, port = httpd.server_address[0], httpd.server_address[1]
     print(f"taskops serving {root} on http://{host}:{port} — ctrl-c to stop")
@@ -92,10 +95,14 @@ def ui(here: Path) -> int:
         creds = Credentials(root / DIR / "live.sqlite")
         token, _ = creds.mint(actor(), "board", _clock.now(), caps="read,write")
         creds.close()
+    # `root` IS the checkout: `find_root` walked up to the directory holding
+    # `.taskops`, and you cannot join a board without one. That is the whole
+    # /git switch, decided here and passed once — `serve` below has a boards
+    # directory instead and passes nothing, so its /git says so (§16).
     try:
-        httpd = make_server(root / DIR, "127.0.0.1", port)
+        httpd = make_server(root / DIR, "127.0.0.1", port, repo=root)
     except OSError:
-        httpd = make_server(root / DIR, "127.0.0.1", 0)  # the old port is somebody else's now
+        httpd = make_server(root / DIR, "127.0.0.1", 0, repo=root)  # the port moved on
     port = httpd.server_address[1]
     (root / DIR / "ui.json").write_text(json.dumps({"port": port, "token": token}) + "\n")
     _open(f"http://127.0.0.1:{port}/board/ui/?token={token}")
