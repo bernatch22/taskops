@@ -9,14 +9,14 @@
       "src/pdf.py"
      ],
      "holder": null,
-     "id": "tk-702c49",
+     "id": "tk-beb092",
      "labels": [],
      "priority": 2,
-     "quiet_for": 0.00209808349609375,
-     "since": 1786176127.434361,
+     "quiet_for": 0.0,
+     "since": 1770000000.0,
      "title": "PDF",
      "waiting_on": [
-      "tk-1b6fec"
+      "tk-324c19"
      ]
     }
    ],
@@ -26,10 +26,10 @@
    "mentions": [
     {
      "by": "agent:berna/w2",
-     "id": "tk-1b6fec",
+     "id": "tk-324c19",
      "text": "Decimal or float?",
      "title": "the reduced rate",
-     "ts": 1786176127.435923
+     "ts": 1770000000.0
     }
    ],
    "merge": [],
@@ -42,13 +42,13 @@
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-faf963",
+     "id": "tk-8442f7",
      "labels": [
       "backend"
      ],
      "priority": 2,
-     "quiet_for": 0.0015981197357177734,
-     "since": 1786176127.434861,
+     "quiet_for": 0.0,
+     "since": 1770000000.0,
      "title": "VAT"
     }
    ],
@@ -59,11 +59,11 @@
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-1b6fec",
+     "id": "tk-324c19",
      "labels": [],
      "priority": 2,
-     "quiet_for": 0.00030112266540527344,
-     "since": 1786176127.436158,
+     "quiet_for": 0.0,
+     "since": 1770000000.0,
      "title": "the reduced rate"
     }
    ]
@@ -72,20 +72,21 @@
    "by_actor": {
     "agent:berna/w2": {
      "cards": [
-      "tk-1b6fec"
+      "tk-324c19"
      ],
      "human": "\u2014",
-     "seconds": 0.0008368492126464844
+     "seconds": 0
     },
     "dev:berna": {
      "cards": [
       "project",
-      "tk-1b6fec",
-      "tk-702c49",
-      "tk-faf963"
+      "tk-324c19",
+      "tk-524bae",
+      "tk-8442f7",
+      "tk-beb092"
      ],
      "human": "\u2014",
-     "seconds": 0.0025000572204589844
+     "seconds": 0.002000093460083008
     }
    },
    "days": [
@@ -93,118 +94,120 @@
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-07-26"
+     "day": "2026-01-20"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-07-27"
+     "day": "2026-01-21"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-07-28"
+     "day": "2026-01-22"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-07-29"
+     "day": "2026-01-23"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-07-30"
+     "day": "2026-01-24"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-07-31"
+     "day": "2026-01-25"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-08-01"
+     "day": "2026-01-26"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-08-02"
+     "day": "2026-01-27"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-08-03"
+     "day": "2026-01-28"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-08-04"
+     "day": "2026-01-29"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-08-05"
+     "day": "2026-01-30"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-08-06"
+     "day": "2026-01-31"
     },
     {
      "by_actor": {},
      "closed": [],
      "commits": 0,
-     "day": "2026-08-07"
+     "day": "2026-02-01"
     },
     {
      "by_actor": {
       "agent:berna/w2": {
        "cards": [
-        "tk-1b6fec"
+        "tk-324c19"
        ],
        "human": "\u2014",
-       "seconds": 0.0008368492126464844
+       "seconds": 0
       },
       "dev:berna": {
        "cards": [
         "project",
-        "tk-1b6fec",
-        "tk-702c49",
-        "tk-faf963"
+        "tk-324c19",
+        "tk-524bae",
+        "tk-8442f7",
+        "tk-beb092"
        ],
        "human": "\u2014",
-       "seconds": 0.0025000572204589844
+       "seconds": 0.002000093460083008
       }
      },
      "closed": [],
      "commits": 1,
-     "day": "2026-08-08"
+     "day": "2026-02-02"
     }
    ],
-   "from": 1785024000.0,
-   "to": 1786233600.0,
+   "from": 1768867200.0,
+   "to": 1770076800.0,
    "total": {
     "closed": 0,
-    "seconds": 0.0033369064331054688
+    "seconds": 0.002000093460083008
    }
   },
+  "landed_total": 1,
   "milestone": {
    "branch": "ms/mvp-facturador",
-   "created": 1786176127.434361,
+   "created": 1770000000.0,
    "criteria": [],
    "goal": "read a bank CSV and issue invoices with VAT",
-   "id": "ms-0efc70",
+   "id": "ms-d27c59",
    "reviews": false,
    "rules": [],
    "status": "open",
@@ -213,14 +216,29 @@
   "milestones": [
    {
     "branch": "ms/mvp-facturador",
-    "created": 1786176127.434361,
+    "created": 1770000000.0,
     "criteria": [],
     "goal": "read a bank CSV and issue invoices with VAT",
-    "id": "ms-0efc70",
+    "id": "ms-d27c59",
     "reviews": false,
     "rules": [],
     "status": "open",
     "title": "MVP facturador"
+   },
+   {
+    "branch": "ms/nova-panel-by-panel",
+    "created": 1770000000.0,
+    "criteria": [
+     "every pane is filled"
+    ],
+    "goal": "the dashboard, pane by pane",
+    "id": "ms-a7d4c5",
+    "reviews": false,
+    "rules": [
+     "ts-only diffs, the chapter-close rebuilds"
+    ],
+    "status": "landed",
+    "title": "Nova, panel by panel"
    }
   ],
   "pulse": {
@@ -235,17 +253,256 @@
    "mentions": 1,
    "milestone": "MVP facturador"
   },
-  "seq": 9,
+  "repo": null,
+  "seq": 12,
   "team": [
-   {
-    "actor": "agent:berna/w2",
-    "ago": 0.00030112266540527344,
-    "seen": 1786176127.436158
-   },
    {
     "actor": "dev:berna",
     "ago": 0.0,
-    "seen": 1786176127.436459
+    "seen": 1770000000.0
+   },
+   {
+    "actor": "agent:berna/w2",
+    "ago": 0.0,
+    "seen": 1770000000.0
+   }
+  ]
+ },
+ "board_landed": {
+  "done_total": 0,
+  "groups": {
+   "blocked": [],
+   "changes": [],
+   "doing": [],
+   "done": [],
+   "mentions": [
+    {
+     "by": "agent:berna/w2",
+     "id": "tk-324c19",
+     "text": "Decimal or float?",
+     "title": "the reduced rate",
+     "ts": 1770000000.0
+    }
+   ],
+   "merge": [],
+   "review": [],
+   "reviewing": [],
+   "stalled": [],
+   "take": [
+    {
+     "assignee": "",
+     "files": [],
+     "holder": null,
+     "id": "tk-524bae",
+     "labels": [],
+     "priority": 2,
+     "quiet_for": 0.0,
+     "since": 1770000000.0,
+     "title": "the Chapter pane"
+    }
+   ]
+  },
+  "hours": {
+   "by_actor": {
+    "agent:berna/w2": {
+     "cards": [
+      "tk-324c19"
+     ],
+     "human": "\u2014",
+     "seconds": 0
+    },
+    "dev:berna": {
+     "cards": [
+      "project",
+      "tk-324c19",
+      "tk-524bae",
+      "tk-8442f7",
+      "tk-beb092"
+     ],
+     "human": "\u2014",
+     "seconds": 0.002000093460083008
+    }
+   },
+   "days": [
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-20"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-21"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-22"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-23"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-24"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-25"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-26"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-27"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-28"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-29"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-30"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-01-31"
+    },
+    {
+     "by_actor": {},
+     "closed": [],
+     "commits": 0,
+     "day": "2026-02-01"
+    },
+    {
+     "by_actor": {
+      "agent:berna/w2": {
+       "cards": [
+        "tk-324c19"
+       ],
+       "human": "\u2014",
+       "seconds": 0
+      },
+      "dev:berna": {
+       "cards": [
+        "project",
+        "tk-324c19",
+        "tk-524bae",
+        "tk-8442f7",
+        "tk-beb092"
+       ],
+       "human": "\u2014",
+       "seconds": 0.002000093460083008
+      }
+     },
+     "closed": [],
+     "commits": 1,
+     "day": "2026-02-02"
+    }
+   ],
+   "from": 1768867200.0,
+   "to": 1770076800.0,
+   "total": {
+    "closed": 0,
+    "seconds": 0.002000093460083008
+   }
+  },
+  "landed_total": 1,
+  "milestone": {
+   "branch": "ms/nova-panel-by-panel",
+   "created": 1770000000.0,
+   "criteria": [
+    "every pane is filled"
+   ],
+   "goal": "the dashboard, pane by pane",
+   "id": "ms-a7d4c5",
+   "reviews": false,
+   "rules": [
+    "ts-only diffs, the chapter-close rebuilds"
+   ],
+   "status": "landed",
+   "title": "Nova, panel by panel"
+  },
+  "milestones": [
+   {
+    "branch": "ms/mvp-facturador",
+    "created": 1770000000.0,
+    "criteria": [],
+    "goal": "read a bank CSV and issue invoices with VAT",
+    "id": "ms-d27c59",
+    "reviews": false,
+    "rules": [],
+    "status": "open",
+    "title": "MVP facturador"
+   },
+   {
+    "branch": "ms/nova-panel-by-panel",
+    "created": 1770000000.0,
+    "criteria": [
+     "every pane is filled"
+    ],
+    "goal": "the dashboard, pane by pane",
+    "id": "ms-a7d4c5",
+    "reviews": false,
+    "rules": [
+     "ts-only diffs, the chapter-close rebuilds"
+    ],
+    "status": "landed",
+    "title": "Nova, panel by panel"
+   }
+  ],
+  "pulse": {
+   "counts": {
+    "blocked": 0,
+    "doing": 0,
+    "done": 0,
+    "ready": 1,
+    "stalled": 0
+   },
+   "goal": "the dashboard, pane by pane",
+   "mentions": 1,
+   "milestone": "Nova, panel by panel"
+  },
+  "repo": null,
+  "seq": 12,
+  "team": [
+   {
+    "actor": "dev:berna",
+    "ago": 0.0,
+    "seen": 1770000000.0
+   },
+   {
+    "actor": "agent:berna/w2",
+    "ago": 0.0,
+    "seen": 1770000000.0
    }
   ]
  },
@@ -254,16 +511,16 @@
   "blocks": [
    {
     "assignee": "",
-    "id": "tk-702c49",
+    "id": "tk-beb092",
     "status": "blocked",
     "title": "PDF"
    }
   ],
-  "branch": "tk-1b6fec",
+  "branch": "tk-324c19",
   "card": {
    "after": [],
    "assignee": "",
-   "created": 1786176127.433361,
+   "created": 1769999999.999,
    "created_by": "dev:berna",
    "criteria": [
     "Decimal, never float"
@@ -271,16 +528,16 @@
    "files": [
     "src/tax.py"
    ],
-   "id": "tk-1b6fec",
+   "id": "tk-324c19",
    "labels": [],
-   "milestone": "ms-0efc70",
-   "parent": "tk-faf963",
+   "milestone": "ms-d27c59",
+   "parent": "tk-8442f7",
    "priority": 2,
    "review": false,
    "spec": "10% for food",
    "status": "open",
    "title": "the reduced rate",
-   "updated": 1786176127.436158
+   "updated": 1770000000.0
   },
   "collisions": [
    {
@@ -288,7 +545,7 @@
      "src/tax.py"
     ],
     "holder": "agent:berna/w1",
-    "id": "tk-faf963",
+    "id": "tk-8442f7",
     "started": false,
     "title": "VAT"
    }
@@ -303,7 +560,7 @@
   ],
   "elsewhere": [],
   "epic": {
-   "id": "tk-faf963",
+   "id": "tk-8442f7",
    "spec": "the whole tax",
    "status": "stalled",
    "title": "VAT"
@@ -315,7 +572,7 @@
      "card": {
       "after": [],
       "assignee": "",
-      "created": 1786176127.433361,
+      "created": 1769999999.999,
       "created_by": "dev:berna",
       "criteria": [
        "Decimal, never float"
@@ -323,32 +580,32 @@
       "files": [
        "src/tax.py"
       ],
-      "id": "tk-1b6fec",
+      "id": "tk-324c19",
       "labels": [],
-      "milestone": "ms-0efc70",
-      "parent": "tk-faf963",
+      "milestone": "ms-d27c59",
+      "parent": "tk-8442f7",
       "priority": 2,
       "review": false,
       "spec": "10% for food",
       "status": "open",
       "title": "the reduced rate",
-      "updated": 1786176127.433361
+      "updated": 1769999999.999
      }
     },
-    "id": "700f0ea0bf9703fd07626704ec2d378e",
+    "id": "1f70079e2e35730dc84f472ccc23662f",
     "kind": "created",
-    "task": "tk-1b6fec",
-    "ts": 1786176127.433361
+    "task": "tk-324c19",
+    "ts": 1769999999.999
    },
    {
     "actor": "agent:berna/w2",
     "body": {
-     "branch": "tk-1b6fec"
+     "branch": "tk-324c19"
     },
-    "id": "fc0f25adbe0a12b985b3375c26c3a5fb",
+    "id": "f29b7d5dd347c29ece94b62b6356b95a",
     "kind": "claimed",
-    "task": "tk-1b6fec",
-    "ts": 1786176127.435321
+    "task": "tk-324c19",
+    "ts": 1770000000.0
    },
    {
     "actor": "agent:berna/w2",
@@ -358,10 +615,10 @@
      "sha": "a3f9c21b",
      "subject": "feat: rates"
     },
-    "id": "cff0ce3327dfcd8a6f028610a284a7f5",
+    "id": "fd2f1a3eecd2e9ee5a51f0879b24aeee",
     "kind": "commit",
-    "task": "tk-1b6fec",
-    "ts": 1786176127.435758
+    "task": "tk-324c19",
+    "ts": 1770000000.0
    },
    {
     "actor": "agent:berna/w2",
@@ -371,30 +628,30 @@
      ],
      "text": "Decimal or float?"
     },
-    "id": "f5191f3dd11ceaa45661e7beaa6cb7d0",
+    "id": "afef24e54e83d5907d7273b344893bfd",
     "kind": "comment",
-    "task": "tk-1b6fec",
-    "ts": 1786176127.435923
+    "task": "tk-324c19",
+    "ts": 1770000000.0
    },
    {
     "actor": "agent:berna/w2",
     "body": {
      "note": "got to the rounding"
     },
-    "id": "0fd6e4a3a7d513e4464d0684f5f2856d",
+    "id": "0bce6958d34ce1e1e2f85088b31dd7ad",
     "kind": "released",
-    "task": "tk-1b6fec",
-    "ts": 1786176127.436158
+    "task": "tk-324c19",
+    "ts": 1770000000.0
    }
   ],
   "lease": null,
   "merged_into": "",
   "milestone": {
    "branch": "ms/mvp-facturador",
-   "created": 1786176127.434361,
+   "created": 1770000000.0,
    "criteria": [],
    "goal": "read a bank CSV and issue invoices with VAT",
-   "id": "ms-0efc70",
+   "id": "ms-d27c59",
    "reviews": false,
    "rules": [],
    "status": "open",
@@ -413,11 +670,11 @@
    "milestone": "MVP facturador"
   },
   "resume": "got to the rounding",
-  "seconds": 0.0008368492126464844,
+  "seconds": 0,
   "standing": null,
   "state": "ready",
   "subtasks": [],
-  "worktree": ".taskops/trees/tk-1b6fec"
+  "worktree": ".taskops/trees/tk-324c19"
  },
  "expect": [
   "the reduced rate",
@@ -431,5 +688,11 @@
  "expect_board": [
   "Addressed to you",
   "Decimal or float?"
+ ],
+ "expect_landed": [
+  "Nova, panel by panel",
+  "the dashboard, pane by pane",
+  "ts-only diffs, the chapter-close rebuilds",
+  "every pane is filled"
  ]
 }

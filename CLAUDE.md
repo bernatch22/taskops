@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **77 Python files / ~7.700 lines under `src/taskops`**, plus the
-dashboard — **38 TypeScript files / ~7.100 lines under `ui/src`**, whose built
+dashboard — **38 TypeScript files / ~7.400 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -28,7 +28,13 @@ parses source — the seams just land serialized FIRST. Its two adoptions are
 live (fan-out.md §10): the ordering rule is a sentence in
 `mcp/server.py::INSTRUCTIONS`, and a milestone carries `criteria` next to
 `rules` — shown in every take and at `taskops_merge milestone=`, which refuses
-until the human answers `criteria_met=true`.
+until the human answers `criteria_met=true`. Its **third notch was added by the
+GitHub-visible chapter and lives in `ARCHITECTURE.md` §16, not in fan-out.md**
+(that file is a dated paper trail, pinned to the tree it was written against):
+two workers independently created `src/taskops/gitwork/remote.py`, same path,
+complementary halves, because both their specs said "check `git remote get-url
+origin`". A CONCEPT named by two cards is a seam — land it serialized first.
+The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
 **265 passed** (no skips — `tests/test_ui.py` runs; see below), ruff + pyright
@@ -265,5 +271,12 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    (`ui/smoke/run.mjs`) and `tests/test_ui.py` are green; `npm run check` runs
    every step including the `git diff` clause, which is green now that the
    chapter-close rebuild has cleared the wave's bundle drift.
+
+   And it **points at the code** (`ARCHITECTURE.md` §16): commit shas, cards as
+   PR diffs and chapters as compares all link out to the forge, commit events
+   carry their `numstat`, and branches reach `origin` by best-effort pushes at
+   done / integrate / land. The whole switch is `git remote get-url origin` —
+   **without one, nothing pushes, nothing links, and nothing degrades**, which
+   is this repo's own board, so that is the case the harness pins.
 
    What the dashboard still cannot do is deploy itself: item 2 above.
