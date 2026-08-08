@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **79 Python files / ~8.000 lines under `src/taskops`**, plus the
-dashboard — **39 TypeScript files / ~8.000 lines under `ui/src`**, whose built
+dashboard — **40 TypeScript files / ~8.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -294,5 +294,16 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    the door's OWN payload); `useGitDiff`'s effect firing is not reachable under
    `react-dom/server` and is covered against a real server in
    `tests/test_topology.py` instead.
+
+   **Worktrees is now two screens** (ARCHITECTURE.md §15/§16, decided
+   2026-08-08). The index is an INDEX OF PULL REQUESTS — two 50/50 columns, *In
+   progress* and *Merged*, two sub-blocks each, and a tile carrying branch,
+   title, who carries it and which chapter; the five-column table and its
+   sourceless commit cell are gone. Clicking a tree no longer opens the card
+   drawer at all: it opens THIS view's own full-width diff page
+   (`pages/WorktreeDiff.tsx`), which hands the whole compare range to the SAME
+   `FilesChanged`. No verb, no stored key and no change to the /git door bought
+   that. The dossier keeps its own Files changed pane, untouched — a second
+   surface, not a replacement.
 
    What the dashboard still cannot do is deploy itself: item 2 above.

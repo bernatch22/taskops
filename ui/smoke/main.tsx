@@ -40,7 +40,7 @@ import {
   resetGitAvailability,
   type GitTarget,
 } from "../src/links";
-import { CommitPatch, DiffPane, FilesChanged } from "../src/components/card/Patch";
+import { CommitPatch, DiffPane, FileList, FilesChanged } from "../src/components/card/Patch";
 import type { BoardPayload, CardPayload, GitDiff, ReviewingRow, TeamMember } from "../src/types";
 
 /** The fixture, as `tests/test_ui.py` writes it. */
@@ -315,11 +315,14 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       indexMarkup.includes(named[0]!.id) &&
       indexMarkup.includes(named[0]!.title),
   );
-  // The other half of `chapter()`, at the RENDER: a row whose id cannot be
-  // resolved draws no chapter line at all — never the raw `ms-…`.
-  const blind = renderToStaticMarkup(
-    <Worktrees groups={amnesiac.groups} milestones={amnesiac.milestones} />,
-  );
+  /* The other half of `chapter()`, at the RENDER: a row whose id cannot be
+   * resolved draws no chapter line at all — never the raw `ms-…`.
+   *
+   * The rows here KEEP their ids and the list to join against is emptied, which
+   * is the case that matters and is not the one `amnesiac` builds: mutating
+   * `chapter()` to fall back to the id left the amnesiac render green (its rows
+   * carry no id either, so both branches answer `null`) and only this one red. */
+  const blind = renderToStaticMarkup(<Worktrees groups={fixture.board.groups} />);
   check(
     "an unresolvable chapter is a missing line, not a printed id",
     !blind.includes('data-testid="worktree-chapter"') && !blind.includes("ms-"),
@@ -363,6 +366,61 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check(
     "the diff page is not the card drawer, and not the table either",
     !diffPage.includes('data-testid="dossier"') && !diffPage.includes('data-testid="worktrees"'),
+  );
+
+  /* ITS CHROME — the four things `WorktreeDiff` itself owns, as opposed to the
+   * file list it delegates. The back link is the ONLY way out of this surface:
+   * there is no router and no history entry, so a page that lost it is a reader
+   * trapped on it. The range line and the directory are what say WHICH tree
+   * this is; the identity line is who is in it. */
+  check(
+    "the diff page offers the only way back there is",
+    diffPage.includes('data-testid="worktree-diff-back"') && diffPage.includes("← Worktrees"),
+  );
+  check(
+    "it names the range in the direction the diff reads, base ← head",
+    /data-testid="worktree-diff-range"[^>]*>ms\/nova[\s\S]*?tk-/.test(diffPage),
+  );
+  check(
+    "and where the tree is on disk, and who is in it",
+    diffPage.includes(`.taskops/trees/${named[0]!.id}`) &&
+      diffPage.includes('data-testid="worktree-diff-owner"'),
+  );
+  // The other half of the range line: with no chapter in focus there is no base,
+  // and the UI may not guess one (`gitwork/trees.py::base_ref` resolves the trunk
+  // from the repo and no verb sends it). It says so instead of drawing an empty
+  // side — a bare `←` would read as a range against nothing.
+  const noBase = renderToStaticMarkup(
+    <WorktreeDiff row={named[0]!} base="" reader={null} onBack={() => {}} />,
+  );
+  check(
+    "with no chapter in focus the base is a sentence, not an empty side",
+    noBase.includes("the trunk this board does not name"),
+  );
+  // NO SLUG → NO ANCHOR, on this surface too. `diffPage` above is rendered from
+  // the fixture's own repo-less board, so this is the real case and not a copy.
+  check(
+    "no slug: the diff page emits no forge anchor at all",
+    !diffPage.includes('data-testid="worktree-diff-forge"') && !diffPage.includes("<a "),
+  );
+  check(
+    "with a slug it links out, to a compare and never to an empty href",
+    (() => {
+      const linked = renderToStaticMarkup(
+        <WorktreeDiff
+          row={named[0]!}
+          base="ms/nova"
+          repo={{ host: "github.com", slug: "owner/repo", url: "https://github.com/owner/repo" }}
+          reader={null}
+          onBack={() => {}}
+        />,
+      );
+      return (
+        linked.includes('data-testid="worktree-diff-forge"') &&
+        linked.includes(`https://github.com/owner/repo/compare/ms/nova...${named[0]!.id}`) &&
+        !linked.includes('href=""')
+      );
+    })(),
   );
   check(
     "with nothing selected the page is exactly the table",
@@ -760,6 +818,49 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check("a cut patch says it was cut, with the cap in bytes", cut.includes('data-testid="patch-truncated"'));
   check("and offers the whole of it on the forge", cut.includes('data-testid="patch-truncated-link"'));
   check("the cap is a figure, not an adjective", cut.includes(git.compare.cap.toLocaleString()));
+
+  /* THE FILE LIST the diff PAGE hands its whole range to — drawn from the same
+   * door payload, through `FileList`, the pure half of `FilesChanged` (the
+   * asking half is a `useEffect` and no effect fires here). The page adds
+   * exactly one thing to it, `summary`, so that is what is asserted beside the
+   * rows: `N files changed` plus the range's own +/−. */
+  const listed = renderToStaticMarkup(
+    <FileList
+      reader={null}
+      repo={REPO}
+      target={target}
+      step={cascade(REPO, target, { diff: git.compare, loading: false })}
+      summary={true}
+    />,
+  );
+  check(
+    "the range is a file list, one row per file the door named",
+    listed.includes('data-testid="files-changed"') &&
+      (listed.match(/data-testid="changed-file"/g) ?? []).length ===
+        Object.keys(git.compare.stat).length,
+  );
+  check(
+    "every path the door named is on it",
+    Object.keys(git.compare.stat).every((p) => listed.includes(p)),
+  );
+  check(
+    "and the page's own addition, the summary bar, counts those same files",
+    listed.includes('data-testid="files-changed-summary"') &&
+      listed.includes(`${Object.keys(git.compare.stat).length} files changed`),
+  );
+  // The drawer's pane never drew a bar, and still must not: `summary` is a prop,
+  // not a thing the component decided for itself.
+  check(
+    "without the prop there is no bar",
+    !renderToStaticMarkup(
+      <FileList
+        reader={null}
+        repo={REPO}
+        target={target}
+        step={cascade(REPO, target, { diff: git.compare, loading: false })}
+      />,
+    ).includes('data-testid="files-changed-summary"'),
+  );
 
   // Step 1 — loading. Not a spinner forever: it says what it is waiting on.
   const waiting = renderToStaticMarkup(
