@@ -22,6 +22,18 @@
  * carried, what it closed and when it was last seen. It never says `— free —`:
  * "free" is a claim about a slot, and the slot is the fiction.
  *
+ * ── An actor opens into its TIMESHEET, in place ───────────────────────────
+ *
+ * `components/actors/Timesheet.tsx`. It is not a modal and not a second page:
+ * the drawer of this dashboard belongs to a CARD, an actor is not one, and
+ * there is no actor route. So the row folds open under itself, several at once
+ * — which is what makes the shared day axis worth having, since two open rows
+ * are then readable against each other.
+ *
+ * The blocks are `ActorHours.sessions`, the SAME list `core/hours.py::spent`
+ * folds into the totals drawn two rows above them. One definition of an
+ * interval, so the timeline and the number cannot disagree.
+ *
  * ── Where every figure comes from ─────────────────────────────────────────
  *
  * No verb, no payload key, no second fetch. Four slices the board already sends
@@ -60,7 +72,10 @@
  *
  * Within a rank, most recently seen first, then by name so the order is stable
  * between two renders of one payload. */
+import { useState } from "react";
+
 import { Pane, PaneButton, PaneEmpty, PaneRow } from "../components/monitor/Pane";
+import { Timesheet, timesheet } from "../components/actors/Timesheet";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
 import { ago, initials } from "../format";
 import type {
@@ -296,9 +311,22 @@ function Figure({ value, label }: { value: string; label: string }): React.JSX.E
   );
 }
 
-/** One actor. The CARD ID is the only control on it: the actor itself is not
- *  clickable, because there is no actor page and nothing behind it. */
-function Actor({ row, onOpen }: { row: ActorRow; onOpen: (id: string) => void }): React.JSX.Element {
+/** One actor. The CARD ID and the TIMESHEET DISCLOSURE are the controls on it:
+ *  the actor itself is still not a link, because there is no actor page and
+ *  nothing behind it — the timesheet opens in place, on this very card. */
+function Actor({
+  row,
+  report,
+  onOpen,
+}: {
+  row: ActorRow;
+  report: ReportPayload | null;
+  onOpen: (id: string) => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  /* Computed only while open — and computed from the WHOLE report, because the
+     axis it returns is measured over every actor of the day, not this one. */
+  const days = open ? timesheet(report, row.actor) : [];
   return (
     <section style={cardShell} data-testid="actor-card" data-actor={row.actor} data-state={row.state ?? ""}>
       <div style={{ display: "flex", gap: "11px", padding: "16px 18px 12px", alignItems: "center" }}>
@@ -380,6 +408,30 @@ function Actor({ row, onOpen }: { row: ActorRow; onOpen: (id: string) => void })
           <Figure value={row.worked ?? DASH} label="worked" />
         </div>
       </PaneRow>
+
+      {/* WHEN it worked, not just how long. In place: an actor is not a card and
+          the drawer belongs to cards. */}
+      <PaneRow pad="9px 18px">
+        <button
+          type="button"
+          data-testid="actor-timesheet-toggle"
+          data-open={open ? "1" : "0"}
+          aria-expanded={open}
+          onClick={() => setOpen((was) => !was)}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            color: "var(--accent)",
+            fontSize: "11.5px",
+          }}
+        >
+          {/* No em dash in this label on purpose: the card's own em dashes are
+              its not-knowable figures, and a decorative one would read as a
+              third of them (the smoke harness counts exactly that). */}
+          {open ? "Hide timesheet" : "Timesheet: when, and why the total is that"}
+        </button>
+      </PaneRow>
+      {open ? <Timesheet days={days} onOpen={onOpen} /> : null}
     </section>
   );
 }
@@ -419,7 +471,7 @@ export function Actors(props: ActorsProps): React.JSX.Element {
           </div>
           <div style={grid}>
             {rows.map((row) => (
-              <Actor key={row.actor} row={row} onOpen={props.onOpen} />
+              <Actor key={row.actor} row={row} report={props.report} onOpen={props.onOpen} />
             ))}
           </div>
         </>

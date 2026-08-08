@@ -19,6 +19,11 @@ from ..core import hours
 from ..core.types import Event
 from ..store.stores import Stores
 
+#: How many blocks of one actor's timesheet travel in one fold. A day rarely
+#: reaches it; a 90-day window on a busy actor would, and the payload is a
+#: single answer, not a stream. `sessions_total` always says the real number.
+SESSIONS = 240
+
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     now = _clock.now()
@@ -64,21 +69,31 @@ def _day(stores: Stores, label: str, start: float, end: float) -> dict[str, Any]
 
 def _by_actor(events: list[Event]) -> dict[str, dict[str, Any]]:
     """Everything an actor did INSIDE THE WINDOW — hours, cards touched, cards
-    closed, commits. All four are the same pass over the same events: `closed`
-    and `commits` are counts of events already in hand, never a stored figure
-    and never a lifetime one. The screen says "today" or "7 days" beside them
-    because that is exactly what they measure.
+    closed, commits, and the SESSIONS the hours are made of. All of it is the
+    same pass over the same events: `closed` and `commits` are counts of events
+    already in hand, never a stored figure and never a lifetime one. The screen
+    says "today" or "7 days" beside them because that is exactly what they
+    measure.
+
+    `sessions` is not a second computation — `core/hours.py::sessions` is what
+    `spent()` itself folds, so the blocks a timesheet draws and the total beside
+    them cannot disagree. It travels capped, with `sessions_total` next to it
+    (`done_total`'s pattern): a fortnight of a busy actor is unbounded, and a
+    truncated list that does not say so is a screen that quietly loses time.
     """
     closed, commits = _counts(events)
     out: dict[str, dict[str, Any]] = {}
     for actor, points in _stamps(events).items():
-        seconds = hours.total(points)
+        blocks = hours.sessions(points)
+        seconds = sum(b["seconds"] for b in blocks)
         out[actor] = {
             "seconds": seconds,
             "human": hours.human(seconds),
             "cards": sorted({task for _, task in points}),
             "closed": closed.get(actor, 0),
             "commits": commits.get(actor, 0),
+            "sessions": blocks[:SESSIONS],
+            "sessions_total": len(blocks),
         }
     return out
 
