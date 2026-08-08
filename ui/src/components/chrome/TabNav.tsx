@@ -4,14 +4,15 @@
  * button that calls back. A hash route would be a second source of truth for one
  * boolean and a reload that lands on a card that no longer exists.
  *
- * Two tabs, in Nova's own order: Monitor first — it is the design's first and
- * central section, and the default view — then Board. The order here IS the
- * order on screen, so it is not a detail: `TABS[0]` is what App opens on.
+ * Three tabs, in Nova's own order: Monitor first — it is the design's first and
+ * central section, and the default view — then Board, then Worktrees, which is
+ * the section the design draws after it. The order here IS the order on screen,
+ * so it is not a detail: `TABS[0]` is what App opens on.
  *
  * The badge is a SLOT, not a hardcoded count: a tab with nothing to say carries
  * nothing. The board's pending mentions are on the KPI rail, not on a pill. */
 
-export type TabId = "monitor" | "board";
+export type TabId = "monitor" | "board" | "worktrees";
 
 export interface Tab {
   id: TabId;
@@ -23,6 +24,7 @@ export interface Tab {
 export const TABS: readonly Tab[] = [
   { id: "monitor", name: "Monitor" },
   { id: "board", name: "Board" },
+  { id: "worktrees", name: "Worktrees" },
 ];
 
 const bar: React.CSSProperties = {
