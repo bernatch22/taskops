@@ -122,7 +122,11 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
         </div>
 
         <div style={right}>
-          <Chapter milestone={board.milestone} chapters={board.milestones.length} />
+          <Chapter
+            milestone={board.milestone}
+            chapters={board.milestones.length}
+            repo={board.repo}
+          />
           <Mentions mentions={g.mentions} now={now} onOpen={openCard} />
           {/* No verb streams the log: `[]` and `null` are the honest arguments,
               and the pane says so rather than being dropped. panels.ts, note 1. */}
