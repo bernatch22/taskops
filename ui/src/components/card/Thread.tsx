@@ -5,11 +5,32 @@
  * would be the summary that docstring refuses. The drawer's body scrolls; the
  * thread does not get to decide what a reader needs.
  *
- * Two kinds of line, drawn the same way on purpose. A `comment` carries prose and
- * gets the markdown renderer; everything else — created, claimed, edited, commit,
- * status, released, submitted, reviewed, merged — is a fact with at most a phrase
- * attached. Splitting them into two lists would break the one thing a thread is
- * for: what happened, in the order it happened. */
+ * One line per event, drawn the same way on purpose: a PHRASE — the thing that
+ * changed, `detail()` — and, under it, the PROSE somebody wrote, `prose()`. A
+ * comment is not the only event that carries writing: a close carries the note
+ * the worker signed off with (`body.reason`), a release and a hand-in carry
+ * `body.note`, a verdict carries both its word and its note. All of it gets the
+ * markdown renderer, because a close note is the most substantial writing on
+ * most cards. Splitting comments off into their own list would break the one
+ * thing a thread is for: what happened, in the order it happened.
+ *
+ * **This thread has TWO renderers and they must agree.** `mcp/thread.py::detail`
+ * is the other one — the same log, read by an agent over MCP instead of by a
+ * reader on this page. Change one and you have to change the other; there is no
+ * shared code across the language boundary, so the agreement is by hand and this
+ * paragraph is the only warning you get.
+ *
+ * It was NOT agreeing, and the bug is why this file says so now: `detail()` tried
+ * body keys in the order `text, note, to, subject, into, verdict` — `reason` was
+ * not in the list and `to` WAS, so every close in the log resolved to the string
+ * "done" and the worker's note was never reached. The render then drew a text
+ * block only for `kind === "comment"`, so even the right string would not have
+ * appeared. Both are fixed below; the data was never wrong.
+ *
+ * One deliberate difference, and it is a superset rather than a disagreement: on
+ * a `reviewed` event the Python renderer prints only the note (its fallback loop
+ * reaches `note` before `verdict`), while this one prints `pass`/`changes` as the
+ * phrase AND the note as prose. Nothing is dropped here that is shown there. */
 import { ago, shortActor } from "../../format";
 import { Ext, Numstat, commitUrl, readNumstat, type GitReader, type Repo } from "../../links";
 import { TONE_FG, type Tone } from "../board/CardTile";
@@ -30,9 +51,19 @@ export const DOT: Record<string, Tone> = {
   reviewed: "warn",
 };
 
-/** The one-phrase summary of a non-comment event, from its body. Mirrors the
- *  vanilla page's `detail()` — the same keys, in the same order — because the two
- *  read the same log and disagreeing about it would be a third vocabulary. */
+/** A body value, only when it is a non-empty string. */
+function str(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** The one-phrase summary of an event: the thing that CHANGED, never the prose
+ *  attached to it. Mirrors `mcp/thread.py::detail` branch for branch — the same
+ *  log read twice must not grow a second vocabulary.
+ *
+ *  The trailing loop is the same fallback the Python one keeps, for a kind this
+ *  bundle predates: `verdict` is gone from it because `reviewed` has its own
+ *  branch now, and `reason`/`note` are absent on purpose — they are prose and
+ *  belong to `prose()`, which is exactly the bug this list caused. */
 export function detail(event: Event): string {
   const body = event.body;
   if (event.kind === "created") {
@@ -41,11 +72,51 @@ export function detail(event: Event): string {
     return title ?? "";
   }
   if (event.kind === "edited") return `${String(body["field"] ?? "")} → ${JSON.stringify(body["to"])}`;
-  for (const key of ["text", "note", "to", "subject", "into", "verdict"]) {
+  if (event.kind === "status") {
+    // `(no code)` is the Python renderer's own wording: the card closed with no
+    // commit bound to it (`verbs/update.py` writes `no_code`), which a reader
+    // should never have to open the log to learn.
+    return `${str(body["to"])}${body["no_code"] === true ? " (no code)" : ""}`;
+  }
+  // Everything these carry is writing; `prose()` draws all of it.
+  if (event.kind === "comment" || event.kind === "released" || event.kind === "submitted") return "";
+  if (event.kind === "reviewed") return str(body["verdict"]);
+  for (const key of ["text", "to", "subject", "into"]) {
     const value = body[key];
     if (typeof value === "string" && value) return value;
   }
   return "";
+}
+
+/** The human writing on an event, if it carries any — rendered as markdown, the
+ *  same ink and width a comment gets.
+ *
+ *  Every kind that carries prose, walked off `verbs/` and `core/review.py`:
+ *  `comment.text`, `status.reason` (a close, a drop — the drop reason is REQUIRED
+ *  by the server so it can never legitimately be empty), `released.note`,
+ *  `submitted.note`, `reviewed.note`. `commit` carries a subject and `claimed` a
+ *  branch, which are phrases, not prose; `created`, `edited`, `merged`,
+ *  `milestone` and `project` carry no human text at all. */
+export function prose(event: Event): string {
+  const body = event.body;
+  if (event.kind === "comment") return str(body["text"]);
+  // `note` as well as `reason`, because that is what the Python renderer accepts
+  // and a log written by an older server may carry either.
+  if (event.kind === "status") return str(body["reason"]) || str(body["note"]);
+  if (event.kind === "released" || event.kind === "submitted" || event.kind === "reviewed") {
+    return str(body["note"]);
+  }
+  return "";
+}
+
+/** Both halves on ONE line, joined the way `mcp/thread.py::detail` joins them —
+ *  `done — <the note>`. The thread has two rows to spend and draws the prose as
+ *  markdown; the Event stream has one, so it gets this. */
+export function oneLine(event: Event): string {
+  const phrase = detail(event);
+  const written = prose(event);
+  if (phrase && written) return `${phrase} — ${written}`;
+  return phrase || written;
 }
 
 function addressed(event: Event): string[] {
@@ -82,6 +153,7 @@ export function Thread({
       {history.map((event) => {
         const tone = DOT[event.kind] ?? "neutral";
         const text = detail(event);
+        const written = prose(event);
         const to = addressed(event);
         const ref = sha(event);
         const href = commitUrl(repo, ref);
@@ -145,13 +217,23 @@ export function Thread({
                   </span>
                 ) : null}
               </div>
-              {event.kind === "comment" && text ? (
-                <div style={{ marginTop: "6px" }}>
-                  <Markdown text={text} />
-                </div>
-              ) : text ? (
-                <div style={{ marginTop: "6px", fontSize: "14px", color: "var(--text-2)", lineHeight: 1.55 }}>
+              {/* The phrase — the transition, the field, the verdict — stays
+                  where it was, so a reader still sees at a glance that this was
+                  a close and not a remark. */}
+              {text ? (
+                <div
+                  data-testid="event-detail"
+                  style={{ marginTop: "6px", fontSize: "14px", color: "var(--text-2)", lineHeight: 1.55 }}
+                >
                   <Mentioned text={text} />
+                </div>
+              ) : null}
+              {/* …and under it whatever somebody actually wrote, whichever kind
+                  carried it. A close note is the most substantial writing on
+                  most cards; it gets the same renderer a comment gets. */}
+              {written ? (
+                <div data-testid="event-prose" style={{ marginTop: "6px" }}>
+                  <Markdown text={written} />
                 </div>
               ) : null}
               {/* The same fold as the Commits section, from the same component:

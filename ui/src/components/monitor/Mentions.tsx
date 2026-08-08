@@ -14,6 +14,7 @@
  * is the post-mortem of the fan-out that wrote them twice. */
 import { ago, initials, shortActor } from "../../format";
 import { Pane, PaneButton, PaneEmpty } from "./Pane";
+import { Markdown } from "../shared/Markdown";
 import type { MentionCard, MentionsProps } from "./panels";
 
 export function Mentions({ mentions, now, onOpen }: MentionsProps): React.JSX.Element {
@@ -100,7 +101,13 @@ export function Mentions({ mentions, now, onOpen }: MentionsProps): React.JSX.El
                 marginBottom: "9px",
               }}
             >
-              {m.text}
+              {/* The comment that named you, verbatim — the same string the
+                  thread draws through the same renderer. INLINE: this is one
+                  row of a dense pane, sitting between an author line and a card
+                  line, and the block renderer's own column layout would fight
+                  the button's. The mention that put the row here is highlighted
+                  by `Spans` on the way through, which the raw draw never did. */}
+              <Markdown text={m.text} inline />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span className="mono" style={{ fontSize: "10.5px", color: "var(--accent)" }}>

@@ -169,8 +169,12 @@ The harness runs on its own captured payload (`npm run smoke`, which needs no
 Python) and on a live one — `tests/test_ui.py` builds a real board and hands it
 over. It needs `ui/node_modules`; without it, or without node, that test skips.
 
-Three tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
-default), **Board** (`ui/src/pages/Board.tsx`) and **Worktrees**
+Four tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
+default), **Board** (`ui/src/pages/Board.tsx`), **Actors**
+(`ui/src/pages/Actors.tsx`, one card per DEV with its agents as lines inside it,
+each opening into a full overlay that groups the window into a pane per calendar
+day, newest first, with an hour that folds open to its sessions)
+and **Worktrees**
 (`ui/src/pages/Worktrees.tsx`, an index of pull requests in two equal columns,
 In progress and Merged, where a row opens its own full-width diff page — side by
 side, with the card's own thread on it — instead of the drawer) — plus the card
@@ -203,6 +207,56 @@ The source is React + TypeScript under `ui/src`, with Nova's palette in
 `ui/src/theme/tokens.css` — the one file allowed to contain a literal colour.
 The theme is an attribute on `<html data-tk>`, remembered in `localStorage`,
 defaulting to the OS scheme.
+
+## Deployed — how a real host actually runs
+
+`taskops.bernardocastro.dev` runs this, four boards, since 2026-08-08. A board
+host is **not** a code tree, so it does not ship with a code-rsync deployer: it
+is one wheel installed into a venv, plus a directory of board logs the install
+must never overwrite.
+
+```sh
+uv build --wheel                                    # in this repo
+scp dist/taskops-*.whl <host>:/tmp/                 # ship the artifact, not the tree
+ssh <host> 'python3 -m venv ~/taskops-v2-app/.venv
+            ~/taskops-v2-app/.venv/bin/pip install /tmp/taskops-*.whl'
+```
+
+Then one process, pointed at the boards directory — every immediate
+subdirectory of `--root` is a board, reachable as `/<name>`:
+
+```sh
+~/taskops-v2-app/.venv/bin/taskops serve \
+    --root ~/taskops-v2-server --host 127.0.0.1 --port 2181
+```
+
+It binds loopback on purpose; TLS and the public name are a reverse proxy's
+job, and the proxy must pass `Upgrade`/`Connection` through or the dashboard's
+live feed silently degrades. Upgrading is `pip install --force-reinstall` of a
+newer wheel and a restart — the boards are outside the install, so nothing
+about them is touched by it.
+
+Two things a host must have that no exit code will tell you:
+
+* `GET /healthz` answers `{"ok": true, …, "boards": N}` — **N is the number of
+  boards this process has actually opened**, which is the check that catches a
+  server that came up beside its data instead of on it.
+* A credential per board. `taskops invite <who> --board <name> --root <dir>`
+  prints a one-time link; `taskops join` on the other end burns it and mints
+  that machine's standing token into `.taskops/remote.json` (0600, gitignored).
+  Verify a fresh host by **counts through the real domain**, never by the
+  deploy's exit status:
+
+```sh
+curl -s -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
+     -d '{"verb":"board","actor":"dev:<you>","args":{}}' \
+     https://<host>/<board>/rpc
+```
+
+Migrating a v1 board is `scripts/migrate_v1.py <v1 events.jsonl> <v2 board dir>`
+— `--dry-run` first, and reconcile its counts against the v1 `db.sqlite` before
+anything is switched. `ARCHITECTURE.md` §17 is the record of doing exactly that
+against production, and the order it was done in.
 
 ## The shape
 

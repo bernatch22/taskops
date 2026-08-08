@@ -38,7 +38,7 @@
  * time (every other surface shows an age), and a one-caller formatter in
  * `format.ts` would invite the next panel to fold its own in. */
 import { ago, shortActor } from "../../format";
-import { DOT, detail } from "../card/Thread";
+import { DOT, oneLine } from "../card/Thread";
 import { TONE_BG, TONE_FG } from "../board/CardTile";
 import { Pane, PaneEmpty } from "./Pane";
 import { useEvents } from "../../useEvents";
@@ -190,7 +190,9 @@ function Entry({ event, now }: { event: Event; now: number }): React.JSX.Element
             letterSpacing: "-0.015em",
           }}
         >
-          {detail(event)}
+          {/* Phrase AND prose, joined: this row has one line to spend, and a
+              close whose note went missing here is the same bug the thread had. */}
+          {oneLine(event)}
         </div>
         {measured === null ? null : (
           <div

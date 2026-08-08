@@ -66,6 +66,7 @@
 import { useState } from "react";
 import { Pane, PaneEmpty, PaneRow, PaneTile } from "./Pane";
 import { Ext, compareUrl } from "../../links";
+import { Markdown } from "../shared/Markdown";
 import type { BoardRow, Milestone } from "../../types";
 import type { ChapterProps } from "./panels";
 
@@ -78,7 +79,7 @@ export function Chapter({ milestone, open, rows, repo, onFocus }: ChapterProps):
         <div style={{ padding: "20px 20px 16px" }}>
           <div style={eyebrow}>Chapter in focus</div>
           <h2 style={title}>{milestone.title}</h2>
-          <div style={goalText}>{milestone.goal}</div>
+          <Goal text={milestone.goal} />
         </div>
         <Detail milestone={milestone} repo={repo} />
       </Pane>
@@ -174,7 +175,7 @@ function Several({
             {shown ? (
               <div id={`chapter-body-${m.id}`}>
                 <div style={{ padding: "13px 20px 15px" }}>
-                  <div style={goalText}>{m.goal}</div>
+                  <Goal text={m.goal} />
                 </div>
                 <Detail milestone={m} repo={repo} />
               </div>
@@ -198,6 +199,38 @@ function openCounts(rows: readonly BoardRow[]): Map<string, number> | null {
     if (row.milestone) counts.set(row.milestone, (counts.get(row.milestone) ?? 0) + 1);
   }
   return counts.size === 0 ? null : counts;
+}
+
+/** The chapter's goal, in the markdown it was written in.
+ *
+ *  A goal is the densest human writing the board carries — axion's is 4.252
+ *  characters with headings, bold, inline code and bullet lists — and this pane
+ *  used to print the string raw, asterisks and backticks included, in one wall.
+ *  It goes through the ONE renderer (`shared/Markdown.tsx`), the same one the
+ *  spec and the thread use; there is no second parser and no per-screen
+ *  spelling of what `**` means.
+ *
+ *  ONE component, called by the focused pane and by every expanded accordion
+ *  row, for the same reason `Detail` is one: three call sites of one fact is
+ *  how a fact drifts, and two of those three were already drawing it raw.
+ *
+ *  THE HEIGHT. Rendered as blocks, a long goal is tall, and this pane sits in a
+ *  column beside eight others. It gets a max height and its OWN scroll — never
+ *  a clamp, never an ellipsis, never a "…more". A cut goal is a lie about what
+ *  the chapter says; a scrolled one is the whole text, one gesture away. `vh`
+ *  in the middle of the clamp so a tall screen gives it more and a laptop is
+ *  not swallowed by it.
+ *
+ *  Type scale: the renderer's own (14.5px), one step above the 13.5px this
+ *  pane drew raw. Keeping Nova's exact size would mean either a second
+ *  renderer or a prop whose only job is to shrink prose in one pane, and the
+ *  rule this card exists for is that there is one renderer. */
+function Goal({ text }: { text: string }): React.JSX.Element {
+  return (
+    <div data-testid="chapter-goal" style={goalBox}>
+      <Markdown text={text} />
+    </div>
+  );
 }
 
 /** Everything under the goal: the rules, the criteria, the integration branch.
@@ -298,7 +331,14 @@ function NumberedList({
           >
             {i + 1}
           </span>
-          <span style={{ fontSize, color, letterSpacing: "-0.015em" }}>{item}</span>
+          {/* INLINE and not the block renderer: the number beside this span is
+              the layout, and blocks would move the text off its baseline and
+              turn a rule that opens `1. ` into a second numbered list. Inline
+              is the same renderer one mode down — `code`, bold and italic read,
+              nothing block-level drawn (shared/Markdown.tsx). */}
+          <span style={{ fontSize, color, letterSpacing: "-0.015em" }}>
+            <Markdown text={item} inline />
+          </span>
         </PaneTile>
       ))}
     </div>
@@ -310,6 +350,15 @@ const listLabel: React.CSSProperties = {
   color: "var(--text-3)",
   letterSpacing: "0.01em",
   marginBottom: "-1px",
+};
+
+/** The goal's own scroll box. `paddingRight` so a scrollbar never sits on the
+ *  last character; the max height is a clamp so the pane scales with the
+ *  screen instead of pinning one laptop's number. */
+const goalBox: React.CSSProperties = {
+  maxHeight: "clamp(180px, 32vh, 420px)",
+  overflowY: "auto",
+  paddingRight: "6px",
 };
 
 const goalText: React.CSSProperties = {
