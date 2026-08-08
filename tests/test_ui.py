@@ -27,7 +27,7 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Seven waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+Ten waves of `.tsx`-only cards have now been rebuilt into that bundle, and
 each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
@@ -42,9 +42,11 @@ RETIRED a marker of its own: see `RETIRED`) and `CHAPTERS_LISTED` (tk-13d115 —
 several open chapters listed as foldable rows instead of apologised for, which
 also retired a sentence: see `RETIRED_APOLOGY`) and `CLOSING_NOTE` (tk-a1b7f2 —
 a close's transition and the note the worker signed off with) and `ACTORS`
-(tk-5fc887 — the fourth view as a page about DEVS, and the drawn timesheet a dev
-opens into; it also RETIRED the six markers of the draft it replaced). All
-nine lists are the check that the bundle is the CURRENT source's output and not
+(tk-5fc887 — the fourth view as a page about DEVS; it also RETIRED the six
+markers of the draft it replaced) and `DATE_PANES` (tk-36b550 — the SECOND
+redesign of what a dev opens into: a pane per calendar day with an hour that
+folds open, which retired the lane-per-agent drawing and the hours bar panel
+whole: see `RETIRED_TIMESHEET`). All ten lists are the check that the bundle is the CURRENT source's output and not
 the previous wave's: none of those strings existed in the bundle its
 chapter-close replaced, so a close that forgot to run `node build.mjs` fails
 here.
@@ -268,16 +270,12 @@ CLOSING_NOTE = (
 #: reversed both — sixty-seven tiles for sixty-six dead sub-agents is not a page
 #: about who has been on this board — so these markers are that page's, not the
 #: first draft's: `dev-card` where `actor-card` was, `dev-open` where
-#: `actor-timesheet-toggle` was, `timesheet-lane` where a per-actor axis was.
+#: `actor-timesheet-toggle` was.
 #:
 #: What the row is really pinning is the chapter's refusal (ARCHITECTURE.md §11):
-#: an actor is a name bound to the run of a card, so `dev-agent-history` — what an
-#: agent carried, when it was last seen — is what the bundle carries INSTEAD of a
-#: held/free/lapsed slot roster. `actors-none` is the empty board's one sentence
-#: rather than an empty grid; `timesheet-lane` + `timesheet-tick` are the drawing
-#: itself, lanes on one wall-clock axis; and `timesheet-rule` is `core/hours.py`'s
-#: own wording of the dropped-gap arithmetic, on screen beside the figures it
-#: produced.
+#: an actor is a name bound to the run of a card, so the bundle carries a dev's
+#: own figures and the days it worked INSTEAD of a held/free/lapsed slot roster.
+#: `actors-none` is the empty board's one sentence rather than an empty grid.
 ACTORS = (
     "actors",  # the fourth tab (pages/Actors.tsx)
     "dev-card",  # ONE card per dev — the durable identity, never per agent
@@ -285,14 +283,68 @@ ACTORS = (
     "dev-recent",  # the most recent few agents, and the rest as a count
     "dev-open",  # the door into the full overlay (components/actors/DevPanel.tsx)
     "actors-none",  # a board nobody has touched: one sentence
-    "pane-hours-today",  # what replaced the roster: measured hours, by dev
-    "timesheet",  # the drawing (components/actors/Timesheet.tsx)
-    "timesheet-lane",  # ONE LANE PER AGENT, on the day's one shared axis
-    "timesheet-tick",  # …and that axis is marked in real wall-clock
-    "timesheet-axis",  # the track a lane's blocks are placed on
-    "timesheet-block",  # one session, positioned and sized, a door to its card
-    "timesheet-gap",  # a dropped gap, drawn as space and said as a figure
-    "timesheet-rule",  # the arithmetic, in core/hours.py's own words
+)
+
+#: The TENTH wave, and it is the SECOND redesign of that same panel (tk-36b550).
+#: What a dev opened into was a DRAWING — one lane per agent on a shared
+#: wall-clock axis — with a panel of hour BARS beside it on the page. Both
+#: existed to compare actors against each other, and an ephemeral agent is a
+#: label: `w1` today is not `w1` yesterday, which is this chapter's own goal. So
+#: neither was restyled; both were deleted.
+#:
+#: What replaced them answers the one question the panel can answer honestly —
+#: WHEN did the work happen: a pane per calendar day, NEWEST FIRST and only the
+#: newest open, each day's hours a row, each row folding open to its sessions.
+#: An hour with nothing counted is drawn and says so, because that is where the
+#: dropped gaps are.
+#:
+#: Both halves are asserted, as every redesign row here is: these strings are the
+#: new panel's, `RETIRED_TIMESHEET` below is the old one's, and a source tree
+#: that kept one beside the other would carry both. Only the swap passes.
+DATE_PANES = (
+    "daysheet",  # the panel (components/actors/Daysheet.tsx)
+    "day-pane",  # ONE PANE PER DATE, newest first
+    "day-fold",  # …a real button with aria-expanded, not an arrow glyph
+    "day-total",  # that day's counted time
+    "day-dropped",  # the gaps: how many, and the wall-clock they hold
+    "hour-row",  # every hour the day spans — including one with nothing in it
+    "hour-fold",  # the second fold, and only where there is something behind it
+    "hour-total",  # the time counted inside that hour
+    "hour-cards",  # the cards it touched, or `nothing counted`
+    "session-row",  # HH:MM – HH:MM, the duration, the card — a door to its dossier
+    "daysheet-none",  # nothing counted in the window: one sentence
+    "daysheet-rule",  # the arithmetic, in core/hours.py's own words
+    "dev-figures",  # the rail: worked, commits, cards, who is running now
+)
+
+#: …and what that redesign REMOVED. Every one of these was in the bundle this
+#: close rebuilt over (checked, one at a time), and none may be in the one that
+#: replaces it: the lanes and their axis, the per-agent rows under them, and the
+#: bar panel on the page.
+RETIRED_TIMESHEET = (
+    "timesheet",  # the drawing itself
+    "timesheet-lane",  # ONE LANE PER AGENT: the comparison this card refuses
+    "timesheet-lane-total",
+    "timesheet-axis",
+    "timesheet-ruler",
+    "timesheet-tick",
+    "timesheet-block",
+    "timesheet-gap",
+    "timesheet-range",
+    "timesheet-dropped",
+    "timesheet-capped",
+    "timesheet-none",
+    "timesheet-rule",
+    "dev-agent",  # a row per sub-agent — an agent is not a subject here
+    "dev-agents",
+    "dev-agents-none",
+    "dev-agents-more",
+    "dev-agent-state",
+    "dev-agent-card",
+    "dev-agent-history",
+    "pane-hours-today",  # THE UGLY ONE: a bar chart comparing labels
+    "hours-dev",
+    "hours-bar",
 )
 
 
@@ -564,10 +616,10 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
-    for testid in RETIRED:
+    for testid in RETIRED + RETIRED_TIMESHEET:
         assert f'"{testid}"' not in app, f"{testid} was retired but is still in the bundle"
     # A sentence, not a `data-testid`, so it is read as a plain substring: the
     # minifier keeps the literal but not the quotes around a JSX text node.

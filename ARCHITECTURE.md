@@ -700,37 +700,44 @@ files that answer it:
   **Nova draws this screen with a WORKER SLOTS roster — held / free / lapsed as
   a pool with a capacity — and that panel is deliberately not built** (§11): an
   agent with no card is HISTORY, saying what it carried and when it was last
-  seen, never `— free —`. What stands where the roster would have stood is
-  *Hours worked today*, which is Nova's own second panel, is measured, and is
-  the last DAY's fold (`report.days`), not the fourteen-day `by_actor` the
-  heading would have made a lie of. It is grouped by dev with its agents inside
-  it, and a row worth zero is not drawn at all: a column of em dashes is a list
-  of nothing.
+  seen, never `— free —`. **Nothing stands where the roster would have stood.**
+  An *Hours worked today* panel of BARS did, for one wave, and it is deleted
+  rather than restyled: a bar chart exists to compare things against each other,
+  and the things it compared were ephemeral agents — two labels. The hours are
+  still drawn, and drawn better, inside the dev's own panel.
   A dev opens into a **full overlay** (`components/actors/DevPanel.tsx`), which
   REUSES `shared/Overlay` — the same portal, the same scrim, the same ONE
-  `overlayStack` that owns Escape; the only thing it asked for is a `width`,
-  because the thing inside is a drawing. `DevDetail` is exported beside
-  `DevPanel` for the reason `Dossier` is exported beside `Drawer`: a portal
-  renders nothing under `react-dom/server`, and the document must still be
-  readable headlessly. The earlier "it reveals in place, it is not a modal" is
-  reversed — that reasoning was about routing, and what is on screen is a
-  drawing that does not fit in a grid cell.
-  The **timesheet** (`components/actors/Timesheet.tsx`) is that drawing: a
-  horizontal axis in real wall-clock with hour marks, one filled block per
-  counted session positioned and sized by its own start and duration, gaps as
-  visible empty space, and **ONE LANE PER AGENT on the day's one shared axis** —
-  which is where "who worked in parallel" is answered. The first version drew
-  the axis and set a list of card ids joined by dots under it, and the reader
-  read the list; the list is gone and the ids live in the block titles, where
-  they belong to a position in time. The blocks are `ActorHours.sessions`, the
-  very list `core/hours.py::spent` folds into the total drawn beside each lane:
-  ONE definition of an interval, so timeline and figure cannot drift. The axis
-  is the DAY's, taken over every actor that worked it — lanes scaled to their
-  own extents would put 09:00 and 14:00 at the same x and answer the one
-  question a timeline is for wrongly. A gap over 30 minutes is dropped WHOLE,
-  never capped (v1 capped it and every break added a phantom half hour), so it
-  is drawn as real space AND said as a figure, with the rule itself on screen in
-  `core/hours.py`'s own words.
+  `overlayStack` that owns Escape; the only thing it asked for is a `width`.
+  `DevDetail` is exported beside `DevPanel` for the reason `Dossier` is exported
+  beside `Drawer`: a portal renders nothing under `react-dom/server`, and the
+  document must still be readable headlessly. The earlier "it reveals in place,
+  it is not a modal" is reversed — that reasoning was about routing, and what is
+  on screen does not fit in a grid cell.
+  Inside it, **`components/actors/Daysheet.tsx` is a pane per calendar DAY**,
+  newest FIRST and only the newest open, with the day's counted total on its
+  header; inside a day, one row per hour it actually SPANS — first session's
+  hour to the last's, so the shape of the day is visible and never 00–23 — each
+  row folding open to that hour's sessions: `HH:MM – HH:MM`, the duration, the
+  card and its title, each a door to the card's dossier. This is the SECOND
+  design of that panel. The first drew ONE LANE PER AGENT on a shared wall-clock
+  axis with a table of per-agent rows under it, and every trace of it is gone
+  (`tests/test_ui.py::RETIRED_TIMESHEET` asserts the bundle carries none of its
+  markers): an agent is a name bound to the RUN of a card, `w1` today is not
+  `w1` yesterday, so a lane per agent compared two labels. A sub-agent adds
+  nothing on this screen; it is at most the name on a session.
+  Two rules carry the arithmetic. **A session belongs to the hour its START
+  falls in and is never split** — splitting would invent intervals
+  `core/hours.py::sessions` never produced, and that list is the very one
+  `spent()` folds into the totals, so screen and figure cannot drift. And **an
+  hour inside the span with nothing counted is DRAWN**, saying `nothing
+  counted`, because that is where the dropped gaps are: a gap over 30 minutes is
+  dropped WHOLE, never capped (v1 capped it and every break added a phantom half
+  hour), which is why a day's total is smaller than its last session minus its
+  first. The gaps are counted and measured under the hours, and the rule is on
+  screen in `core/hours.py`'s own words. Every fold is a real `<button>` with
+  `aria-expanded`; an hour with nothing behind it has no arrow at all, because
+  an arrow that opens nothing is not a control. The fold state is view state and
+  remembers nothing.
 * **Worktrees** — an INDEX OF PULL REQUESTS (`ui/src/pages/Worktrees.tsx`): one
   tile per inhabited directory, which is idea 2 made visible, in two 50/50
   columns — *In progress* and *Merged* — each split into two sub-blocks, and a

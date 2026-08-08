@@ -1,12 +1,12 @@
-/* A dev, opened: the drawn timesheet, the figures, and its agents as rows.
+/* A dev, opened: the figures, and the window as a pane per date.
  *
  * ── Why this is a full overlay and not a fold ─────────────────────────────
  *
- * The first attempt at this screen revealed the detail IN PLACE, on the tile,
- * on the grounds that the drawer belongs to a CARD and a dev is not one. That
- * reasoning was about routing and the thing on screen is a DRAWING: lanes on a
- * shared time axis, one per agent, which inside a 300px grid cell is an axis
- * nobody can read. So it is an overlay, at the width a time axis needs.
+ * The first attempt at this screen revealed the detail IN PLACE, on the tile, on
+ * the grounds that the drawer belongs to a CARD and a dev is not one. That
+ * reasoning was about routing; the thing on screen is a document with a nested
+ * disclosure in it, and inside a 300px grid cell it is unreadable. So it is an
+ * overlay, at the width the rows need.
  *
  * It REUSES `shared/Overlay` — the portal, the scrim, and the one `overlayStack`
  * that owns Escape. There is deliberately no second implementation of any of
@@ -21,58 +21,73 @@
  * headless harness read the same tree a browser draws — the same seam
  * `Drawer` / `Dossier` was built on (CLAUDE.md, "the dashboard is built").
  *
+ * ── The sub-agent is not a subject here ──────────────────────────────────
+ *
+ * The version this replaced drew a LANE PER AGENT on a shared time axis and a
+ * table of per-agent rows under it. Both are gone, and gone rather than
+ * restyled: an agent is a name bound to the RUN of a card, `w1` today is not
+ * `w1` yesterday, so a row per agent is a row per label. What the panel draws
+ * instead is WHEN the work happened — `Daysheet`, a pane per calendar day with
+ * an hour that folds open inside it — over the dev AND its agents together, the
+ * one grouping that is a fact about the person.
+ *
  * ── Every figure is somebody's, and sums say whose ────────────────────────
  *
  * A dev's totals are dev + agents. When a member cannot say one of its figures
  * (a board one version behind sends `ActorHours` without `closed`/`commits`),
  * `devRows()` returns `null` rather than a sum that silently skipped it, and
- * this file draws the dev's OWN figure and says the agents' are counted
- * separately. Nothing here invents a total.
+ * this file draws the dev's OWN figure and says so. Nothing here invents a
+ * total.
  */
-import { TONE_BG, TONE_FG } from "../board/CardTile";
 import { Overlay } from "../shared/Overlay";
-import { PaneRow } from "../monitor/Pane";
-import { Timesheet, timesheet } from "./Timesheet";
-import type { TimesheetDay } from "./Timesheet";
-import type { ActorRow, DevRow } from "../monitor/panels";
+import { Daysheet, daysheet } from "./Daysheet";
+import type { SheetDay } from "./Daysheet";
+import type { DevRow } from "../monitor/panels";
 import type { ReportPayload } from "../../types";
 
 /** The standing spelling for not-knowable in this UI. Never `0`. */
 const DASH = "—";
 
-/** Agent rows drawn in the detail. Beyond it the panel says how many more
- *  rather than truncating silently — the pattern `done_total` set. */
-export const AGENT_ROWS = 24;
+/** The window, grouped by date, over the dev and every agent that ran under it.
+ *  One helper so the panel and the harness ask for the same thing. */
+export function devDays(
+  row: DevRow,
+  report: ReportPayload | null,
+  titles: Readonly<Record<string, string>> = {},
+): SheetDay[] {
+  return daysheet(report, [row.dev, ...row.agents.map((a) => a.actor)], titles);
+}
 
-/** The lanes a dev's timesheet draws: its own, then its agents', in the order
- *  `devRows()` put them. One helper so the panel and the harness ask for the
- *  same thing. */
-export function devDays(row: DevRow, report: ReportPayload | null): TimesheetDay[] {
-  return timesheet(report, [row.dev, ...row.agents.map((a) => a.actor)]);
+/** The distinct cards this dev and its agents touched in the window — a UNION,
+ *  not a sum, so it is knowable even when one member cannot say its counts
+ *  (`ActorHours.cards` is not optional; `closed` and `commits` are). */
+export function devCards(row: DevRow): number {
+  const seen = new Set<string>();
+  for (const member of row.self ? [row.self, ...row.agents] : row.agents) {
+    for (const id of member.carried) seen.add(id);
+  }
+  return seen.size;
 }
 
 export interface DevPanelProps {
   row: DevRow;
   report: ReportPayload | null;
+  /** card id → title, for the cards the board can name right now. A session on a
+   *  card nobody holds is drawn as its id alone rather than a guess. */
+  titles?: Readonly<Record<string, string>> | undefined;
   onOpen: (id: string) => void;
   onClose: () => void;
 }
 
 export function DevPanel(props: DevPanelProps): React.JSX.Element {
   return (
-    <Overlay onClose={props.onClose} label={props.row.dev} width="min(1180px, 100%)">
+    <Overlay onClose={props.onClose} label={props.row.dev} width="min(980px, 100%)">
       <DevDetail {...props} />
     </Overlay>
   );
 }
 
 const label: React.CSSProperties = { fontSize: "11px", color: "var(--text-3)" };
-
-const clip: React.CSSProperties = {
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
 
 function Figure({ value, label: text }: { value: string; label: string }): React.JSX.Element {
   return (
@@ -85,88 +100,14 @@ function Figure({ value, label: text }: { value: string; label: string }): React
   );
 }
 
-/** One agent, as a ROW — not a tile. A tile per ephemeral sub-agent is what
- *  this card is undoing. */
-function AgentRow({
+export function DevDetail({
   row,
+  report,
+  titles,
   onOpen,
-}: {
-  row: ActorRow;
-  onOpen: (id: string) => void;
-}): React.JSX.Element {
-  const card = row.card;
-  return (
-    <div
-      data-testid="dev-agent"
-      data-actor={row.actor}
-      data-state={row.state ?? ""}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "180px 84px 1fr 60px 60px 74px",
-        gap: "10px",
-        alignItems: "center",
-        padding: "8px 0",
-        borderTop: "1px solid var(--hair)",
-        fontSize: "12px",
-      }}
-    >
-      <span className="mono" style={{ ...clip, fontSize: "11.5px" }} title={row.actor}>
-        {row.actor}
-      </span>
-      {row.state ? (
-        <span
-          data-testid="dev-agent-state"
-          style={{
-            fontSize: "10.5px",
-            padding: "2px 9px",
-            borderRadius: "20px",
-            background: TONE_BG[row.tone],
-            color: TONE_FG[row.tone],
-            justifySelf: "start",
-          }}
-        >
-          {row.state}
-        </span>
-      ) : (
-        <span style={label}>{row.role}</span>
-      )}
-      {card ? (
-        <button
-          type="button"
-          data-testid="dev-agent-card"
-          data-card={card.id}
-          onClick={() => onOpen(card.id)}
-          style={{ all: "unset", cursor: "pointer", minWidth: 0, ...clip }}
-        >
-          <span className="mono" style={{ color: "var(--accent)", fontSize: "11.5px" }}>
-            {card.id}
-          </span>
-          <span style={{ color: "var(--text-2)" }}>{` ${card.title}`}</span>
-        </button>
-      ) : (
-        <span style={{ ...label, ...clip }} data-testid="dev-agent-history">
-          {row.carried.length === 0
-            ? "on no card in this window"
-            : `carried ${row.carried.length} ${row.carried.length === 1 ? "card" : "cards"}`}
-        </span>
-      )}
-      <span className="num" style={{ ...label, textAlign: "right" }}>
-        {row.closed === null ? DASH : row.closed}
-      </span>
-      <span className="num" style={{ ...label, textAlign: "right" }}>
-        {row.commits === null ? DASH : row.commits}
-      </span>
-      <span className="num" style={{ ...label, textAlign: "right" }}>
-        {row.worked ?? DASH}
-      </span>
-    </div>
-  );
-}
-
-export function DevDetail({ row, report, onOpen, onClose }: DevPanelProps): React.JSX.Element {
-  const days = devDays(row, report);
-  const shown = row.agents.slice(0, AGENT_ROWS);
-  const rest = row.agents.length - shown.length;
+  onClose,
+}: DevPanelProps): React.JSX.Element {
+  const days = devDays(row, report, titles ?? {});
 
   return (
     <>
@@ -188,7 +129,7 @@ export function DevDetail({ row, report, onOpen, onClose }: DevPanelProps): Reac
             {row.dev}
           </h2>
           <div style={{ ...label, fontSize: "12px" }} data-testid="dev-presence">
-            {`${row.presence} · ran ${row.agents.length} ${row.agents.length === 1 ? "agent" : "agents"} in this window`}
+            {`orchestrator · ${row.presence}`}
           </div>
         </div>
         <button
@@ -220,21 +161,22 @@ export function DevDetail({ row, report, onOpen, onClose }: DevPanelProps): Reac
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
             gap: "14px",
-            marginBottom: "18px",
+            marginBottom: "14px",
           }}
           data-testid="dev-figures"
         >
-          <Figure value={row.closed === null ? DASH : String(row.closed)} label="closed" />
-          <Figure value={row.commits === null ? DASH : String(row.commits)} label="commits" />
           <Figure value={row.worked ?? DASH} label="worked" />
-          <Figure value={String(row.agents.length)} label="agents ran" />
-          <Figure value={String(row.live)} label="on a card now" />
+          <Figure value={row.commits === null ? DASH : String(row.commits)} label="commits" />
+          <Figure value={String(devCards(row))} label="cards" />
+          <Figure
+            value={`${row.live} running now`}
+            label={row.live === 1 ? "agent on a card" : "agents on a card"}
+          />
         </div>
         {row.partial ? (
           <div style={{ ...label, marginBottom: "16px" }} data-testid="dev-partial">
             One member of this dev could not say one of its figures, so nothing above is a sum:
-            each figure is this dev&apos;s own, and its agents&apos; are counted separately in the
-            rows below.
+            each figure is this dev&apos;s own, and its agents&apos; are not folded into it.
           </div>
         ) : (
           <div style={{ ...label, marginBottom: "16px" }} data-testid="dev-sum">
@@ -242,52 +184,7 @@ export function DevDetail({ row, report, onOpen, onClose }: DevPanelProps): Reac
           </div>
         )}
 
-        <h3 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 500 }}>
-          Timesheet — one lane per agent, one axis
-        </h3>
-        <div style={{ ...label, marginBottom: "6px" }}>
-          Two lanes that overlap were working at the same time; the space between blocks is
-          wall-clock nobody counted.
-        </div>
-        <Timesheet days={days} onOpen={onOpen} />
-
-        <h3 style={{ margin: "22px 0 2px", fontSize: "14px", fontWeight: 500 }}>
-          Agents — live lease first, then most recently seen
-        </h3>
-        {row.agents.length === 0 ? (
-          <div style={label} data-testid="dev-agents-none">
-            This dev ran no agent in the window — the hours above are its own.
-          </div>
-        ) : (
-          <div data-testid="dev-agents">
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "180px 84px 1fr 60px 60px 74px",
-                gap: "10px",
-                ...label,
-                paddingBottom: "4px",
-              }}
-            >
-              <span>agent</span>
-              <span>state</span>
-              <span>card</span>
-              <span style={{ textAlign: "right" }}>closed</span>
-              <span style={{ textAlign: "right" }}>commits</span>
-              <span style={{ textAlign: "right" }}>worked</span>
-            </div>
-            {shown.map((agent) => (
-              <AgentRow key={agent.actor} row={agent} onOpen={onOpen} />
-            ))}
-            {rest > 0 ? (
-              <PaneRow pad="9px 0">
-                <span style={label} data-testid="dev-agents-more">
-                  {`${rest} more ${rest === 1 ? "agent" : "agents"} not drawn — the figures above already count ${row.agents.length}.`}
-                </span>
-              </PaneRow>
-            ) : null}
-          </div>
-        )}
+        <Daysheet days={days} onOpen={onOpen} />
       </div>
     </>
   );
