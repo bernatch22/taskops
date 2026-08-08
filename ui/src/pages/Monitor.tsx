@@ -36,6 +36,7 @@ import { EventStreamPane } from "../components/monitor/EventStream";
 import { LeaseHealth } from "../components/monitor/LeaseHealth";
 import { LiveLeases } from "../components/monitor/LiveLeases";
 import { Mentions } from "../components/monitor/Mentions";
+import { Swarm } from "../components/monitor/Swarm";
 import { Throughput } from "../components/monitor/Throughput";
 import type { BoardPayload } from "../types";
 import type { Client } from "../client";
@@ -134,6 +135,18 @@ export function Monitor({ board, openCard, now, client }: MonitorProps): React.J
             />
             <EditSurface rows={rows} />
           </div>
+
+          {/* The foot of the LEFT column, which is where "to the left of the
+              Event stream" lands: the stream is the last pane of the sticky
+              right column, and the two read together — what is attached to what
+              beside what just happened. It is full-width in this column because
+              a radial diagram in a half-column is a diagram nobody can read. */}
+          <Swarm
+            team={board.team}
+            doing={g.doing}
+            reviewing={g.reviewing}
+            stalled={g.stalled}
+          />
         </div>
 
         <div style={right}>
