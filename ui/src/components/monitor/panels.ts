@@ -682,6 +682,57 @@ export interface ActorRow {
   /** `ActorHours.human`, already formatted by `core/hours.py` — never
    *  re-derived here */
   worked: string | null;
+  /** the same figure unformatted, because a DEV's total is the SUM of its
+   *  agents' and strings do not add (`ActorHours.seconds`) */
+  seconds: number | null;
+}
+
+/** THE TOP LEVEL OF THE ACTORS PAGE, and the shape this chapter's first attempt
+ *  got wrong.
+ *
+ *  That version drew one tile per ACTOR, so a session that spawned sixty-seven
+ *  ephemeral sub-agents drew sixty-seven tiles beside the one human — each with
+ *  the human's layout, none of them a thing that still exists. It contradicted
+ *  the chapter's own goal: an actor is a name bound to the RUN of a card, and
+ *  `w1` today is not `w1` yesterday.
+ *
+ *  So the top level is the DEV — the durable identity (`core/types.py::role_of`;
+ *  an `agent:<dev>/<name>` carries its dev in the name, `format.ts::ownerOf`,
+ *  which is the same relation `http/auth.py::authorize` enforces on the wire) —
+ *  and an agent is a LINE inside one. A board with two devs draws two cards,
+ *  which is the case this shape exists for; this board has one.
+ *
+ *  Still no slot, no pool and no capacity: `agents` is who RAN, not who is
+ *  allocated, and `live` is a count of held leases at this instant. */
+export interface DevRow {
+  /** `dev:<name>` — always the qualified string, never the bare name */
+  dev: string;
+  glyph: string;
+  /** the dev's own presence line, or that presence has not seen it */
+  presence: string;
+  /** the dev's OWN row: it never holds a card, but it comments, commits and
+   *  closes, so it has hours of its own. `null` when nothing knows it directly
+   *  and it exists only as the owner of its agents. */
+  self: ActorRow | null;
+  /** every agent of this dev the board can name, live leases first, then most
+   *  recently seen. NOT capped here — the cap is a drawing decision and the
+   *  view states its own remainder. */
+  agents: readonly ActorRow[];
+  /** agents holding a live lease RIGHT NOW — work or review. The question
+   *  somebody opens this page to answer, so it is on the card unexpanded. */
+  live: number;
+  /** the cards those live agents are on, so the card can name them without
+   *  being opened */
+  onCards: readonly { actor: string; id: string; title: string }[];
+  /** dev + agents, summed. `null` when some member's own figure was absent:
+   *  a total that quietly skipped a member is worse than no total, so the view
+   *  draws the dev's own and says the agents' are separate. */
+  closed: number | null;
+  commits: number | null;
+  seconds: number | null;
+  worked: string | null;
+  /** at least one member could not say one of its figures */
+  partial: boolean;
 }
 
 export interface ActorsProps {

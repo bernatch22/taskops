@@ -46,7 +46,8 @@ import { CommitPatch, DiffPane, FileList, FilesChanged, PatchText } from "../src
 import { Thread, detail, oneLine, prose } from "../src/components/card/Thread";
 import { split } from "../src/components/card/split";
 import { onTab } from "../src/App";
-import { Actors, actorRows } from "../src/pages/Actors";
+import { Actors, RECENT, actorRows, devRows, hoursToday } from "../src/pages/Actors";
+import { AGENT_ROWS, DevDetail, DevPanel } from "../src/components/actors/DevPanel";
 import { RULE, Timesheet, span, timesheet } from "../src/components/actors/Timesheet";
 import { TABS } from "../src/components/chrome/TabNav";
 import type {
@@ -1788,14 +1789,18 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       ).includes("closed after the pass — Decimal all the way"),
     );
   }
-  /* ── 10. The Actors view: a name bound to a card, never a slot ───────────
+  /* ── 10. Actors: a page about DEVS, and an agent is a LINE inside one ────
    *
    * The rows are built here for the reason §9 builds its own: this repo's board
    * cannot be made to hold a work lease, a review lease, a lapsed assignment and
    * a fortnight of hours at one instant from a test. The SHAPES are the
    * payload's (`BoardRow`, `TeamMember`, `ReportPayload` — the compiler checks
-   * it), and `actorRows()` is exported pure precisely so the ordering rule can be
-   * asserted without rendering. */
+   * it), and `devRows()` is exported pure precisely so the folding rule can be
+   * asserted without rendering.
+   *
+   * TWO devs, deliberately. A board with several is the case this shape exists
+   * for — it is why the top level is a dev and not "the current user" — and this
+   * repo's own board has one, so the two-dev case can only be pinned here. */
 
   const actorRow = (id: string, holder: string | null, assignee = "") =>
     ({
@@ -1824,8 +1829,10 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       { actor: "agent:berna/w1", seen: now, ago: 34 },
       { actor: "agent:berna/rv1", seen: now, ago: 60 },
       { actor: "agent:berna/idle", seen: now, ago: 900 },
+      { actor: "dev:ana", seen: now, ago: 120 },
+      { actor: "agent:ana/a1", seen: now, ago: 15 },
     ] satisfies TeamMember[],
-    doing: [actorRow("tk-a11ffa", "agent:berna/w1")],
+    doing: [actorRow("tk-a11ffa", "agent:berna/w1"), actorRow("tk-d44444", "agent:ana/a1")],
     reviewing: [
       { ...actorRow("tk-b22eee", "agent:berna/rv1"), review_since: now - 30 },
     ] as unknown as ReviewingRow[],
@@ -1840,17 +1847,22 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
           by_actor: {
             "agent:berna/w1": hours(7200, ["tk-a11ffa"], 1, 3),
             "dev:berna": hours(3600, ["tk-a11ffa"], 0, 0),
+            // Worth zero today: criterion 9 says it gets no row at all.
             "agent:berna/zzz": hours(0, [], 0, 0),
+            "agent:ana/a1": hours(3600, ["tk-d44444"], 1, 2),
           },
           closed: ["tk-a11ffa"],
           commits: 3,
         },
       ],
       by_actor: {
+        "dev:berna": hours(3600, ["tk-a11ffa"], 2, 5),
         "agent:berna/w1": hours(7200, ["tk-a11ffa"], 1, 3),
-        // HISTORY: known to the report, not to presence, and one version behind
-        // — no `closed`, no `commits`, so both must draw an em dash.
-        "agent:berna/old": hours(1800, ["tk-9f0000", "tk-9f0001"]),
+        "agent:berna/rv1": hours(1800, [], 0, 0),
+        "agent:berna/idle": hours(600, [], 0, 1),
+        "agent:berna/w9": hours(0, [], 0, 0),
+        "dev:ana": hours(1800, [], 1, 1),
+        "agent:ana/a1": hours(3600, ["tk-d44444"], 1, 2),
       },
       total: { seconds: 10800, closed: 1 },
     },
@@ -1858,52 +1870,100 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     onOpen: (id: string) => opened.push(id),
   };
 
-  const actorList = actorRows(actorsProps);
-  const order = actorList.map((r) => r.actor);
+  const devs = devRows(actorsProps);
 
-  /* Criterion 1, and the ordering this card owns: NOT alphabetical. The
-   * orchestrator leads, then the work lease, then the review lease, then the
-   * lapsed assignment, then history. */
+  /* Criterion 1 and 8: one card per DEV, none per agent, and two devs are two
+   * cards each carrying its own agents. Sixty-seven tiles for sixty-six dead
+   * sub-agents is what this replaced. */
   check(
-    "actors: the grid is ordered by what an actor is ON, not by name",
-    order.join(" ") ===
-      "dev:berna agent:berna/w1 agent:berna/rv1 agent:berna/w9 agent:berna/idle agent:berna/old",
-    order.join(" "),
+    "actors: two devs are two rows, and every agent is inside one of them",
+    devs.map((d) => d.dev).join(" ") === "dev:berna dev:ana" &&
+      devs[0]?.agents.map((a) => a.actor).join(" ") ===
+        "agent:berna/w1 agent:berna/rv1 agent:berna/w9 agent:berna/idle" &&
+      devs[1]?.agents.map((a) => a.actor).join(" ") === "agent:ana/a1",
+    devs.map((d) => `${d.dev}:${d.agents.length}`).join(" "),
   );
+  /* The agents keep `actorRows()`' rank INSIDE their dev: a live work lease,
+   * then a live review lease, then a lapsed assignment, then the rest. */
   check(
-    "actors: a live lease outranks every actor holding none",
-    actorList.findIndex((r) => r.state === "doing") <
-      actorList.findIndex((r) => r.state === "lapsed") &&
-      actorList.findIndex((r) => r.state === "lapsed") <
-        actorList.findIndex((r) => r.state === null),
+    "actors: inside a dev, a live lease outranks an agent holding none",
+    devs[0]?.agents.map((a) => a.state ?? "none").join(" ") === "doing reviewing lapsed online",
   );
-  /* The roles are derived from the name and the lease — a verifier holds the
-   * SECOND mutex and is not a shade of worker. */
+  /* The roles are still derived from the name and the lease — a verifier holds
+   * the SECOND mutex and is not a shade of worker. */
   check(
-    "actors: the orchestrator, the worker and the verifier are told apart",
-    actorList[0]?.role === "orchestrator" &&
-      actorList[1]?.role === "worker" &&
-      actorList[2]?.role === "verifier",
+    "actors: the worker and the verifier are told apart",
+    devs[0]?.agents[0]?.role === "worker" && devs[0]?.agents[1]?.role === "verifier",
   );
 
-  /* Criterion 2: an actor with no card is HISTORY. It says what it carried and
-   * when it was last seen, and the word "free" appears nowhere on this screen. */
-  const history = actorList.find((r) => r.actor === "agent:berna/old");
+  /* Criterion 7: who is on a card RIGHT NOW is a fact on the card, not behind a
+   * click — it is the question somebody opens this tab to answer. */
   check(
-    "actors: an actor with no card carries its history, not a slot",
-    history?.card === null &&
-      history?.carried.join(",") === "tk-9f0000,tk-9f0001" &&
-      history?.presence === "not seen in 24h",
+    "actors: a live lease is counted and named without opening anything",
+    devs[0]?.live === 2 &&
+      devs[0]?.onCards.map((c) => `${c.actor}=${c.id}`).join(" ") ===
+        "agent:berna/w1=tk-a11ffa agent:berna/rv1=tk-b22eee",
+    JSON.stringify(devs[0]?.onCards),
   );
-  /* Criterion 3: absent is an em dash, never 0 — that board sent no `closed`
-   * and no `commits` at all. */
+
+  /* A dev's figures are the SUM of it and its agents — 2+1, 5+3+1, and every
+   * member's seconds — and the wording is `core/hours.py`'s. */
   check(
-    "actors: a figure the payload cannot say is null, not zero",
-    history?.closed === null && history?.commits === null && history?.worked === "1h",
+    "actors: a dev's figures are it and its agents, summed",
+    devs[0]?.closed === 3 &&
+      devs[0]?.commits === 9 &&
+      devs[0]?.seconds === 13200 &&
+      devs[0]?.worked === "3h 40m" &&
+      devs[0]?.partial === false,
+    `${devs[0]?.closed}/${devs[0]?.commits}/${devs[0]?.worked}`,
+  );
+
+  /* …and when ONE member cannot say a figure, the sum is REFUSED rather than
+   * quietly taken over the rest: the dev's own is drawn and the panel says the
+   * agents' are counted separately. `agent:berna/old` is a board one version
+   * behind — no `closed`, no `commits` (types.ts: both optional). */
+  const partialProps = {
+    ...actorsProps,
+    report: {
+      ...actorsProps.report,
+      by_actor: {
+        ...actorsProps.report.by_actor,
+        "agent:berna/old": hours(1800, ["tk-9f0000", "tk-9f0001"]),
+      },
+    },
+  };
+  const partial = devRows(partialProps).find((d) => d.dev === "dev:berna");
+  check(
+    "actors: a figure one member cannot say refuses the sum, it does not skip it",
+    partial?.partial === true &&
+      partial?.closed === 2 &&
+      partial?.commits === 5 &&
+      partial?.worked === "1h",
+    `${partial?.closed}/${partial?.commits}/${partial?.worked}`,
+  );
+  /* That member is still HISTORY and not a free slot: it says what it carried. */
+  const oldRow = partial?.agents.find((a) => a.actor === "agent:berna/old");
+  check(
+    "actors: an agent with no card carries its history, not a slot",
+    oldRow?.card === null &&
+      oldRow?.carried.join(",") === "tk-9f0000,tk-9f0001" &&
+      oldRow?.presence === "not seen in 24h" &&
+      oldRow?.closed === null,
+  );
+  /* `actorRows()` is still the fold underneath, and still per actor. */
+  check(
+    "actors: every actor the board can name reaches exactly one dev",
+    actorRows(actorsProps).length ===
+      devRows(actorsProps).reduce((n, d) => n + d.agents.length + (d.self ? 1 : 0), 0),
   );
 
   const actorsMarkup = renderToStaticMarkup(<Actors {...actorsProps} />);
   check("actors: the view renders", actorsMarkup.includes('data-testid="actors"'));
+  check(
+    "actors: one card per dev is DRAWN, and no card for an agent",
+    (actorsMarkup.match(/data-testid="dev-card"/g) ?? []).length === 2 &&
+      !actorsMarkup.includes('data-testid="actor-card"'),
+  );
   check(
     "actors: NO WORKER SLOTS, under that name or any other",
     !/free|slot|capacity/i.test(actorsMarkup),
@@ -1913,31 +1973,56 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     (actorsMarkup.match(/closed and commits are over the last 2 days/g) ?? []).length === 1,
   );
   check(
-    "actors: an absent figure draws an em dash and not a zero",
-    /* The card itself, not the rest of the page: the hours pane below it draws
-       an em dash of its own, so a `split` on the marker would pass on somebody
-       else's dash. */
-    (actorsMarkup
-      .split('data-actor="agent:berna/old"')[1]
-      ?.split("</section>")[0]
-      ?.match(/—/g) ?? []).length === 2,
-  );
-  /* Criterion 4: the CARD id is the control. The actor is not clickable —
-   * there is no actor page and nothing behind it. */
-  check(
-    "actors: the card id opens the dossier and the actor itself does not",
-    actorsMarkup.includes('data-testid="actor-card-open"') &&
-      actorsMarkup.includes('data-card="tk-a11ffa"') &&
-      !/<button[^>]*data-actor=/.test(actorsMarkup),
+    "actors: the live lease is on the card, with a door to the card it holds",
+    actorsMarkup.includes("2 agents on a card right now") &&
+      actorsMarkup.includes('data-testid="dev-live-card" data-card="tk-a11ffa"'),
   );
   /* Hours worked today is the panel that REPLACES the slot roster: it is
-   * measured, and it is the DAY's fold, not the window's — `agent:berna/old`
-   * worked in the window and not today, so it has no bar. */
+   * measured, it is the DAY's fold and not the window's, it is grouped by dev —
+   * and criterion 9, a row worth zero is NOT DRAWN (`agent:berna/zzz`). */
+  const todayHours = hoursToday(actorsProps.report);
   check(
-    "actors: hours worked today are today's, longest first",
-    actorsMarkup.includes('data-testid="pane-hours-today"') &&
+    "actors: today's hours are grouped by dev, longest first",
+    todayHours?.groups.map((g) => `${g.dev}=${g.human}`).join(" ") === "dev:berna=3h dev:ana=1h",
+    JSON.stringify(todayHours?.groups.map((g) => g.dev)),
+  );
+  check(
+    "actors: an actor that worked no measurable time today has no row",
+    !actorsMarkup.includes("agent:berna/zzz") &&
       (actorsMarkup.match(/data-testid="hours-bar" data-actor="([^"]+)"/g) ?? []).join(" ") ===
-        'data-testid="hours-bar" data-actor="agent:berna/w1" data-testid="hours-bar" data-actor="dev:berna"',
+        'data-testid="hours-bar" data-actor="agent:berna/w1" data-testid="hours-bar" data-actor="dev:berna" data-testid="hours-bar" data-actor="agent:ana/a1"',
+  );
+
+  /* Criterion 6: MORE AGENTS THAN THE CAP is said, never truncated in silence —
+   * on the card (the recent few) and in the detail (the rows). */
+  const many = Array.from({ length: 30 }, (_, i) => `agent:berna/n${i}`);
+  const capProps = {
+    ...actorsProps,
+    team: many.map((actor, i) => ({ actor, seen: now, ago: i })) satisfies TeamMember[],
+    doing: [],
+    reviewing: [] as unknown as ReviewingRow[],
+    stalled: [],
+    report: {
+      ...actorsProps.report,
+      by_actor: Object.fromEntries(many.map((a) => [a, hours(600, [], 0, 0)])),
+    },
+  };
+  const capped = devRows(capProps)[0]!;
+  const capMarkup = renderToStaticMarkup(<Actors {...capProps} />);
+  check(
+    "actors: a dev with thirty agents draws a few names and counts the rest",
+    capped.agents.length === 30 &&
+      capMarkup.includes(`+${30 - RECENT} more`) &&
+      (capMarkup.match(/agent:berna\/n\d+/g) ?? []).length === 0,
+    capMarkup.split('data-testid="dev-recent"')[1]?.slice(0, 120),
+  );
+  const capDetail = renderToStaticMarkup(
+    <DevDetail row={capped} report={capProps.report} onOpen={() => {}} onClose={() => {}} />,
+  );
+  check(
+    "actors: the detail caps its agent rows and says how many more",
+    (capDetail.match(/data-testid="dev-agent"/g) ?? []).length === AGENT_ROWS &&
+      capDetail.includes(`${30 - AGENT_ROWS} more agents not drawn`),
   );
 
   /* Criterion 5: a board nobody has touched is ONE sentence, not an empty grid. */
@@ -1947,7 +2032,7 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check(
     "actors: nobody seen is one sentence",
     actorsEmpty.includes('data-testid="actors-none"') &&
-      !actorsEmpty.includes('data-testid="actor-card"'),
+      !actorsEmpty.includes('data-testid="dev-card"'),
   );
 
   /* The fourth tab exists AND has a page. A tab that falls through to the Board
@@ -1958,12 +2043,19 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     TABS.map((t) => t.id).join(" ") === "monitor board actors worktrees",
   );
 
-  /* ── 11. The timesheet: the sessions, and the arithmetic that made them ──
+  /* ── 11. The detail: a real overlay, and a timesheet that is a DRAWING ────
    *
-   * `timesheet()` is exported pure for the same reason `actorRows()` is: the
-   * disclosure that reveals it is a click, and no handler fires here. What IS
-   * reachable is everything that decides what the click has to land on — the
-   * shared axis, the gaps, the blocks' doors and the empty case.
+   * The first version of this screen revealed the detail in place and drew the
+   * sessions as a list of card ids joined by dots. Both are reversed here, and
+   * both are pinned: the panel is the SAME `shared/Overlay` the dossier uses —
+   * a portal, which under `react-dom/server` renders nothing at all, exactly as
+   * `Drawer` does — with `DevDetail` exported beside it so the document itself
+   * is readable headlessly.
+   *
+   * `timesheet()` is exported pure for the same reason: the disclosure that
+   * opens it is a click, and no handler fires here. What IS reachable is
+   * everything that decides what the click has to land on — the shared axis, the
+   * lanes, the gaps, the blocks' doors and the empty case.
    *
    * The sessions are the payload's, in `ActorSession`'s declared shape, so the
    * compiler holds this fixture to what `verbs/report.py::_by_actor` writes. */
@@ -2018,54 +2110,64 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     total: { seconds: 7200, closed: 0 },
   } satisfies ReportPayload;
 
-  const w1Sheet = timesheet(sheetReport, "agent:berna/w1");
-  const bernaSheet = timesheet(sheetReport, "dev:berna");
+  /* Criterion 4: ONE LANE PER AGENT on ONE axis. That is the whole point — two
+   * lanes that overlap were working at the same time. */
+  const sheet = timesheet(sheetReport, ["dev:berna", "agent:berna/w1", "agent:berna/never"]);
+  const day = sheet[0];
+  check(
+    "timesheet: one lane per actor asked for, and none for one that did not work",
+    sheet.length === 1 &&
+      day?.lanes.map((l) => l.actor).join(" ") === "dev:berna agent:berna/w1",
+    JSON.stringify(sheet.map((d) => d.lanes.length)),
+  );
+  /* Criterion 3: the blocks are POSITIONED and SIZED on the axis. berna's single
+   * block sits two thirds along the DAY's extent — measured over every actor,
+   * not over the lane. Scaled to its own extent it would start at 0 and fill the
+   * row, and the two lanes would read as having worked at the same time. */
+  const solo = day?.lanes[0]?.blocks[0];
+  check(
+    "timesheet: the day's axis is shared, so two lanes compare by eye",
+    Math.round(solo?.left ?? -1) === 67 &&
+      Math.round(solo?.width ?? -1) === 17 &&
+      day?.from === T &&
+      day?.to === T + 10800,
+    `${solo?.left} +${solo?.width}`,
+  );
+  /* The axis is a REAL-TIME axis, so it carries wall-clock marks. */
+  check(
+    "timesheet: the axis is marked in wall-clock, not unitless",
+    day?.ticks.length === 2 &&
+      day?.ticks.map((t) => t.at - T).join(" ") === "3600 7200" &&
+      Math.round(day?.ticks[0]?.left ?? -1) === 33,
+    JSON.stringify(day?.ticks),
+  );
 
-  /* Criterion 2: one card, a gap over GAP → TWO blocks, and the wall-clock
-   * between them is counted as NOT counted. */
+  /* Criterion 2 of the previous card, kept: one card, a gap over GAP → TWO
+   * blocks, and the wall-clock between them is counted as NOT counted. */
+  const w1Lane = day?.lanes[1];
   check(
     "timesheet: a dropped gap splits one card into two blocks and is measured",
-    w1Sheet.length === 1 &&
-      w1Sheet[0]?.blocks.length === 2 &&
-      w1Sheet[0]?.blocks.every((b) => b.task === "tk-a11ffa") === true &&
-      w1Sheet[0]?.gaps.length === 1 &&
-      w1Sheet[0]?.dropped === 5400,
-    JSON.stringify(w1Sheet[0]?.gaps),
-  );
-  /* A day this actor did not work is not a row: an axis with no block on it
-   * says nothing, and 2026-08-07 is in the report. */
-  check(
-    "timesheet: a day with no session of this actor is not drawn at all",
-    w1Sheet.map((d) => d.day).join(" ") === "2026-08-08",
-  );
-
-  /* Criterion 3, the one this card exists for: the axis is the DAY's, taken
-   * over every actor, so berna's single block sits two thirds along it. Scaled
-   * to its own extent it would start at 0 and fill the row, and the two actors
-   * would read as having worked at the same time. */
-  const solo = bernaSheet[0]?.blocks[0];
-  check(
-    "timesheet: the day's axis is shared, so two actors' rows compare by eye",
-    bernaSheet[0]?.from === w1Sheet[0]?.from &&
-      bernaSheet[0]?.to === w1Sheet[0]?.to &&
-      Math.round(solo?.left ?? -1) === 67 &&
-      Math.round(solo?.width ?? -1) === 17,
-    `${solo?.left} +${solo?.width}`,
+    w1Lane?.blocks.length === 2 &&
+      w1Lane?.blocks.every((b) => b.task === "tk-a11ffa") === true &&
+      w1Lane?.gaps.length === 1 &&
+      w1Lane?.dropped === 5400,
+    JSON.stringify(w1Lane?.gaps),
   );
   /* The counted total is the SERVER's wording, never re-derived; only the
    * dropped time is this screen's own subtraction. */
   check(
     "timesheet: the counted total is the payload's own formatting",
-    w1Sheet[0]?.human === "1h" && w1Sheet[0]?.seconds === 5400,
+    w1Lane?.human === "1h" && w1Lane?.seconds === 5400,
   );
   check("timesheet: dropped time is worded like core/hours.py::human", span(5400) === "1h 30m");
-  /* A change of card ends a block; it does not create a gap. Only wall-clock
-   * that was DROPPED is not-counted time. */
-  const touching = timesheet(sheetReport, "agent:berna/touch")[0];
+  /* A change of card ends a block; it does not create a gap. */
+  const touching = timesheet(sheetReport, ["agent:berna/touch"])[0];
   check(
     "timesheet: two blocks that touch are two cards, not a gap",
-    touching?.blocks.length === 2 && touching?.gaps.length === 0 && touching?.dropped === 0,
-    JSON.stringify(touching?.gaps),
+    touching?.lanes[0]?.blocks.length === 2 &&
+      touching?.lanes[0]?.gaps.length === 0 &&
+      touching?.lanes[0]?.dropped === 0,
+    JSON.stringify(touching?.lanes[0]?.gaps),
   );
   check(
     "timesheet: a day with nothing dropped says so, and does not draw one",
@@ -2075,20 +2177,38 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       ),
   );
   check(
-    "timesheet: a truncated day says so and still shows the whole total",
-    timesheet(sheetReport, "agent:berna/capped")[0]?.capped === true &&
-      w1Sheet[0]?.capped === false,
+    "timesheet: a truncated lane says so and still shows the whole total",
+    timesheet(sheetReport, ["agent:berna/capped"])[0]?.lanes[0]?.capped === true &&
+      w1Lane?.capped === false,
   );
 
   const opened2: string[] = [];
   const sheetMarkup = renderToStaticMarkup(
-    <Timesheet days={w1Sheet} onOpen={(id) => opened2.push(id)} />,
+    <Timesheet days={sheet} onOpen={(id) => opened2.push(id)} />,
   );
-  /* Criterion 4: a block is a door to the CARD's dossier — the same `openCard`
+  /* Criterion 3, drawn: blocks carry a left and a width, and the LIST OF CARD
+   * IDS JOINED BY DOTS that this card exists to delete is gone. */
+  check(
+    "timesheet: the sessions are drawn as placed blocks, never as a list of ids",
+    /data-testid="timesheet-block"[^>]*style="[^"]*position:absolute;left:66\.6\d*%;width:16\.6\d*%/.test(
+      sheetMarkup,
+    ) &&
+      !sheetMarkup.includes('data-testid="timesheet-cards"') &&
+      !sheetMarkup.includes("tk-a11ffa · tk-a11ffa"),
+    sheetMarkup.split('data-testid="timesheet-block"')[1]?.slice(0, 200),
+  );
+  check(
+    "timesheet: each lane is labelled and totalled beside its own track",
+    (sheetMarkup.match(/data-testid="timesheet-lane" data-actor="([^"]+)"/g) ?? []).join(" ") ===
+      'data-testid="timesheet-lane" data-actor="dev:berna" data-testid="timesheet-lane" data-actor="agent:berna/w1"' &&
+      (sheetMarkup.match(/data-testid="timesheet-lane-total"/g) ?? []).length === 2,
+  );
+  /* Criterion 5: a block is a door to the CARD's dossier — the same `openCard`
    * every view uses. The gap beside it is not: there is no event inside it. */
   check(
     "timesheet: a block opens its card and the gap between blocks does not",
     (sheetMarkup.match(/data-testid="timesheet-block" data-card="tk-a11ffa"/g) ?? []).length === 2 &&
+      sheetMarkup.includes('data-testid="timesheet-block" data-card="tk-d34294"') &&
       sheetMarkup.includes('data-testid="timesheet-gap"') &&
       !/<button[^>]*data-testid="timesheet-gap"/.test(sheetMarkup),
   );
@@ -2097,7 +2217,7 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     sheetMarkup.includes("1 gap · 1h 30m not counted") &&
       sheetMarkup.includes("1h 30m not counted —"),
   );
-  /* Criterion 6: the rule is ON SCREEN, in core/hours.py's own words. */
+  /* The rule is ON SCREEN, in core/hours.py's own words. */
   check(
     "timesheet: the arithmetic is explained where the numbers are",
     sheetMarkup.includes('data-testid="timesheet-rule"') &&
@@ -2106,9 +2226,9 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       RULE.includes("The signal is the timestamp of the events themselves"),
   );
 
-  /* Criterion 5: no events in the window is a SENTENCE, never an empty axis. */
+  /* No events in the window is a SENTENCE, never an empty axis. */
   const sheetEmpty = renderToStaticMarkup(
-    <Timesheet days={timesheet(sheetReport, "agent:berna/never")} onOpen={() => {}} />,
+    <Timesheet days={timesheet(sheetReport, ["agent:berna/never"])} onOpen={() => {}} />,
   );
   check(
     "timesheet: an actor with no events says so instead of drawing an axis",
@@ -2121,16 +2241,45 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     "timesheet: a payload without sessions degrades to the empty sentence",
     timesheet(
       { ...sheetReport, days: [{ day: "2026-08-08", by_actor: { "dev:berna": { seconds: 60, human: "1m", cards: [] } }, closed: [], commits: 0 }] },
-      "dev:berna",
-    ).length === 0 && timesheet(null, "dev:berna").length === 0,
+      ["dev:berna"],
+    ).length === 0 && timesheet(null, ["dev:berna"]).length === 0,
   );
 
-  /* The door on the actor card itself: collapsed by default, and NOT a link to
-   * an actor page — there is none. */
+  /* Criterion 2: the detail is a FULL OVERLAY reusing the existing machinery.
+   * `DevPanel` is `shared/Overlay` — a portal — so it renders nothing at all
+   * here, which is the same proof `Drawer` gives; `DevDetail` beside it is the
+   * document, and it is what the harness reads. */
+  const sheetDev = devRows({ ...actorsProps, report: sheetReport })[0]!;
   check(
-    "actors: an actor card offers its timesheet in place, closed to begin with",
-    actorsMarkup.includes('data-testid="actor-timesheet-toggle" data-open="0"') &&
-      !actorsMarkup.includes('data-testid="timesheet"'),
+    "actors: the dev detail is the shared portal overlay, not a second one",
+    renderToStaticMarkup(
+      <DevPanel row={sheetDev} report={sheetReport} onOpen={() => {}} onClose={() => {}} />,
+    ) === "" && !actorsMarkup.includes('data-testid="dev-figures"'),
+  );
+  const detailMarkup = renderToStaticMarkup(
+    <DevDetail row={sheetDev} report={sheetReport} onOpen={() => {}} onClose={() => {}} />,
+  );
+  check(
+    "actors: the detail draws the dev's own lane and one per agent, on one axis",
+    detailMarkup.includes('data-testid="timesheet-lane" data-actor="dev:berna"') &&
+      detailMarkup.includes('data-testid="timesheet-lane" data-actor="agent:berna/w1"') &&
+      (detailMarkup.match(/data-testid="timesheet-ruler"/g) ?? []).length === 1,
+  );
+  check(
+    "actors: the detail lists the agents as ROWS, with a door to the card each holds",
+    detailMarkup.includes('data-testid="dev-agent" data-actor="agent:berna/w1"') &&
+      detailMarkup.includes('data-testid="dev-agent-card" data-card="tk-a11ffa"') &&
+      !detailMarkup.includes('data-testid="dev-card"'),
+  );
+  const partialDetail = renderToStaticMarkup(
+    <DevDetail row={partial!} report={actorsProps.report} onOpen={() => {}} onClose={() => {}} />,
+  );
+  check(
+    "actors: a refused sum is said in words, and a real sum says it is one",
+    partialDetail.includes('data-testid="dev-partial"') &&
+      renderToStaticMarkup(
+        <DevDetail row={devs[0]!} report={actorsProps.report} onOpen={() => {}} onClose={() => {}} />,
+      ).includes('data-testid="dev-sum"'),
   );
 
   return failures;

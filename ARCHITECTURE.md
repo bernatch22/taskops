@@ -484,7 +484,8 @@ nobody has touched yet.
 | a mark-as-read / ack verb for mentions | a stored `read` flag is `recover` again: a write whose only job is to contradict an earlier one | `core/mentions.py::pending()` derives it from the thread; `tests/test_verbs.py::test_a_mention_clears_itself_the_moment_the_actor_touches_the_card` |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
-| a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws actors bound to cards instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an actor with no card is HISTORY, never "free", and `ui/smoke/main.tsx` §10 asserts the words `free`, `slot` and `capacity` appear nowhere in that markup |
+| a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/main.tsx` §10 asserts the words `free`, `slot` and `capacity` appear nowhere in that markup |
+| a TILE per ephemeral sub-agent | the first Actors page drew one per ACTOR: sixty-seven tiles, sixty-six of them processes that had already died with their cards, each wearing the human's layout — the page contradicted its own goal | the top level is the DEV (`devRows()`), an agent is a row inside it, and `ui/smoke/main.tsx` §10 pins that a board with one dev and many agents draws exactly one card per dev and none per agent |
 
 ---
 
@@ -675,35 +676,61 @@ files that answer it:
 * **Board** — the nine groups of `docs/design.md` §4, as the board reports them.
 * **Actors** — the fourth view (`ui/src/pages/Actors.tsx`), and the one that
   answers "who has been on this board, what did they carry, and for how long".
-  A grid of actor cards ordered by what an actor is ON — the orchestrator, then
-  a work lease, then a review lease (the SECOND mutex, so a verifier is its own
-  role and not a shade of worker), then a lapsed assignment, then history — and
-  never by name; `actorRows()` is exported pure precisely so that ordering is
-  asserted without rendering. It reads no verb and no new payload key: `team`,
-  `doing`, `reviewing`, `stalled` and `board.hours` are four slices the board
-  already sends, and `closed`/`commits` are counts over the SAME window, said
-  once in the subtitle rather than on twenty tiles. A figure the payload cannot
-  say draws an em dash and never `0`.
+  **It is a page about DEVS, and an agent is a LINE inside one.** It shipped
+  once as a grid of ACTOR tiles and that was sixty-seven tiles on the session
+  that built it — one human and sixty-six ephemeral sub-agents that had already
+  died with their cards — which contradicts the chapter's own goal: an actor is
+  a name bound to the RUN of a card, and `w1` today is not `w1` yesterday. The
+  top level is now the DEV, the durable identity (`core/types.py::role_of`; an
+  `agent:<dev>/<name>` carries its dev in the name, `format.ts::ownerOf`, the
+  same relation `http/auth.py::authorize` enforces on the wire), and TWO devs
+  are two cards each with its own agents — the case the shape exists for, and
+  the reason the top level is not "the current user". A dev card says how many
+  of its agents are on a card RIGHT NOW without being opened, its figures over
+  the window, the most recent few agent names and the rest as a count — never a
+  list of sixty-eight ids. `devRows()` and `actorRows()` are exported pure
+  precisely so the folding and the ordering are asserted without rendering. It
+  reads no verb and no new payload key: `team`, `doing`, `reviewing`, `stalled`
+  and `board.hours` are four slices the board already sends, and
+  `closed`/`commits` are counts over the SAME window, said once in the subtitle.
+  A figure the payload cannot say draws an em dash and never `0`, and a dev's
+  totals are dev + agents — refused WHOLE when one member cannot say its own,
+  because a sum over a subset presented as a total is the dishonesty this
+  chapter removes.
   **Nova draws this screen with a WORKER SLOTS roster — held / free / lapsed as
   a pool with a capacity — and that panel is deliberately not built** (§11): an
-  actor with no card is HISTORY, saying what it carried and when it was last
+  agent with no card is HISTORY, saying what it carried and when it was last
   seen, never `— free —`. What stands where the roster would have stood is
   *Hours worked today*, which is Nova's own second panel, is measured, and is
   the last DAY's fold (`report.days`), not the fourteen-day `by_actor` the
-  heading would have made a lie of.
-  A row opens IN PLACE into its **timesheet**
-  (`components/actors/Timesheet.tsx`) — not a modal and not a route, because
-  this dashboard's drawer belongs to a CARD and an actor is not one, and because
-  several rows open at once is what makes the axis worth sharing. The blocks are
-  `ActorHours.sessions`, the very list `core/hours.py::spent` folds into the
-  total drawn beside them: ONE definition of an interval, so timeline and figure
-  cannot drift. The axis is the DAY's, taken over every actor that worked it —
-  two rows scaled to their own extents would put 09:00 and 14:00 at the same x
-  and answer "who was working in parallel" wrongly, which is the one question a
-  timeline is for. A gap over 30 minutes is dropped WHOLE, never capped (v1
-  capped it and every break added a phantom half hour), so it is drawn as real
-  space AND said as a figure, with the rule itself on screen in `core/hours.py`'s
-  own words.
+  heading would have made a lie of. It is grouped by dev with its agents inside
+  it, and a row worth zero is not drawn at all: a column of em dashes is a list
+  of nothing.
+  A dev opens into a **full overlay** (`components/actors/DevPanel.tsx`), which
+  REUSES `shared/Overlay` — the same portal, the same scrim, the same ONE
+  `overlayStack` that owns Escape; the only thing it asked for is a `width`,
+  because the thing inside is a drawing. `DevDetail` is exported beside
+  `DevPanel` for the reason `Dossier` is exported beside `Drawer`: a portal
+  renders nothing under `react-dom/server`, and the document must still be
+  readable headlessly. The earlier "it reveals in place, it is not a modal" is
+  reversed — that reasoning was about routing, and what is on screen is a
+  drawing that does not fit in a grid cell.
+  The **timesheet** (`components/actors/Timesheet.tsx`) is that drawing: a
+  horizontal axis in real wall-clock with hour marks, one filled block per
+  counted session positioned and sized by its own start and duration, gaps as
+  visible empty space, and **ONE LANE PER AGENT on the day's one shared axis** —
+  which is where "who worked in parallel" is answered. The first version drew
+  the axis and set a list of card ids joined by dots under it, and the reader
+  read the list; the list is gone and the ids live in the block titles, where
+  they belong to a position in time. The blocks are `ActorHours.sessions`, the
+  very list `core/hours.py::spent` folds into the total drawn beside each lane:
+  ONE definition of an interval, so timeline and figure cannot drift. The axis
+  is the DAY's, taken over every actor that worked it — lanes scaled to their
+  own extents would put 09:00 and 14:00 at the same x and answer the one
+  question a timeline is for wrongly. A gap over 30 minutes is dropped WHOLE,
+  never capped (v1 capped it and every break added a phantom half hour), so it
+  is drawn as real space AND said as a figure, with the rule itself on screen in
+  `core/hours.py`'s own words.
 * **Worktrees** — an INDEX OF PULL REQUESTS (`ui/src/pages/Worktrees.tsx`): one
   tile per inhabited directory, which is idea 2 made visible, in two 50/50
   columns — *In progress* and *Merged* — each split into two sub-blocks, and a

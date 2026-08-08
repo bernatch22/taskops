@@ -1,8 +1,24 @@
-/* The fourth view — every actor, the card it carried, what it did.
+/* The fourth view — who has been on this board, what they carried, how long.
  *
- * A grid of actor cards and, under them, the day's hours. It answers the one
- * question no other screen does: not "what is happening to this card" but "who
- * has been on this board, what did they carry, and for how long".
+ * ── A page about DEVS. An agent is a LINE inside one ──────────────────────
+ *
+ * The first version of this screen drew one tile per ACTOR. On the session that
+ * built it that was SIXTY-SEVEN tiles: one human and sixty-six ephemeral
+ * sub-agents that had already died with their cards, each wearing the human's
+ * layout. It contradicted this chapter's own goal — an actor is a name bound to
+ * the RUN of a card, and `w1` today is not `w1` yesterday.
+ *
+ * So the top level is the DEV, the durable identity (`core/types.py::role_of`;
+ * an `agent:<dev>/<name>` carries its dev in the name, `format.ts::ownerOf`,
+ * which is the relation `http/auth.py::authorize` enforces on the wire). A dev
+ * card says what the person did over the window and how many of its agents are
+ * on a card RIGHT NOW — unexpanded, because that is the question somebody opens
+ * this tab to answer. It never lists sixty-eight ids: a count, the most recent
+ * few, and the rest inside the detail.
+ *
+ * A board with SEVERAL devs is the case this shape exists for, and is why the
+ * top level is a dev rather than "the current user". Two devs are two cards,
+ * each with its own agents; this board has one.
  *
  * ── The refusal this view is built around ─────────────────────────────────
  *
@@ -12,27 +28,21 @@
  * `taskops_assign` is a label chosen at the call, a sub-agent dies with its card,
  * and `w1` today is not `w1` yesterday. So the roster is not built, and it is not
  * rebuilt under another name — anything shaped like a fixed capacity is the thing
- * this chapter refuses (`panels.ts`, the ActorRow seam, says the same in the
- * type).
+ * this chapter refuses (`panels.ts`, the `ActorRow`/`DevRow` seam, says the same
+ * in the type).
  *
  * What replaces it is `Hours worked today`, which is Nova's own second panel,
- * is true, and is a fold of the report the board already sends.
+ * is true, and is a fold of the report the board already sends. It is grouped by
+ * DEV with its agents inside it, and A ROW WORTH ZERO IS NOT DRAWN: a column of
+ * em dashes is a list of nothing.
  *
- * AN ACTOR WITH NO CARD IS HISTORY, NOT AN EMPTY SLOT. Such a row says what it
- * carried, what it closed and when it was last seen. It never says `— free —`:
- * "free" is a claim about a slot, and the slot is the fiction.
+ * ── A dev opens into a full overlay ───────────────────────────────────────
  *
- * ── An actor opens into its TIMESHEET, in place ───────────────────────────
- *
- * `components/actors/Timesheet.tsx`. It is not a modal and not a second page:
- * the drawer of this dashboard belongs to a CARD, an actor is not one, and
- * there is no actor route. So the row folds open under itself, several at once
- * — which is what makes the shared day axis worth having, since two open rows
- * are then readable against each other.
- *
- * The blocks are `ActorHours.sessions`, the SAME list `core/hours.py::spent`
- * folds into the totals drawn two rows above them. One definition of an
- * interval, so the timeline and the number cannot disagree.
+ * `components/actors/DevPanel.tsx`, which reuses `shared/Overlay` — the same
+ * portal, the same scrim, the same ONE `overlayStack` that owns Escape. The
+ * detail is a DRAWING (lanes on a shared time axis) and a drawing does not fit
+ * in a 300px grid cell, which is why the earlier "reveal in place" is gone. What
+ * did NOT happen is a second copy of the overlay plumbing.
  *
  * ── Where every figure comes from ─────────────────────────────────────────
  *
@@ -44,10 +54,11 @@
  *
  * `closed` and `commits` are counts OVER THAT WINDOW (`verbs/report.py::_by_actor`
  * — the same pass over the same events as the hours), never lifetime figures. The
- * grid says so ONCE, in its subtitle, rather than qualifying every card: a
- * qualifier repeated on twenty tiles is read on none of them. An absent figure
- * draws an em dash and never `0` — a board one version behind sends `ActorHours`
- * without those two keys (types.ts), and `0` would be an assertion nothing made.
+ * grid says so ONCE, in its subtitle, rather than qualifying every card. An
+ * absent figure draws an em dash and never `0` — a board one version behind sends
+ * `ActorHours` without those two keys (types.ts), and `0` would be an assertion
+ * nothing made. A dev's totals are dev + agents, and when one member cannot say
+ * its own the sum is refused rather than quietly taken over the rest.
  *
  * ── Why "today" is the last DAY and not `by_actor` ────────────────────────
  *
@@ -60,29 +71,23 @@
  *
  * ── The ordering, which is this view's design decision ────────────────────
  *
- * Not alphabetical. Who is ON something leads, because that is what a reader
- * opening this tab is looking for:
- *
- *     0  the orchestrator      always first — it never holds a card, and the
- *                              reader is usually it
- *     1  a live WORK lease
- *     2  a live REVIEW lease
- *     3  lapsed                an assignee, nothing running
- *     4  history               most recently seen first
- *
- * Within a rank, most recently seen first, then by name so the order is stable
- * between two renders of one payload. */
+ * Devs: most agents on a card right now first, then most time worked, then by
+ * name so two renders of one payload agree. Agents inside a dev keep
+ * `actorRows()`' rank — a live work lease, then a live review lease, then a
+ * lapsed assignment, then history, most recently seen first within each. */
 import { useState } from "react";
 
-import { Pane, PaneButton, PaneEmpty, PaneRow } from "../components/monitor/Pane";
-import { Timesheet, timesheet } from "../components/actors/Timesheet";
+import { Pane, PaneEmpty, PaneRow } from "../components/monitor/Pane";
+import { DevPanel } from "../components/actors/DevPanel";
+import { span } from "../components/actors/Timesheet";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
-import { ago, initials } from "../format";
+import { ago, initials, ownerOf, shortActor } from "../format";
 import type {
   ActorRole,
   ActorRow,
   ActorState,
   ActorsProps,
+  DevRow,
   Tone,
 } from "../components/monitor/panels";
 import type { ActorHours, ReportPayload } from "../types";
@@ -93,21 +98,15 @@ export type { ActorsProps };
  *  one). Never `0`: zero is a measurement, absence is not. */
 const DASH = "—";
 
+/** Agent names printed on the dev CARD. The rest are a stated remainder and are
+ *  drawn as rows in the detail. */
+export const RECENT = 4;
+
 const TONE_OF: Record<ActorState, Tone> = {
   online: "ok",
   doing: "accent",
   reviewing: "warn",
   lapsed: "danger",
-};
-
-/** What each pill MEANS, on the card itself — four short phrases, because a
- *  coloured word is not self-explanatory and this screen is the one place the
- *  four are drawn side by side. */
-const MEANS: Record<ActorState, string> = {
-  online: "seen recently, on no card",
-  doing: "holds the work lease",
-  reviewing: "holds the review lease",
-  lapsed: "assigned, nobody running it",
 };
 
 /** An actor's role, from its own name and the lease it holds. `dev:` is the
@@ -119,8 +118,8 @@ function roleOf(actor: string, state: ActorState | null): ActorRole {
   return state === "reviewing" ? "verifier" : "worker";
 }
 
-/** The rank the grid sorts on — the ordering rule above, as one function, so
- *  there is one place it can be read and one place it can be changed. */
+/** The rank agents sort on inside their dev — the ordering rule above, as one
+ *  function, so there is one place it can be read and one place it can change. */
 export function rank(row: ActorRow): number {
   if (row.role === "orchestrator") return 0;
   if (row.state === "doing") return 1;
@@ -129,16 +128,16 @@ export function rank(row: ActorRow): number {
   return 4;
 }
 
-/** Payload → the cards, ordered. Pure and exported for the reason `submit()` and
- *  `topology()` are: no handler fires under `react-dom/server`, so a rule left
- *  inside the render closure would have no test at all. */
+/** Payload → one row per ACTOR, ordered by what it is on. Still exported and
+ *  still pure: it is what `devRows()` folds, and no handler fires under
+ *  `react-dom/server`, so a rule left in a render closure would have no test. */
 export function actorRows(props: ActorsProps): ActorRow[] {
   const { team, doing, reviewing, stalled, report } = props;
 
   /* WHO IS ON WHAT. A holder may appear in both lease maps — an agent holding
    * one card's work lease and another's review lease — and the work lease wins,
    * exactly as `Swarm.topology` resolves it: the first kind an actor is drawn
-   * under is the one it keeps, so it is one card and not two. */
+   * under is the one it keeps, so it is one row and not two. */
   const working = new Map<string, { id: string; title: string }>();
   const checking = new Map<string, { id: string; title: string }>();
   const lapsed = new Map<string, { id: string; title: string }>();
@@ -148,12 +147,12 @@ export function actorRows(props: ActorsProps): ActorRow[] {
 
   /* Presence is the ONLY source of "last seen", and it spans 24h. An actor the
    * report knows and presence does not has not been seen in that span — which is
-   * a fact, and is what the card says. */
+   * a fact, and is what the row says. */
   const seen = new Map(team.map((m) => [m.actor, m.ago]));
   const hours: Record<string, ActorHours> = report?.by_actor ?? {};
 
   /* Every actor this board can name at all, from the four slices. A Set, because
-   * the same name arrives from several of them and an actor is one card. */
+   * the same name arrives from several of them and an actor is one row. */
   const names = new Set<string>([
     ...seen.keys(),
     ...working.keys(),
@@ -190,6 +189,7 @@ export function actorRows(props: ActorsProps): ActorRow[] {
       closed: worked?.closed ?? null,
       commits: worked?.commits ?? null,
       worked: worked?.human ?? null,
+      seconds: worked?.seconds ?? null,
     } satisfies ActorRow;
   });
 
@@ -202,6 +202,60 @@ export function actorRows(props: ActorsProps): ActorRow[] {
   });
 }
 
+/** The actors, folded onto their devs — the page's real top level.
+ *
+ *  Pure and exported for the same reason `actorRows()` is. Every dev the board
+ *  can name appears, including one that only ever shows up as the OWNER of an
+ *  agent: a dev whose sub-agents ran while it was quiet is still the person the
+ *  work belongs to, and `self` is `null` there rather than invented. */
+export function devRows(props: ActorsProps): DevRow[] {
+  const all = actorRows(props);
+  const groups = new Map<string, { self: ActorRow | null; agents: ActorRow[] }>();
+  for (const row of all) {
+    const dev = ownerOf(row.actor);
+    const group = groups.get(dev) ?? { self: null, agents: [] };
+    if (row.actor === dev) group.self = row;
+    else group.agents.push(row);
+    groups.set(dev, group);
+  }
+
+  const rows: DevRow[] = [];
+  for (const [dev, { self, agents }] of groups) {
+    const members = self ? [self, ...agents] : agents;
+    /* ALL OR NOTHING. A member that cannot say one of its figures makes every
+       total a sum over a subset, and a sum over a subset presented as a total is
+       the dishonesty this chapter removes. So the sums are refused whole and the
+       dev's OWN figures are drawn instead, with the panel saying which it is. */
+    const partial = members.some(
+      (m) => m.closed === null || m.commits === null || m.seconds === null,
+    );
+    const total = (pick: (m: ActorRow) => number | null): number | null =>
+      partial ? null : members.reduce((n, m) => n + (pick(m) ?? 0), 0);
+    const seconds = partial ? self?.seconds ?? null : total((m) => m.seconds);
+    const live = agents.filter((a) => a.state === "doing" || a.state === "reviewing");
+
+    rows.push({
+      dev,
+      glyph: initials(dev),
+      presence: self?.presence ?? "not seen in 24h",
+      self,
+      agents,
+      live: live.length,
+      onCards: live.flatMap((a) => (a.card ? [{ actor: a.actor, ...a.card }] : [])),
+      closed: partial ? self?.closed ?? null : total((m) => m.closed),
+      commits: partial ? self?.commits ?? null : total((m) => m.commits),
+      seconds,
+      worked: seconds === null ? (partial ? self?.worked ?? null : null) : span(seconds),
+      partial,
+    });
+  }
+
+  return rows.sort(
+    (a, b) =>
+      b.live - a.live || (b.seconds ?? -1) - (a.seconds ?? -1) || a.dev.localeCompare(b.dev),
+  );
+}
+
 /** One bar of `Hours worked today` — the day's own fold, never the window's. */
 export interface HoursBar {
   actor: string;
@@ -209,20 +263,43 @@ export interface HoursBar {
   human: string;
 }
 
-/** Today's hours, by actor, longest first — `report.days`' LAST entry, which is
- *  today by construction (`core/hours.py::windows` ends at now's calendar day).
- *  `null` when the answer carried no report at all: a heading with no bars under
- *  it is a pane that failed, and this view says so in words instead. */
+/** One dev's block of that panel: its own bar and its agents', nothing worth
+ *  zero among them. */
+export interface HoursGroup {
+  dev: string;
+  seconds: number;
+  human: string;
+  bars: HoursBar[];
+}
+
+/** Today's hours, by dev and then by actor, longest first — `report.days`' LAST
+ *  entry, which is today by construction (`core/hours.py::windows` ends at now's
+ *  calendar day).
+ *
+ *  A row worth zero is dropped at BOTH levels: an actor that worked no
+ *  measurable minute is not a row, and a dev all of whose actors were dropped is
+ *  not a block. `null` when the answer carried no report at all: a heading with
+ *  no bars under it is a pane that failed, and this view says so in words. */
 export function hoursToday(
   report: ReportPayload | null,
-): { day: string; bars: HoursBar[] } | null {
+): { day: string; groups: HoursGroup[] } | null {
   const day = report?.days[report.days.length - 1];
   if (!day) return null;
-  const bars = Object.entries(day.by_actor)
-    .map(([actor, h]) => ({ actor, seconds: h.seconds, human: h.human }))
-    .filter((b) => b.seconds > 0)
-    .sort((a, b) => b.seconds - a.seconds || a.actor.localeCompare(b.actor));
-  return { day: day.day, bars };
+  const byDev = new Map<string, HoursBar[]>();
+  for (const [actor, h] of Object.entries(day.by_actor)) {
+    if (h.seconds <= 0) continue;
+    const dev = ownerOf(actor);
+    byDev.set(dev, [...(byDev.get(dev) ?? []), { actor, seconds: h.seconds, human: h.human }]);
+  }
+  const groups = [...byDev]
+    .map(([dev, bars]) => ({
+      dev,
+      bars: bars.sort((a, b) => b.seconds - a.seconds || a.actor.localeCompare(b.actor)),
+      seconds: bars.reduce((n, b) => n + b.seconds, 0),
+      human: span(bars.reduce((n, b) => n + b.seconds, 0)),
+    }))
+    .sort((a, b) => b.seconds - a.seconds || a.dev.localeCompare(b.dev));
+  return { day: day.day, groups };
 }
 
 /* ── the drawing ──────────────────────────────────────────────────────────── */
@@ -242,7 +319,7 @@ const head: React.CSSProperties = {
 
 const grid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
   gap: "14px",
   marginBottom: "16px",
 };
@@ -311,136 +388,102 @@ function Figure({ value, label }: { value: string; label: string }): React.JSX.E
   );
 }
 
-/** One actor. The CARD ID and the TIMESHEET DISCLOSURE are the controls on it:
- *  the actor itself is still not a link, because there is no actor page and
- *  nothing behind it — the timesheet opens in place, on this very card. */
-function Actor({
+/** One DEV. Everything a reader wants without opening anything: who it is, how
+ *  many of its agents are on a card RIGHT NOW and which, its figures over the
+ *  window, and the most recent few agent names with the rest as a count. */
+function Dev({
   row,
-  report,
   onOpen,
+  onExpand,
 }: {
-  row: ActorRow;
-  report: ReportPayload | null;
+  row: DevRow;
   onOpen: (id: string) => void;
+  onExpand: () => void;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false);
-  /* Computed only while open — and computed from the WHOLE report, because the
-     axis it returns is measured over every actor of the day, not this one. */
-  const days = open ? timesheet(report, row.actor) : [];
+  const recent = row.agents.slice(0, RECENT);
+  const rest = row.agents.length - recent.length;
   return (
-    <section style={cardShell} data-testid="actor-card" data-actor={row.actor} data-state={row.state ?? ""}>
+    <section style={cardShell} data-testid="dev-card" data-dev={row.dev} data-live={row.live}>
       <div style={{ display: "flex", gap: "11px", padding: "16px 18px 12px", alignItems: "center" }}>
-        <span style={disc(row.tone)}>{row.glyph}</span>
+        <span style={disc(row.live > 0 ? "accent" : "neutral")}>{row.glyph}</span>
         <div style={{ minWidth: 0, flex: "1 1 auto" }}>
           <div className="mono" style={{ ...clip, fontSize: "12px", color: "var(--text)" }}>
-            {row.actor}
+            {row.dev}
           </div>
           <div style={{ ...clip, fontSize: "11.5px", color: "var(--text-3)", marginTop: "3px" }}>
-            {`${row.role} · ${row.presence}`}
+            {row.presence}
           </div>
         </div>
-        {/* No pill at all for an actor presence cannot see: four states exist
-            and none of them is true of it (panels.ts::ActorState). */}
-        {row.state ? (
-          <span
-            data-testid="actor-pill"
-            title={MEANS[row.state]}
-            style={{
-              fontSize: "10.5px",
-              padding: "3px 10px",
-              borderRadius: "20px",
-              background: TONE_BG[row.tone],
-              color: TONE_FG[row.tone],
-              whiteSpace: "nowrap",
-              flex: "none",
-            }}
-          >
-            {row.state}
-          </span>
-        ) : null}
       </div>
 
-      {row.card ? (
-        <PaneButton cardId={row.card.id} onOpen={onOpen} testId="actor-card-open" pad="11px 18px">
-          <span className="mono" style={{ fontSize: "12px", color: "var(--accent)" }}>
-            {row.card.id}
-          </span>
-          <span style={{ ...clip, display: "block", fontSize: "13px", marginTop: "3px" }}>
-            {row.card.title}
-          </span>
-        </PaneButton>
-      ) : (
-        /* HISTORY, not a free slot. What it carried, in its own ids — each one
-           the same door the rest of the dashboard opens. */
-        <PaneRow pad="11px 18px">
-          <div data-testid="actor-history" style={{ fontSize: "11.5px", color: "var(--text-3)" }}>
-            {row.carried.length === 0
-              ? "No card in this window — seen on the board, not on a card."
-              : "Carried "}
-            {row.carried.map((id, i) => (
-              <span key={id}>
-                {i > 0 ? ", " : ""}
-                <button
-                  type="button"
-                  data-testid="actor-carried"
-                  data-card={id}
-                  onClick={() => onOpen(id)}
-                  className="mono"
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    color: "var(--accent)",
-                    fontSize: "11.5px",
-                  }}
-                >
-                  {id}
-                </button>
-              </span>
-            ))}
-          </div>
-        </PaneRow>
-      )}
+      {/* CRITERION: a live lease is said on the card, unopened. */}
+      <PaneRow pad="11px 18px">
+        <div data-testid="dev-live" style={{ fontSize: "12px", color: "var(--text-2)" }}>
+          {row.live === 0
+            ? "No agent of this dev is on a card right now."
+            : `${row.live} ${row.live === 1 ? "agent" : "agents"} on a card right now:`}
+          {row.onCards.map((on) => (
+            <button
+              key={on.actor}
+              type="button"
+              data-testid="dev-live-card"
+              data-card={on.id}
+              onClick={() => onOpen(on.id)}
+              className="mono"
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                color: "var(--accent)",
+                fontSize: "11.5px",
+                marginLeft: "6px",
+              }}
+            >
+              {`${shortActor(on.actor)} → ${on.id}`}
+            </button>
+          ))}
+        </div>
+      </PaneRow>
 
       <PaneRow pad="11px 18px">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
           <Figure value={row.closed === null ? DASH : String(row.closed)} label="closed" />
           <Figure value={row.commits === null ? DASH : String(row.commits)} label="commits" />
           <Figure value={row.worked ?? DASH} label="worked" />
+          <Figure value={String(row.agents.length)} label="agents ran" />
         </div>
       </PaneRow>
 
-      {/* WHEN it worked, not just how long. In place: an actor is not a card and
-          the drawer belongs to cards. */}
+      {/* NEVER sixty-eight ids: the most recent few, and the rest as a count. */}
+      <PaneRow pad="10px 18px">
+        <div style={{ ...clip, fontSize: "11.5px", color: "var(--text-3)" }} data-testid="dev-recent">
+          {row.agents.length === 0
+            ? "No agent ran under this dev in the window."
+            : `${recent.map((a) => shortActor(a.actor)).join(" · ")}${rest > 0 ? ` · +${rest} more` : ""}`}
+        </div>
+      </PaneRow>
+
       <PaneRow pad="9px 18px">
         <button
           type="button"
-          data-testid="actor-timesheet-toggle"
-          data-open={open ? "1" : "0"}
-          aria-expanded={open}
-          onClick={() => setOpen((was) => !was)}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            color: "var(--accent)",
-            fontSize: "11.5px",
-          }}
+          data-testid="dev-open"
+          data-dev={row.dev}
+          onClick={onExpand}
+          style={{ all: "unset", cursor: "pointer", color: "var(--accent)", fontSize: "11.5px" }}
         >
-          {/* No em dash in this label on purpose: the card's own em dashes are
-              its not-knowable figures, and a decorative one would read as a
-              third of them (the smoke harness counts exactly that). */}
-          {open ? "Hide timesheet" : "Timesheet: when, and why the total is that"}
+          Open the timesheet, the agents and the arithmetic
         </button>
       </PaneRow>
-      {open ? <Timesheet days={days} onOpen={onOpen} /> : null}
     </section>
   );
 }
 
 export function Actors(props: ActorsProps): React.JSX.Element {
-  const rows = actorRows(props);
+  const rows = devRows(props);
   const today = hoursToday(props.report);
   const days = props.report?.days.length ?? 0;
-  const max = Math.max(1, ...(today?.bars ?? []).map((b) => b.seconds));
+  const [open, setOpen] = useState<string | null>(null);
+  const opened = rows.find((r) => r.dev === open) ?? null;
+  const max = Math.max(1, ...(today?.groups ?? []).flatMap((g) => g.bars.map((b) => b.seconds)));
 
   return (
     <div style={page} data-testid="actors">
@@ -466,19 +509,20 @@ export function Actors(props: ActorsProps): React.JSX.Element {
             style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "12px" }}
           >
             {days > 0
-              ? `${rows.length} ${rows.length === 1 ? "actor" : "actors"} · closed and commits are over the last ${days} ${days === 1 ? "day" : "days"}`
-              : `${rows.length} ${rows.length === 1 ? "actor" : "actors"} · the answer carried no hours, so no figure is drawn`}
+              ? `${rows.length} ${rows.length === 1 ? "dev" : "devs"} · an agent is a line inside its dev · closed and commits are over the last ${days} ${days === 1 ? "day" : "days"}`
+              : `${rows.length} ${rows.length === 1 ? "dev" : "devs"} · the answer carried no hours, so no figure is drawn`}
           </div>
           <div style={grid}>
             {rows.map((row) => (
-              <Actor key={row.actor} row={row} report={props.report} onOpen={props.onOpen} />
+              <Dev key={row.dev} row={row} onOpen={props.onOpen} onExpand={() => setOpen(row.dev)} />
             ))}
           </div>
         </>
       )}
 
       {/* Nova's second panel, and the one that REPLACES the worker slots: hours
-          are measured (`core/hours.py`), slots are not allocated. */}
+          are measured (`core/hours.py`), slots are not allocated. Per DEV, with
+          its agents inside it, and no row for an actor worth zero. */}
       <Pane
         testId="pane-hours-today"
         title="Hours worked today"
@@ -488,9 +532,9 @@ export function Actors(props: ActorsProps): React.JSX.Element {
             : "no report on this answer"
         }
         aside={
-          today && today.bars.length > 0 ? (
+          today && today.groups.length > 0 ? (
             <span className="mono" style={{ fontSize: "11px", color: "var(--text-3)" }}>
-              {`${today.bars.length} ${today.bars.length === 1 ? "actor" : "actors"}`}
+              {`${today.groups.length} ${today.groups.length === 1 ? "dev" : "devs"}`}
             </span>
           ) : undefined
         }
@@ -501,39 +545,68 @@ export function Actors(props: ActorsProps): React.JSX.Element {
             only when the <code>board</code> call passes <code>window=</code> — a missing question,
             not an empty day.
           </PaneEmpty>
-        ) : today.bars.length === 0 ? (
+        ) : today.groups.length === 0 ? (
           <PaneEmpty>Nobody has worked a measurable minute today.</PaneEmpty>
         ) : (
           <div style={{ padding: "6px 20px 18px" }}>
-            {today.bars.map((bar) => (
-              <div
-                key={bar.actor}
-                data-testid="hours-bar"
-                data-actor={bar.actor}
-                style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px", padding: "7px 0" }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div className="mono" style={{ ...clip, fontSize: "11.5px", color: "var(--text-2)" }}>
-                    {bar.actor}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: "5px",
-                      height: "6px",
-                      borderRadius: "4px",
-                      background: "var(--accent)",
-                      width: `${Math.round((bar.seconds / max) * 100)}%`,
-                    }}
-                  />
+            {today.groups.map((group) => (
+              <div key={group.dev} data-testid="hours-dev" data-dev={group.dev} style={{ padding: "8px 0" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: "12px",
+                    color: "var(--text-2)",
+                  }}
+                >
+                  <span className="mono">{group.dev}</span>
+                  <span className="num">{group.human}</span>
                 </div>
-                <span className="num" style={{ fontSize: "12px", color: "var(--text-2)" }}>
-                  {bar.human}
-                </span>
+                {group.bars.map((bar) => (
+                  <div
+                    key={bar.actor}
+                    data-testid="hours-bar"
+                    data-actor={bar.actor}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: "8px",
+                      padding: "5px 0 5px 14px",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div className="mono" style={{ ...clip, fontSize: "11px", color: "var(--text-3)" }}>
+                        {shortActor(bar.actor)}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: "5px",
+                          height: "6px",
+                          borderRadius: "4px",
+                          background: "var(--accent)",
+                          width: `${Math.round((bar.seconds / max) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="num" style={{ fontSize: "12px", color: "var(--text-2)" }}>
+                      {bar.human}
+                    </span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
         )}
       </Pane>
+
+      {opened ? (
+        <DevPanel
+          row={opened}
+          report={props.report}
+          onOpen={props.onOpen}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
     </div>
   );
 }

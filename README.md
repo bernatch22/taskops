@@ -171,8 +171,9 @@ over. It needs `ui/node_modules`; without it, or without node, that test skips.
 
 Four tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
 default), **Board** (`ui/src/pages/Board.tsx`), **Actors**
-(`ui/src/pages/Actors.tsx`, every actor bound to the cards it carried, ordered
-by what it is ON and never by name, each opening in place into its timesheet)
+(`ui/src/pages/Actors.tsx`, one card per DEV with its agents as lines inside it,
+each opening into a full overlay whose timesheet draws one lane per agent on a
+shared wall-clock axis)
 and **Worktrees**
 (`ui/src/pages/Worktrees.tsx`, an index of pull requests in two equal columns,
 In progress and Merged, where a row opens its own full-width diff page — side by
