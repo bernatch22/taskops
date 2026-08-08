@@ -636,8 +636,12 @@ files that answer it:
   so a frame on the one feed resets it to page one.
 * **Board** — the nine groups of `docs/design.md` §4, as the board reports them.
 * **Worktrees** — the branch-per-card table (`ui/src/pages/Worktrees.tsx`): one
-  row per inhabited directory, which is idea 2 made visible.
-* **the card dossier drawer**, opening over any tab through `App`'s
+  row per inhabited directory, which is idea 2 made visible. A tree is a pull
+  request, so a row opens THIS view's own full-width diff surface
+  (`WorktreeDiff`, its props declared in `components/monitor/panels.ts` as
+  `WorktreeDiffProps`) and never the card drawer: the selection is one
+  `useState` in the page and the table is replaced, not floated over.
+* **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
   (`MENTIONS.md` §9c). The header's milestone picker scopes every tab at once.

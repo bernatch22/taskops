@@ -171,8 +171,9 @@ over. It needs `ui/node_modules`; without it, or without node, that test skips.
 
 Three tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
 default), **Board** (`ui/src/pages/Board.tsx`) and **Worktrees**
-(`ui/src/pages/Worktrees.tsx`, the branch-per-card table) — plus the card
-dossier drawer that opens over any of them (`ui/src/App.tsx`) and the header's
+(`ui/src/pages/Worktrees.tsx`, the branch-per-card table, where a row opens its
+own full-width diff instead of the drawer) — plus the card
+dossier drawer that opens over Monitor and Board (`ui/src/App.tsx`) and the header's
 milestone picker. Monitor is no longer a shell: its two-column layout, the
 shared pane chrome and all eight panes are built, one card per panel. The Event
 stream — the last pane that had no verb behind it — is fed: `events` pages the

@@ -31,7 +31,7 @@ import { LiveLeases } from "../src/components/monitor/LiveLeases";
 import { EventStream, FIXTURE_EVENTS } from "../src/components/monitor/EventStream";
 import { KpiRail } from "../src/components/chrome/KpiRail";
 import { Menu as MilestoneMenu } from "../src/components/chrome/MilestonePicker";
-import { Worktrees, rows } from "../src/pages/Worktrees";
+import { WorktreeDiff, Worktrees, rows } from "../src/pages/Worktrees";
 import { LEASE_TTL } from "../src/components/monitor/panels";
 import {
   cascade,
@@ -223,7 +223,7 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       <Monitor board={older} openCard={() => {}} now={now} />
       <Monitor board={quiet} openCard={() => {}} now={now} />
       <Board board={older} openCard={() => {}} />
-      <Worktrees groups={older.groups} onOpen={() => {}} />
+      <Worktrees groups={older.groups} />
       <KpiRail board={older} />
     </>,
   );
@@ -263,6 +263,57 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check(
     "an unowned tree says so in words, never as an empty cell",
     owners.some((c) => c === "nobody — free to take"),
+  );
+
+  /* WHICH CHAPTER each tree belongs to — the join `pages/Worktrees.tsx::chapter`
+   * makes: the id off the row (`pulse.py::_row`), the words off the payload's own
+   * `milestones` list. Both halves are asserted, because either one missing
+   * yields the same `null` and only one of them is a bug:
+   *   · with the list, a row that has an id is NAMED;
+   *   · without it — and equally, on a row from a board one version behind that
+   *     sends no `milestone` at all — the answer is `null` and NEVER the raw id. */
+  const named = rows(fixture.board.groups, fixture.board.milestones);
+  const chapter = fixture.board.milestones[0];
+  check(
+    "a worktree row carries its chapter, resolved to its title",
+    named.some((w) => w.milestone?.id === chapter?.id && w.milestone?.title === chapter?.title),
+  );
+  check(
+    "with no chapters to join against, no row invents one",
+    rows(fixture.board.groups).every((w) => w.milestone === null),
+  );
+  const amnesiac = JSON.parse(JSON.stringify(fixture.board)) as BoardPayload;
+  for (const group of Object.values(amnesiac.groups)) {
+    for (const r of group) delete (r as { milestone?: string }).milestone;
+  }
+  check(
+    "a board one version behind sends no milestone and the row says nothing",
+    rows(amnesiac.groups, amnesiac.milestones).every((w) => w.milestone === null),
+  );
+
+  /* THE SECOND SURFACE. A tree is a pull request, so clicking one opens ITS
+   * diff, full width — not the card Dossier, which is what this chapter exists
+   * to undo. No handler fires under `react-dom/server`, so what is in reach is
+   * the other half of criterion 3 and it is the half that was wrong: the page
+   * the click has to land on exists, is not the drawer, and replaces the table
+   * rather than floating over it. `onOpen` is gone from `WorktreesProps`
+   * entirely — that one is a compile error, above, not a string match. */
+  const diffPage = renderToStaticMarkup(
+    <WorktreeDiff row={named[0]!} base="ms/nova" reader={null} onBack={() => {}} />,
+  );
+  check(
+    "a tree opens its own full-width diff page, naming the branch",
+    diffPage.includes('data-testid="worktree-diff"') &&
+      diffPage.includes(`data-branch="${named[0]!.id}"`),
+  );
+  check(
+    "the diff page is not the card drawer, and not the table either",
+    !diffPage.includes('data-testid="dossier"') && !diffPage.includes('data-testid="worktrees"'),
+  );
+  check(
+    "with nothing selected the page is exactly the table",
+    olderMarkup.includes('data-testid="worktrees"') &&
+      !olderMarkup.includes('data-testid="worktree-diff"'),
   );
   check(
     "a board with no done_total still draws every page",
@@ -458,7 +509,7 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
         <Monitor board={payload} openCard={() => {}} now={now} />
         <Worktrees
           groups={payload.groups}
-          onOpen={() => {}}
+          milestones={payload.milestones}
           repo={payload.repo}
           milestoneBranch={payload.milestone?.branch ?? ""}
         />
