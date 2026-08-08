@@ -209,6 +209,27 @@ def test_with_no_origin_no_push_is_even_attempted(tmp_path: Path) -> None:
     assert not any(args[0] == "push" for args in ran)
 
 
+def test_a_remote_that_hangs_does_not_reach_the_caller(tmp_path: Path) -> None:
+    """`run.git` RAISES on a timeout — it is the one failure that is not an exit
+    code — and a `done` that raised because origin was slow would be a push used
+    as a gate. Ten seconds is the ceiling, and past it nothing happened."""
+    root = repo(tmp_path)
+    origin_for(root, tmp_path / "origin.git")
+    real = run.git
+
+    def hang(*args: str, **kwargs: Any) -> Any:
+        if args[0] == "push":
+            raise TaskopsError("git push took longer than 10.0s")
+        return real(*args, **kwargs)
+
+    remote.run.git = hang  # type: ignore[assignment]
+    try:
+        remote.push(root, "main")  # returns, says nothing, raises nothing
+    finally:
+        remote.run.git = real  # type: ignore[assignment]
+    assert remote.PUSH_TIMEOUT <= 30.0  # a lifecycle moment may not wait on a remote
+
+
 def test_a_push_that_fails_changes_nothing_about_the_merge(tmp_path: Path) -> None:
     """origin exists but is unreachable — the integration still happened."""
     root = repo(tmp_path)

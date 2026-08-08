@@ -380,6 +380,19 @@ def test_a_done_the_board_refuses_pushes_nothing(
     assert pushes == []
 
 
+def test_an_accepted_update_that_is_not_done_pushes_nothing(
+    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
+) -> None:
+    """`done` is the lifecycle moment, not "the board took a write": handing a
+    card back is an accepted update too, and there is nothing finished to show."""
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    w1 = boards(W1)
+    call(w1, repo, "taskops_take", task=card)
+    call(w1, repo, "taskops_update", task=card, status="released", note="got to the model")
+    assert pushes == []
+
+
 def test_talking_on_a_card_pushes_nothing(
     repo: Path, boards: Any, pushes: list[tuple[str, ...]]
 ) -> None:
