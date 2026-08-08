@@ -151,22 +151,25 @@ milestone six merge round trips.)
 
 `npm run check` is the closure and its four steps run: typecheck, build,
 `ui/smoke/run.mjs` (the headless harness — `react-dom/server`, no browser and
-no jsdom), then `git diff --exit-code ../src/taskops/ui`. That last clause is
-red in the current tree ON PURPOSE: this wave of cards ships `.tsx`-only diffs
-and one chapter-close card rebuilds the bundle once, which is exactly the drift
-the clause exists to report. It goes green with that rebuild.
+no jsdom), then `git diff --exit-code ../src/taskops/ui`. All four steps are
+green in the current tree: the wave of `.tsx`-only cards that made the last
+clause red has had its one chapter-close rebuild, which is exactly the drift the
+clause exists to report and to clear.
 
 The harness runs on its own captured payload (`npm run smoke`, which needs no
 Python) and on a live one — `tests/test_ui.py` builds a real board and hands it
 over. It needs `ui/node_modules`; without it, or without node, that test skips.
 
-Two tabs today, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
-default) and **Board** (`ui/src/pages/Board.tsx`) — plus the card dossier drawer
-that opens over either (`ui/src/App.tsx`). Monitor is the SHELL only: its
-two-column layout and the shared pane chrome are built, and its eight sections
-are stubs with honest empty states until one card per panel fills them. Nothing
-else exists — an "Attention" screen and an "Hours" tab were built by mistake and
-deleted (Hours is Nova's Throughput panel, inside Monitor).
+Three tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
+default), **Board** (`ui/src/pages/Board.tsx`) and **Worktrees**
+(`ui/src/pages/Worktrees.tsx`, the branch-per-card table) — plus the card
+dossier drawer that opens over any of them (`ui/src/App.tsx`) and the header's
+milestone picker. Monitor is no longer a shell: its two-column layout, the
+shared pane chrome and all eight panes are built, one card per panel. The Event
+stream keeps an honest empty state because it has no verb behind it — the pane
+is drawn to its full shape and says what is missing, which is the rule, not a
+gap. Nothing else exists — an "Attention" screen and an "Hours" tab were built
+by mistake and deleted (Hours is Nova's Throughput panel, inside Monitor).
 
 The source is React + TypeScript under `ui/src`, with Nova's palette in
 `ui/src/theme/tokens.css` — the one file allowed to contain a literal colour.
