@@ -45,6 +45,8 @@ import {
 import { CommitPatch, DiffPane, FileList, FilesChanged, PatchText } from "../src/components/card/Patch";
 import { split } from "../src/components/card/split";
 import { onTab } from "../src/App";
+import { Actors, actorRows } from "../src/pages/Actors";
+import { TABS } from "../src/components/chrome/TabNav";
 import type {
   BoardPayload,
   CardPayload,
@@ -1653,6 +1655,176 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     swarmQuiet.includes('data-testid="pane-empty"') &&
       !swarmQuiet.includes('data-testid="swarm-graph"') &&
       !swarmQuiet.includes('data-testid="swarm-count"'),
+  );
+
+  /* ── 10. The Actors view: a name bound to a card, never a slot ───────────
+   *
+   * The rows are built here for the reason §9 builds its own: this repo's board
+   * cannot be made to hold a work lease, a review lease, a lapsed assignment and
+   * a fortnight of hours at one instant from a test. The SHAPES are the
+   * payload's (`BoardRow`, `TeamMember`, `ReportPayload` — the compiler checks
+   * it), and `actorRows()` is exported pure precisely so the ordering rule can be
+   * asserted without rendering. */
+
+  const actorRow = (id: string, holder: string | null, assignee = "") =>
+    ({
+      id,
+      title: id + " does a thing",
+      priority: 1,
+      assignee,
+      holder,
+      since: now - 100,
+      quiet_for: null,
+      files: [],
+      labels: [],
+    }) satisfies BoardPayload["groups"]["doing"][number];
+
+  const hours = (seconds: number, cards: string[], closed?: number, commits?: number) => ({
+    seconds,
+    human: `${Math.round(seconds / 3600)}h`,
+    cards,
+    ...(closed === undefined ? {} : { closed }),
+    ...(commits === undefined ? {} : { commits }),
+  });
+
+  const actorsProps = {
+    team: [
+      { actor: "dev:berna", seen: now, ago: 4 },
+      { actor: "agent:berna/w1", seen: now, ago: 34 },
+      { actor: "agent:berna/rv1", seen: now, ago: 60 },
+      { actor: "agent:berna/idle", seen: now, ago: 900 },
+    ] satisfies TeamMember[],
+    doing: [actorRow("tk-a11ffa", "agent:berna/w1")],
+    reviewing: [
+      { ...actorRow("tk-b22eee", "agent:berna/rv1"), review_since: now - 30 },
+    ] as unknown as ReviewingRow[],
+    stalled: [actorRow("tk-c33ddd", null, "agent:berna/w9")],
+    report: {
+      from: now - 14 * 86400,
+      to: now,
+      days: [
+        { day: "2026-08-07", by_actor: {}, closed: [], commits: 0 },
+        {
+          day: "2026-08-08",
+          by_actor: {
+            "agent:berna/w1": hours(7200, ["tk-a11ffa"], 1, 3),
+            "dev:berna": hours(3600, ["tk-a11ffa"], 0, 0),
+            "agent:berna/zzz": hours(0, [], 0, 0),
+          },
+          closed: ["tk-a11ffa"],
+          commits: 3,
+        },
+      ],
+      by_actor: {
+        "agent:berna/w1": hours(7200, ["tk-a11ffa"], 1, 3),
+        // HISTORY: known to the report, not to presence, and one version behind
+        // — no `closed`, no `commits`, so both must draw an em dash.
+        "agent:berna/old": hours(1800, ["tk-9f0000", "tk-9f0001"]),
+      },
+      total: { seconds: 10800, closed: 1 },
+    },
+    now,
+    onOpen: (id: string) => opened.push(id),
+  };
+
+  const actorList = actorRows(actorsProps);
+  const order = actorList.map((r) => r.actor);
+
+  /* Criterion 1, and the ordering this card owns: NOT alphabetical. The
+   * orchestrator leads, then the work lease, then the review lease, then the
+   * lapsed assignment, then history. */
+  check(
+    "actors: the grid is ordered by what an actor is ON, not by name",
+    order.join(" ") ===
+      "dev:berna agent:berna/w1 agent:berna/rv1 agent:berna/w9 agent:berna/idle agent:berna/old",
+    order.join(" "),
+  );
+  check(
+    "actors: a live lease outranks every actor holding none",
+    actorList.findIndex((r) => r.state === "doing") <
+      actorList.findIndex((r) => r.state === "lapsed") &&
+      actorList.findIndex((r) => r.state === "lapsed") <
+        actorList.findIndex((r) => r.state === null),
+  );
+  /* The roles are derived from the name and the lease — a verifier holds the
+   * SECOND mutex and is not a shade of worker. */
+  check(
+    "actors: the orchestrator, the worker and the verifier are told apart",
+    actorList[0]?.role === "orchestrator" &&
+      actorList[1]?.role === "worker" &&
+      actorList[2]?.role === "verifier",
+  );
+
+  /* Criterion 2: an actor with no card is HISTORY. It says what it carried and
+   * when it was last seen, and the word "free" appears nowhere on this screen. */
+  const history = actorList.find((r) => r.actor === "agent:berna/old");
+  check(
+    "actors: an actor with no card carries its history, not a slot",
+    history?.card === null &&
+      history?.carried.join(",") === "tk-9f0000,tk-9f0001" &&
+      history?.presence === "not seen in 24h",
+  );
+  /* Criterion 3: absent is an em dash, never 0 — that board sent no `closed`
+   * and no `commits` at all. */
+  check(
+    "actors: a figure the payload cannot say is null, not zero",
+    history?.closed === null && history?.commits === null && history?.worked === "1h",
+  );
+
+  const actorsMarkup = renderToStaticMarkup(<Actors {...actorsProps} />);
+  check("actors: the view renders", actorsMarkup.includes('data-testid="actors"'));
+  check(
+    "actors: NO WORKER SLOTS, under that name or any other",
+    !/free|slot|capacity/i.test(actorsMarkup),
+  );
+  check(
+    "actors: the window qualifier is said once, on the view",
+    (actorsMarkup.match(/closed and commits are over the last 2 days/g) ?? []).length === 1,
+  );
+  check(
+    "actors: an absent figure draws an em dash and not a zero",
+    /* The card itself, not the rest of the page: the hours pane below it draws
+       an em dash of its own, so a `split` on the marker would pass on somebody
+       else's dash. */
+    (actorsMarkup
+      .split('data-actor="agent:berna/old"')[1]
+      ?.split("</section>")[0]
+      ?.match(/—/g) ?? []).length === 2,
+  );
+  /* Criterion 4: the CARD id is the control. The actor is not clickable —
+   * there is no actor page and nothing behind it. */
+  check(
+    "actors: the card id opens the dossier and the actor itself does not",
+    actorsMarkup.includes('data-testid="actor-card-open"') &&
+      actorsMarkup.includes('data-card="tk-a11ffa"') &&
+      !/<button[^>]*data-actor=/.test(actorsMarkup),
+  );
+  /* Hours worked today is the panel that REPLACES the slot roster: it is
+   * measured, and it is the DAY's fold, not the window's — `agent:berna/old`
+   * worked in the window and not today, so it has no bar. */
+  check(
+    "actors: hours worked today are today's, longest first",
+    actorsMarkup.includes('data-testid="pane-hours-today"') &&
+      (actorsMarkup.match(/data-testid="hours-bar" data-actor="([^"]+)"/g) ?? []).join(" ") ===
+        'data-testid="hours-bar" data-actor="agent:berna/w1" data-testid="hours-bar" data-actor="dev:berna"',
+  );
+
+  /* Criterion 5: a board nobody has touched is ONE sentence, not an empty grid. */
+  const actorsEmpty = renderToStaticMarkup(
+    <Actors team={[]} doing={[]} reviewing={[]} stalled={[]} report={null} now={now} onOpen={() => {}} />,
+  );
+  check(
+    "actors: nobody seen is one sentence",
+    actorsEmpty.includes('data-testid="actors-none"') &&
+      !actorsEmpty.includes('data-testid="actor-card"'),
+  );
+
+  /* The fourth tab exists AND has a page. A tab that falls through to the Board
+   * is a dead tab that still looks alive; `App`'s page map is a
+   * `Record<TabId, …>`, so this list and that map cannot disagree. */
+  check(
+    "actors: the tab bar is Nova's four, in Nova's order",
+    TABS.map((t) => t.id).join(" ") === "monitor board actors worktrees",
   );
 
   return failures;
