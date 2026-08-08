@@ -45,6 +45,10 @@ lists are the check that the bundle is the CURRENT source's output and not the
 previous wave's: none of those strings existed in the bundle its chapter-close
 replaced, so a close that forgot to run `node build.mjs` fails here.
 
+An EIGHTH row, `CLOSING_NOTE`, is written but deliberately not asserted yet: its
+wave is still in flight and none of its cards may rebuild the bundle, so see the
+note on the constant itself and on `PANES`.
+
 The one marker that had to be RETIRED rather than added is the Event stream's
 `"no events verb"`. It was true while nothing returned the log; `verbs/events.py`
 made it false, so this file asserts its ABSENCE — an empty pane now means an
@@ -226,6 +230,23 @@ CHAPTERS_LISTED = (
 #: …and what it removed: the apology for a board that is merely working.
 RETIRED_APOLOGY = ("Land or drop the finished ones",)
 
+#: The EIGHTH wave's, and it is the thread's (tk-a1b7f2). A `status` event was
+#: drawn as the bare word "done": `Thread.tsx::detail` tried body keys in an
+#: order that reached `to` and never `reason`, and the render drew a text block
+#: only for a comment. Every close note in the log — 61 of 61 on this board —
+#: was on the wire and off the screen. The thread now draws a PHRASE and, under
+#: it, the PROSE, and these are the two `data-testid`s that split.
+#:
+#: It is deliberately NOT in the `markers` tuple below yet, for exactly the
+#: reason `PANES` records for `pane-swarm`: this wave's cards are `.tsx`-only
+#: and none of them may rebuild `src/taskops/ui/`, so the assertion would be red
+#: from the moment it was written until the chapter-close rebuild. **tk-56740f
+#: is that rebuild, and adding this row to `markers` is part of it.**
+CLOSING_NOTE = (
+    "event-detail",  # the transition, the field, the verdict — the phrase
+    "event-prose",  # …and the writing underneath it
+)
+
 
 def a_clone(root: Path) -> Path:
     """A real two-branch repo, so the /git door has something true to answer.
@@ -278,6 +299,67 @@ needs_node = pytest.mark.skipif(
     shutil.which("node") is None or not (UI / "node_modules").is_dir(),
     reason="the harness needs node and `npm ci` in ui/",
 )
+
+
+def a_closed_pair(root: Path) -> list[dict[str, Any]]:
+    """Two cards the board actually CLOSED, and the payloads it answers with.
+
+    Its OWN board, and that is the point of the function rather than two more
+    rows in `a_board`: nothing on the fixture board is done or integrated, and
+    several assertions in `ui/smoke/main.tsx` are about exactly that shape (a
+    Merged column with no rows is not drawn at all). A closed card there would
+    have quietly changed what those assertions are looking at.
+
+    Every string here is written by the SERVER onto a real event body —
+    `submitted.note`, `reviewed.note`, `status.reason`, `status.no_code` — and
+    §9 of the harness proves each one reached the screen. The first card takes
+    the long way round (handed in, judged, closed) so its history carries all
+    three kinds; the second closes with NO code, which is the other body key a
+    reader should not have to open the log to learn about.
+    """
+    dev = LocalBoard(root, "dev:berna")
+    cards = dev.call(
+        "plan",
+        {
+            "milestone": "the importer",
+            "goal": "read a bank CSV",
+            "tasks": [
+                {"title": "the CSV reader", "spec": "read the bank CSV", "review": True},
+                {"title": "the changelog", "spec": "write it"},
+            ],
+        },
+    )["cards"]
+    worker = LocalBoard(root, "agent:berna/w2")
+    reviewed, no_code = cards[0]["id"], cards[1]["id"]
+
+    worker.call("take", {"task": reviewed})
+    worker.call("bind", {"task": reviewed, "sha": "c0ffee11", "subject": "feat: csv"})
+    worker.call(
+        "update", {"task": reviewed, "status": "review", "comment": "parsed with Decimal throughout"}
+    )
+    dev.call(
+        "review",
+        {"task": reviewed, "verdict": "pass", "note": "read every row, the rounding holds"},
+    )
+    worker.call(
+        "update",
+        {"task": reviewed, "status": "done", "comment": "closed after the pass — Decimal all the way"},
+    )
+
+    worker.call("take", {"task": no_code})
+    worker.call(
+        "update",
+        {
+            "task": no_code,
+            "status": "done",
+            "no_code": True,
+            "comment": "the README already said it, so there was nothing to write",
+        },
+    )
+    payloads = [dev.call("card", {"task": reviewed}), dev.call("card", {"task": no_code})]
+    dev.close()
+    worker.close()
+    return payloads
 
 
 def a_board(root: Path) -> dict[str, Any]:
@@ -361,6 +443,7 @@ def a_board(root: Path) -> dict[str, Any]:
             "every pane is filled",
         ],
         "card": dev.call("card", {"task": cards[1]["id"]}),
+        "closed": a_closed_pair(root.parent / "closed"),
         # The board this credential is looking at owes it an answer, and the
         # page must say so — a mention row carries what was said, not a title.
         "expect_board": ["Addressed to you", "Decimal or float?"],
@@ -401,7 +484,14 @@ def test_the_pages_draw_the_board_and_the_dossier(tmp_path: Path) -> None:
     assert "smoke ok" in done.stdout
     # The harness prints one `ok <claim>` per assertion; naming a few here means
     # a harness that silently stopped asserting them still fails this test.
-    for claim in ("ok criteria are on screen", "ok the draft survives a refusal"):
+    for claim in (
+        "ok criteria are on screen",
+        "ok the draft survives a refusal",
+        # The eighth wave's own claim, named here for the same reason as the two
+        # above: a harness that silently stopped asserting it still fails.
+        "ok a close draws its transition AND the note the worker signed off with",
+        "ok a close with no commit says so, in the Python renderer's own words",
+    ):
         assert claim in done.stdout, done.stdout
     for pane in PANES:
         assert f"ok pane {pane}" in done.stdout, done.stdout
