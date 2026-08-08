@@ -265,6 +265,21 @@ def test_with_two_chapters_open_the_board_names_both(repo: Path, boards: Any) ->
     assert "pass milestone=<id> to focus one" in text
 
 
+def test_a_landed_chapter_is_not_counted_among_the_open_ones(repo: Path, boards: Any) -> None:
+    """`milestones` carries landed chapters now (`verbs/_facts.py::chapters`) so
+    the dashboard can reach them. This line is about which chapter to FOCUS, and
+    a landed one is not a choice: counting it would say "3 open milestones" over
+    a board with two, which is the contradiction the header exists to avoid."""
+    dev, _ = seeded(boards)
+    dev.call("plan", {"milestone": "Reports", "goal": "g", "tasks": [{"title": "t"}]})
+    past = dev.call("plan", {"milestone": "Nova", "goal": "g", "tasks": [{"title": "t"}]})
+    dev.call("merged", {"milestone": past["milestone"]["id"], "into": "main", "sha": "abc123"})
+
+    text = call(dev, repo, "taskops_board")
+    assert "2 open milestones" in text
+    assert "Nova" not in text
+
+
 def test_dispatch_returns_a_self_contained_brief(repo: Path, boards: Any) -> None:
     dev, cards = seeded(boards)
     text = call(dev, repo, "taskops_assign", tasks=[cards[0]["id"]], worktrees=False)
