@@ -351,6 +351,30 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     "an empty column is a sentence, not a blank panel",
     olderMarkup.includes('data-testid="worktrees-empty"'),
   );
+  /* …and it HOLDS ITS SHAPE. Two panels of wildly different height, one of them
+   * almost empty, reads as a render that failed. Three facts, all of them in
+   * reach of a static render: the grid stretches its items (it used to say
+   * `start`, which is what let the empty column collapse), the shell is a
+   * flex column so the empty body can claim the space, and that body centres
+   * itself in it rather than sitting at the top. */
+  const emptyBoth = renderToStaticMarkup(<Worktrees groups={{} as BoardPayload["groups"]} />);
+  check(
+    "the two column shells share a height when one is empty",
+    // The grid stretches its items — it used to say `start`, which is exactly
+    // what let the empty column collapse to the height of one sentence…
+    emptyBoth.includes("align-items:stretch") &&
+      !emptyBoth.includes("align-items:start") &&
+      // …and each shell is a flex column, which is what lets the empty body
+      // claim the space the row handed the panel.
+      (emptyBoth.match(/flex-direction:column[^>]*data-testid="worktree-column"/g) ?? []).length ===
+        2,
+  );
+  check(
+    "an empty column centres its text and names the move that would fill it",
+    (emptyBoth.match(/data-testid="worktrees-empty"[^>]*justify-content:center/g) ?? []).length === 2 &&
+      emptyBoth.includes("taskops_assign hands a card to a worker") &&
+      emptyBoth.includes("taskops_merge task= is the orchestrator&#x27;s call"),
+  );
 
   /* THE SECOND SURFACE. A tree is a pull request, so clicking one opens ITS
    * diff, full width — not the card Dossier, which is what this chapter exists
