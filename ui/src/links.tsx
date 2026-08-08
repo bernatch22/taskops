@@ -1,5 +1,38 @@
 /* Where the board points at the code — every link the dashboard draws to a
- * forge, and the +/− that rides beside a commit.
+ * forge, the +/− that rides beside a commit, and THE CASCADE that decides which
+ * of those a reader actually gets.
+ *
+ * ── The cascade, declared once ─────────────────────────────────────────────
+ *
+ *     numstat (already on the event) → /git patch → forge link → one sentence
+ *
+ * Four steps, one function (`cascade()`), one module. It lives HERE and not in a
+ * `diff.ts` of its own because steps three and four are already this file's
+ * subject — the slug, the templates, the "no slug, no anchor" rule — and a
+ * second module owning "what to show when there is no patch" would be two places
+ * to read before you know what the pane does. `Patch.tsx` DRAWS a step; it never
+ * decides which one, and it holds no fallback of its own.
+ *
+ * ── Availability is discovered, never configured ───────────────────────────
+ *
+ * Whether the diff exists is a fact about the HOST, not about a card: `taskops
+ * ui` sits in a repo and mounts /git, `taskops serve` sits in a boards directory
+ * and does not (ARCHITECTURE.md §16). There is no setting to read and no probe
+ * to run — the FIRST refusal whose words are `gitdoor.py::NO_REPO` flips it for
+ * the session, and from then on nothing asks again.
+ *
+ * So the memory is a module-level `let`, and the lifetime is the argument: one
+ * page load talks to exactly one host, which is precisely the lifetime of this
+ * module. React state would re-discover per component (every commit row probing
+ * the same 404); a context would be a provider, a hook and a test double for one
+ * boolean.
+ *
+ * It is NOT the v1 sin this client was rebuilt away from. That was `api.ts`
+ * reading `document`, `location` and `localStorage` AT MODULE SCOPE, so
+ * importing the file needed three globals faked before its first line. Nothing
+ * here is read at import: the value is a literal `true`, and only an answer
+ * already received can change it. Under `react-dom/server` the harness imports
+ * this module, renders, and the flag never moves.
  *
  * ── The switch ─────────────────────────────────────────────────────────────
  *
@@ -35,6 +68,10 @@
  * GitHub shape `/compare/<head>` is a real page whose base is the repository's
  * own default branch, which is the trunk, decided by the side that knows.
  */
+
+import { useEffect, useState } from "react";
+
+import type { GitDiff } from "./types";
 
 /** The stored shape, structurally — `BoardPayload.repo` assigns to this. It is
  *  declared here rather than imported so this module is the seam and not a
@@ -222,4 +259,154 @@ export function Numstat({ counts }: { counts: Counts | null }): React.JSX.Elemen
       ) : null}
     </span>
   );
+}
+
+/* ── the cascade: numstat → /git → forge → a sentence ─────────────────────── */
+
+/** What to ask the door for. A commit diffs against its FIRST parent and a
+ *  compare is merge-base(base, head) → head; both spellings are decided in
+ *  `gitwork/diff.py` and neither is expressible here, which is the point. */
+export type GitTarget =
+  | { kind: "commit"; ref: string }
+  | { kind: "compare"; base: string; head: string };
+
+/** The route under the board's base — `http/server.py::_git` strips `git/` and
+ *  `http/gitdoor.py::answer` reads the rest.
+ *
+ *  Every ref is percent-encoded because a branch name contains `/`
+ *  (`ms/the-chapter`) and the door `unquote`s what it gets; `...` is the
+ *  separator and stays literal, since it is the route's grammar and not part of
+ *  either ref. */
+export function gitRoute(target: GitTarget, path?: string): string {
+  const tail =
+    target.kind === "commit"
+      ? `commit/${encodeURIComponent(target.ref)}`
+      : `compare/${encodeURIComponent(target.base)}...${encodeURIComponent(target.head)}`;
+  return `git/${tail}` + (path ? `?path=${encodeURIComponent(path)}` : "");
+}
+
+/** The forge page for the same target — step THREE, in the same vocabulary as
+ *  step two, so a caller never has to translate between them. */
+export function gitForge(repo: Repo | null | undefined, target: GitTarget): string | null {
+  return target.kind === "commit"
+    ? commitUrl(repo, target.ref)
+    : compareUrl(repo, target.head, target.base);
+}
+
+/** The words `http/gitdoor.py::NO_REPO` opens with. Matching a PHRASE and not a
+ *  code is deliberate: the code is `not_found`, which an unknown ref also
+ *  answers, and the two mean opposite things — one says "never ask this host
+ *  again", the other says "ask again for a different ref". The seam wrote those
+ *  words for this reader (tk-d50e0a's close note says so). */
+const NO_REPO = "serves boards, not a repository";
+
+/** Discovered, once, for the session. See the header. */
+let hostHasClone = true;
+
+export function gitAvailable(): boolean {
+  return hostHasClone;
+}
+
+/** Called with a refusal's message. Only the no-repo words move it, and it only
+ *  ever moves one way: a host does not grow a clone mid-session. */
+export function noteGitRefusal(message: string): void {
+  if (message.includes(NO_REPO)) hostHasClone = false;
+}
+
+/** Tests only — the flag is module state and a second case must start clean. */
+export function resetGitAvailability(): void {
+  hostHasClone = true;
+}
+
+/** The four steps, as values. `loading` and `none` are drawn too: a pane that
+ *  shows nothing while it waits, or nothing when it failed, is the "empty pane
+ *  pretending" the chapter's fifth rule forbids. */
+export type DiffStep =
+  | { step: "loading" }
+  | { step: "patch"; diff: GitDiff; forge: string | null }
+  | { step: "forge"; href: string; why: string }
+  | { step: "none"; why: string };
+
+/** Why there is no patch, in the reader's terms. The no-clone case is NOT an
+ *  error and must not read as one — it is this host being what it is. */
+function why(): string {
+  return hostHasClone
+    ? "this host could not read that diff"
+    : "this host serves boards, not a clone, so there is no repository here to read a diff from";
+}
+
+/** THE CASCADE. One function, four returns, in order. Everything that draws a
+ *  diff anywhere in this dashboard comes through here. */
+export function cascade(
+  repo: Repo | null | undefined,
+  target: GitTarget,
+  state: { diff: GitDiff | null; loading: boolean },
+): DiffStep {
+  const forge = gitForge(repo, target);
+  if (state.loading) return { step: "loading" };
+  // 2 · the real patch. `truncated` carries the forge link with it rather than
+  //     replacing it: a cut patch is still the best thing on screen.
+  if (state.diff !== null) return { step: "patch", diff: state.diff, forge };
+  // 3 · the forge, when this board has a slug at all.
+  if (forge !== null) return { step: "forge", href: forge, why: why() };
+  // 4 · the sentence. No anchor, no pane, no apology.
+  return { step: "none", why: `${why()}, and this board has no remote to link out to` };
+}
+
+/** What `useGitDiff` needs of a client — declared structurally, like `Repo`
+ *  above, so this module stays a leaf that `client.ts` happens to satisfy. */
+export interface GitReader {
+  git<T>(route: string): Promise<T>;
+}
+
+/** Ask the door for one range, lazily.
+ *
+ *  `on` is the laziness: a commit row passes `false` until it is expanded, and
+ *  nothing is fetched for a patch nobody opened. It never fires when the session
+ *  already learned this host has no clone — that is the "no per-render probing"
+ *  half of the rule, and the reason the flag is checked HERE rather than in each
+ *  component.
+ *
+ *  A refusal is not surfaced as an error: it teaches the flag and then resolves
+ *  to `diff: null`, which IS the cascade's third step. The pane says the honest
+ *  sentence; nothing throws into a render. */
+export function useGitDiff(
+  reader: GitReader | null | undefined,
+  target: GitTarget,
+  on: boolean,
+  path?: string,
+): { diff: GitDiff | null; loading: boolean } {
+  const [diff, setDiff] = useState<GitDiff | null>(null);
+  const [loading, setLoading] = useState(false);
+  const route = gitRoute(target, path);
+
+  useEffect(() => {
+    // Per EFFECT, not a ref shared across them: an answer that lands after the
+    // route changed is answering a question nobody is asking any more, and
+    // writing it would show one ref's patch under another's heading.
+    let mine = true;
+    if (!reader || !on || !gitAvailable()) {
+      setDiff(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    reader
+      .git<GitDiff>(route)
+      .then((answer) => {
+        if (mine) setDiff(answer);
+      })
+      .catch((failure: unknown) => {
+        noteGitRefusal(failure instanceof Error ? failure.message : "");
+        if (mine) setDiff(null);
+      })
+      .finally(() => {
+        if (mine) setLoading(false);
+      });
+    return () => {
+      mine = false;
+    };
+  }, [reader, route, on]);
+
+  return { diff, loading };
 }

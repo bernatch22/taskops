@@ -11,9 +11,10 @@
  * attached. Splitting them into two lists would break the one thing a thread is
  * for: what happened, in the order it happened. */
 import { ago, shortActor } from "../../format";
-import { Ext, Numstat, commitUrl, readNumstat, type Repo } from "../../links";
+import { Ext, Numstat, commitUrl, readNumstat, type GitReader, type Repo } from "../../links";
 import { TONE_FG, type Tone } from "../board/CardTile";
 import { Markdown, Mentioned } from "../shared/Markdown";
+import { CommitPatch } from "./Patch";
 import type { Event } from "../../types";
 
 /** What a kind means, as a colour. Anything unlisted is neutral rather than
@@ -65,12 +66,16 @@ export function Thread({
   history,
   now,
   repo,
+  reader,
 }: {
   history: Event[];
   now: number;
   /** `BoardPayload.repo` — absent, and a commit line is exactly the text it was
    *  before this existed. See `links.tsx`. */
   repo?: Repo | null | undefined;
+  /** The /git door. Absent, a commit line still offers its fold and the fold
+   *  still says something true — the cascade's third or fourth step. */
+  reader?: GitReader | null | undefined;
 }): React.JSX.Element {
   return (
     <div data-testid="thread" style={{ display: "flex", flexDirection: "column" }}>
@@ -147,6 +152,13 @@ export function Thread({
               ) : text ? (
                 <div style={{ marginTop: "6px", fontSize: "14px", color: "var(--text-2)", lineHeight: 1.55 }}>
                   <Mentioned text={text} />
+                </div>
+              ) : null}
+              {/* The same fold as the Commits section, from the same component:
+                  a sha shown twice must not expand into two different panes. */}
+              {ref ? (
+                <div style={{ marginTop: "8px" }}>
+                  <CommitPatch reader={reader} repo={repo} sha={ref} />
                 </div>
               ) : null}
             </div>

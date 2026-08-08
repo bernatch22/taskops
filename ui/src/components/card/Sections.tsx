@@ -13,9 +13,10 @@
  * to agents. That is the hole `<Criteria>` closes, and the reason it is a section
  * of its own rather than a paragraph folded into the spec. */
 import { shortActor } from "../../format";
-import { Ext, Numstat, commitUrl, compareUrl, type Repo } from "../../links";
+import { Ext, Numstat, commitUrl, compareUrl, type GitReader, type Repo } from "../../links";
 import { TONE_FG } from "../board/CardTile";
 import { Markdown } from "../shared/Markdown";
+import { CommitPatch, FilesChanged } from "./Patch";
 import { Thread } from "./Thread";
 import { STATE, label, soft } from "./tokens";
 import type { CardBrief, CardPayload, CardState } from "../../types";
@@ -84,6 +85,7 @@ export function Body({
   dossier,
   now,
   repo,
+  reader,
 }: {
   dossier: CardPayload;
   now: number;
@@ -91,6 +93,12 @@ export function Body({
    *  (`links.tsx`). OPTIONAL so that a caller that has not been taught to pass
    *  it renders exactly the document this file rendered before. */
   repo?: Repo | null | undefined;
+  /** The /git door, or nothing. OPTIONAL for the same reason and with the same
+   *  consequence: with no reader the cascade falls to the forge link or the
+   *  honest sentence, which is exactly what a host with no clone produces — so
+   *  the headless harness, which has no wire at all, renders a real state and
+   *  not a special case. */
+  reader?: GitReader | null | undefined;
 }): React.JSX.Element {
   const { card } = dossier;
   const stood = dossier.standing;
@@ -215,9 +223,8 @@ export function Body({
               const href = commitUrl(repo, commit.sha);
               const short = commit.sha.slice(0, 8);
               return (
+                <div key={commit.sha} data-testid="commit" style={{ borderBottom: "1px solid var(--hair)" }}>
                 <div
-                  key={commit.sha}
-                  data-testid="commit"
                   style={{
                     display: "grid",
                     // The third column is the numstat. `auto` and not a fixed
@@ -227,7 +234,6 @@ export function Body({
                     gap: "14px",
                     alignItems: "center",
                     padding: "12px 16px",
-                    borderBottom: "1px solid var(--hair)",
                   }}
                 >
                   {/* The sha is the anchor when there is one and the same text
@@ -246,14 +252,35 @@ export function Body({
                   </span>
                   <Numstat counts={commit.numstat ?? null} />
                 </div>
+                {/* Step ONE of the cascade is the numstat above, which is on the
+                    payload and always there. This is step two, folded: the real
+                    patch, from this host's own clone, only if somebody asks. */}
+                <div style={{ padding: "0 16px 12px" }}>
+                  <CommitPatch reader={reader} repo={repo} sha={commit.sha} />
+                </div>
+                </div>
               );
             })}
           </div>
         </Section>
       ) : null}
 
+      {/* The card AS A PULL REQUEST, read from the clone instead of the forge:
+          the same two branches the `compare ↗` link above is built from. No
+          branch on either side, no section — there is no range to ask about. */}
+      {dossier.commits.length > 0 && dossier.branch && dossier.milestone?.branch ? (
+        <Section title="Files changed">
+          <FilesChanged
+            reader={reader}
+            repo={repo}
+            base={dossier.milestone.branch}
+            head={dossier.branch}
+          />
+        </Section>
+      ) : null}
+
       <Section title={`Thread · ${dossier.history.length}`}>
-        <Thread history={dossier.history} now={now} repo={repo} />
+        <Thread history={dossier.history} now={now} repo={repo} reader={reader} />
       </Section>
     </>
   );
