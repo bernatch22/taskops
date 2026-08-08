@@ -3,7 +3,10 @@
 A post-mortem of the milestone `ms/ui-react-dashboard-nova` (2026-08-07), and
 the paper trail for a decision that has since been **taken** — §10 records what
 was adopted and where each piece is enforced. It reports what happened, with
-the evidence, and ranks four proposals against the cost of each.
+the evidence, and ranks four proposals against the cost of each. **§11 is a
+second instance with a different cause**, from the milestone after it
+(2026-08-08): not two workers writing the same concept, but N workers
+regenerating the same committed artifact.
 
 Every file:line below was checked against the tree at
 `ms/ui-react-dashboard-nova` @ `c347021` on 2026-08-07. Where a defect has since
@@ -485,6 +488,85 @@ the sentence and the budget, mutation-checked.
 **A and C stay rejected**, unchanged: no symbol scanner (taskops still parses
 no source, in any language), no plan-time path heuristic, and `collisions()`
 is not widened — §8's arguments stand, and `ARCHITECTURE.md` §11 carries them.
+
+---
+
+## 11. A second instance, a different cause — the committed bundle (tk-cb8a8a, 2026-08-08)
+
+The next milestone, `ms/monitor-nova-panel-by-panel`, fanned out five panel
+cards onto `ui/src/components/monitor/`. §10's ordering rule held: the seam
+(`Monitor.tsx`, `Pane.tsx`, `panels.ts`) landed serialized first, and **not one
+`.tsx` file conflicted** across five branches. The chapter still paid roughly
+six merge round trips, all to a single path: `src/taskops/ui/app.js`.
+
+**The cause is not §7's.** There, two workers wrote the same *concept* in two
+files and git saw no collision because there was none. Here every worker wrote
+a different concept in a different file — and then all five regenerated the
+same *artifact*. `src/taskops/ui/` is build output that is committed on
+purpose (it is what makes `pip install taskops` serve a dashboard with no node
+toolchain), so N cards that each rebuild it produce N-1 guaranteed conflicts,
+and every landing invalidates the resolutions the others already made. Nothing
+about their sources being disjoint helps: the bundle is minified output, byte-
+different in every branch, from every build.
+
+Three workers reached that diagnosis independently, on their own cards
+(tk-db88c4, tk-60334f, tk-f38042), and converged on the same resolution recipe
+— never hand-merge the bundle, never `--ours` it: take the merge, confirm
+`grep -rln '^<<<<<<<' ui/src` finds nothing, `cd ui && node build.mjs`,
+`git add src/taskops/ui`. With the check that catches the failure mode:
+**the bundle only grows.** Grep the rebuilt file for a string belonging to each
+sibling panel already on the milestone branch as well as your own; if only
+yours is there, you resolved by taking your side and silently deleted a
+sibling's panel.
+
+### What was adopted
+
+**1. `.gitattributes` — `-merge`, not a custom merge driver.** The repo had no
+`.gitattributes`; it now marks the three build outputs `-diff -merge
+linguist-generated=true`.
+
+`-merge` is git's *built-in* refusal to text-merge a path. It needs **no `git
+config`, no driver, nothing a fresh clone installs** — which is why a custom
+driver was weighed and rejected. A `[merge "ours"] driver = true` (or a driver
+that shells out to `node build.mjs`) is per-clone local config: it cannot be
+committed, it silently does nothing in a clone that skipped it, and for a tool
+other people `pip install` that is a footgun bought for no gain over the
+built-in.
+
+What `-merge` buys, measured in a scratch repo on 2026-08-08:
+
+- Two branches editing the *same* region: without the attribute, git writes
+  conflict markers **inside minified JavaScript**. With it, the working tree
+  keeps our copy whole and the path is simply `UU` — the resolution is a
+  rebuild, and there is no marker to accidentally commit.
+- Two branches editing *different* regions — the case nobody was watching:
+  without the attribute git **auto-merges silently**, producing a bundle that
+  is neither side's and that no build ever emitted. With the attribute it
+  conflicts, loudly, every time. That is the real reason this line exists; the
+  six round trips were visible, and a silently spliced bundle would not have
+  been.
+
+It does **not** auto-resolve, and it is not meant to: a generated file has
+exactly one correct resolution and git cannot perform it. Pinned by
+`tests/test_architecture.py::test_the_committed_bundle_is_never_text_merged`.
+
+**2. The planning convention, where a planner reads it.** One sentence in the
+ORCHESTRATOR paragraph of `src/taskops/mcp/server.py::INSTRUCTIONS`, beside
+§10's ordering rule and inside the same hard budget (`mcp/hello.py::CAP =
+2900`, panorama included): a fan-out onto a surface with a committed generated
+artifact gets **one** card that rebuilds it at the end. Pinned by
+`tests/test_mcp.py::test_the_instructions_carry_the_whole_protocol`, which also
+still asserts the whole handshake fits under the cap.
+
+The two are not alternatives. The convention removes the conflict from a
+*planned* fan-out; the attribute protects the unplanned one — a repair card, a
+rebase, a human rebuilding to check something — where no convention was
+written down. Together they mean the merge is never a hunk decision.
+
+**What neither fixes**: nothing rebuilds the bundle for you. A branch that
+edits `ui/src` and forgets `node build.mjs` still ships a stale dashboard, and
+`npm run check`'s `git diff --exit-code ../src/taskops/ui` is the thing that
+catches that — unrelated to this, and still the closure.
 
 ---
 
