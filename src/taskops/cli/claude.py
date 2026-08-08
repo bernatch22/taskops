@@ -12,24 +12,34 @@ NARROWED:
     a hook may DELIVER — it may never decide, never store, never write.
 
 The board stays the only truth. Delete this file and nothing is lost but
-immediacy: `core/mentions.pending()` still derives, the pulse line still rides
-on every tool result, the MENTIONS group still renders. What it buys is the one
-thing those cannot — reaching a worker that is twenty minutes deep in Edit and
-Bash calls and will not touch a taskops tool until it is done.
+immediacy: every group it names still derives and still renders, and the pulse
+line still rides on every tool result. What it buys is the one thing those
+cannot — reaching somebody twenty minutes deep in Edit and Bash calls who will
+not touch a taskops tool until they are done.
 
 Four properties make that safe, and each one is a test:
 
-* it calls `mentions`, the only read that does not renew a lease, so delivering
-  to a worker cannot keep a dead worker's card out of STALLED;
-* it is throttled to one look per reader per 30s, stamped in a gitignored file;
+* it calls `mentions` and `waiting`, the only two reads that renew no lease, so
+  delivering to a worker cannot keep a dead worker's card out of STALLED;
+* it is throttled per reader, stamped in a gitignored file — 30s for a mention,
+  `WAITING` for the orchestrator's groups (see there for why they differ);
 * every failure path is silence and exit 0 — no output, no stderr, nothing;
 * it emits nothing at all when there is nothing to say, which is almost always.
 
-It delivers ONE thing: a pending MENTION. The board itself arrives through the
-MCP handshake (`mcp/server.py::_hello`), which the host always loads and which
-needs no settings file to be trusted — a SessionStart hook was tried for it on
-2026-08-07 and removed the same day, because two channels for one fact is how
-v1 came to disagree with itself.
+It delivers TWO things and is still ONE hook with one entry point — two would be
+how v1 came to disagree with itself. To anybody: a pending MENTION. To a `dev:`
+only: MERGE, REVIEW, STALLED (`verbs/_waiting.py`), added 2026-08-08 because
+tk-342486 and tk-17d463 were dispatched here and their workers never spawned,
+and both sat `stalled` — correctly derived and unread — for twelve minutes until
+a human noticed from the dashboard. `assign` prepares and starts nothing; that
+gap is what this delivers into, and a worker is told none of it because it
+neither merges nor dispatches. Both halves are the same move: SAY what already
+derives, name the call, decide nothing.
+
+The board itself arrives through the MCP handshake (`mcp/server.py::_hello`),
+which the host always loads and which needs no settings file to be trusted — a
+SessionStart hook was tried for it on 2026-08-07 and removed the same day,
+because two channels for one fact is how v1 came to disagree with itself.
 """
 
 from __future__ import annotations
@@ -41,12 +51,24 @@ import json
 from typing import Any
 from pathlib import Path
 
+from . import wording
 from .. import _clock
 from .._json import text, as_rows, as_object
-from ..board import DIR, find_root, is_project, open_board
+from ..board import DIR, Board, find_root, is_project, open_board
+from ..core.types import ROLE_DEV, role_of
 
 STAMP = "hook-seen.json"  # <repo>/.taskops/ — gitignored by install.IGNORED
 THROTTLE = 30.0  # seconds per reader. A round trip per Edit is v1's latency bug.
+WAITING = 180.0
+"""The orchestrator's groups, on their own clock: the failure they report is on
+a different scale. A mention is urgent WITHIN a turn, so 30s is deliberately
+smaller than one. A stalled card is not — the incident was TWELVE MINUTES of
+silence, and three minutes bounds that to a quarter while never repeating the
+same three lines inside one long turn of Edits. Rejected: 30s (a turn full of
+tool calls would repeat them, and a hook that repeats itself is noise, which is
+how a hook gets deleted); 600s (the incident's own scale — it would not have
+caught the incident); per tool call (v1's latency bug: this costs a round
+trip)."""
 TIMEOUT = 2.0  # a remote board that is slow must cost the turn nothing
 DEFAULT_EVENT = "PostToolUse"
 
@@ -81,24 +103,34 @@ def _run(here: Path) -> None:
         return
     event = text(payload.get("hook_event_name")) or DEFAULT_EVENT
     who, for_task = _reader(payload, cwd)
-    if not _due(root, f"{who} {for_task}"):
+    # Two throttles, one stamp file, and both are decided BEFORE the board is
+    # opened: the common case is that neither is due and this costs a file read.
+    ping = _due(root, f"✉ {who} {for_task}", THROTTLE)
+    look = _orchestrating(who, for_task) and _due(root, f"◆ {who}", WAITING)
+    if not (ping or look):
         return
-    answer = _ask(root, who, for_task)
-    lines = _lines(text(answer.get("actor")) or who, as_rows(answer.get("mentions")))
+    lines = _ask(root, who, for_task, ping, look)
     if not lines:
         return  # silence costs zero context, and this fires on every tool call
-    _emit(event, lines)
+    wording.emit(event, "\n".join(lines))
+
+
+def _orchestrating(who: str, for_task: str) -> bool:
+    """A `dev:` reading its own session, and nothing else: `for_task` means the
+    turn resolved to a sub-agent through its worktree path, and a worker neither
+    merges nor dispatches. The verb refuses it too (`verbs/__init__.py`)."""
+    return not for_task and role_of(who) == ROLE_DEV
 
 
 def _reader(payload: dict[str, Any], cwd: str) -> tuple[str, str]:
     """Who this turn belongs to: the actor, and the card that may name them.
 
     `TASKOPS_ACTOR` wins when the hook process happens to have it. It usually
-    does not: a hook is spawned by the host, not by the worker, so it inherits
-    the session's environment and not the sub-agent's. What it does see is the
-    sub-agent's own tool calls, and every one of those touches its worktree —
-    so the path names the card, and the board (`verbs/pulse._addressee`) turns
-    the card into its holder. Neither → `dev:$USER`, the orchestrator.
+    does not: a hook is spawned by the host, so it inherits the session's
+    environment and not the sub-agent's. What it does see is the sub-agent's own
+    tool calls, and each touches its worktree — so the path names the card, and
+    the board (`verbs/_mentions._addressee`) turns the card into its holder.
+    Neither → `dev:$USER`, the orchestrator.
     """
     given = os.environ.get("TASKOPS_ACTOR", "")
     if given:
@@ -108,9 +140,11 @@ def _reader(payload: dict[str, Any], cwd: str) -> tuple[str, str]:
     return f"dev:{os.environ.get('USER', 'me')}", found.group(1) if found else ""
 
 
-def _due(root: Path, key: str) -> bool:
-    """One look per reader per 30s, and the stamp is written BEFORE the board is
-    asked — so a board that is down or slow is not retried once per keystroke."""
+def _due(root: Path, key: str, every: float) -> bool:
+    """One look per reader per `every` seconds, and the stamp is written BEFORE
+    the board is asked — so a board that is down or slow is not retried once per
+    keystroke. Each key has its own line in the stamp: a mention delivered must
+    never silence the orchestrator's groups, nor the other way round."""
     path = root / DIR / STAMP
     now = _clock.now()
     seen: dict[str, Any] = {}
@@ -120,58 +154,34 @@ def _due(root: Path, key: str) -> bool:
         except ValueError:
             seen = {}  # a broken stamp means "never looked", never a crash
     last = seen.get(key)
-    if isinstance(last, (int, float)) and 0.0 <= now - float(last) < THROTTLE:
+    if isinstance(last, (int, float)) and 0.0 <= now - float(last) < every:
         return False
     seen[key] = now
     path.write_text(json.dumps(seen), encoding="utf-8")
     return True
 
 
-def _ask(root: Path, who: str, for_task: str) -> dict[str, Any]:
-    """Through `Board` like every other caller — local or remote, same door.
-
-    `mentions` is a read that renews nothing, which is what makes it legal to
-    call on somebody else's behalf; `board` would renew the lease of a worker
-    that may have died an hour ago.
-    """
+def _ask(root: Path, who: str, for_task: str, ping: bool, look: bool) -> list[str]:
+    """Through `Board` like every other caller — same door, ONE connection
+    however many groups are due. `mentions` and `waiting` are the two reads that
+    renew nothing, which is what makes them legal to call on somebody else's
+    behalf; `board` would renew the lease of a worker that died an hour ago and
+    stamp its presence besides."""
     board = open_board(root, who, TIMEOUT)
+    args = {"for_task": for_task} if for_task else {}
     try:
-        return board.call("mentions", {"for_task": for_task} if for_task else {})
+        answer = _read(board, "mentions", args) if ping else {}
+        groups = as_object(_read(board, "waiting", {}).get("groups")) if look else {}
+        actor = text(answer.get("actor")) or who
+        return wording.lines(actor, as_rows(answer.get("mentions")), groups)
     finally:
         board.close()
 
 
-def _lines(actor: str, rows: list[dict[str, Any]]) -> str:
-    """One line per mention, naming the addressee rather than saying "you": the
-    reader may be the orchestrator, and the card may have been resolved from a
-    worktree path that belongs to somebody else."""
-    return "\n".join(
-        f"✉ taskops: {row.get('by')} mentioned {actor} on {row.get('id')} "
-        f"“{_trim(row.get('text'))}” — reply on the card "
-        f'(taskops_comment task={row.get("id")} text="…") and it clears.'
-        for row in rows
-    )
-
-
-def _trim(body: object) -> str:
-    """A line, not the comment: the whole text is one taskops_card away, and
-    this is injected into a transcript that is doing something else."""
-    line = " ".join(str(body or "").split())
-    return f"{line[:157]}…" if len(line) > 158 else line
-
-
-def _emit(event: str, context: str) -> None:
-    """The contract verified against the Claude Code hooks reference: JSON on
-    stdout is parsed only on exit 0, and `hookSpecificOutput.additionalContext`
-    is wrapped in a system reminder and inserted where the hook fired.
-    `hookEventName` must echo the event that fired, so it is taken from the
-    payload rather than assumed — plain stdout is added to the transcript for
-    `UserPromptSubmit` but only logged for `PostToolUse`, so the JSON form is
-    the only one that works for both.
-    """
-    print(
-        json.dumps(
-            {"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}},
-            ensure_ascii=False,
-        )
-    )
+def _read(board: Board, verb: str, args: dict[str, Any]) -> dict[str, Any]:
+    """One group failing must not cost the other its delivery — a refusal, an
+    old server that has never heard of `waiting`, a timeout on one call."""
+    try:
+        return board.call(verb, args)
+    except Exception:
+        return {}
