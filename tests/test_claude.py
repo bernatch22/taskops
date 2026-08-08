@@ -194,11 +194,34 @@ def test_the_orchestrator_is_told_the_three_groups_it_is_sitting_on(
     assert "taskops_assign tasks=[…]" in lines[2] and stalled in lines[2]
 
 
+def test_nothing_waiting_is_no_output_at_all(
+    tmp_path: Path, board: LocalBoard, capsys: Any, monkeypatch: Any
+) -> None:
+    """The common case, and it must stay the common case: an empty group is not
+    a line saying zero. Somebody took the only card, so nothing is waiting —
+    and the orchestrator's own ✉ is empty too."""
+    w1 = LocalBoard(tmp_path / ".taskops" / "board", "agent:berna/w1")
+    w1.call("take", {"task": card_of(board)})
+    w1.close()
+    assert fire(tmp_path, capsys, monkeypatch) == ""
+
+
 def test_a_worker_is_told_nothing_about_the_orchestrators_groups(
     tmp_path: Path, board: LocalBoard, capsys: Any, monkeypatch: Any
 ) -> None:
     """A worker neither merges nor dispatches, so these are noise it cannot act
-    on — and noise is how a hook gets deleted. Its ✉ still arrives."""
+    on — and noise is how a hook gets deleted. Its ✉ still arrives.
+
+    Both ways a worker is recognised, because they fail differently: with
+    `TASKOPS_ACTOR` the `waiting` verb itself refuses an agent, but a sub-agent
+    named only by its worktree path reads as `dev:$USER`, and there the hook's
+    own `for_task` gate is the only thing standing between it and three lines
+    about work it cannot touch."""
+    card = card_of(board)
+    tool = {"file_path": f"{tmp_path}/.taskops/trees/{card}/game.py"}
+    delivered = fire(tmp_path, capsys, monkeypatch, tool_input=tool)
+    assert "✉" in delivered and "◆" not in delivered
+
     monkeypatch.setenv("TASKOPS_ACTOR", "agent:berna/w1")
     delivered = fire(tmp_path, capsys, monkeypatch)
     assert "✉" in delivered and "◆" not in delivered
