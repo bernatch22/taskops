@@ -22,7 +22,7 @@ from taskops import _clock
 from taskops.http import feed
 from taskops.board import RemoteBoard
 from tests.conftest import T0
-from taskops._errors import Refused, BadRequest, Unreachable
+from taskops._errors import Refused, BadRequest, Unreachable, TaskopsError
 from taskops.http.server import BoardServer, serve
 
 BOARD = "facturador"
@@ -628,6 +628,82 @@ def test_a_window_whose_server_is_gone_says_so_and_writes_nothing(
     assert status == 502 and body["error"]["code"] == "unreachable"
     assert "nothing was written" in body["error"]["message"]
     assert not (window.mounts.root / "board").exists()
+
+
+def test_the_command_reads_the_mode_off_the_config_and_nothing_else(tmp_path: Path) -> None:
+    """The whole switch, at the only place it is decided."""
+    from taskops.cli import serving
+
+    root = tmp_path / "checkout"
+    (root / ".taskops").mkdir(parents=True)
+    (root / ".taskops" / "board.json").write_text("{}", encoding="utf-8")
+    assert serving._upstream(root) is None  # noqa: SLF001 — the decision under test
+
+    (root / ".taskops" / "board.json").write_text(
+        json.dumps({"url": "https://boards.example/facturador"}), encoding="utf-8"
+    )
+    with pytest.raises(TaskopsError, match="taskops join"):
+        serving._upstream(root)  # noqa: SLF001 — an address with no credential
+
+    (root / ".taskops" / "remote.json").write_text(
+        json.dumps({"token": "t0ken"}), encoding="utf-8"
+    )
+    upstream = serving._upstream(root)  # noqa: SLF001
+    assert upstream is not None
+    assert upstream.url == "https://boards.example/facturador" and upstream.token == "t0ken"
+
+
+def test_the_command_itself_serves_the_window(
+    server: BoardServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`taskops ui`, run for real, against a checkout joined to `server`.
+
+    MEASURED, and the reason this test exists rather than one more assertion on
+    `_upstream`: deleting `upstream=upstream` from the command's own
+    `make_server` call left the entire suite green. Every other test here builds
+    its window through `serve()` the way the command does, which proves the
+    server and proves nothing about the WIRING between the decision and it. So
+    this one runs the command — its `find_root`, its config read, its minted
+    token, its `ui.json` — and reads the answer off the port it chose."""
+    from taskops.cli import serving
+    from tests.test_git import repo
+
+    plan(client(server, BERNA))
+    root = repo(tmp_path, "viewer")  # a real clone: /git must come out of THIS one
+    (root / ".taskops").mkdir(parents=True)
+    (root / ".taskops" / "board.json").write_text(
+        json.dumps({"url": url_of(server)}), encoding="utf-8"
+    )
+    (root / ".taskops" / "remote.json").write_text(
+        json.dumps({"token": _token(server, BERNA)}), encoding="utf-8"
+    )
+    monkeypatch.setattr(serving.webbrowser, "open", lambda _url: True)
+
+    threading.Thread(target=serving.ui, args=(root,), daemon=True).start()
+    state = root / ".taskops" / "ui.json"
+    for _ in range(200):  # the command writes it right after it binds
+        if state.exists():
+            break
+        threading.Event().wait(0.05)
+    assert state.exists(), "taskops ui never bound a port"
+    window: dict[str, Any] = json.loads(state.read_text())
+
+    base = f"http://127.0.0.1:{window['port']}/board"
+    body = _post(base, str(window["token"]), {"verb": "board", "actor": BERNA})
+    assert [c["title"] for c in body["data"]["groups"]["take"]] == ["invoice model", "CSV parser"]
+    # ...and the SAME command mounted /git from the checkout it was run in.
+    status, patch = _get(f"{base}/git/commit/HEAD", str(window["token"]))
+    assert status == 200 and patch["data"]["stat"] == {"README.md": [1, 0]}
+    assert not (root / ".taskops" / "board").exists()  # no second, empty board here
+
+
+def test_a_directory_with_no_board_is_refused_exactly_as_before(tmp_path: Path) -> None:
+    """Criterion 7's other half: nothing about this chapter reached a repo that
+    joined nothing. It is still the same sentence naming the same two commands."""
+    from taskops.cli import serving
+
+    with pytest.raises(TaskopsError, match="taskops init starts one"):
+        serving.ui(tmp_path)
 
 
 def _get_post(url: str, token: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:

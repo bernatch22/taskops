@@ -947,6 +947,77 @@ only, so a merge does not explode into its whole branch; a root commit against
 git's empty tree), a compare is `merge-base(a, b) → b`, and an over-cap patch
 comes back `truncated: true` — flagged, never silently cut.
 
+### The window: `taskops ui` serves locally even for a REMOTE board (2026-08-08)
+
+The amendment above says a host that sits in a repo may read it. The command
+then contradicted it for the case that matters most: `cli/serving.py::ui` had
+two branches, and the remote one was `_open("<server>/ui/?token=…")` — a
+redirect to the machine that owns the BOARD, which by the same rule has no
+clone. On a shared board, every diff a reader opened fell straight through the
+cascade to a forge link or a sentence. The window was pointed at the wrong
+machine.
+
+**`taskops ui` now always serves the window, from the checkout it stands in.**
+The routes do not change, so the committed bundle is untouched by any of this:
+
+```
+        dev A (laptop)                             dev B (laptop)
+┌────────────────────────────┐            ┌────────────────────────────┐
+│ $ taskops ui               │            │ $ taskops ui               │
+│  /board/ui/  ← the bundle  │            │  /board/ui/  ← the bundle  │
+│  /board/rpc ─────┐         │            │  /board/rpc ─────┐         │
+│  /board/git ─ A's clone    │            │  /board/git ─ B's clone    │
+└──────────────────┼─────────┘            └──────────────────┼─────────┘
+                   └──────────────┐            ┌─────────────┘
+                                  ▼            ▼
+                          ┌──────────────────────────┐
+                          │  the server: API ONLY    │
+                          │   /<board>/rpc   events  │
+                          │   /<board>/feed  signal  │
+                          └──────────────────────────┘
+```
+
+The whole difference is one `if`, in `http/rpc.py::answered`: a config with a
+`url` relays the /rpc body to `<url>/rpc` with the bearer from `remote.json`
+(`http/upstream.py`); without one, `verbs.call` on the local stores, exactly as
+before. `Mounts` carries `upstream` the way it already carries `repo` — decided
+by the caller at construction, never sniffed per request — and `/git` is mounted
+from the local clone in BOTH modes, which is the point.
+
+**Why forward rather than point the page at the remote.** The alternative was
+absolute URLs in the client, CORS on the server, and the team credential handed
+to the browser to sign those calls: three surfaces touched for one result, and
+the third is decisive. Forwarding keeps the page on one base URL with relative
+paths — no CORS, no client change — and **the team credential never leaves the
+local process**; the browser holds only the token `taskops ui` mints into
+`ui.json`, which is local and revocable. `tests/test_topology.py` searches every
+served byte, and their headers, for the team token.
+
+**A refusal from the remote arrives in the SERVER's own words**, status and all:
+`upstream.py` returns `(status, bytes)` and re-wraps only a body that is not an
+envelope. A board that says "held by agent:berna/w1" with a 409 must not reach
+the reader as a local 500, or they debug the wrong machine.
+
+**The live signal is a POLL, never a relay.** No WebSocket is proxied through
+the stdlib handler and no SSE stream is bridged: the local host asks the remote
+for its `seq` — one `board` call — every `REMOTE_WATCH_SECONDS` (3s, against 1s
+for a local rowid lookup) while somebody is connected, and pokes the socket it
+already serves when the number moves. `http/feed.py`'s contract is what makes
+that safe: a message is a SIGNAL, not a payload, so a late or missed poke costs
+one tick and can never show something the board did not say.
+
+**A ref the viewer has not fetched is not an error** (`gitdoor.py::STALE`). On a
+shared board most branches belong to other people's cards; a card's branch
+reaches origin when it closes, and until this clone fetches it, "not here" is
+the truth about this disk. So the door says so and names the command —
+`tk-91a27e is not in your clone yet — git fetch origin tk-91a27e brings it` —
+and `links.tsx::cascade` QUOTES a refusal the door actually sent rather than
+paraphrasing it, because only the door knows which ref was missing. Nothing is
+fetched on the reader's behalf: a background fetch inside a read-only door would
+move a branch under a worktree somebody is sitting in.
+
+A repo joined to nothing behaves exactly as it did.
+
 ### A concept named by two cards is a seam — the fan-out rule, third notch
 
 `gitwork/remote.py` was born TWICE in one wave: two workers, each over the
