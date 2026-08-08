@@ -568,6 +568,16 @@ edits `ui/src` and forgets `node build.mjs` still ships a stale dashboard, and
 `npm run check`'s `git diff --exit-code ../src/taskops/ui` is the thing that
 catches that — unrelated to this, and still the closure.
 
+*Added at the chapter close (2026-08-08).* There is now a second net, and it is
+the one that runs in CI without node: `tests/test_ui.py::VIEWS` greps the
+COMMITTED bundle for markers only the finished panels emit (`worktrees`,
+`milestone-menu`, `chapter-criteria`). `npm run check` needs a node toolchain
+and a clean tree to say anything; that test needs neither, and it fails loudly
+on a chapter close that forgot to build. It is deliberately markers and not a
+hash: the bundle only grows, so a marker that appears can never un-appear, while
+a hash would have to be updated by hand on every rebuild and would rot into a
+number nobody re-derives.
+
 ---
 
 *Sources. §3's three-copy state is quoted at `ms/ui-react-dashboard-nova` @
