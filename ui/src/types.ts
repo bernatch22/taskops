@@ -484,6 +484,23 @@ export interface ActorHours {
   /** commits by this actor inside the same window.
    *  @source `verbs/report.py::_by_actor` */
   commits?: number;
+  /** The blocks `seconds` is made of — one run of counted intervals on one card,
+   *  in wall-clock, so a timesheet can be drawn on a real axis. NOT a second
+   *  computation: `core/hours.py::spent` is a fold of the very same list.
+   *  Capped at `verbs/report.py::SESSIONS`; `sessions_total` is the real count.
+   *  @source `verbs/report.py::_by_actor` (optional: a board one version behind
+   *  sends neither key, and then no timesheet is drawn rather than an empty one) */
+  sessions?: ActorSession[];
+  /** @source `verbs/report.py::_by_actor` */
+  sessions_total?: number;
+}
+
+/** @source `core/hours.py::Session` */
+export interface ActorSession {
+  start: number; // epoch seconds
+  end: number;
+  task: string; // the card the interval was credited to — the one that CLOSED it
+  seconds: number;
 }
 
 /** @source `verbs/report.py::_day` */

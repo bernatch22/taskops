@@ -47,13 +47,16 @@ import { Thread, detail, oneLine, prose } from "../src/components/card/Thread";
 import { split } from "../src/components/card/split";
 import { onTab } from "../src/App";
 import { Actors, actorRows } from "../src/pages/Actors";
+import { RULE, Timesheet, span, timesheet } from "../src/components/actors/Timesheet";
 import { TABS } from "../src/components/chrome/TabNav";
 import type {
+  ActorSession,
   BoardPayload,
   CardPayload,
   Event,
   GitDiff,
   Milestone,
+  ReportPayload,
   ReviewingRow,
   TeamMember,
 } from "../src/types";
@@ -1953,6 +1956,181 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check(
     "actors: the tab bar is Nova's four, in Nova's order",
     TABS.map((t) => t.id).join(" ") === "monitor board actors worktrees",
+  );
+
+  /* ── 11. The timesheet: the sessions, and the arithmetic that made them ──
+   *
+   * `timesheet()` is exported pure for the same reason `actorRows()` is: the
+   * disclosure that reveals it is a click, and no handler fires here. What IS
+   * reachable is everything that decides what the click has to land on — the
+   * shared axis, the gaps, the blocks' doors and the empty case.
+   *
+   * The sessions are the payload's, in `ActorSession`'s declared shape, so the
+   * compiler holds this fixture to what `verbs/report.py::_by_actor` writes. */
+
+  const T = 1_754_640_000; // a fixed instant: the axis maths must not drift with now
+  const sheetHours = (
+    seconds: number,
+    blocks: ActorSession[],
+    total = blocks.length,
+  ) => ({
+    seconds,
+    human: `${Math.floor(seconds / 3600)}h`,
+    cards: [...new Set(blocks.map((b) => b.task))],
+    sessions: blocks,
+    sessions_total: total,
+  });
+  const block = (from: number, to: number, task: string): ActorSession => ({
+    start: T + from,
+    end: T + to,
+    task,
+    seconds: to - from,
+  });
+
+  /* w1 works the SAME card either side of a dropped gap; berna works in the
+   * middle of it, which is what the shared axis has to make visible. */
+  const sheetReport = {
+    from: T,
+    to: T + 10800,
+    days: [
+      { day: "2026-08-07", by_actor: {}, closed: [], commits: 0 },
+      {
+        day: "2026-08-08",
+        by_actor: {
+          "agent:berna/w1": sheetHours(5400, [
+            block(0, 3600, "tk-a11ffa"),
+            block(9000, 10800, "tk-a11ffa"),
+          ]),
+          "dev:berna": sheetHours(1800, [block(7200, 9000, "tk-d34294")]),
+          "agent:berna/capped": sheetHours(7200, [block(0, 1800, "tk-f0aa12")], 9),
+          /* Two cards back to back: two blocks, and NO gap — a boundary
+             between cards is not time nobody counted. */
+          "agent:berna/touch": sheetHours(3600, [
+            block(0, 1800, "tk-f0aa12"),
+            block(1800, 3600, "tk-a11ffa"),
+          ]),
+        },
+        closed: [],
+        commits: 0,
+      },
+    ],
+    by_actor: {},
+    total: { seconds: 7200, closed: 0 },
+  } satisfies ReportPayload;
+
+  const w1Sheet = timesheet(sheetReport, "agent:berna/w1");
+  const bernaSheet = timesheet(sheetReport, "dev:berna");
+
+  /* Criterion 2: one card, a gap over GAP → TWO blocks, and the wall-clock
+   * between them is counted as NOT counted. */
+  check(
+    "timesheet: a dropped gap splits one card into two blocks and is measured",
+    w1Sheet.length === 1 &&
+      w1Sheet[0]?.blocks.length === 2 &&
+      w1Sheet[0]?.blocks.every((b) => b.task === "tk-a11ffa") === true &&
+      w1Sheet[0]?.gaps.length === 1 &&
+      w1Sheet[0]?.dropped === 5400,
+    JSON.stringify(w1Sheet[0]?.gaps),
+  );
+  /* A day this actor did not work is not a row: an axis with no block on it
+   * says nothing, and 2026-08-07 is in the report. */
+  check(
+    "timesheet: a day with no session of this actor is not drawn at all",
+    w1Sheet.map((d) => d.day).join(" ") === "2026-08-08",
+  );
+
+  /* Criterion 3, the one this card exists for: the axis is the DAY's, taken
+   * over every actor, so berna's single block sits two thirds along it. Scaled
+   * to its own extent it would start at 0 and fill the row, and the two actors
+   * would read as having worked at the same time. */
+  const solo = bernaSheet[0]?.blocks[0];
+  check(
+    "timesheet: the day's axis is shared, so two actors' rows compare by eye",
+    bernaSheet[0]?.from === w1Sheet[0]?.from &&
+      bernaSheet[0]?.to === w1Sheet[0]?.to &&
+      Math.round(solo?.left ?? -1) === 67 &&
+      Math.round(solo?.width ?? -1) === 17,
+    `${solo?.left} +${solo?.width}`,
+  );
+  /* The counted total is the SERVER's wording, never re-derived; only the
+   * dropped time is this screen's own subtraction. */
+  check(
+    "timesheet: the counted total is the payload's own formatting",
+    w1Sheet[0]?.human === "1h" && w1Sheet[0]?.seconds === 5400,
+  );
+  check("timesheet: dropped time is worded like core/hours.py::human", span(5400) === "1h 30m");
+  /* A change of card ends a block; it does not create a gap. Only wall-clock
+   * that was DROPPED is not-counted time. */
+  const touching = timesheet(sheetReport, "agent:berna/touch")[0];
+  check(
+    "timesheet: two blocks that touch are two cards, not a gap",
+    touching?.blocks.length === 2 && touching?.gaps.length === 0 && touching?.dropped === 0,
+    JSON.stringify(touching?.gaps),
+  );
+  check(
+    "timesheet: a day with nothing dropped says so, and does not draw one",
+    renderToStaticMarkup(<Timesheet days={[touching!]} onOpen={() => {}} />).includes(">no gap<") &&
+      !renderToStaticMarkup(<Timesheet days={[touching!]} onOpen={() => {}} />).includes(
+        'data-testid="timesheet-gap"',
+      ),
+  );
+  check(
+    "timesheet: a truncated day says so and still shows the whole total",
+    timesheet(sheetReport, "agent:berna/capped")[0]?.capped === true &&
+      w1Sheet[0]?.capped === false,
+  );
+
+  const opened2: string[] = [];
+  const sheetMarkup = renderToStaticMarkup(
+    <Timesheet days={w1Sheet} onOpen={(id) => opened2.push(id)} />,
+  );
+  /* Criterion 4: a block is a door to the CARD's dossier — the same `openCard`
+   * every view uses. The gap beside it is not: there is no event inside it. */
+  check(
+    "timesheet: a block opens its card and the gap between blocks does not",
+    (sheetMarkup.match(/data-testid="timesheet-block" data-card="tk-a11ffa"/g) ?? []).length === 2 &&
+      sheetMarkup.includes('data-testid="timesheet-gap"') &&
+      !/<button[^>]*data-testid="timesheet-gap"/.test(sheetMarkup),
+  );
+  check(
+    "timesheet: the gap is said as a figure, not only drawn as space",
+    sheetMarkup.includes("1 gap · 1h 30m not counted") &&
+      sheetMarkup.includes("1h 30m not counted —"),
+  );
+  /* Criterion 6: the rule is ON SCREEN, in core/hours.py's own words. */
+  check(
+    "timesheet: the arithmetic is explained where the numbers are",
+    sheetMarkup.includes('data-testid="timesheet-rule"') &&
+      sheetMarkup.includes("credited to the card of the event that CLOSES it") &&
+      sheetMarkup.includes("dropped whole, never capped") &&
+      RULE.includes("The signal is the timestamp of the events themselves"),
+  );
+
+  /* Criterion 5: no events in the window is a SENTENCE, never an empty axis. */
+  const sheetEmpty = renderToStaticMarkup(
+    <Timesheet days={timesheet(sheetReport, "agent:berna/never")} onOpen={() => {}} />,
+  );
+  check(
+    "timesheet: an actor with no events says so instead of drawing an axis",
+    sheetEmpty.includes('data-testid="timesheet-none"') &&
+      !sheetEmpty.includes('data-testid="timesheet-axis"'),
+  );
+  /* A board one version behind sends no `sessions` at all — degraded, never
+   * crashed (types.ts: both keys optional). */
+  check(
+    "timesheet: a payload without sessions degrades to the empty sentence",
+    timesheet(
+      { ...sheetReport, days: [{ day: "2026-08-08", by_actor: { "dev:berna": { seconds: 60, human: "1m", cards: [] } }, closed: [], commits: 0 }] },
+      "dev:berna",
+    ).length === 0 && timesheet(null, "dev:berna").length === 0,
+  );
+
+  /* The door on the actor card itself: collapsed by default, and NOT a link to
+   * an actor page — there is none. */
+  check(
+    "actors: an actor card offers its timesheet in place, closed to begin with",
+    actorsMarkup.includes('data-testid="actor-timesheet-toggle" data-open="0"') &&
+      !actorsMarkup.includes('data-testid="timesheet"'),
   );
 
   return failures;
