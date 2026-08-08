@@ -224,7 +224,7 @@ flowchart TB
         board["board.py — LocalBoard | RemoteBoard, routing decided ONCE"]
         run["gitwork/run"]; trees["gitwork/trees — worktrees"]
         trailer["gitwork/trailer"]; bind["gitwork/bind"]; install["gitwork/install"]
-        remotem["gitwork/remote — origin → {host, slug, url}"]
+        remote["gitwork/remote — origin: {host, slug, url}, and best-effort push"]
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread"]
@@ -406,7 +406,7 @@ sequenceDiagram
     Note over W1: card is now `doing` — DERIVED, no row written
 
     W1->>Git: commits in its worktree (branch tk-a1)
-    Git->>Board: post-commit hook → bind.record() (Task: trailer already stamped)
+    Git->>Board: post-commit hook → bind.record() (sha, subject, files, numstat +/- per file)
 
     W1->>Board: taskops_update task=tk-a1 status=done note="…"
     Board->>Board: check_transition — refuses if 0 commits and no_code≠true
