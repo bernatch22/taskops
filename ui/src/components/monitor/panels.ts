@@ -613,6 +613,99 @@ export interface SwarmGraph {
   quiet: boolean;
 }
 
+/* ── The ACTORS VIEW — the fourth tab, and not a Monitor pane ───────────────
+ *
+ * Numbered out of the run for the same reason the Worktrees view is: it is a
+ * VIEW, and the pane count is what `tests/test_ui.py::PANES` asserts against the
+ * committed bundle. It lives here because it is the same kind of contract — a
+ * declared props interface that several worktrees compile against.
+ *
+ * ── What is NOT here, and must never be added ─────────────────────────────
+ *
+ * A WORKER SLOT. Nova draws the actors screen with a roster of slots — held,
+ * free, lapsed, as a pool with a capacity — and that pool does not exist:
+ * taskops allocates no worker, `workers=[…]` on `taskops_assign` is a label
+ * chosen at the call, and a sub-agent dies with its card (`ARCHITECTURE.md`
+ * §11's shape of refusal: the thing that cost time is named, not just banned).
+ * So there is no `slots`, no `capacity`, no `free`, and an actor with no card is
+ * not an empty slot — it is HISTORY, and `ActorRow` says what it carried instead
+ * of `— free —`. Anything with the shape of a fixed pool, under any name, is the
+ * thing this chapter refuses.
+ *
+ * What replaced the slot roster is `Hours worked today`, which is true and is
+ * folded out of the report the board already sends. */
+
+/** What an actor IS, from its own name and its live leases — never a stored
+ *  field. `dev:` → orchestrator (the one node that never holds a card,
+ *  `verbs/__init__.py::REGISTRY`); an agent holding a REVIEW lease is a
+ *  verifier, because that is a second mutex on the same card
+ *  (`store/reviews.py`); every other agent is a worker. */
+export type ActorRole = "orchestrator" | "worker" | "verifier";
+
+/** The pill. Four states and there is no fifth: `doing` and `reviewing` are the
+ *  two live leases, `lapsed` is an assignee with nothing running — the state the
+ *  board has no repair verb for — and `online` is presence with no card.
+ *
+ *  `null` is not a state, it is the absence of one: an actor that is only in the
+ *  report window has not been seen in 24h (`pulse.py::_team` reads presence over
+ *  exactly that span) and wears no pill at all. Inventing a fifth pill for it
+ *  would be inventing a status the board does not compute. */
+export type ActorState = "online" | "doing" | "reviewing" | "lapsed";
+
+/** One actor card. Every field is a FOLD of `ActorsProps`; nothing here is
+ *  fetched and nothing is stored.
+ *
+ *  The three figures are `number | null` / `string | null` on the rule the whole
+ *  chapter follows: absent is drawn as an em dash and never as `0`. A board one
+ *  version behind sends `ActorHours` without `closed` and `commits` (types.ts),
+ *  and an actor with no hours at all has none of the three. */
+export interface ActorRow {
+  actor: string;
+  /** `initials()` — the same up-to-three glyphs the avatar discs use */
+  glyph: string;
+  role: ActorRole;
+  /** the second line's presence half: `seen 34s`, or that it has not been */
+  presence: string;
+  state: ActorState | null;
+  tone: Tone;
+  /** The card it is ON right now — a live lease, or the assignment that lapsed.
+   *  `null` is history, not a free slot, and then `carried` is what there is to
+   *  say. */
+  card: { id: string; title: string } | null;
+  /** every card this actor touched INSIDE the report's window
+   *  (`ActorHours.cards`) */
+  carried: readonly string[];
+  /** closed cards and commits inside that same window — `null` when the payload
+   *  cannot say (`verbs/report.py::_by_actor`, both optional in types.ts) */
+  closed: number | null;
+  commits: number | null;
+  /** `ActorHours.human`, already formatted by `core/hours.py` — never
+   *  re-derived here */
+  worked: string | null;
+}
+
+export interface ActorsProps {
+  /** `board.team` — presence over the last 24h (`verbs/pulse.py::_team`). It is
+   *  the ONLY source of "when was this actor last seen", which is why an actor
+   *  known only to the report says it has not been seen rather than guessing. */
+  team: readonly TeamMember[];
+  /** `board.groups.doing` — a live WORK lease; `holder` is the worker */
+  doing: readonly BoardRow[];
+  /** `board.groups.reviewing` — a live REVIEW lease; `holder` is the verifier */
+  reviewing: readonly ReviewingRow[];
+  /** `board.groups.stalled` — an `assignee` and nobody running it */
+  stalled: readonly BoardRow[];
+  /** `board.hours` — the same field Throughput reads, off the same snapshot
+   *  (`useBoard` asks every `board` call for `window=`). `null` when the caller
+   *  did not ask, and then no figure on the screen is drawn rather than zeroed. */
+  report: ReportPayload | null;
+  now: number;
+  /** Open a CARD's dossier — the same `openCard` every other view uses. The
+   *  actor itself is not clickable: there is no actor page and nothing behind
+   *  it. */
+  onOpen: (id: string) => void;
+}
+
 /** Every field is a slice the board already sends. No verb, no payload key, no
  *  store, no second fetch — the pane's own subtitle is its contract. */
 export interface SwarmProps {
