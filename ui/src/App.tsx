@@ -183,11 +183,14 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           tab === "monitor" ? (
             <Monitor board={board} openCard={openCard} now={Date.now() / 1000} client={client} />
           ) : tab === "worktrees" ? (
+            /* No base is passed down: `board.milestone` is the chapter IN FOCUS
+               and is `null` under "All milestones", which made every tree ask
+               the /git door for `compare("", tk-x)` and get nothing. Each row
+               resolves its OWN chapter's branch out of `milestones`. */
             <Worktrees
               groups={board.groups}
               milestones={board.milestones}
               repo={board.repo}
-              milestoneBranch={board.milestone?.branch ?? ""}
               reader={client}
               openTree={tree}
               onOpenTree={openTree}

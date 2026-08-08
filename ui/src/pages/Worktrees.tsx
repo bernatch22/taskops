@@ -120,29 +120,45 @@ function owner(row: BoardRow): { dev: string | null; worker: string | null } {
   };
 }
 
-/** The chapter a row belongs to, RESOLVED — id from the row, words from the
- *  payload's own `milestones` list, joined here and nowhere else.
+/** The chapter a row belongs to, RESOLVED — id from the row, words AND BRANCH
+ *  from the payload's own `milestones` list, joined here and nowhere else.
  *
  *  Two ways to get nothing, and neither one prints the id: a board one version
  *  behind sends no `milestone` on the row at all, and a chapter that has aged
  *  past `milestones`' cap is an id this payload cannot name. `ms-9f21` on screen
- *  is not information, it is the join failing out loud. */
-function chapter(row: BoardRow, titles: Map<string, string>): WorktreeRow["milestone"] {
+ *  is not information, it is the join failing out loud.
+ *
+ *  The BRANCH comes from here for the same reason the title does, and that is
+ *  the whole fix of tk-6e7003: it is a fact about the CARD's chapter, so it is
+ *  resolved once, where the row is built, against the same list, at the same
+ *  time — not looked up in a renderer and not threaded down from whatever the
+ *  header has in focus. With "All milestones" selected the focused branch is
+ *  `""` and every diff on this screen asked the door for `compare("", tk-x)`,
+ *  which cannot be answered. Order of truth, and there are only two steps: the
+ *  row's OWN chapter branch, else no base at all. */
+function chapter(row: BoardRow, chapters: Map<string, Milestone>): WorktreeRow["milestone"] {
   const id = row.milestone ?? "";
-  const title = id ? titles.get(id) : undefined;
-  return id && title ? { id, title } : null;
+  const ms = id ? chapters.get(id) : undefined;
+  return ms?.title ? { id, title: ms.title, branch: ms.branch ?? "" } : null;
+}
+
+/** The base a tree is compared against: its OWN chapter's integration branch,
+ *  or nothing. Never another chapter's — that would render one chapter's work
+ *  as another's diff, which is worse than the empty state it would replace. */
+function baseOf(w: WorktreeRow): string {
+  return w.milestone?.branch ?? "";
 }
 
 function treeRow(
   row: BoardRow,
   status: string,
   tone: Tone,
-  titles: Map<string, string>,
+  chapters: Map<string, Milestone>,
 ): WorktreeRow {
   return {
     id: row.id,
     title: row.title,
-    milestone: chapter(row, titles),
+    milestone: chapter(row, chapters),
     ...owner(row),
     // Construction, not a fetch: `gitwork/trees.py` pins every card's worktree
     // to `.taskops/trees/<id>` for life. There is no directory on the wire, and
@@ -211,14 +227,14 @@ const COLUMNS: readonly { title: string; blocks: readonly Block[] }[] = [
 function fold(
   groups: BoardGroups,
   block: Block,
-  titles: Map<string, string>,
+  chapters: Map<string, Milestone>,
 ): WorktreeRow[] {
   return block.groups.flatMap((name) => {
     const [status, tone] = PILL[name];
     // `?? []`: the `done` group postdates the other nine (types.ts), so a board
     // older than a1d1005 sends no such key and that block simply has no rows to
     // draw — which is the truth about what that payload can say.
-    return (groups[name] ?? []).map((r) => treeRow(r, status, tone, titles));
+    return (groups[name] ?? []).map((r) => treeRow(r, status, tone, chapters));
   });
 }
 
@@ -232,8 +248,8 @@ export function rows(
   groups: WorktreesProps["groups"],
   milestones: readonly Milestone[] = [],
 ): WorktreeRow[] {
-  const titles = new Map(milestones.map((m) => [m.id, m.title]));
-  return COLUMNS.flatMap((c) => c.blocks.flatMap((b) => fold(groups, b, titles)));
+  const chapters = new Map(milestones.map((m) => [m.id, m]));
+  return COLUMNS.flatMap((c) => c.blocks.flatMap((b) => fold(groups, b, chapters)));
 }
 
 /** The three note cards — the design's `treeNotes`.
@@ -357,19 +373,19 @@ const notes: React.CSSProperties = {
  *  board with no slug simply has one fewer flex item and nothing shifts. */
 function Row({
   w,
-  base,
   repo,
   onOpen,
 }: {
   w: WorktreeRow;
-  base: string;
   repo: WorktreesProps["repo"];
   onOpen: (id: string) => void;
 }): React.JSX.Element {
-  // The row's branch IS its card id (`WorktreeRow`); the base is the chapter's
-  // integration branch, and with no chapter in focus the forge falls back to its
-  // own default branch. No slug → `null` → no anchor at all, which is the
-  // chapter's rule: a dead link is worse than none.
+  // The row's branch IS its card id (`WorktreeRow`); the base is THIS row's own
+  // chapter branch (`baseOf`), never the chapter in focus, and when it cannot be
+  // resolved the forge falls back to its own default branch. No slug → `null` →
+  // no anchor at all, which is the chapter's rule: a dead link is worse than
+  // none.
+  const base = baseOf(w);
   const diff = compareUrl(repo, w.id, base);
   return (
     <div style={{ display: "flex", alignItems: "stretch" }}>
@@ -475,13 +491,11 @@ function Row({
 function Column({
   title,
   blocks,
-  base,
   repo,
   onOpen,
 }: {
   title: string;
   blocks: readonly { title: string; rows: WorktreeRow[] }[];
-  base: string;
   repo: WorktreesProps["repo"];
   onOpen: (id: string) => void;
 }): React.JSX.Element {
@@ -501,7 +515,7 @@ function Column({
               {b.title}
             </div>
             {b.rows.map((w) => (
-              <Row key={w.id} w={w} base={base} repo={repo} onOpen={onOpen} />
+              <Row key={w.id} w={w} repo={repo} onOpen={onOpen} />
             ))}
           </div>
         ))}
@@ -529,7 +543,6 @@ export function Worktrees({
   groups,
   milestones = [],
   repo,
-  milestoneBranch = "",
   reader,
   openTree,
   onOpenTree,
@@ -538,14 +551,14 @@ export function Worktrees({
   const [own, setOwn] = useState<string | null>(null);
   const selected = onOpenTree ? (openTree ?? null) : own;
   const select = onOpenTree ?? setOwn;
-  const titles = new Map(milestones.map((m) => [m.id, m.title]));
+  const chapters = new Map(milestones.map((m) => [m.id, m]));
   /* THE GRID IS BUILT FROM WHAT HAS ROWS. Each column is folded first and the
    * empty ones are dropped here, before anything is drawn — which is what makes
    * a single surviving column full width (`split`) and the both-empty case a
    * sentence rather than two shells of nothing. */
   const drawn = COLUMNS.map((c) => ({
     title: c.title,
-    blocks: c.blocks.map((b) => ({ title: b.title, rows: fold(groups, b, titles) })),
+    blocks: c.blocks.map((b) => ({ title: b.title, rows: fold(groups, b, chapters) })),
   })).filter((c) => c.blocks.some((b) => b.rows.length > 0));
 
   /* The early return: when a tree is selected the index is REPLACED, full
@@ -560,7 +573,9 @@ export function Worktrees({
     return (
       <WorktreeDiff
         row={open}
-        base={milestoneBranch}
+        // THE CARD'S OWN CHAPTER, not the one in focus. `open` came out of
+        // `rows()`, which already resolved it against `milestones`.
+        base={baseOf(open)}
         repo={repo}
         reader={reader}
         onBack={() => select(null)}
@@ -590,7 +605,6 @@ export function Worktrees({
               key={c.title}
               title={c.title}
               blocks={c.blocks}
-              base={milestoneBranch}
               repo={repo}
               onOpen={select}
             />

@@ -390,8 +390,18 @@ export interface WorktreeRow {
    *  screen: a board one version behind sends no `milestone` on the row, and a
    *  chapter that has aged past `milestones`' cap cannot be named. In neither
    *  case does the cell show a raw `ms-…` id — an identifier nobody can read is
-   *  not more informative than an empty cell, it is only louder. */
-  milestone: { id: string; title: string } | null;
+   *  not more informative than an empty cell, it is only louder.
+   *
+   *  `branch` rides in the SAME join, and it is not decoration: it is the BASE
+   *  this tree is compared against (`Milestone.branch`, `pulse.py` sends it on
+   *  every chapter). A card belongs to a chapter regardless of who is looking
+   *  at it, so the base is the ROW's own chapter and never the one the header
+   *  happens to have in focus — with "All milestones" selected `board.milestone`
+   *  is `null` (`verbs/_facts.py::in_scope` refuses to guess between several),
+   *  and a base of `""` made the /git door answer not-found for EVERY tree.
+   *  There is no fallback to another chapter's branch: rendering one chapter's
+   *  work as another's diff is worse than the empty state it would replace. */
+  milestone: { id: string; title: string; branch: string } | null;
   /** the design's `{{ w.merged }}` pill */
   status: string;
   tone: Tone;
@@ -405,19 +415,23 @@ export interface WorktreesProps {
    *  `changes`. Naming seven fields would be listing `BoardGroups` with two
    *  holes in it. */
   groups: BoardGroups;
-  /** `board.milestones` — the id → title dictionary for `WorktreeRow.milestone`.
-   *  Optional: absent, no row can name its chapter and every one of them says
-   *  nothing, which is exactly what a board that sends no chapters can support. */
+  /** `board.milestones` — the id → {title, branch} dictionary for
+   *  `WorktreeRow.milestone`. Optional: absent, no row can name its chapter and
+   *  every one of them says nothing, which is exactly what a board that sends no
+   *  chapters can support — and then no row has a base either, which is the
+   *  no-base case `links.tsx` already documents ("the trunk the UI does not
+   *  know"). */
   milestones?: readonly Milestone[];
   /** `board.repo` — the switch for the compare link on every row. Optional for
    *  the reasons `ChapterProps.repo` sets out. */
   repo?: { host: string; slug: string; url: string } | null | undefined;
-  /** `board.milestone?.branch` — the BASE a row's branch is compared against.
-   *  A row's own head is `tk-<id>`, which is `WorktreeRow.id` by construction;
-   *  the base is the one thing the table does not already hold. Empty when no
-   *  chapter is in focus, and then the compare falls back to the forge's own
-   *  default branch (`links.tsx`, "the trunk the UI does not know"). */
-  milestoneBranch?: string;
+  /* There is NO `milestoneBranch` here, and there must not be one again. It
+   * carried `board.milestone?.branch` — the chapter IN FOCUS — and with "All
+   * milestones" selected that is `""`, so every tree on the index compared
+   * against nothing and the diff page said "this host could not read that
+   * diff". The base belongs to the row (`WorktreeRow.milestone.branch`),
+   * resolved once in `rows()` from this same `milestones` list. A second source
+   * of the same fact could only ever contradict the first. */
   /** The `/git` door's client, handed straight down to the diff page. The table
    *  itself never reads it — it is `WorktreeDiffProps.reader` arriving one level
    *  up, because the page that owns the view state is the page that owns the
@@ -441,10 +455,12 @@ export interface WorktreeDiffProps {
    *  carrying its chapter. The page re-derives none of it: the row IS the
    *  selection, and `row.id` is both the card and the head branch. */
   row: WorktreeRow;
-  /** The BASE of the comparison — `board.milestone?.branch`, the chapter's
-   *  integration branch. Empty when no chapter is in focus, and then the door is
-   *  asked for the range it can answer and the forge falls back to its own
-   *  default branch (`WorktreesProps.milestoneBranch`). */
+  /** The BASE of the comparison — `row.milestone?.branch`, THIS CARD's chapter
+   *  integration branch, never the chapter the header has in focus. Empty only
+   *  when the row's chapter cannot be resolved at all (a payload one version
+   *  behind, or a chapter aged past `milestones`' cap), and then the door is
+   *  asked for nothing and the forge falls back to its own default branch
+   *  (`links.tsx`, "the trunk the UI does not know"). */
   base: string;
   /** `board.repo` — step three of the cascade, and the only thing that decides
    *  whether an unreadable diff can still be offered as a link. */
