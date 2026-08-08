@@ -252,8 +252,13 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
    * `owner()`'s third branch — a dev with no worker half — is NOT asserted, and
    * deliberately: a `dev:` never holds or is handed a card (the role rule the
    * verb registry enforces), so no board can produce that row and building one
-   * here would be the hand-written fixture this file exists to avoid. */
-  const owners = [...olderMarkup.matchAll(/data-testid="worktree-owner"[^>]*>(.*?)<\/span>\s*<\/span>/gs)]
+   * here would be the hand-written fixture this file exists to avoid.
+   *
+   * The regex ends at the FIRST `</span>` and the tags are stripped after, so it
+   * says nothing about how the line is nested — it used to require the cell's
+   * own wrapper (`</span></span>`) and that wrapper was a five-column table's,
+   * gone with it. What is asserted is the two facts, in one line, in order. */
+  const owners = [...olderMarkup.matchAll(/data-testid="worktree-owner"[^>]*>(.*?)<\/span>/gs)]
     .map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""));
   check("every worktree row names who carries it", owners.length === rows(older.groups).length);
   check(
@@ -289,6 +294,55 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   check(
     "a board one version behind sends no milestone and the row says nothing",
     rows(amnesiac.groups, amnesiac.milestones).every((w) => w.milestone === null),
+  );
+
+  /* THE INDEX ITSELF — two columns, four facts on a row, and no heading over
+   * nothing. Rendered from the server's own payload WITH its chapters, because
+   * the chapter line is a join and only a real `milestones` list can prove it
+   * reached the screen; the checks above prove the join, these prove the draw. */
+  const indexMarkup = renderToStaticMarkup(
+    <Worktrees groups={fixture.board.groups} milestones={fixture.board.milestones} />,
+  );
+  check(
+    "the index is two columns, In progress and Merged",
+    indexMarkup.includes('data-column="In progress"') &&
+      indexMarkup.includes('data-column="Merged"'),
+  );
+  check(
+    "a row carries its branch, its title and its chapter, resolved",
+    indexMarkup.includes('data-testid="worktree-chapter"') &&
+      indexMarkup.includes(`⌗ ${chapter?.title ?? ""}`) &&
+      indexMarkup.includes(named[0]!.id) &&
+      indexMarkup.includes(named[0]!.title),
+  );
+  // The other half of `chapter()`, at the RENDER: a row whose id cannot be
+  // resolved draws no chapter line at all — never the raw `ms-…`.
+  const blind = renderToStaticMarkup(
+    <Worktrees groups={amnesiac.groups} milestones={amnesiac.milestones} />,
+  );
+  check(
+    "an unresolvable chapter is a missing line, not a printed id",
+    !blind.includes('data-testid="worktree-chapter"') && !blind.includes("ms-"),
+  );
+  // A heading over an empty sub-block is a fact about the layout, not about the
+  // board. Emptied at the payload, so the block that goes is a real one.
+  const noWaiting = JSON.parse(JSON.stringify(fixture.board)) as BoardPayload;
+  noWaiting.groups.take = [];
+  noWaiting.groups.blocked = [];
+  const trimmed = renderToStaticMarkup(
+    <Worktrees groups={noWaiting.groups} milestones={noWaiting.milestones} />,
+  );
+  check(
+    "a sub-block with no rows draws no heading",
+    indexMarkup.includes(">waiting<") &&
+      !trimmed.includes(">waiting<") &&
+      trimmed.includes(">working<"),
+  );
+  // …and a whole column with nothing in it says so, rather than sitting blank.
+  // `older` has no `done` group and nothing integrated, so Merged is that case.
+  check(
+    "an empty column is a sentence, not a blank panel",
+    olderMarkup.includes('data-testid="worktrees-empty"'),
   );
 
   /* THE SECOND SURFACE. A tree is a pull request, so clicking one opens ITS
@@ -599,9 +653,15 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       !noSlug.includes("chapter-compare") &&
       !noSlug.includes("worktree-compare"),
   );
+  // The layout does not depend on the slug either. This used to assert the
+  // five-column grid string, which pinned a table that no longer exists; what it
+  // was really about survives, so that is what it says now: with no anchor to
+  // draw, the index still draws both columns and every row in them.
   check(
-    "no slug: the worktrees table keeps its five columns",
-    noSlug.includes("130px minmax(0,1fr) 240px 92px 124px;") && !noSlug.includes("124px 46px"),
+    "no slug: the worktrees index is whole anyway",
+    (noSlug.match(/data-testid="worktree-column"/g) ?? []).length === 2 &&
+      (noSlug.match(/data-testid="worktree-row"/g) ?? []).length ===
+        rows(fixture.board.groups).length,
   );
 
   check("a sha links to the commit page", slug.includes(`https://github.com/owner/repo/commit/${sha}`));
@@ -618,7 +678,14 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       /href="https:\/\/github\.com\/owner\/repo\/compare\/ms[^".]*"/.test(slug),
   );
   check("a worktree row compares too", slug.includes('data-testid="worktree-compare"'));
-  check("the table reserved a column for it", slug.includes("124px 46px"));
+  // …and it is the row button's SIBLING, never its child. That is the invariant
+  // the old reserved sixth column existed to buy: an `<a>` inside a `<button>`
+  // is invalid HTML and unreachable by keyboard. The column is gone; the rule it
+  // was protecting is asserted directly instead.
+  check(
+    "the compare anchor sits beside the row button, not inside it",
+    /data-testid="worktree-row"[\s\S]*?<\/button><a /.test(slug),
+  );
   check(
     "every outward anchor is a new tab with rel=noopener",
     (slug.match(/<a /g) ?? []).length === (slug.match(/rel="noopener noreferrer"/g) ?? []).length,
