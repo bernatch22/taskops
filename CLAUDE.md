@@ -3,7 +3,7 @@
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
 ~340 files) as **76 Python files / ~7.400 lines under `src/taskops`**, plus the
-dashboard — **36 TypeScript files / ~6.400 lines under `ui/src`**, whose built
+dashboard — **37 TypeScript files / ~6.900 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 

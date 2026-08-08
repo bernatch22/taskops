@@ -395,7 +395,13 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     "the card offers its PR-diff view against the chapter branch",
     slug.includes('data-testid="card-compare"') && /compare\/ms[^"]*\.\.\.tk-/.test(slug),
   );
-  check("the chapter compares against the trunk", slug.includes('data-testid="chapter-compare"'));
+  // …with NO base in the URL: the trunk is not on the board, so the forge's own
+  // default branch answers. A `main` appearing here is the UI guessing.
+  check(
+    "the chapter compares against the trunk, whose name the UI does not know",
+    slug.includes('data-testid="chapter-compare"') &&
+      /href="https:\/\/github\.com\/owner\/repo\/compare\/ms[^".]*"/.test(slug),
+  );
   check("a worktree row compares too", slug.includes('data-testid="worktree-compare"'));
   check("the table reserved a column for it", slug.includes("124px 46px"));
   check(
