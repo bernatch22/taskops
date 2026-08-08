@@ -123,6 +123,13 @@ it just reopens the running one. Remote board: it opens the server's /ui/ with
 the credential `join` already saved. The old `taskops open` sent you to a
 paste-a-token screen holding a token the machine already had.
 
+The diffs the dossier shows — **Files changed** on a card, the patch under a
+commit — come from **your own clone**, read on demand by the host `taskops ui`
+started inside it; nothing is stored on the board and nothing goes to the
+network. A host with no checkout (`taskops serve`, which sits in a directory of
+boards) mounts no such door and says so, and the page falls back to the GitHub
+link when the repo has an origin, or to one plain sentence when it does not.
+
 ### Working on the dashboard itself
 
 You do not need node to *run* it — the built bundle

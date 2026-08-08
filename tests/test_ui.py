@@ -27,14 +27,15 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Two waves of `.tsx`-only cards have now been rebuilt into that bundle, and each
-left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab, the
-milestone picker, the Chapter pane's criteria) and `GITHUB_VISIBLE` (tk-0bc9fa
+Three waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
+the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
-the dev carrying a worktree, the picker's landed chapters). Both lists are the
-check that the bundle is the CURRENT source's output and not the previous
-wave's: none of those strings existed in the bundle its chapter-close replaced,
-so a close that forgot to run `node build.mjs` fails here.
+the dev carrying a worktree, the picker's landed chapters) and `OWN_CLONE`
+(tk-e5a340 — Files changed and the four steps of the diff cascade). All three
+lists are the check that the bundle is the CURRENT source's output and not the
+previous wave's: none of those strings existed in the bundle its chapter-close
+replaced, so a close that forgot to run `node build.mjs` fails here.
 
 The one marker that had to be RETIRED rather than added is the Event stream's
 `"no events verb"`. It was true while nothing returned the log; `verbs/events.py`
@@ -104,6 +105,76 @@ GITHUB_VISIBLE = (
     "worktree-owner",  # the dev carrying the tree
     "milestone-landed",  # the picker's landed-chapters section
 )
+
+#: What the OWN-CLONE chapter added — the Files-changed section and the patch
+#: renderer, on the same terms as the two rows above: every one of the twelve is
+#: a `data-testid` written by exactly one card of this wave (`links.tsx`'s
+#: cascade drawn by `components/card/Patch.tsx`), and none of them is in the
+#: bundle this chapter-close rebuilt over. They are also the four steps of the
+#: cascade, so a rebuild that lost the fallback path — not just the happy one —
+#: fails here too.
+OWN_CLONE = (
+    "files-changed",  # the card as a PR: the file list
+    "changed-file",  # one row of it, foldable
+    "changed-none",  # …and the range where nothing differs
+    "patch",  # the unified diff itself
+    "patch-empty",  # a range whose patch text is empty
+    "patch-loading",  # step 1: reading the diff from this host's clone
+    "patch-forge",  # step 3: no clone here — read it on the forge
+    "patch-forge-link",
+    "patch-none",  # step 4: no clone, no slug, one honest sentence
+    "patch-truncated",  # a cut patch SAYS it was cut…
+    "patch-truncated-link",  # …and offers the whole of it when it can
+    "patch-toggle",  # the fold on a commit row
+)
+
+
+def a_clone(root: Path) -> Path:
+    """A real two-branch repo, so the /git door has something true to answer.
+
+    Built here rather than mocked for the same reason `tests/test_git.py` builds
+    one: git is the point. `main` moves after the branch is cut, which is what
+    makes merge-base(main, feature) → feature a different answer from `main
+    ..feature` and keeps the compare honest.
+    """
+    from taskops.gitwork import run
+
+    root.mkdir(parents=True)
+    run.must("init", "-q", "-b", "main", str(root))
+    run.must("config", "user.email", "test@example.com", cwd=root)
+    run.must("config", "user.name", "Test", cwd=root)
+    (root / "tax.py").write_text("RATE = 0.22\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "first", cwd=root)
+    run.must("checkout", "-q", "-b", "tk-a11111", cwd=root)
+    (root / "tax.py").write_text("RATE = 0.22\nREDUCED = 0.10\n", encoding="utf-8")
+    (root / "pdf.py").write_text("def render() -> None: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "the reduced rate", cwd=root)
+    return root
+
+
+def a_diff(root: Path) -> dict[str, Any]:
+    """The /git door's OWN answers — the payload half of this chapter.
+
+    Both cases come from `http/gitdoor.py::answer`, not from `gitwork/diff.py`
+    directly and not from a shape written by hand: the words of the no-repo
+    refusal are what `links.tsx::noteGitRefusal` matches on, so a smoke test that
+    invented them would pass while the real cascade never flipped.
+    """
+    from taskops.http import gitdoor
+    from taskops._errors import NotFound
+
+    clone = a_clone(root)
+    compare = gitdoor.answer(clone, "compare/main...tk-a11111", "")
+    try:
+        gitdoor.answer(None, "compare/main...tk-a11111", "")
+    except NotFound as refusal:
+        no_repo = str(refusal)
+    else:  # pragma: no cover - the door must refuse a host with no repo
+        no_repo = ""
+    return {"compare": compare, "no_repo": no_repo}
+
 
 needs_node = pytest.mark.skipif(
     shutil.which("node") is None or not (UI / "node_modules").is_dir(),
@@ -205,6 +276,9 @@ def a_board(root: Path) -> dict[str, Any]:
             "VAT",  # the epic, resolved
             "a3f9c21b",  # the commit, with its subject
         ],
+        # The /git door's own answer over a real clone, and its own refusal on a
+        # host that has none — the two ends of the cascade (ARCHITECTURE.md §16).
+        "git": a_diff(root.parent / "clone"),
     }
     dev.close()
     worker.close()
@@ -252,7 +326,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
-    for testid in VIEWS + GITHUB_VISIBLE:
+    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     # The pane that used to say "no events verb" no longer can: the verb exists
     # (`verbs/events.py`), so an empty pane now means an empty LOG and says that.
