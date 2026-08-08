@@ -4,15 +4,21 @@
  * button that calls back. A hash route would be a second source of truth for one
  * boolean and a reload that lands on a card that no longer exists.
  *
- * Three tabs, in Nova's own order: Monitor first — it is the design's first and
- * central section, and the default view — then Board, then Worktrees, which is
- * the section the design draws after it. The order here IS the order on screen,
- * so it is not a detail: `TABS[0]` is what App opens on.
+ * Four tabs, in Nova's own order: Monitor first — it is the design's first and
+ * central section, and the default view — then Board, then Actors, then
+ * Worktrees, which are the sections the design draws after it. The order here IS
+ * the order on screen, so it is not a detail: `TABS[0]` is what App opens on.
+ *
+ * A tab is only ever added WITH its page. `App.tsx`'s switch falls through to the
+ * Board, so a tab whose branch does not exist is a dead tab that still looks
+ * alive — it highlights, the view does not change, and nothing says why. That is
+ * why `TabId` is a union and not a string: adding a member here is a compile
+ * error in App until it is wired.
  *
  * The badge is a SLOT, not a hardcoded count: a tab with nothing to say carries
  * nothing. The board's pending mentions are on the KPI rail, not on a pill. */
 
-export type TabId = "monitor" | "board" | "worktrees";
+export type TabId = "monitor" | "board" | "actors" | "worktrees";
 
 export interface Tab {
   id: TabId;
@@ -24,6 +30,7 @@ export interface Tab {
 export const TABS: readonly Tab[] = [
   { id: "monitor", name: "Monitor" },
   { id: "board", name: "Board" },
+  { id: "actors", name: "Actors" },
   { id: "worktrees", name: "Worktrees" },
 ];
 
