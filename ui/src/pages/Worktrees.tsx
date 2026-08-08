@@ -26,21 +26,31 @@
  * it. Drawn identically to a running one it reads as progress; it is the
  * opposite.
  *
- * Read-only, absolutely: a row is a button and the only thing it does is open
- * the Dossier. `LIST_CAP` deliberately does NOT apply — this is a full-height
+ * Read-only, absolutely: a row is a button, and what it opens is THIS view's own
+ * full-width diff page — not the card Dossier. That was the bug: a tree is a
+ * pull request and clicking one landed the reader in a 900px drawer about the
+ * CARD, with the diff crammed into a pane inside it. The selection is one
+ * `useState` here; when it is set, the table is replaced (an early return), and
+ * `onBack` clears it. There is no router, no history entry and no modal.
+ * `onOpen` is gone from the props deliberately: the drawer is not reachable from
+ * this view at all, so it cannot come back by accident.
+ *
+ * `LIST_CAP` deliberately does NOT apply — this is a full-height
  * view like the Board, not a pane inside a grid, so the table grows and the
  * page scrolls. */
+import { useState } from "react";
 import { PaneButton } from "../components/monitor/Pane";
 import {
   TREE_DIR,
   type Tone,
+  type WorktreeDiffProps,
   type WorktreeRow,
   type WorktreesProps,
 } from "../components/monitor/panels";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
 import { ownerOf, shortActor } from "../format";
 import { Ext, compareUrl, hasRepo } from "../links";
-import type { BoardRow } from "../types";
+import type { BoardRow, Milestone } from "../types";
 
 export type { WorktreesProps };
 
@@ -67,10 +77,29 @@ function owner(row: BoardRow): { dev: string | null; worker: string | null } {
   };
 }
 
-function tree(row: BoardRow, status: string, tone: Tone): WorktreeRow {
+/** The chapter a row belongs to, RESOLVED — id from the row, words from the
+ *  payload's own `milestones` list, joined here and nowhere else.
+ *
+ *  Two ways to get nothing, and neither one prints the id: a board one version
+ *  behind sends no `milestone` on the row at all, and a chapter that has aged
+ *  past `milestones`' cap is an id this payload cannot name. `ms-9f21` on screen
+ *  is not information, it is the join failing out loud. */
+function chapter(row: BoardRow, titles: Map<string, string>): WorktreeRow["milestone"] {
+  const id = row.milestone ?? "";
+  const title = id ? titles.get(id) : undefined;
+  return id && title ? { id, title } : null;
+}
+
+function treeRow(
+  row: BoardRow,
+  status: string,
+  tone: Tone,
+  titles: Map<string, string>,
+): WorktreeRow {
   return {
     id: row.id,
     title: row.title,
+    milestone: chapter(row, titles),
     ...owner(row),
     // Construction, not a fetch: `gitwork/trees.py` pins every card's worktree
     // to `.taskops/trees/<id>` for life. There is no directory on the wire.
@@ -82,7 +111,16 @@ function tree(row: BoardRow, status: string, tone: Tone): WorktreeRow {
   };
 }
 
-export function rows(groups: WorktreesProps["groups"]): WorktreeRow[] {
+/** `milestones` is OPTIONAL and defaults to none: a caller that has not been
+ *  taught to pass the chapters gets exactly the table it got before, with every
+ *  row's chapter `null`. */
+export function rows(
+  groups: WorktreesProps["groups"],
+  milestones: readonly Milestone[] = [],
+): WorktreeRow[] {
+  const titles = new Map(milestones.map((m) => [m.id, m.title]));
+  const tree = (r: BoardRow, status: string, tone: Tone): WorktreeRow =>
+    treeRow(r, status, tone, titles);
   return [
     ...groups.merge.map((r) => tree(r, "done, not merged", "warn")),
     // `review` and `changes` are not in the five states Nova's pill draws, and
@@ -222,14 +260,78 @@ const notes: React.CSSProperties = {
   gap: "12px",
 };
 
+/** THE SECOND SURFACE — a PLACEHOLDER, and only that.
+ *
+ *  This card is the seam: it declares `WorktreeDiffProps`, wires the view state
+ *  and proves the click lands here instead of in the card drawer. What the page
+ *  DRAWS — the header, the file list, the patches through `links.tsx::cascade` —
+ *  is tk-43d78d, which replaces this body against the interface above and
+ *  changes nothing else.
+ *
+ *  It names the branch because that is the one fact a placeholder can be held to:
+ *  the row that was clicked is the page that opened. */
+export function WorktreeDiff({ row, onBack }: WorktreeDiffProps): React.JSX.Element {
+  return (
+    <div style={page} data-testid="worktree-diff" data-branch={row.id}>
+      <div style={head}>
+        <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 500, letterSpacing: "-0.035em" }}>
+          {row.id}
+        </h2>
+        <button
+          type="button"
+          data-testid="worktree-diff-back"
+          onClick={onBack}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            fontSize: "12.5px",
+            color: "var(--accent)",
+          }}
+        >
+          ← Worktrees
+        </button>
+      </div>
+      <div style={{ ...shell, padding: "22px 20px", fontSize: "12.5px", color: "var(--text-3)" }}>
+        The diff for {row.id} is drawn here.
+      </div>
+    </div>
+  );
+}
+
 export function Worktrees({
   groups,
-  onOpen,
+  milestones = [],
   repo,
   milestoneBranch = "",
+  reader,
 }: WorktreesProps): React.JSX.Element {
-  const list = rows(groups);
+  /* THE VIEW STATE, and the whole of it: which tree is open, or none. It lives
+   * here and not in `App.tsx` because nothing outside this page can act on it —
+   * the diff is this view's second surface, not a fourth tab and not an overlay
+   * over the other two. */
+  const [openTree, setOpenTree] = useState<string | null>(null);
+  const list = rows(groups, milestones);
   const linked = hasRepo(repo);
+
+  /* The early return: when a tree is selected the table is REPLACED, full
+   * width. Not a modal over it, not a drawer beside it.
+   *
+   * A selection whose row is gone — the board polled and the card merged out of
+   * the groups this page folds — falls through to the table instead of drawing a
+   * page about nothing. The reader is where they would have landed by pressing
+   * back, which is the honest resolution of a row that no longer exists. */
+  const open = openTree ? (list.find((w) => w.id === openTree) ?? null) : null;
+  if (open) {
+    return (
+      <WorktreeDiff
+        row={open}
+        base={milestoneBranch}
+        repo={repo}
+        reader={reader}
+        onBack={() => setOpenTree(null)}
+      />
+    );
+  }
   const columns = linked ? `${GRID} ${LINK_COL}` : GRID;
   return (
     <div style={page} data-testid="worktrees">
@@ -274,7 +376,7 @@ export function Worktrees({
           <div key={w.id} style={{ position: "relative" }}>
             <PaneButton
               cardId={w.id}
-              onOpen={onOpen}
+              onOpen={setOpenTree}
               testId="worktree-row"
               pad="14px 20px"
               style={{ ...rowGrid, gridTemplateColumns: columns }}

@@ -9,14 +9,15 @@
       "src/pdf.py"
      ],
      "holder": null,
-     "id": "tk-c3b117",
+     "id": "tk-6a46bb",
      "labels": [],
+     "milestone": "ms-a39203",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
      "title": "PDF",
      "waiting_on": [
-      "tk-8020e3"
+      "tk-c099c3"
      ]
     }
    ],
@@ -26,7 +27,7 @@
    "mentions": [
     {
      "by": "agent:berna/w2",
-     "id": "tk-8020e3",
+     "id": "tk-c099c3",
      "text": "Decimal or float?",
      "title": "the reduced rate",
      "ts": 1770000000.0
@@ -42,10 +43,11 @@
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-00dce0",
+     "id": "tk-e1a7ec",
      "labels": [
       "backend"
      ],
+     "milestone": "ms-a39203",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -59,8 +61,9 @@
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-8020e3",
+     "id": "tk-c099c3",
      "labels": [],
+     "milestone": "ms-a39203",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -72,7 +75,7 @@
    "by_actor": {
     "agent:berna/w2": {
      "cards": [
-      "tk-8020e3"
+      "tk-c099c3"
      ],
      "human": "\u2014",
      "seconds": 0
@@ -80,10 +83,10 @@
     "dev:berna": {
      "cards": [
       "project",
-      "tk-00dce0",
-      "tk-8020e3",
-      "tk-c3b117",
-      "tk-f83c6d"
+      "tk-6a46bb",
+      "tk-c099c3",
+      "tk-e1a7ec",
+      "tk-e50dc7"
      ],
      "human": "\u2014",
      "seconds": 0.002000093460083008
@@ -172,7 +175,7 @@
      "by_actor": {
       "agent:berna/w2": {
        "cards": [
-        "tk-8020e3"
+        "tk-c099c3"
        ],
        "human": "\u2014",
        "seconds": 0
@@ -180,10 +183,10 @@
       "dev:berna": {
        "cards": [
         "project",
-        "tk-00dce0",
-        "tk-8020e3",
-        "tk-c3b117",
-        "tk-f83c6d"
+        "tk-6a46bb",
+        "tk-c099c3",
+        "tk-e1a7ec",
+        "tk-e50dc7"
        ],
        "human": "\u2014",
        "seconds": 0.002000093460083008
@@ -207,7 +210,7 @@
    "created": 1770000000.0,
    "criteria": [],
    "goal": "read a bank CSV and issue invoices with VAT",
-   "id": "ms-61e2cb",
+   "id": "ms-a39203",
    "reviews": false,
    "rules": [],
    "status": "open",
@@ -219,7 +222,7 @@
     "created": 1770000000.0,
     "criteria": [],
     "goal": "read a bank CSV and issue invoices with VAT",
-    "id": "ms-61e2cb",
+    "id": "ms-a39203",
     "reviews": false,
     "rules": [],
     "status": "open",
@@ -232,7 +235,7 @@
      "every pane is filled"
     ],
     "goal": "the dashboard, pane by pane",
-    "id": "ms-a2d29c",
+    "id": "ms-64baed",
     "reviews": false,
     "rules": [
      "ts-only diffs, the chapter-close rebuilds"
@@ -278,7 +281,7 @@
    "mentions": [
     {
      "by": "agent:berna/w2",
-     "id": "tk-8020e3",
+     "id": "tk-c099c3",
      "text": "Decimal or float?",
      "title": "the reduced rate",
      "ts": 1770000000.0
@@ -293,8 +296,9 @@
      "assignee": "",
      "files": [],
      "holder": null,
-     "id": "tk-f83c6d",
+     "id": "tk-e50dc7",
      "labels": [],
+     "milestone": "ms-64baed",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -306,7 +310,7 @@
    "by_actor": {
     "agent:berna/w2": {
      "cards": [
-      "tk-8020e3"
+      "tk-c099c3"
      ],
      "human": "\u2014",
      "seconds": 0
@@ -314,10 +318,10 @@
     "dev:berna": {
      "cards": [
       "project",
-      "tk-00dce0",
-      "tk-8020e3",
-      "tk-c3b117",
-      "tk-f83c6d"
+      "tk-6a46bb",
+      "tk-c099c3",
+      "tk-e1a7ec",
+      "tk-e50dc7"
      ],
      "human": "\u2014",
      "seconds": 0.002000093460083008
@@ -406,7 +410,7 @@
      "by_actor": {
       "agent:berna/w2": {
        "cards": [
-        "tk-8020e3"
+        "tk-c099c3"
        ],
        "human": "\u2014",
        "seconds": 0
@@ -414,10 +418,10 @@
       "dev:berna": {
        "cards": [
         "project",
-        "tk-00dce0",
-        "tk-8020e3",
-        "tk-c3b117",
-        "tk-f83c6d"
+        "tk-6a46bb",
+        "tk-c099c3",
+        "tk-e1a7ec",
+        "tk-e50dc7"
        ],
        "human": "\u2014",
        "seconds": 0.002000093460083008
@@ -443,7 +447,7 @@
     "every pane is filled"
    ],
    "goal": "the dashboard, pane by pane",
-   "id": "ms-a2d29c",
+   "id": "ms-64baed",
    "reviews": false,
    "rules": [
     "ts-only diffs, the chapter-close rebuilds"
@@ -457,7 +461,7 @@
     "created": 1770000000.0,
     "criteria": [],
     "goal": "read a bank CSV and issue invoices with VAT",
-    "id": "ms-61e2cb",
+    "id": "ms-a39203",
     "reviews": false,
     "rules": [],
     "status": "open",
@@ -470,7 +474,7 @@
      "every pane is filled"
     ],
     "goal": "the dashboard, pane by pane",
-    "id": "ms-a2d29c",
+    "id": "ms-64baed",
     "reviews": false,
     "rules": [
      "ts-only diffs, the chapter-close rebuilds"
@@ -511,12 +515,12 @@
   "blocks": [
    {
     "assignee": "",
-    "id": "tk-c3b117",
+    "id": "tk-6a46bb",
     "status": "blocked",
     "title": "PDF"
    }
   ],
-  "branch": "tk-8020e3",
+  "branch": "tk-c099c3",
   "card": {
    "after": [],
    "assignee": "",
@@ -528,10 +532,10 @@
    "files": [
     "src/tax.py"
    ],
-   "id": "tk-8020e3",
+   "id": "tk-c099c3",
    "labels": [],
-   "milestone": "ms-61e2cb",
-   "parent": "tk-00dce0",
+   "milestone": "ms-a39203",
+   "parent": "tk-e1a7ec",
    "priority": 2,
    "review": false,
    "spec": "10% for food",
@@ -545,7 +549,7 @@
      "src/tax.py"
     ],
     "holder": "agent:berna/w1",
-    "id": "tk-00dce0",
+    "id": "tk-e1a7ec",
     "started": false,
     "title": "VAT"
    }
@@ -560,7 +564,7 @@
   ],
   "elsewhere": [],
   "epic": {
-   "id": "tk-00dce0",
+   "id": "tk-e1a7ec",
    "spec": "the whole tax",
    "status": "stalled",
    "title": "VAT"
@@ -580,10 +584,10 @@
       "files": [
        "src/tax.py"
       ],
-      "id": "tk-8020e3",
+      "id": "tk-c099c3",
       "labels": [],
-      "milestone": "ms-61e2cb",
-      "parent": "tk-00dce0",
+      "milestone": "ms-a39203",
+      "parent": "tk-e1a7ec",
       "priority": 2,
       "review": false,
       "spec": "10% for food",
@@ -592,19 +596,19 @@
       "updated": 1769999999.999
      }
     },
-    "id": "595f97d9fccb6a7ea3aceb16a0e4fe31",
+    "id": "aa61c831993fa4981155f8ecc3e2e9be",
     "kind": "created",
-    "task": "tk-8020e3",
+    "task": "tk-c099c3",
     "ts": 1769999999.999
    },
    {
     "actor": "agent:berna/w2",
     "body": {
-     "branch": "tk-8020e3"
+     "branch": "tk-c099c3"
     },
-    "id": "4bb10310dc1ffd7f1ecd896b98f82451",
+    "id": "b97a05607b4c448f67df15cbbf1ee77f",
     "kind": "claimed",
-    "task": "tk-8020e3",
+    "task": "tk-c099c3",
     "ts": 1770000000.0
    },
    {
@@ -615,9 +619,9 @@
      "sha": "a3f9c21b",
      "subject": "feat: rates"
     },
-    "id": "69fb0e815287d86a5dfa27832da356eb",
+    "id": "4c706a0441e4bdfcd3985481b189df22",
     "kind": "commit",
-    "task": "tk-8020e3",
+    "task": "tk-c099c3",
     "ts": 1770000000.0
    },
    {
@@ -628,9 +632,9 @@
      ],
      "text": "Decimal or float?"
     },
-    "id": "909bf8989c017f1c9fea60e8ad613fc5",
+    "id": "4f83a626958d6e4ea3f0395d47a45913",
     "kind": "comment",
-    "task": "tk-8020e3",
+    "task": "tk-c099c3",
     "ts": 1770000000.0
    },
    {
@@ -638,9 +642,9 @@
     "body": {
      "note": "got to the rounding"
     },
-    "id": "9c80a054c015a68beee2673be446f6fc",
+    "id": "65c45a9cf099a92b85b572fbfd8169f7",
     "kind": "released",
-    "task": "tk-8020e3",
+    "task": "tk-c099c3",
     "ts": 1770000000.0
    }
   ],
@@ -651,7 +655,7 @@
    "created": 1770000000.0,
    "criteria": [],
    "goal": "read a bank CSV and issue invoices with VAT",
-   "id": "ms-61e2cb",
+   "id": "ms-a39203",
    "reviews": false,
    "rules": [],
    "status": "open",
@@ -674,7 +678,7 @@
   "standing": null,
   "state": "ready",
   "subtasks": [],
-  "worktree": ".taskops/trees/tk-8020e3"
+  "worktree": ".taskops/trees/tk-c099c3"
  },
  "expect": [
   "the reduced rate",
@@ -697,9 +701,9 @@
  ],
  "git": {
   "compare": {
-   "base": "d47d6f3f663a8fb3df5e85003c786c181fa7cca0",
+   "base": "ff1fe8ae96a8ffe4b8f5aea6aa23ebf1310a5c43",
    "cap": 524288,
-   "head": "e08823d66cdb193004a14a1258e243e7b008494d",
+   "head": "5794783773b544dbf0f11d7993ada13ba61fdd7b",
    "patch": "diff --git a/pdf.py b/pdf.py\nnew file mode 100644\nindex 0000000..50162bc\n--- /dev/null\n+++ b/pdf.py\n@@ -0,0 +1 @@\n+def render() -> None: ...\ndiff --git a/tax.py b/tax.py\nindex c1c6c95..d5a2d14 100644\n--- a/tax.py\n+++ b/tax.py\n@@ -1 +1,2 @@\n RATE = 0.22\n+REDUCED = 0.10",
    "stat": {
     "pdf.py": [

@@ -65,6 +65,10 @@ import type {
   ReviewingRow,
 } from "../../types";
 import type { Tone } from "../board/CardTile";
+/** Type-only, and it is the door's client as `links.tsx` declares it —
+ *  structurally, so this seam names the reader the cascade already takes rather
+ *  than inventing a second spelling of it. */
+import type { GitReader } from "../../links";
 
 /** Re-exported so a panel imports its palette from the seam rather than reaching
  *  into the Board's tile. `Tone` is defined ONCE, in CardTile.tsx. */
@@ -368,6 +372,17 @@ export interface WorktreeRow {
    *  payload that failed, not as "free". */
   dev: string | null;
   worker: string | null;
+  /** WHICH CHAPTER this tree belongs to, resolved: the row carries the id
+   *  (`BoardRow.milestone`, `pulse.py::_row`) and the payload's `milestones`
+   *  list carries the words, so the pair is joined ONCE, where the rows are
+   *  built, and every cell below is handed the answer.
+   *
+   *  `null` covers both honest gaps and they are deliberately not told apart on
+   *  screen: a board one version behind sends no `milestone` on the row, and a
+   *  chapter that has aged past `milestones`' cap cannot be named. In neither
+   *  case does the cell show a raw `ms-…` id — an identifier nobody can read is
+   *  not more informative than an empty cell, it is only louder. */
+  milestone: { id: string; title: string } | null;
   /** the design's `{{ w.merged }}` pill */
   status: string;
   tone: Tone;
@@ -381,7 +396,10 @@ export interface WorktreesProps {
    *  `changes`. Naming seven fields would be listing `BoardGroups` with two
    *  holes in it. */
   groups: BoardGroups;
-  onOpen: (id: string) => void;
+  /** `board.milestones` — the id → title dictionary for `WorktreeRow.milestone`.
+   *  Optional: absent, no row can name its chapter and every one of them says
+   *  nothing, which is exactly what a board that sends no chapters can support. */
+  milestones?: readonly Milestone[];
   /** `board.repo` — the switch for the compare link on every row. Optional for
    *  the reasons `ChapterProps.repo` sets out. */
   repo?: { host: string; slug: string; url: string } | null | undefined;
@@ -391,4 +409,41 @@ export interface WorktreesProps {
    *  chapter is in focus, and then the compare falls back to the forge's own
    *  default branch (`links.tsx`, "the trunk the UI does not know"). */
   milestoneBranch?: string;
+  /** The `/git` door's client, handed straight down to the diff page. The table
+   *  itself never reads it — it is `WorktreeDiffProps.reader` arriving one level
+   *  up, because the page that owns the view state is the page that owns the
+   *  props of what it switches to. */
+  reader?: GitReader | null | undefined;
+}
+
+/** THE FULL-WIDTH DIFF PAGE — the second surface this chapter adds.
+ *
+ *  It is NOT the card Dossier and NOT a modal: the Worktrees page renders this
+ *  INSTEAD of its table (an early return on its own `openTree` state), so the
+ *  reader is on a page, at full width, with a way back. The drawer keeps its own
+ *  Files changed pane, untouched; nothing here replaces it.
+ *
+ *  Everything it draws comes through `links.tsx::cascade` — numstat → the patch
+ *  → the forge link → one honest sentence. No component fetches a patch outside
+ *  that function, so this interface hands over the two things the cascade needs
+ *  (a `reader` and a `repo`) and the range to ask for, and nothing else. */
+export interface WorktreeDiffProps {
+  /** The tree the reader clicked — already folded, already named, already
+   *  carrying its chapter. The page re-derives none of it: the row IS the
+   *  selection, and `row.id` is both the card and the head branch. */
+  row: WorktreeRow;
+  /** The BASE of the comparison — `board.milestone?.branch`, the chapter's
+   *  integration branch. Empty when no chapter is in focus, and then the door is
+   *  asked for the range it can answer and the forge falls back to its own
+   *  default branch (`WorktreesProps.milestoneBranch`). */
+  base: string;
+  /** `board.repo` — step three of the cascade, and the only thing that decides
+   *  whether an unreadable diff can still be offered as a link. */
+  repo?: { host: string; slug: string; url: string } | null | undefined;
+  /** The `/git` door's client. `null` on a host that serves boards and not a
+   *  clone, which is not an error: the cascade says so in words. */
+  reader?: GitReader | null | undefined;
+  /** Back to the table. The page owns no router and no history entry — the
+   *  selection is one `useState` in `pages/Worktrees.tsx` and this clears it. */
+  onBack: () => void;
 }

@@ -145,9 +145,10 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           ) : tab === "worktrees" ? (
             <Worktrees
               groups={board.groups}
-              onOpen={openCard}
+              milestones={board.milestones}
               repo={board.repo}
               milestoneBranch={board.milestone?.branch ?? ""}
+              reader={client}
             />
           ) : (
             <Board board={board} openCard={openCard} />
