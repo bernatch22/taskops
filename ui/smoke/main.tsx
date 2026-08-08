@@ -310,10 +310,21 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   const indexMarkup = renderToStaticMarkup(
     <Worktrees groups={fixture.board.groups} milestones={fixture.board.milestones} />,
   );
+  /* BOTH columns populated — the only state in which two shells are drawn, and
+   * therefore the only payload that can pin criterion 3 ("exactly as today").
+   * The fixture's own board has nothing integrated, so a row is MOVED into the
+   * `done` group rather than invented: same row shape the server sent, in the
+   * group the Merged column folds. */
+  const both = JSON.parse(JSON.stringify(fixture.board)) as BoardPayload;
+  both.groups.done = [both.groups.take[0]!];
+  const twoColumns = renderToStaticMarkup(
+    <Worktrees groups={both.groups} milestones={both.milestones} />,
+  );
   check(
-    "the index is two columns, In progress and Merged",
-    indexMarkup.includes('data-column="In progress"') &&
-      indexMarkup.includes('data-column="Merged"'),
+    "with rows on both sides the index is two columns, In progress and Merged",
+    (twoColumns.match(/data-testid="worktree-column"/g) ?? []).length === 2 &&
+      twoColumns.includes('data-column="In progress"') &&
+      twoColumns.includes('data-column="Merged"'),
   );
   check(
     "a row carries its branch, its title and its chapter, resolved",
@@ -348,35 +359,57 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
       !trimmed.includes(">waiting<") &&
       trimmed.includes(">working<"),
   );
-  // …and a whole column with nothing in it says so, rather than sitting blank.
-  // `older` has no `done` group and nothing integrated, so Merged is that case.
+  /* A COLUMN WITH NOTHING IN IT IS NOT DRAWN AT ALL. This REPLACES the previous
+   * answer — an equal-height shell with a dotted empty field and a sentence in
+   * it — which on a real landed chapter was still half a screen of nothing.
+   *
+   * `older` has no `done` group and nothing integrated, so Merged is that case:
+   * one shell survives, and it is the populated one. `1fr` in the surviving
+   * track is what makes it full width, and it is the same declaration that
+   * draws two, so what is pinned here is the count of shells. */
   check(
-    "an empty column is a sentence, not a blank panel",
-    olderMarkup.includes('data-testid="worktrees-empty"'),
+    "one empty column: the other is drawn alone, and the empty shell is gone",
+    (olderMarkup.match(/data-testid="worktree-column"/g) ?? []).length === 1 &&
+      olderMarkup.includes('data-column="In progress"') &&
+      !olderMarkup.includes('data-column="Merged"') &&
+      !olderMarkup.includes('data-testid="worktrees-empty"'),
   );
-  /* …and it HOLDS ITS SHAPE. Two panels of wildly different height, one of them
-   * almost empty, reads as a render that failed. Three facts, all of them in
-   * reach of a static render: the grid stretches its items (it used to say
-   * `start`, which is what let the empty column collapse), the shell is a
-   * flex column so the empty body can claim the space, and that body centres
-   * itself in it rather than sitting at the top. */
+  /* BOTH empty: one centred sentence and no column shell at all — not two, not
+   * one. The notes are the other half of the criterion: they state the rule the
+   * board enforces, which is true whether or not a tree exists. */
   const emptyBoth = renderToStaticMarkup(<Worktrees groups={{} as BoardPayload["groups"]} />);
   check(
-    "the two column shells share a height when one is empty",
-    // The grid stretches its items — it used to say `start`, which is exactly
-    // what let the empty column collapse to the height of one sentence…
-    emptyBoth.includes("align-items:stretch") &&
-      !emptyBoth.includes("align-items:start") &&
-      // …and each shell is a flex column, which is what lets the empty body
-      // claim the space the row handed the panel.
-      (emptyBoth.match(/flex-direction:column[^>]*data-testid="worktree-column"/g) ?? []).length ===
-        2,
+    "both empty: one centred message, and not one column shell",
+    emptyBoth.includes('data-testid="worktrees-none"') &&
+      emptyBoth.includes("No card is open on this chapter") &&
+      !emptyBoth.includes('data-testid="worktree-column"') &&
+      /data-testid="worktrees-none"/.test(emptyBoth) &&
+      emptyBoth.includes("justify-content:center") &&
+      // …and none of the shell's furniture came along: no heading, no count,
+      // and not the `taskops_assign` hint the dotted field used to carry.
+      !emptyBoth.includes("0 trees") &&
+      !emptyBoth.includes("taskops_assign hands a card to a worker"),
   );
+  const NOTE_TITLES = [
+    "Branches are inhabited, not switched",
+    "A third lock nobody has to remember",
+    "A card merges into its chapter, never main",
+  ];
   check(
-    "an empty column centres its text and names the move that would fill it",
-    (emptyBoth.match(/data-testid="worktrees-empty"[^>]*justify-content:center/g) ?? []).length === 2 &&
-      emptyBoth.includes("taskops_assign hands a card to a worker") &&
-      emptyBoth.includes("taskops_merge task= is the orchestrator&#x27;s call"),
+    "the three notes are drawn in every state, including both-empty",
+    NOTE_TITLES.every(
+      (t) =>
+        emptyBoth.includes(t) &&
+        olderMarkup.includes(t) &&
+        twoColumns.includes(t) &&
+        indexMarkup.includes(t),
+    ),
+  );
+  /* `stretch` survives the change: with one column it decides nothing, with two
+   * it is what keeps them level — so it is pinned on the two-column render. */
+  check(
+    "two columns are still stretched to a shared height",
+    twoColumns.includes("align-items:stretch") && !twoColumns.includes("align-items:start"),
   );
 
   /* THE SECOND SURFACE. A tree is a pull request, so clicking one opens ITS
@@ -745,10 +778,13 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   // The layout does not depend on the slug either. This used to assert the
   // five-column grid string, which pinned a table that no longer exists; what it
   // was really about survives, so that is what it says now: with no anchor to
-  // draw, the index still draws both columns and every row in them.
+  // draw, the index still draws every column that has rows and every row in
+  // them. The count is the fixture's own — one column, because nothing on this
+  // board is integrated — and it is derived rather than written, so it follows
+  // the payload instead of pinning a number.
   check(
     "no slug: the worktrees index is whole anyway",
-    (noSlug.match(/data-testid="worktree-column"/g) ?? []).length === 2 &&
+    (noSlug.match(/data-testid="worktree-column"/g) ?? []).length === 1 &&
       (noSlug.match(/data-testid="worktree-row"/g) ?? []).length ===
         rows(fixture.board.groups).length,
   );

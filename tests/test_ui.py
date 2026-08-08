@@ -27,7 +27,7 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Five waves of `.tsx`-only cards have now been rebuilt into that bundle, and
+Six waves of `.tsx`-only cards have now been rebuilt into that bundle, and
 each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
@@ -36,7 +36,9 @@ the dev carrying a worktree, the picker's landed chapters), `OWN_CLONE`
 `WORKTREES_PR` (tk-b9c857 — the two-column index and the full-width diff page
 that replaced the five-column table) and `SIDE_BY_SIDE` (tk-d0fc41 — the second
 close of that same chapter: the page read side by side, with the card's own
-thread on it, and Monitor's ninth pane). All five
+thread on it, and Monitor's ninth pane) and `NOTHING_DRAWN` (tk-81c980 — a
+column with nothing in it is not drawn at all, which is the one wave that also
+RETIRED a marker of its own: see `RETIRED`). All six
 lists are the check that the bundle is the CURRENT source's output and not the
 previous wave's: none of those strings existed in the bundle its chapter-close
 replaced, so a close that forgot to run `node build.mjs` fails here.
@@ -184,6 +186,22 @@ SIDE_BY_SIDE = (
     "swarm-legend",  # the four actor kinds, as the mock draws them
     "swarm-count",  # nodes, and how many edges are contested
 )
+
+#: The THIRD close of that chapter, and it is one marker because it is one
+#: decision reversed: a column with nothing in it is no longer drawn at all, so
+#: the per-column empty state goes with the shells that carried it and the ONE
+#: surviving sentence — both columns empty — is a message centred in the page.
+#:
+#: Both halves are asserted, and that is the point of a byte-level check here: a
+#: rebuild that forgot this card would carry `worktrees-empty` and not
+#: `worktrees-none`, and a source tree that kept the old empty state alongside
+#: the new one would carry both. Only the swap passes.
+NOTHING_DRAWN = ("worktrees-none",)  # the both-empty message, centred in the page
+
+#: …and what the same change REMOVED. `worktrees-empty` was the dotted field
+#: inside a column shell; it was in the bundle this close rebuilt over (checked),
+#: and it must not be in the one that replaces it.
+RETIRED = ("worktrees-empty",)
 
 
 def a_clone(root: Path) -> Path:
@@ -383,8 +401,10 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
-    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE:
+    for testid in VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
+    for testid in RETIRED:
+        assert f'"{testid}"' not in app, f"{testid} was retired but is still in the bundle"
     # The pane that used to say "no events verb" no longer can: the verb exists
     # (`verbs/events.py`), so an empty pane now means an empty LOG and says that.
     assert "no events verb" not in app
