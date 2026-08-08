@@ -22,7 +22,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { Dossier } from "../src/components/card/Drawer";
-import { submit } from "../src/components/card/CommentBox";
+import { CommentBox, submit } from "../src/components/card/CommentBox";
 import { RpcError, createClient } from "../src/client";
 import { depth, escape, push } from "../src/components/shared/overlayStack";
 import { Board } from "../src/pages/Board";
@@ -41,7 +41,7 @@ import {
   type GitTarget,
 } from "../src/links";
 import { CommitPatch, DiffPane, FilesChanged } from "../src/components/card/Patch";
-import type { BoardPayload, CardPayload, GitDiff, ReviewingRow } from "../src/types";
+import type { BoardPayload, CardPayload, GitDiff, ReviewingRow, TeamMember } from "../src/types";
 
 /** The fixture, as `tests/test_ui.py` writes it. */
 export interface Fixture {
@@ -477,6 +477,36 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     throw new Error("an empty comment must never reach the board");
   });
   check("an empty draft sends nothing", blank.failed === "" && posted.length === 1);
+
+  /* The picker offers who is LIVE, not everybody seen today. The clock is the
+     board's own lease TTL, so a member last seen three TTLs ago is not somebody
+     you reach by writing to them and is not drawn. */
+  const chipsOf = (markup: string): number => markup.split('data-testid="mention-pick"').length - 1;
+  const member = (actor: string, ago: number): TeamMember => ({ actor, seen: 0, ago });
+  const noSend = async (): Promise<void> => undefined;
+
+  const mixed = renderToStaticMarkup(
+    <CommentBox
+      team={[member("agent:berna/live", LEASE_TTL - 60), member("agent:berna/gone", LEASE_TTL * 3)]}
+      onSend={noSend}
+    />,
+  );
+  check("only the live member is offered", chipsOf(mixed) === 1, mixed);
+  check("the stale member is not offered", !mixed.includes("agent:berna/gone"));
+  check("with somebody live there is no sentence", !mixed.includes('data-testid="nobody-live"'));
+
+  const allStale = renderToStaticMarkup(
+    <CommentBox
+      team={[member("agent:berna/gone", LEASE_TTL + 1), member("dev:berna", LEASE_TTL * 90)]}
+      onSend={noSend}
+    />,
+  );
+  check("nobody live draws no chips", chipsOf(allStale) === 0, allStale);
+  check(
+    "and one honest sentence instead",
+    allStale.includes('data-testid="nobody-live"') &&
+      allStale.includes("a comment with no address still lands on the card"),
+  );
 
   /* ── 6. Escape closes the top-most overlay only ────────────────────────── */
 
