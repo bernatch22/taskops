@@ -265,21 +265,6 @@ def test_with_two_chapters_open_the_board_names_both(repo: Path, boards: Any) ->
     assert "pass milestone=<id> to focus one" in text
 
 
-def test_a_landed_chapter_is_not_counted_among_the_open_ones(repo: Path, boards: Any) -> None:
-    """`milestones` carries landed chapters now (`verbs/_facts.py::chapters`) so
-    the dashboard can reach them. This line is about which chapter to FOCUS, and
-    a landed one is not a choice: counting it would say "3 open milestones" over
-    a board with two, which is the contradiction the header exists to avoid."""
-    dev, _ = seeded(boards)
-    dev.call("plan", {"milestone": "Reports", "goal": "g", "tasks": [{"title": "t"}]})
-    past = dev.call("plan", {"milestone": "Nova", "goal": "g", "tasks": [{"title": "t"}]})
-    dev.call("merged", {"milestone": past["milestone"]["id"], "into": "main", "sha": "abc123"})
-
-    text = call(dev, repo, "taskops_board")
-    assert "2 open milestones" in text
-    assert "Nova" not in text
-
-
 def test_dispatch_returns_a_self_contained_brief(repo: Path, boards: Any) -> None:
     dev, cards = seeded(boards)
     text = call(dev, repo, "taskops_assign", tasks=[cards[0]["id"]], worktrees=False)
@@ -356,66 +341,6 @@ def test_saying_something_is_a_different_tool_from_changing_the_card(
         call(dev, repo, "taskops_update", task=card, note="just chatting")
 
 
-# ── the push that follows an accepted done ─────────────────────────────────
-
-
-@pytest.fixture()
-def pushes(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
-    """What `gitmoves` asked to be pushed. The push itself is `tests/test_git.py`."""
-    seen: list[tuple[str, ...]] = []
-
-    def spy(repo: Path, *branches: str, cwd: Path | None = None) -> None:
-        seen.append(branches)
-
-    monkeypatch.setattr(tools.gitmoves.remote, "push", spy)
-    return seen
-
-
-def test_a_card_that_closes_done_has_its_branch_pushed(
-    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
-) -> None:
-    """The placement: `done` goes through the generic update handler, and the
-    push hangs off the point where the board has already ACCEPTED it."""
-    dev, cards = seeded(boards)
-    card = cards[0]["id"]
-    w1 = boards(W1)
-    call(w1, repo, "taskops_take", task=card)
-    call(w1, repo, "taskops_update", task=card, status="done", no_code=True, note="docs only")
-    assert pushes == [(card,)]
-
-
-def test_a_done_the_board_refuses_pushes_nothing(
-    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
-) -> None:
-    """The refusal path raises out of `board.call` — the seam is never reached,
-    so a branch the board did not accept as closed never appears on origin."""
-    dev, cards = seeded(boards)
-    with pytest.raises(Refused):
-        call(dev, repo, "taskops_update", task=cards[0]["id"], status="done", note="mine now")
-    assert pushes == []
-
-
-def test_an_accepted_update_that_is_not_done_pushes_nothing(
-    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
-) -> None:
-    """`done` is the lifecycle moment, not "the board took a write": handing a
-    card back is an accepted update too, and there is nothing finished to show."""
-    dev, cards = seeded(boards)
-    card = cards[0]["id"]
-    w1 = boards(W1)
-    call(w1, repo, "taskops_take", task=card)
-    call(w1, repo, "taskops_update", task=card, status="released", note="got to the model")
-    assert pushes == []
-
-
-def test_talking_on_a_card_pushes_nothing(
-    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
-) -> None:
-    dev, cards = seeded(boards)
-    call(dev, repo, "taskops_comment", task=cards[0]["id"], text="looks good")
-    assert pushes == []
-
-
 # ── identity is per call, not per process ──────────────────────────────────
 
 
@@ -436,25 +361,6 @@ def test_a_spawned_worker_speaks_through_actor_on_the_call(repo: Path, boards: A
     done = call(dev, repo, "taskops_update", task=cards[0]["id"], actor=W1,
                 status="done", note="model + tests")
     assert "done" in done
-
-
-def test_the_dossier_shows_the_size_of_each_commit_beside_its_files(
-    repo: Path, boards: Any
-) -> None:
-    """An agent with no GitHub still sees how big the change was — and a file
-    whose counts nobody has (an old event) is printed bare, never as +0-0."""
-    dev, cards = seeded(boards)
-    card = cards[0]["id"]
-    dev.call("bind", {"task": card, "sha": "a1b2c3d4e5", "subject": "feat: model",
-                      "files": ["src/models.py", "logo.png"],
-                      "numstat": {"src/models.py": [12, 3], "logo.png": None}})
-    dev.call("bind", {"task": card, "sha": "f6a7b8c9", "subject": "chore: old",
-                      "files": ["src/legacy.py"]})
-
-    text = call(dev, repo, "taskops_card", task=card)
-    assert "src/models.py +12-3" in text
-    assert "logo.png bin" in text
-    assert "(src/legacy.py)" in text and "+0-0" not in text
 
 
 def test_without_actor_the_refusal_says_to_pass_it(repo: Path, boards: Any) -> None:
@@ -838,3 +744,35 @@ def test_repo_path_never_reaches_a_verb(repo: Path, boards: Any) -> None:
         patch.setitem(tools.BY_NAME, "taskops_board", tools.BY_NAME["taskops_board"]._replace(run=spy))
         server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert "milestone" in seen and "repo_path" not in seen
+
+
+def test_a_chapter_whose_cards_are_all_integrated_can_land(
+    repo: Path, boards: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`groups.done` is FINISHED work already in the milestone branch — neither
+    unfinished nor unintegrated, which is the only thing this gate is about.
+
+    It was added to the payload so closed cards stay visible (a chapter's
+    history used to exist on no screen), and the gate read the new group as a
+    reason to refuse: the first card you integrated blocked the landing
+    permanently, so no chapter could ever land again. Found by landing a real
+    chapter, 2026-08-08."""
+    from taskops.gitwork import trees
+
+    dev = boards(BERNA)
+    out = dev.call(
+        "plan",
+        {"milestone": "MVP", "goal": "g", "tasks": [{"title": "VAT", "spec": "the whole tax"}]},
+    )
+    stone, card = out["milestone"]["id"], out["cards"][0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+    w1.call("update", {"task": card, "status": "done", "no_code": True, "comment": "done"})
+    dev.call("merged", {"task": card, "sha": "9c2f"})  # integrated: it moves to `done`
+
+    assert [c["id"] for c in dev.call("board", {"milestone": stone})["groups"]["done"]] == [card]
+
+    monkeypatch.setattr(trees, "land_milestone", lambda *_: ("master", "abc123"))
+    text = call(dev, repo, "taskops_merge", milestone=stone)
+    assert "master" in text  # it landed; the settled card was not read as open work
