@@ -32,41 +32,21 @@ import { useState } from "react";
 import { FilesChanged, type PatchMode, type PatchView } from "../components/card/Patch";
 import { CommentBox } from "../components/card/CommentBox";
 import { Thread } from "../components/card/Thread";
-import { TREE_DIR, type WorktreeDiffProps } from "../components/monitor/panels";
+/* THE CARD'S OWN THREAD. `ThreadProps` is declared in the SEAM
+ * (`components/monitor/panels.ts`) beside `WorktreeDiffProps`, and re-exported
+ * here because this is the module that renders it. It spent one wave declared
+ * in this file — panels.ts was held by another card and a concept two workers
+ * touch in one file is the conflict `docs/fan-out.md` is about — and came back
+ * at the chapter close, exactly as this comment promised it would. The seam
+ * never changed. */
+import {
+  TREE_DIR,
+  type ThreadProps,
+  type WorktreeDiffProps,
+} from "../components/monitor/panels";
 import { Ext, compareUrl } from "../links";
-import type { CardPayload, TeamMember } from "../types";
 
-/* THE CARD'S OWN THREAD, and why these props are declared HERE.
- *
- * A worktree has no identity apart from its card: `gitwork/trees.py` pins
- * `tk-<id>` as branch, directory and id at once. So there is no worktree comment
- * and there must never be one — a second thread would be two places to say
- * something about one thing, and the reader of the CARD would see half of it.
- * This page therefore renders the same `Thread` the dossier renders, with the
- * same `CommentBox`, writing through the same `useBoard::comment` → `update
- * comment=` door. Nothing here fetches: `App` already opens the card when it
- * opens the tree, exactly as the drawer does, so the payload arrives as a prop
- * and there is no second fetch shape to keep in step.
- *
- * They are an intersection declared in this file rather than fields on
- * `WorktreeDiffProps` (`components/monitor/panels.ts`) for one reason, and it is
- * this wave's own rule: panels.ts is held by another card right now, and a
- * concept two workers touch in one file is the conflict `docs/fan-out.md` is
- * about. The seam is unchanged; this is the page's own extension of it, and it
- * belongs back in panels.ts the next time that file is open. */
-export interface ThreadProps {
-  /** The card behind the tree — the dossier `verbs/card.py` returns, handed down
-   *  by `App`. `null` while it is in flight, and then the page draws its diff and
-   *  says the thread is still coming rather than showing an empty one. */
-  dossier?: CardPayload | null | undefined;
-  /** Who is addressable in the mention picker — `board.team`, the same list the
-   *  drawer's box gets. Empty is a picker with nobody in it, not a crash. */
-  team?: TeamMember[];
-  now?: number;
-  /** The dashboard's ONE write. Absent, the thread is read-only and no box is
-   *  drawn — a send button with nowhere to send is worse than no box. */
-  onComment?: ((text: string, mentions: string[]) => Promise<void>) | undefined;
-}
+export type { ThreadProps };
 
 const page: React.CSSProperties = {
   height: "100%",

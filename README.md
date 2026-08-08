@@ -171,11 +171,14 @@ over. It needs `ui/node_modules`; without it, or without node, that test skips.
 
 Three tabs, in Nova's order — **Monitor** (`ui/src/pages/Monitor.tsx`, the
 default), **Board** (`ui/src/pages/Board.tsx`) and **Worktrees**
-(`ui/src/pages/Worktrees.tsx`, the branch-per-card table, where a row opens its
-own full-width diff instead of the drawer) — plus the card
+(`ui/src/pages/Worktrees.tsx`, an index of pull requests in two equal columns,
+In progress and Merged, where a row opens its own full-width diff page — side by
+side, with the card's own thread on it — instead of the drawer) — plus the card
 dossier drawer that opens over Monitor and Board (`ui/src/App.tsx`) and the header's
 milestone picker. Monitor is no longer a shell: its two-column layout, the
-shared pane chrome and all eight panes are built, one card per panel. The Event
+shared pane chrome and all NINE panes are built, one card per panel — the
+ninth is Swarm, who is attached to what right now, drawn from slices the board
+already sends. The Event
 stream — the last pane that had no verb behind it — is fed: `events` pages the
 log by keyset and the pane draws real rows, so an empty pane now means an empty
 log. Nothing else exists — an "Attention" screen and an "Hours" tab were built
