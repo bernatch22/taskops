@@ -54,8 +54,10 @@ committed, it travels with the code) and, for `join`, `.taskops/remote.json`
 (0600, gitignored — the credential never does). Both write the two git hooks,
 `.mcp.json`, and the one Claude hook (`.claude/settings.json`, merged) — the
 delivery hook that carries a pending `✉` mention into a working agent's very
-next tool call ([MENTIONS.md](MENTIONS.md) §9; read-only, deletable, never
-decides). **Restart your Claude Code session in that project after** — MCP
+next tool call, and — to the orchestrator only — the `◆` groups it is sitting
+on, done-but-unmerged, handed-in-but-unchecked, owned-but-stalled
+([MENTIONS.md](MENTIONS.md) §9 and §9f; read-only, deletable, never decides).
+**Restart your Claude Code session in that project after** — MCP
 servers load once, at session start, from `.mcp.json`; from then on
 `taskops_board` is a tool call, not a shell command.
 

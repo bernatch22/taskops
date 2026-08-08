@@ -333,3 +333,47 @@ worktree path in `tool_input` → the worker is resolved through
 path → card → holder; the worker replies on the card → the hook is silent with
 no verb called; no board / garbage stdin → exit 0, no output; `join` twice →
 one entry, foreign hooks kept.
+
+### 9f. The second thing it delivers (2026-08-08) — tk-fde429
+
+§9d-bis is history, and its sentence "the hook went back to delivering exactly
+one thing" describes 2026-08-07. It carries two now, and the reason is the same
+gap §9 opened with, seen from the other side of the board.
+
+The incident: `tk-342486` and `tk-17d463` were dispatched on this very board and
+their workers were never spawned. Both sat `stalled` — correctly derived,
+correctly rendered on the dashboard — for **twelve minutes**, until Berna
+noticed. `taskops_assign` prepares a worktree and a brief and starts nothing;
+the orchestrator is exactly the reader who is ten turns deep in Edit and Bash
+and will not call `taskops_board` on its own. That is §9's gap with the roles
+swapped.
+
+So the ONE hook — not a second one; two entry points is how v1 came to disagree
+with itself — also delivers, **to a `dev:` only**, the three groups the board's
+own ranking calls somebody-must-move:
+
+```
+◆ taskops: 2 done, not in the trunk — one taskops_merge task= each: tk-a1b2c3 tk-d4e5f6
+◆ taskops: 1 handed in, nobody checking — spawn a verifier per card (its one tool is taskops_review task=): tk-a1b2c3
+◆ taskops: 2 owned, nobody running them — taskops_assign tasks=[…] hands one over, then spawn the brief it returns: tk-a1b2c3 tk-d4e5f6
+```
+
+Count, what is wrong, the exact call. TAKE and DOING are deliberately absent:
+ready work is a plan, not a thing going wrong. A worker is told none of it — it
+neither merges nor dispatches, and a line it cannot act on is noise, which is
+how a hook gets deleted.
+
+Four things make it the same move as the ✉ half rather than a new kind of one:
+
+| | |
+|---|---|
+| the read | a new verb, `waiting` (`verbs/_waiting.py`), sibling of `mentions` and for the identical reason: `board` opens with `live.renew(actor)` and would renew a dead worker's lease AND stamp its presence. `waiting` renews nothing; `test_the_waiting_read_renews_nothing` pins the lease's `expires` and the presence table across the call |
+| the throttle | its OWN key in the same stamp and its own interval, `WAITING = 180s`. A mention is urgent within a turn (hence 30s, smaller than a turn); a stalled card is not — the incident was twelve minutes, and three bounds it to a quarter of that while never repeating the same three lines inside one long turn. Rejected: 30s (repetition = noise), 600s (the incident's own scale, so it would not have caught the incident) |
+| two gates, not one | the `waiting` verb is `DEV`-only in the REGISTRY, and the hook additionally refuses to ask when the turn resolved to a sub-agent through its worktree path — on that path the reader reads as `dev:$USER`, so the verb's gate does not fire and the hook's is the only one. Mutation-checking is what found this: the first version of the test could not fail |
+| deletable | unchanged. Every group still derives, still renders on the dashboard, still rides in `taskops_board`. Deleting `cli/claude.py`, `cli/wording.py` and their test leaves the suite green — checked, not assumed |
+
+The wording lives in `cli/wording.py`, split off when `claude.py` hit the
+200-line budget: that file is the mechanism, this one is the sentence and the
+envelope it leaves in. The wording is half the feature — this text lands in a
+transcript that is doing something else, and a line that makes somebody go look
+is noise.
