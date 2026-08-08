@@ -59,6 +59,7 @@ import type {
   MentionRow,
   Milestone,
   ReportPayload,
+  ReviewingRow,
 } from "../../types";
 import type { Tone } from "../board/CardTile";
 
@@ -92,6 +93,20 @@ export interface LeaseProc {
 export interface LiveLeasesProps {
   /** `board.groups.doing` — somebody holds the lease right now */
   doing: readonly BoardRow[];
+  /** `board.groups.reviewing` — a verifier holds a live REVIEW lease, the second
+   *  mutex (`store/reviews.py`), and `holder` is that verifier.
+   *
+   *  NOT the `review` group, and the difference is the whole reason this field
+   *  exists: `review` is handed-in-and-waiting — no lease, nobody running, nothing
+   *  counting down — so it has no business on a pane about live leases. `reviewing`
+   *  is somebody running, which is exactly what this pane draws. Nova's own fifth
+   *  pane has such a row (design line 1168: `agent:berna/rv1`, a countdown, WARN)
+   *  and counts it among the HEALTHY leases in `leaseHealth` ('4 healthy · 1
+   *  lapsed' over 3 doing + 1 review + 1 stalled).
+   *
+   *  Declared between `doing` and `stalled` because that is its render order in
+   *  the design: live and fine, live and being checked, then the lapsed one. */
+  reviewing: readonly ReviewingRow[];
   /** `board.groups.stalled` — has an owner, nobody is running it. Same pane on
    *  purpose: a lapsed lease IS the fact this panel is about. */
   stalled: readonly BoardRow[];

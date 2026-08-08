@@ -92,6 +92,7 @@ export function Monitor({ board, openCard, now }: MonitorProps): React.JSX.Eleme
         <div style={left}>
           <LiveLeases
             doing={g.doing}
+            reviewing={g.reviewing}
             stalled={g.stalled}
             now={now}
             onOpen={openCard}
