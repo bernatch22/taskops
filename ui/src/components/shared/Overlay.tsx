@@ -77,9 +77,15 @@ export interface OverlayProps {
   onClose: Close;
   label: string;
   children: React.ReactNode;
+  /** The panel's width. A prop with a default rather than a second overlay: the
+   *  dossier is a document and reads at 900px, the dev detail is a DRAWING —
+   *  lanes on a shared time axis — and a narrow axis is an axis nobody can read.
+   *  Everything else about the two is identical, and the one thing that must
+   *  never be copied is the Escape ownership below. */
+  width?: string | undefined;
 }
 
-export function Overlay({ onClose, label, children }: OverlayProps): React.JSX.Element | null {
+export function Overlay({ onClose, label, children, width }: OverlayProps): React.JSX.Element | null {
   useOverlayStack(onClose);
   if (typeof document === "undefined") return null;
 
@@ -100,7 +106,7 @@ export function Overlay({ onClose, label, children }: OverlayProps): React.JSX.E
         aria-label={label}
         onMouseDown={(e) => e.stopPropagation()}
         style={{
-          width: "min(900px, 100%)",
+          width: width ?? "min(900px, 100%)",
           maxHeight: "calc(100vh - 60px)",
           background: "var(--pane)",
           color: "var(--text)",

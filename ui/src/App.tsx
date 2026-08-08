@@ -6,10 +6,14 @@
  * own fetch would only manage to paint a board half a second older than the rail
  * above it. Pages receive data; they never ask for it.
  *
- * Three pages, in TabNav's order: Monitor, the Board and Worktrees — the tab list
- * and the branch below it are two halves of one fact, and a tab with no branch
- * here silently falls through to the Board, which is a dead tab that still looks
- * alive. Monitor is Nova's first and central section
+ * Four pages, in TabNav's order: Monitor, the Board, Actors and Worktrees — the
+ * tab list and the branch below it are two halves of one fact, and a tab with no
+ * branch here USED to fall through to the Board, which is a dead tab that still
+ * looks alive: it highlights, the view does not change, and nothing says why.
+ * That is no longer expressible. `PAGES` below is a `Record<TabId, …>`, so a new
+ * member of the union is a compile error in this file until its page exists —
+ * the comment that warned about it is now the type. Monitor is Nova's first and
+ * central section
  * and therefore the DEFAULT — including the Throughput panel that a short-lived
  * "Hours" tab wrongly promoted to a view of its own, which lives inside Monitor
  * where the design puts it.
@@ -34,6 +38,7 @@ import { Header } from "./components/chrome/Header";
 import { KpiRail } from "./components/chrome/KpiRail";
 import { TABS, TabNav, type TabId } from "./components/chrome/TabNav";
 import type { Client } from "./client";
+import { Actors } from "./pages/Actors";
 import { Board } from "./pages/Board";
 import { Monitor } from "./pages/Monitor";
 import { Worktrees } from "./pages/Worktrees";
@@ -180,35 +185,55 @@ export function App({ client }: { client: Client }): React.JSX.Element {
             </div>
           </div>
         ) : board ? (
-          tab === "monitor" ? (
-            <Monitor
-              board={board}
-              openCard={openCard}
-              now={Date.now() / 1000}
-              client={client}
-              /* The SAME setter the header picker gets, not a second one: the
-                 Chapter pane's `focus` action and the pill are one state. */
-              onFocusChapter={setMilestone}
-            />
-          ) : tab === "worktrees" ? (
+          /* EVERY tab, and the compiler counts them. A `Record<TabId, …>` is
+             what makes "a tab with no page" unwritable rather than merely
+             warned about: add a member to the union and this object is missing
+             a key, in this file, before anything renders. */
+          ({
+            monitor: () => (
+              <Monitor
+                board={board}
+                openCard={openCard}
+                now={Date.now() / 1000}
+                client={client}
+                /* The SAME setter the header picker gets, not a second one: the
+                   Chapter pane's `focus` action and the pill are one state. */
+                onFocusChapter={setMilestone}
+              />
+            ),
+            board: () => <Board board={board} openCard={openCard} />,
+            /* The fourth view. It is handed the same four slices Monitor's own
+               panes read plus `board.hours` — the same snapshot Throughput
+               draws from, because there is one fetcher (useBoard.ts). */
+            actors: () => (
+              <Actors
+                team={board.team}
+                doing={board.groups.doing}
+                reviewing={board.groups.reviewing}
+                stalled={board.groups.stalled}
+                report={board.hours}
+                now={Date.now() / 1000}
+                onOpen={openCard}
+              />
+            ),
             /* No base is passed down: `board.milestone` is the chapter IN FOCUS
                and is `null` under "All milestones", which made every tree ask
                the /git door for `compare("", tk-x)` and get nothing. Each row
                resolves its OWN chapter's branch out of `milestones`. */
-            <Worktrees
-              groups={board.groups}
-              milestones={board.milestones}
-              repo={board.repo}
-              reader={client}
-              openTree={tree}
-              onOpenTree={openTree}
-              dossier={card}
-              team={board.team}
-              onComment={comment}
-            />
-          ) : (
-            <Board board={board} openCard={openCard} />
-          )
+            worktrees: () => (
+              <Worktrees
+                groups={board.groups}
+                milestones={board.milestones}
+                repo={board.repo}
+                reader={client}
+                openTree={tree}
+                onOpenTree={openTree}
+                dossier={card}
+                team={board.team}
+                onComment={comment}
+              />
+            ),
+          } satisfies Record<TabId, () => React.JSX.Element>)[tab]()
         ) : null}
       </main>
 

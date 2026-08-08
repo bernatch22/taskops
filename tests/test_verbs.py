@@ -504,6 +504,24 @@ def test_report_counts_hours_from_the_events_themselves(
     assert out["by_actor"][W1]["human"] == "10m"
 
 
+def test_report_carries_the_sessions_the_hours_are_made_of(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """The timesheet's blocks and the total beside them are ONE computation."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    clock(600)
+    call(stores, "update", W1, task=card, comment="halfway")
+    out = call(stores, "report", BERNA, window="1d")
+    blocks = out["by_actor"][W1]["sessions"]
+    assert [(b["task"], b["seconds"]) for b in blocks] == [(card, 600.0)]
+    assert blocks[0]["end"] - blocks[0]["start"] == 600.0
+    assert out["by_actor"][W1]["sessions_total"] == len(blocks)
+    assert sum(b["seconds"] for b in blocks) == out["by_actor"][W1]["seconds"]
+    # The same fold per calendar day is what the timesheet reads, day by day.
+    assert out["days"][-1]["by_actor"][W1]["sessions"] == blocks
+
+
 # ── mentions ────────────────────────────────────────────────────────────────
 
 
