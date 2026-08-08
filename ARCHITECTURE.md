@@ -992,6 +992,19 @@ pointing `--root` at `/home/berna/taskops-v2-server/`. Upgrading is
 `pip install --force-reinstall <newer wheel>` + `pm2 restart`; the boards are
 untouched by it, which is the point of keeping them out of the install.
 
+That upgrade was exercised the same day (tk-c86312): the host was still serving
+the wheel built at stand-up, four chapters behind, so axion's 4252-character
+goal printed its asterisks and backticks literally. The installed wheel was
+copied to `~/taskops-v2-app/rollback/` **before** anything was replaced, the new
+one was checked for the prose markers before it was shipped, and the proof was
+the bytes production hands out: the served `/axion/ui/app.js` is md5-identical
+to the committed `src/taskops/ui/app.js`, and the four `events.jsonl` are
+md5-identical before and after. README's "Upgrading a host" is that procedure,
+written down. One doc claim was wrong and is fixed there: `/healthz`'s `boards`
+counts boards OPENED so far, not boards on disk — a board mounts on first
+request (`http/mounts.py::stores`), so a just-restarted process says `1`, not
+`4`, until each board has been addressed.
+
 The four boards migrated as: axion 926 v1 events → 845 + 81 named drops (86
 cards, one chapter `ms-fe528b`, its 4252-character goal and 9 rules intact),
 agenda 43 → 35 + 8, notas 59 → 48 + 11, probe 31 → 17 + 14. Every card count,
