@@ -72,23 +72,55 @@
  */
 import { Pane, PaneEmpty } from "./Pane";
 import { TONE_FG } from "../board/CardTile";
-import { ownerOf, shortActor } from "../../format";
+import { initials, ownerOf } from "../../format";
 import type { Tone } from "../board/CardTile";
 import type { SwarmEdge, SwarmGraph, SwarmKind, SwarmNode, SwarmProps } from "./panels";
 
 /* ── the geometry, as constants ───────────────────────────────────────────── */
 
-const W = 460;
-const H = 330;
-const CX = W / 2;
-const CY = H / 2;
-const RADIUS = 116;
+/* Every number below is the mockup's, transcribed rather than interpreted: the
+ * pane used to draw r=16 circles on a 460×330 board and read as a bubble chart.
+ * The viewBox is the mock's coordinate space, the rendered height is the mock's
+ * `height="440"`, and the two guide rings are the mock's r=100 / r=130 — the
+ * NODES sit on the outer one. */
+const W = 600;
+const H = 400;
+const HEIGHT = 440;
+const CX = 300;
+const CY = 200;
+const RADIUS = 130;
+const GUIDE = [100, 130];
+/** the circle itself, its halo ring, and where the sub-label sits under both */
+const NODE_R = 26;
+const HALO_R = 34;
+const LABEL_DY = 46;
 /** Nodes start at twelve o'clock and go clockwise. */
 const START = -Math.PI / 2;
 
 /** Two decimals, so the markup a payload produces is stable to the byte and the
  *  harness can compare two renders as strings. */
 const round = (n: number): number => Math.round(n * 100) / 100;
+
+/** The two texts the mock draws per node, and the reason it reads as a diagram
+ *  rather than a bubble chart: the GLYPHS go inside the circle, the sub-label
+ *  under it. `initials()` is the same helper the avatar discs use — up to three
+ *  glyphs, because `w1` and `w10` share their first two. A card's glyphs are its
+ *  id without the `tk-` that every id carries and that therefore distinguishes
+ *  nothing. */
+const glyphOf = (node: { id: string; kind: SwarmKind }): string =>
+  node.kind === "card" ? node.id.replace(/^tk-/, "").slice(0, 3) : initials(node.id);
+
+/** The sub-label. A card says its id — that is the mock's `dy="46"` text. An
+ *  ACTOR says what it is, which is where the mock's own centre node lands:
+ *  `orchestrator`, "not a card, because it never holds one". Repeating the
+ *  glyphs under the glyphs would be one text twice. */
+const SUBLABEL: Record<SwarmKind, string> = {
+  orchestrator: "orchestrator",
+  worker: "worker",
+  verifier: "verifier",
+  lapsed: "lapsed",
+  card: "",
+};
 
 const TONE_OF: Record<SwarmKind, Tone> = {
   orchestrator: "accent",
@@ -224,7 +256,8 @@ export function topology(props: SwarmProps): SwarmGraph {
     return {
       id: node.id,
       kind: node.kind,
-      label: node.kind === "card" ? node.id : shortActor(node.id),
+      glyph: glyphOf(node),
+      label: node.kind === "card" ? node.id : SUBLABEL[node.kind],
       title: node.title,
       x: round(CX + RADIUS * Math.cos(angle)),
       y: round(CY + RADIUS * Math.sin(angle)),
@@ -235,7 +268,8 @@ export function topology(props: SwarmProps): SwarmGraph {
     nodes.unshift({
       id: centre,
       kind: "orchestrator",
-      label: shortActor(centre),
+      glyph: glyphOf({ id: centre, kind: "orchestrator" }),
+      label: SUBLABEL.orchestrator,
       title: `${centre} — orchestrator; plans and dispatches, never holds a card`,
       x: CX,
       y: CY,
@@ -263,27 +297,34 @@ const dot = (kind: SwarmKind): React.CSSProperties => ({
   flex: "none",
 });
 
+/** One node, transcribed from the mock's `<g>`: an opaque disc so no edge shows
+ *  through it, a halo RING (stroke, not a fill) in the node's own colour, the
+ *  glyphs centred inside, and the sub-label at `dy=46`. */
 function Node({ node }: { node: SwarmNode }): React.JSX.Element {
   const colour = TONE_FG[TONE_OF[node.kind]];
-  const r = node.kind === "card" ? 13 : 16;
   return (
     <g data-testid="swarm-node" data-node={node.id} data-kind={node.kind}>
       <title>{node.title}</title>
-      {/* the soft halo the mock draws under every circle */}
-      <circle cx={node.x} cy={node.y} r={r + 9} fill={colour} opacity={0.09} />
-      <circle
-        cx={node.x}
-        cy={node.y}
-        r={r}
-        fill="var(--pane)"
-        stroke={colour}
-        strokeWidth={node.kind === "card" ? 1.2 : 1.8}
-      />
+      <circle cx={node.x} cy={node.y} r={NODE_R} fill="var(--pane)" stroke={colour} strokeWidth={1.6} />
+      <circle cx={node.x} cy={node.y} r={HALO_R} fill="none" stroke={colour} strokeWidth={1} opacity={0.22} />
       <text
         x={node.x}
-        y={node.y + r + 15}
+        y={node.y}
         textAnchor="middle"
-        fontSize="10"
+        dominantBaseline="central"
+        fontSize="12"
+        fontWeight={500}
+        fill={colour}
+      >
+        {node.glyph}
+      </text>
+      <text
+        x={node.x}
+        y={node.y}
+        dy={LABEL_DY}
+        textAnchor="middle"
+        className="mono"
+        fontSize="9.5"
         fill="var(--text-3)"
       >
         {node.label}
@@ -322,21 +363,31 @@ export function Swarm(props: SwarmProps): React.JSX.Element {
           never what a worker actually edited.
         </PaneEmpty>
       ) : (
-        <div style={{ borderTop: "1px solid var(--hair)", padding: "10px 12px 0" }}>
+        <div style={{ borderTop: "1px solid var(--hair)" }}>
+          {/* The grid is the mock's: a CSS background on the WRAPPER, 28px, not
+              an SVG <pattern> — so it rules the whole pane at one true scale
+              instead of being stretched with the viewBox. */}
+          <div
+            data-testid="swarm-field"
+            style={{
+              padding: "0 20px 18px",
+              backgroundImage:
+                "linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px)",
+              backgroundSize: "28px 28px",
+            }}
+          >
           <svg
             viewBox={`0 0 ${W} ${H}`}
             width="100%"
+            height={HEIGHT}
             role="img"
             aria-label={"Swarm topology: " + count}
             data-testid="swarm-graph"
             style={{ display: "block" }}
           >
-            <defs>
-              <pattern id="swarm-grid" width="26" height="26" patternUnits="userSpaceOnUse">
-                <path d="M 26 0 L 0 0 0 26" fill="none" stroke="var(--hair)" strokeWidth="0.6" />
-              </pattern>
-            </defs>
-            <rect width={W} height={H} fill="url(#swarm-grid)" opacity={0.5} />
+            {GUIDE.map((r) => (
+              <circle key={r} cx={CX} cy={CY} r={r} fill="none" stroke="var(--hair)" strokeWidth={1} />
+            ))}
             {graph.edges.map((edge) => {
               const a = at.get(edge.from);
               const b = at.get(edge.to);
@@ -357,10 +408,18 @@ export function Swarm(props: SwarmProps): React.JSX.Element {
                   y1={a.y}
                   x2={b.x}
                   y2={b.y}
-                  stroke={contested ? TONE_FG.warn : owns ? "var(--hair-2)" : TONE_FG.neutral}
-                  strokeWidth={contested ? 1.4 : owns ? 0.7 : 1}
-                  strokeDasharray={contested ? "5 4" : undefined}
-                  opacity={owns ? 1 : edge.kind === "lapsed" ? 0.35 : contested ? 0.9 : 0.55}
+                  stroke={
+                    contested
+                      ? TONE_FG.danger
+                      : owns
+                        ? "var(--hair-2)"
+                        : edge.kind === "lapsed"
+                          ? TONE_FG.warn
+                          : TONE_FG.ok
+                  }
+                  strokeWidth={owns ? 1 : 1.6}
+                  strokeDasharray={contested ? "5 4" : owns ? "3 4" : undefined}
+                  opacity={0.55}
                 />
               );
             })}
@@ -368,6 +427,7 @@ export function Swarm(props: SwarmProps): React.JSX.Element {
               <Node key={node.id} node={node} />
             ))}
           </svg>
+          </div>
 
           <div
             data-testid="swarm-legend"
@@ -376,7 +436,7 @@ export function Swarm(props: SwarmProps): React.JSX.Element {
               gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
               gap: "8px 16px",
               borderTop: "1px solid var(--hair)",
-              margin: "6px -12px 0",
+              margin: "0",
               padding: "12px 20px 14px",
             }}
           >

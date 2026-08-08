@@ -638,7 +638,13 @@ files that answer it:
   the name alone (`format.ts::ownerOf`, the relation `http/auth.py::authorize`
   enforces on the wire), drawn `--hair-2` and thinner and left out of the header
   count, because a standing fact about a name is not work in flight. An agent
-  whose dev is not on `team` stands alone; no orchestrator is invented for it. Its placement is `topology()`, a pure function deterministic by
+  whose dev is not on `team` stands alone; no orchestrator is invented for it.
+  The DRAWING is the mockup's SVG transcribed number for number — a 600×400
+  viewBox rendered 440 tall, guide rings at r=100 and r=130 with the nodes on
+  the outer one, r=26 discs with a halo RING at r=34, two texts per node (the
+  glyphs inside, the sub-label at `dy=46`) and a 28px grid as a CSS background
+  on the wrapper rather than an SVG `<pattern>`; every one of those numbers
+  turns a smoke assertion red on its own. Its placement is `topology()`, a pure function deterministic by
   index — `Math.random()` and a force simulation are both absent on purpose,
   because an animation loop is what no headless harness can assert. It reads
   only slices the board already sends: no verb, no payload key, no second fetch.
