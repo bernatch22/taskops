@@ -1783,8 +1783,13 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   );
   check(
     "actors: an absent figure draws an em dash and not a zero",
-    actorsMarkup.includes('data-actor="agent:berna/old"') &&
-      actorsMarkup.split('data-actor="agent:berna/old"')[1]?.includes("—") === true,
+    /* The card itself, not the rest of the page: the hours pane below it draws
+       an em dash of its own, so a `split` on the marker would pass on somebody
+       else's dash. */
+    (actorsMarkup
+      .split('data-actor="agent:berna/old"')[1]
+      ?.split("</section>")[0]
+      ?.match(/—/g) ?? []).length === 2,
   );
   /* Criterion 4: the CARD id is the control. The actor is not clickable —
    * there is no actor page and nothing behind it. */
