@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**316 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 315+1; see below), ruff +
+**318 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 317+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` serves
 this, four boards, since 2026-08-08 (ARCHITECTURE.md §17).
 
@@ -384,5 +384,13 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    measured under the hours and the rule is on screen in `core/hours.py`'s own
    words.
 
-   It is live: `taskops.bernardocastro.dev/<board>/ui/` is this dashboard,
-   served by the same package that hosts the boards (ARCHITECTURE.md §17).
+   And the SERVER stops serving it (ARCHITECTURE.md §16, "API ONLY is now
+   literal"). `taskops serve` answers `/rpc`, `/feed` and `/healthz`;
+   `/<board>/ui/` answers **410** and one sentence naming `taskops ui`, and the
+   `--ui` flag is removed rather than left dead. `Mounts.ui` is `repo`'s shadow:
+   one construction-time switch mounts `/git` and the bundle, and only a process
+   standing in a checkout has either. The bundle still ships inside the wheel —
+   what went is the server-side mount, because a dashboard reads diffs from the
+   viewer's clone and the server deliberately has none. `http/static.py` is the
+   post-mortem. Production still runs the older wheel and still serves its
+   `/ui/` until the chapter's deploy card replaces it.

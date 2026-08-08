@@ -4,7 +4,7 @@
     GET  /<board>/feed           WebSocket (SSE fallback) — the UI's live wire
     POST /<board>/invite/redeem  burn an invite, get a personal credential
     GET  /<board>/git/*          read-only diffs, ONLY on a host inside a repo
-    GET  /<board>/ui/*           the bundle
+    GET  /<board>/ui/*           the bundle, ONLY on a host inside a repo
     GET  /healthz
 
 The boards themselves live in `mounts.py`; this file is only the router.
@@ -13,6 +13,9 @@ The SAME routes serve a window onto a remote board (`taskops ui` in a joined
 checkout): only `/rpc` changes hands, forwarded to the server that owns the
 board (`upstream.py`), while /ui and /git stay local. The page cannot tell, and
 that is why the committed bundle is untouched by any of it.
+
+A BOARD HOST opens neither door that needs a clone, and each says so in its own
+words: `gitdoor.py::NO_REPO` and `static.py::NO_UI`, which carries the reasoning.
 """
 
 from __future__ import annotations
@@ -125,11 +128,9 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True, "seq": 0, "data": data})
 
     def _static(self, rest: str) -> None:
-        found = static.payload(self.mounts.ui, rest)
-        if found is None:
-            self._fail(404, BadRequest("no UI bundle is installed on this server"))
-            return
-        self._send(200, *found)
+        """`static.py` owns what this door answers and why — including the
+        sentence a board host (`mounts.ui is None`) gets instead of a page."""
+        self._send(*static.answer(self.mounts.ui, rest))
 
     # ── plumbing ────────────────────────────────────────────────────────────
 
@@ -189,11 +190,11 @@ def serve(
     root: Path,
     host: str = "127.0.0.1",
     port: int = 8787,
-    ui: Path | None = None,
     repo: Path | None = None,
     upstream: Upstream | None = None,
 ) -> BoardServer:
     """A server, not yet running. The caller decides the thread and the lifetime,
-    whether it sits in a repo (`repo`), which is what mounts /git (§16), and
-    whether it OWNS the board or is a window onto somebody else's (`upstream`)."""
-    return BoardServer((host, port), Mounts(root, ui, repo, upstream))
+    whether it sits in a repo (`repo`), which is what mounts /git AND the bundle
+    (§16, `static.py`), and whether it OWNS the board or is a window onto
+    somebody else's (`upstream`)."""
+    return BoardServer((host, port), Mounts(root, repo, upstream))

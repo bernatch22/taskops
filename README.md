@@ -39,7 +39,7 @@ taskops init                # .taskops/board/ (log + 2 sqlite files), 2 git hook
 **Remote — a team, one shared board.**
 
 ```sh
-taskops serve --root ~/taskops-boards &              # host; the dashboard ships inside the package
+taskops serve --root ~/taskops-boards &              # host: /rpc, /feed, /healthz — no dashboard
 taskops invite ana --board my-project                # one-time link, 7 days (--revoke <id>)
 ```
 
@@ -126,6 +126,15 @@ window forwards it, with the credential `join` saved in `.taskops/remote.json`,
 and the page never sees that credential — it holds only the local token. It used
 to redirect you to the server's own `/ui/` instead, and that page is served by a
 machine with no repository, so every diff in it fell through to a link.
+
+**The server no longer serves a dashboard at all.** `taskops serve` answers
+`/rpc`, `/feed` and `/healthz`; its `/ui/` answers one sentence naming
+`taskops ui`, at `410 Gone`, and there is no flag that puts a bundle back on it.
+The bundle still ships inside the wheel — that is what `taskops ui` serves. A
+board host having no clone is not an accident to work around: a dashboard shows
+diffs, a diff is read from the reader's own clone, so a window served from the
+server could only ever be a degraded one. The binary serves the window; the
+server serves the truth (`src/taskops/http/static.py` carries the post-mortem).
 
 The diffs the dossier shows — **Files changed** on a card, the patch under a
 commit — come from **your own clone**, read on demand by the host `taskops ui`
@@ -283,6 +292,20 @@ It binds loopback on purpose; TLS and the public name are a reverse proxy's
 job, and the proxy must pass `Upgrade`/`Connection` through or the dashboard's
 live feed silently degrades.
 
+**A host serves no dashboard.** `/rpc`, `/feed` and `/healthz` are the whole
+public surface; `https://<host>/<board>/ui/` answers `410` and one sentence.
+Everybody on the team opens the board the same way, and it is not a URL you
+send them — it is a command they run in their own checkout of the repo:
+
+```sh
+taskops join "https://<host>/<board>?invite=<token>"   # once
+taskops ui                                             # every time
+```
+
+That window is served from their laptop, reads the board over `/rpc` from this
+host, and reads every diff from their own clone. Nothing about it needs the
+host to know what a repository is.
+
 ### Upgrading a host
 
 The boards are outside the install, so an upgrade is the package and nothing
@@ -307,12 +330,17 @@ Three things that are not optional, in this order:
    installed now, under a name that says when it was installed. If the new one
    fails to serve, put it back first and report second: an outage is worse than
    a stale render.
-2. **The wheel must carry the built dashboard.** `src/taskops/ui/` is committed
-   precisely so the wheel does; check the artefact for the markers of whatever
-   you are shipping (`tests/test_ui.py` names them) *before* it goes anywhere.
-3. **Verify by CONTENT at the real domain.** A 200 is not the claim. Fetch
-   `https://<host>/<board>/ui/app.js` and confirm it carries the marker you
-   built for — its md5 should equal the committed `src/taskops/ui/app.js`.
+2. **The wheel must carry the built dashboard** — the check above, on the
+   artefact, before it goes anywhere. Not for the host, which serves no
+   dashboard and never reads those bytes: it is the SAME wheel a teammate
+   `pip install`s to get `taskops ui`, so a wheel built over a stale
+   `src/taskops/ui/` ships everybody a stale window. `tests/test_ui.py` names
+   the markers.
+3. **Verify by CONTENT at the real domain.** A 200 is not the claim, and there
+   is no page to look at — so the claim is the DATA: call `/rpc` through the
+   public name (the `curl` below) and reconcile the counts against what the
+   board actually holds. What the dashboard renders is verified where the
+   dashboard runs: `taskops ui` in a checkout joined to this host.
 
 Two things a host must have that no exit code will tell you:
 
