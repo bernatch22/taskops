@@ -40,14 +40,13 @@ thread on it, and Monitor's ninth pane) and `NOTHING_DRAWN` (tk-81c980 — a
 column with nothing in it is not drawn at all, which is the one wave that also
 RETIRED a marker of its own: see `RETIRED`) and `CHAPTERS_LISTED` (tk-13d115 —
 several open chapters listed as foldable rows instead of apologised for, which
-also retired a sentence: see `RETIRED_APOLOGY`). All seven
-lists are the check that the bundle is the CURRENT source's output and not the
-previous wave's: none of those strings existed in the bundle its chapter-close
-replaced, so a close that forgot to run `node build.mjs` fails here.
-
-An EIGHTH row, `CLOSING_NOTE`, is written but deliberately not asserted yet: its
-wave is still in flight and none of its cards may rebuild the bundle, so see the
-note on the constant itself and on `PANES`.
+also retired a sentence: see `RETIRED_APOLOGY`) and `CLOSING_NOTE` (tk-a1b7f2 —
+a close's transition and the note the worker signed off with) and `ACTORS`
+(tk-63f919 + tk-d5e21e — the fourth view and the timesheet it opens into). All
+nine lists are the check that the bundle is the CURRENT source's output and not
+the previous wave's: none of those strings existed in the bundle its
+chapter-close replaced, so a close that forgot to run `node build.mjs` fails
+here.
 
 The one marker that had to be RETIRED rather than added is the Event stream's
 `"no events verb"`. It was true while nothing returned the log; `verbs/events.py`
@@ -237,14 +236,42 @@ RETIRED_APOLOGY = ("Land or drop the finished ones",)
 #: was on the wire and off the screen. The thread now draws a PHRASE and, under
 #: it, the PROSE, and these are the two `data-testid`s that split.
 #:
-#: It is deliberately NOT in the `markers` tuple below yet, for exactly the
-#: reason `PANES` records for `pane-swarm`: this wave's cards are `.tsx`-only
-#: and none of them may rebuild `src/taskops/ui/`, so the assertion would be red
-#: from the moment it was written until the chapter-close rebuild. **tk-56740f
-#: is that rebuild, and adding this row to `markers` is part of it.**
+#: It was written OUTSIDE the `markers` tuple by the card that earned it, for
+#: exactly the reason `PANES` records for `pane-swarm`: that wave's cards are
+#: `.tsx`-only and none of them may rebuild `src/taskops/ui/`, so the assertion
+#: would have been red from the moment it was written until the chapter-close
+#: rebuild. tk-56740f is that rebuild, and both strings are asserted now.
 CLOSING_NOTE = (
     "event-detail",  # the transition, the field, the verdict — the phrase
     "event-prose",  # …and the writing underneath it
+)
+
+#: The NINTH wave, and it is this chapter's own: ACTORS, the fourth view
+#: (tk-63f919) and the timesheet an actor opens into in place (tk-d5e21e). Same
+#: terms as every row above — each is a `data-testid` written by exactly one
+#: card of this wave, and every one of them was verified ABSENT from the bundle
+#: this close rebuilt over, marker by marker, before the list was written.
+#:
+#: What the row is really pinning is the chapter's refusal (ARCHITECTURE.md §11):
+#: an actor is a name bound to the run of a card, so `actor-carried` and
+#: `actor-history` — what it carried, when it was last seen — are what the bundle
+#: carries INSTEAD of a held/free/lapsed slot roster. `actors-none` is the empty
+#: board's one sentence rather than an empty grid, and `timesheet-rule` is
+#: `core/hours.py`'s own wording of the dropped-gap arithmetic, on screen beside
+#: the figures it produced.
+ACTORS = (
+    "actors",  # the fourth tab (pages/Actors.tsx)
+    "actor-card",  # one actor, bound to the card it carries
+    "actor-carried",  # …or to the cards it carried, when it holds none
+    "actor-history",  # an actor with no card is HISTORY, never a free slot
+    "actors-none",  # a board nobody has touched: one sentence
+    "pane-hours-today",  # what replaced the roster: measured hours, longest first
+    "actor-timesheet-toggle",  # the disclosure, closed to begin with
+    "timesheet",  # the blocks of time, per day (components/actors/Timesheet.tsx)
+    "timesheet-axis",  # …on an axis SHARED by every actor of that day
+    "timesheet-block",  # one session, a door to its card
+    "timesheet-gap",  # a dropped gap, drawn as space and said as a figure
+    "timesheet-rule",  # the arithmetic, in core/hours.py's own words
 )
 
 
@@ -516,7 +543,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     for testid in RETIRED:
