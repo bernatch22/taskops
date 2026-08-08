@@ -54,6 +54,20 @@ export interface Env {
 export interface Client {
   /** Run a verb. Resolves with `data`; rejects with RpcError on `ok:false`. */
   rpc<T>(verb: RpcVerb, args?: Record<string, unknown>): Promise<T>;
+  /** Read the /git door — the ONE GET this client makes.
+   *
+   *  It is a sibling of `rpc` and not a second client: same base, same token,
+   *  same envelope, same `RpcError`. It is a GET because it is a READ of a path
+   *  that names its own subject (`http/gitdoor.py` routes on the path and
+   *  nothing else), and because a diff is cacheable by the browser the way a
+   *  verb call is not.
+   *
+   *  `route` comes from `links.tsx::gitRoute` — the caller never spells a path
+   *  here, so the one place that knows the door's shape is the one place that
+   *  knows the cascade it feeds. A refusal (no repo on this host, an unknown
+   *  ref, no credential) rejects with the server's own words, which is what
+   *  lets `links.tsx` tell "this host has no clone" from "that ref is gone". */
+  git<T>(route: string): Promise<T>;
   /** Open the feed. `onSignal` fires per frame, `onLive` on every state change.
    *  Returns the stop function; calling it closes and stops reconnecting. */
   subscribe(onSignal: () => void, onLive: (live: boolean) => void): () => void;
@@ -64,6 +78,19 @@ export interface Client {
 }
 
 const RECONNECT_MS = 500;
+
+/** The envelope, read once for both doors. `ok:false` becomes an `RpcError`
+ *  carrying the server's own code and words — /rpc and /git answer the same
+ *  shape (`http/rpc.py`, `http/gitdoor.py`), so they are unwrapped by the same
+ *  four lines rather than by two that could drift apart. */
+function unwrap<T>(body: unknown): T {
+  const envelope = body as Envelope;
+  if (!envelope.ok) {
+    const code = envelope.error?.code ?? "error";
+    throw new RpcError(code as ErrorCode, envelope.error?.message ?? "refused");
+  }
+  return envelope.data as T;
+}
 
 /** Where a board's token lives. Per base, so two boards in one browser do not
  *  overwrite each other's credential. Same key the vanilla page used, so an
@@ -113,12 +140,15 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
       // ::rest_of). A browser that could name its actor could impersonate one.
       body: JSON.stringify({ verb, args }),
     });
-    const body = (await response.json()) as Envelope;
-    if (!body.ok) {
-      const code = body.error?.code ?? "error";
-      throw new RpcError(code as ErrorCode, body.error?.message ?? "refused");
-    }
-    return body.data as T;
+    return unwrap<T>(await response.json());
+  }
+
+  async function git<T>(route: string): Promise<T> {
+    const send = env.fetch ?? globalThis.fetch;
+    const response = await send(base + "/" + route, {
+      headers: { Authorization: "Bearer " + token() },
+    });
+    return unwrap<T>(await response.json());
   }
 
   function feedUrl(scheme: "ws" | "http"): string {
@@ -193,6 +223,7 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
 
   return {
     rpc,
+    git,
     subscribe,
     token,
     setToken(value: string) {

@@ -429,6 +429,37 @@ export interface SearchPayload {
   matches: SearchHit[];
 }
 
+/* ── the diff, from the viewer's own clone (http/gitdoor.py) ─────────────── */
+
+/** One range's diff, as `GET /<board>/git/commit/<ref>` and
+ *  `GET /<board>/git/compare/<a>...<b>` answer it — the same object for both,
+ *  so ONE renderer draws a commit and a card-as-PR.
+ *
+ *  @source `gitwork/diff.py::between`, routed by `http/gitdoor.py::answer`
+ *
+ *  This is NOT on any board payload and never will be: `events.jsonl` stores
+ *  references and measures, never content (the chapter's fourth rule). The door
+ *  derives it from the repo on demand, and only a host that sits inside one
+ *  mounts the door at all — `taskops ui` does, `taskops serve` does not. Every
+ *  consumer therefore has to survive not getting this, which is what the
+ *  cascade in `links.tsx` is.
+ *
+ *  `stat` is EXACTLY `gitwork/bind.py::parse_numstat`'s vocabulary — the same
+ *  `[added, deleted] | null` a commit event's `numstat` carries, so `Counts`,
+ *  `totals()` and `<Numstat>` read a live diff and a stored event with one set
+ *  of eyes. `null` is a binary, never `[0, 0]`.
+ *
+ *  `truncated` with `cap` rather than a silently short string: a cut patch that
+ *  does not say so is a lie, and `cap` is there so the pane can word it. */
+export interface GitDiff {
+  base: string; // 40-hex — the first parent, the merge-base, or git's empty tree
+  head: string; // 40-hex
+  stat: Record<string, [number, number] | null>;
+  patch: string; // unified diff text, whole range or one file
+  truncated: boolean;
+  cap: number; // bytes; `gitwork/diff.py::CAP`
+}
+
 /* ── report (verbs/report.py::summary) ───────────────────────────────────── */
 
 /** @source `verbs/report.py::_by_actor`, formatted by `core/hours.py` */
