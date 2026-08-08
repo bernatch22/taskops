@@ -929,6 +929,24 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   );
   check("the comment box is the foot", dossier.includes('data-testid="comment-box"'));
 
+  /* …and drawn through the ONE renderer, inline. The check above splits on the
+   * backticks, so it passes for a criterion printed raw — mutating this site
+   * came back green until this was added. What cannot be green raw: a `<code>`
+   * element per code span, one inline render per criterion, and no `<p>` (the
+   * block wrapper) anywhere in the section. */
+  const crit = slice(dossier, 'data-testid="criteria"', "Commits ·");
+  check(
+    "a criterion reads its markdown and keeps its number",
+    crit !== "" &&
+      crit.includes("<code") &&
+      crit.includes("npm run typecheck") &&
+      !crit.includes("`") &&
+      !crit.includes("<p") &&
+      (crit.match(/data-testid="markdown-inline"/g) ?? []).length ===
+        fixture.card.card.criteria.length,
+    crit,
+  );
+
   /* CRITERION 3 of tk-382948: the spec and the thread render EXACTLY as they
    * did. The proof is byte-level and it is the strongest one available here —
    * the dossier must CONTAIN, verbatim, what `<Markdown>` produces for the very
@@ -947,9 +965,48 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
   );
   /* The released note and the reviewer's verdict were the other raw draws in
    * this document. Both are prose and both now read their markdown. */
+  /* SCOPED to the section, not to the whole document: `<code>` appears in the
+   * criteria too, so the unscoped form of this check passed with the resume note
+   * printed raw. */
+  const resume = slice(dossier, "Resume note · previous worker", "Worktree");
   check(
     "the previous worker's released note reads its markdown",
-    dossier.includes("<code") && dossier.includes("src/tax.py::half_up"),
+    resume.includes("<code") &&
+      resume.includes("src/tax.py::half_up") &&
+      !resume.includes("`"),
+    resume,
+  );
+
+  /* The reviewer's verdict is the last raw draw in this document, and no fixture
+   * board can reach it: `standing.verdict === "changes"` needs a card that was
+   * handed in and bounced, which would move the card this dossier is about out
+   * of the group every other assertion here reads. So it is the same exception
+   * `2b` documents — the server's own payload, with the ONE key under test set
+   * on top of it, in the shape `core/review.py::Standing` sends. */
+  const bounced = JSON.parse(JSON.stringify(fixture.card)) as CardPayload;
+  bounced.standing = {
+    submitted_at: now - 600,
+    submitted_by: "agent:berna/w2",
+    verdict: "changes",
+    note: "the rounding is still `float` in one branch",
+    reviewed_by: "dev:berna",
+    reviewed_at: now - 60,
+  };
+  const changes = renderToStaticMarkup(
+    <Dossier
+      dossier={bounced}
+      openId={bounced.card.id}
+      team={fixture.board.team}
+      now={now}
+      onClose={() => {}}
+      onComment={async () => {}}
+    />,
+  );
+  const verdict = slice(changes, 'data-testid="verdict"', "</div></div>");
+  check(
+    "the reviewer's words read their markdown too",
+    verdict.includes("<code") && verdict.includes("float") && !verdict.includes("`"),
+    verdict,
   );
 
   /* ── 5. The one write: the comment box posts `update` ──────────────────── */
