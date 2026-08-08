@@ -9,7 +9,7 @@ import pytest
 
 from taskops import board
 from taskops._errors import Refused, NotFound, TaskopsError
-from taskops.gitwork import run, bind, trees, install, trailer
+from taskops.gitwork import run, bind, trees, remote, install, trailer
 
 
 def repo(path: Path, name: str = "work") -> Path:
@@ -163,6 +163,99 @@ def test_tidy_only_removes_what_is_already_in_the_trunk(tmp_path: Path) -> None:
     removed = trees.tidy(root, trunk="main")
     assert any("tk-a11111" in line for line in removed)  # nothing of its own yet
     assert not merged.exists() and kept.exists()  # unmerged work is never deleted
+
+
+# ── pushing ─────────────────────────────────────────────────────────────────
+
+
+def origin_for(root: Path, path: Path) -> Path:
+    """A bare repo wired up as `origin`."""
+    run.must("init", "-q", "--bare", str(path))
+    run.must("remote", "add", "origin", str(path), cwd=root)
+    return path
+
+
+def test_a_card_branch_reaches_origin_when_there_is_one(tmp_path: Path) -> None:
+    root = repo(tmp_path)
+    bare = origin_for(root, tmp_path / "origin.git")
+    tree = trees.ensure_card(root, "tk-a11111", "tk-a11111", "")
+    (tree / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "feat: model", cwd=tree)
+
+    remote.push(root, "tk-a11111")
+    assert run.must("rev-parse", "tk-a11111", cwd=bare) == run.must(
+        "rev-parse", "HEAD", cwd=tree
+    )
+
+
+def test_with_no_origin_no_push_is_even_attempted(tmp_path: Path) -> None:
+    """Byte-for-byte today's behaviour: the switch is `git remote get-url
+    origin`, and without one git is never asked to push at all — not asked and
+    allowed to fail, which would be a slow no-op and a line of noise."""
+    root = repo(tmp_path)
+    ran: list[tuple[str, ...]] = []
+    real = run.git
+
+    def spy(*args: str, **kwargs: Any) -> Any:
+        ran.append(args)
+        return real(*args, **kwargs)
+
+    remote.run.git = spy  # type: ignore[assignment]
+    try:
+        remote.push(root, "main")
+    finally:
+        remote.run.git = real  # type: ignore[assignment]
+    assert not any(args[0] == "push" for args in ran)
+
+
+def test_a_remote_that_hangs_does_not_reach_the_caller(tmp_path: Path) -> None:
+    """`run.git` RAISES on a timeout — it is the one failure that is not an exit
+    code — and a `done` that raised because origin was slow would be a push used
+    as a gate. Ten seconds is the ceiling, and past it nothing happened."""
+    root = repo(tmp_path)
+    origin_for(root, tmp_path / "origin.git")
+    real = run.git
+
+    def hang(*args: str, **kwargs: Any) -> Any:
+        if args[0] == "push":
+            raise TaskopsError("git push took longer than 10.0s")
+        return real(*args, **kwargs)
+
+    remote.run.git = hang  # type: ignore[assignment]
+    try:
+        remote.push(root, "main")  # returns, says nothing, raises nothing
+    finally:
+        remote.run.git = real  # type: ignore[assignment]
+    assert remote.PUSH_TIMEOUT <= 30.0  # a lifecycle moment may not wait on a remote
+
+
+def test_a_push_that_fails_changes_nothing_about_the_merge(tmp_path: Path) -> None:
+    """origin exists but is unreachable — the integration still happened."""
+    root = repo(tmp_path)
+    run.must("remote", "add", "origin", str(tmp_path / "nowhere.git"), cwd=root)
+    tree = trees.ensure_card(root, "tk-a11111", "tk-a11111", "ms/mvp")
+    (tree / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "feat: model", cwd=tree)
+
+    sha = trees.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
+    assert run.must("rev-parse", "ms/mvp", cwd=root) == sha
+
+
+def test_the_milestone_branch_and_the_card_both_reach_origin_on_a_merge(
+    tmp_path: Path,
+) -> None:
+    root = repo(tmp_path)
+    bare = origin_for(root, tmp_path / "origin.git")
+    tree = trees.ensure_card(root, "tk-a11111", "tk-a11111", "ms/mvp")
+    (tree / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "feat: model", cwd=tree)
+
+    sha = trees.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
+    assert run.must("rev-parse", "ms/mvp", cwd=bare) == sha
+    assert run.git("rev-parse", "--verify", "tk-a11111", cwd=bare).ok
 
 
 # ── binding ─────────────────────────────────────────────────────────────────

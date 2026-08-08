@@ -223,6 +223,7 @@ flowchart TB
         board["board.py — LocalBoard | RemoteBoard, routing decided ONCE"]
         run["gitwork/run"]; trees["gitwork/trees — worktrees"]
         trailer["gitwork/trailer"]; bind["gitwork/bind"]; install["gitwork/install"]
+        remote["gitwork/remote — best-effort push to origin"]
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread"]

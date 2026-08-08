@@ -79,7 +79,9 @@ def _update(board: Board, repo: Path, args: Args, now: float) -> str:
         )
     if note:
         args["comment"] = note  # the verb files it inside the status event
-    return render.plain(board.call("update", args))
+    data = board.call("update", args)  # raises on every refusal — nothing below runs
+    gitmoves.after_update(repo, args, data)
+    return render.plain(data)
 
 
 # ── the table ───────────────────────────────────────────────────────────────

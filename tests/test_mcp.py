@@ -341,6 +341,66 @@ def test_saying_something_is_a_different_tool_from_changing_the_card(
         call(dev, repo, "taskops_update", task=card, note="just chatting")
 
 
+# ── the push that follows an accepted done ─────────────────────────────────
+
+
+@pytest.fixture()
+def pushes(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
+    """What `gitmoves` asked to be pushed. The push itself is `tests/test_git.py`."""
+    seen: list[tuple[str, ...]] = []
+
+    def spy(repo: Path, *branches: str, cwd: Path | None = None) -> None:
+        seen.append(branches)
+
+    monkeypatch.setattr(tools.gitmoves.remote, "push", spy)
+    return seen
+
+
+def test_a_card_that_closes_done_has_its_branch_pushed(
+    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
+) -> None:
+    """The placement: `done` goes through the generic update handler, and the
+    push hangs off the point where the board has already ACCEPTED it."""
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    w1 = boards(W1)
+    call(w1, repo, "taskops_take", task=card)
+    call(w1, repo, "taskops_update", task=card, status="done", no_code=True, note="docs only")
+    assert pushes == [(card,)]
+
+
+def test_a_done_the_board_refuses_pushes_nothing(
+    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
+) -> None:
+    """The refusal path raises out of `board.call` — the seam is never reached,
+    so a branch the board did not accept as closed never appears on origin."""
+    dev, cards = seeded(boards)
+    with pytest.raises(Refused):
+        call(dev, repo, "taskops_update", task=cards[0]["id"], status="done", note="mine now")
+    assert pushes == []
+
+
+def test_an_accepted_update_that_is_not_done_pushes_nothing(
+    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
+) -> None:
+    """`done` is the lifecycle moment, not "the board took a write": handing a
+    card back is an accepted update too, and there is nothing finished to show."""
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    w1 = boards(W1)
+    call(w1, repo, "taskops_take", task=card)
+    call(w1, repo, "taskops_update", task=card, status="released", note="got to the model")
+    assert pushes == []
+
+
+def test_talking_on_a_card_pushes_nothing(
+    repo: Path, boards: Any, pushes: list[tuple[str, ...]]
+) -> None:
+    dev, cards = seeded(boards)
+    call(dev, repo, "taskops_comment", task=cards[0]["id"], text="looks good")
+    assert pushes == []
+
+
 # ── identity is per call, not per process ──────────────────────────────────
 
 
