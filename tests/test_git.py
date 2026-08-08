@@ -640,5 +640,9 @@ def test_a_path_filter_narrows_the_patch_and_is_never_an_option(tmp_path: Path) 
     assert found is not None
     text, _ = diff.patch(root, *found, path="one.txt")
     assert "one.txt" in text and "two.txt" not in text
-    hostile, _ = diff.patch(root, *found, path="--output=/tmp/tk-d50e0a-pwned")
-    assert hostile == "" and not Path("/tmp/tk-d50e0a-pwned").exists()
+    # A path is user input too. After `--` git cannot read it as an option —
+    # and the proof is a file that is NOT written. It lives under tmp_path, so
+    # a mutant that DOES write it cannot poison the next run.
+    written = tmp_path / "tk-d50e0a-pwned"
+    hostile, _ = diff.patch(root, *found, path=f"--output={written}")
+    assert hostile == "" and not written.exists()
