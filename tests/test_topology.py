@@ -13,6 +13,7 @@ import threading
 from base64 import b64encode
 from typing import Any, BinaryIO, Iterator
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 import pytest
@@ -317,6 +318,96 @@ def _frame(stream: BinaryIO) -> str:
             return payload.decode()
         if opcode == 0x8:
             raise AssertionError("the server closed the socket")
+
+
+# ── the /git door: a diff, but only from a host that HAS a repo ─────────────
+
+
+@pytest.fixture()
+def repo_server(tmp_path: Path) -> Iterator[BoardServer]:
+    """A host that sits INSIDE a checkout — what `taskops ui` constructs."""
+    from tests.test_git import repo
+
+    root = repo(tmp_path, "checkout")
+    httpd = serve(tmp_path / "boards", "127.0.0.1", 0, repo=root)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield httpd
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def _get(url: str, token: str) -> tuple[int, dict[str, Any]]:
+    from urllib.error import HTTPError
+
+    joiner = "&" if "?" in url else "?"
+    try:
+        with urlopen(f"{url}{joiner}token={token}", timeout=5) as response:
+            return response.status, json.loads(response.read().decode())
+    except HTTPError as err:
+        return err.code, json.loads(err.read().decode())
+
+
+def test_a_host_with_no_repo_mounts_no_git_and_says_which_case_it_is(
+    server: BoardServer,
+) -> None:
+    """`taskops serve` sits in a boards directory. It refuses and NAMES the
+    reason — the UI reads those words and falls through its cascade instead of
+    drawing a dead pane. Nothing was ever sniffed: the switch is construction."""
+    assert server.mounts.repo is None
+    status, body = _get(f"{url_of(server)}/git/commit/HEAD", _token(server, BERNA))
+    assert status == 404 and body["ok"] is False
+    assert body["error"]["code"] == "not_found"
+    assert "not a repository" in body["error"]["message"]
+    assert "taskops ui" in body["error"]["message"]
+
+
+def test_a_repo_host_answers_a_commit_against_its_first_parent(
+    repo_server: BoardServer,
+) -> None:
+    status, body = _get(
+        f"{url_of(repo_server)}/git/commit/HEAD", _token(repo_server, BERNA)
+    )
+    assert status == 200 and body["ok"] is True
+    data = body["data"]
+    assert data["stat"] == {"README.md": [1, 0]}
+    assert "README.md" in data["patch"]
+    assert data["truncated"] is False and data["cap"] > 0
+    assert len(data["head"]) == 40
+
+
+def test_the_compare_shape_is_the_same_shape(repo_server: BoardServer) -> None:
+    """One vocabulary: a card-as-PR read and a commit read differ in the range,
+    never in the payload — the UI has one renderer."""
+    status, body = _get(
+        f"{url_of(repo_server)}/git/compare/main...main", _token(repo_server, BERNA)
+    )
+    assert status == 200
+    assert set(body["data"]) == {"base", "head", "stat", "patch", "truncated", "cap"}
+
+
+def test_a_ref_the_repo_lacks_is_a_stated_refusal_never_a_traceback(
+    repo_server: BoardServer,
+) -> None:
+    status, body = _get(
+        f"{url_of(repo_server)}/git/commit/does-not-exist", _token(repo_server, BERNA)
+    )
+    assert status == 404 and body["ok"] is False
+    assert "no commit" in body["error"]["message"]
+    status, body = _get(
+        f"{url_of(repo_server)}/git/nonsense", _token(repo_server, BERNA)
+    )
+    assert status == 400 and "git/commit/<ref>" in body["error"]["message"]
+
+
+def test_the_git_door_is_the_same_token_door_as_rpc(repo_server: BoardServer) -> None:
+    """No second credential system: no token is refused here exactly as at /rpc."""
+    url = f"{url_of(repo_server)}/git/commit/HEAD"
+    with pytest.raises(HTTPError) as caught:
+        urlopen(url, timeout=5)
+    assert json.loads(caught.value.read().decode())["error"]["code"] == "refused"
+    status, _ = _get(url, "not-a-real-token")
+    assert status in (401, 403, 409)
 
 
 def _token(httpd: BoardServer, subject: str) -> str:

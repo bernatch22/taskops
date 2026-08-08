@@ -30,8 +30,14 @@ anybody is looking, and it runs for nobody otherwise."""
 class Mounts:
     """The boards this process serves, opened once and kept."""
 
-    def __init__(self, root: Path, ui: Path | None = None) -> None:
+    def __init__(self, root: Path, ui: Path | None = None, repo: Path | None = None) -> None:
         self.root = root
+        # The ONE place that decides whether this process can read a repo, and
+        # it is decided by the CALLER at construction — never sniffed per
+        # request. `taskops ui` sits inside a checkout and hands its root;
+        # `taskops serve` sits in a boards directory and hands nothing, so its
+        # /git door refuses with a message that says exactly that (gitdoor.py).
+        self.repo = repo
         # The bundle ships INSIDE the package (src/taskops/ui), so a server
         # needs no --ui flag to have a dashboard: an override is for developing
         # the page, a root-local ui/ is a board host's custom skin, and the
