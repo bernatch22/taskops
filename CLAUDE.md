@@ -37,10 +37,13 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**318 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 317+1; see below), ruff +
-pyright strict clean. Deployed: `taskops.bernardocastro.dev` serves
-this, four boards, since 2026-08-08 (ARCHITECTURE.md §17).
+**321 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 320+1; see below), ruff +
+pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
+four boards since 2026-08-08 (ARCHITECTURE.md §17) — but it runs the wheel from
+tk-c86312, **not this tree**: this chapter's server change (`/<board>/ui/` → 410)
+is in the trunk and NOT on the box. The deploy is its own card, waiting on
+Berna's go.
 
 ## The four ideas everything rests on
 
@@ -218,7 +221,7 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   is a live reference and is held to the same standard as this file. Prefer a
   command somebody can re-run over a number that rots silently.
 - **The dashboard is built, not hand-written.** Source in `ui/` (React +
-  TypeScript, esbuild); `node ui/build.mjs` writes `index.html`, `app.js` and
+  TypeScript, esbuild); `cd ui && node build.mjs` writes `index.html`, `app.js` and
   `style.css` into `src/taskops/ui/`, and **that output is committed** — that is
   what makes `pip install taskops` serve a dashboard with no node toolchain.
   React is bundled, never a CDN. `npm run check` in `ui/` is the closure:
