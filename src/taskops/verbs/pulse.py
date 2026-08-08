@@ -29,13 +29,25 @@ from typing import Any
 from . import _args, _facts, report, _context, _mentions
 from .. import _clock
 from ..core import graph
-from ..core.types import Card, Milestone
+from ..core.types import Card
 from ..store.stores import Stores
 
 DONE_SHOWN = 20
-"""How many closed cards ride along. The cap is the whole reason `done` can be
-in this payload at all: every other group is bounded by how much work is in
-flight, and closed work only ever grows."""
+"""How many closed cards ride along when NO chapter is in scope. The cap is the
+whole reason `done` can be in this payload at all: every other group is bounded
+by how much work is in flight, and closed work only ever grows."""
+
+DONE_FOCUSED = 200
+"""And how many when a chapter IS in scope. Different because the thing being
+bounded is different: with no chapter, `done` is the board's entire history and
+grows forever; with one, it is that chapter's closed cards, and a chapter is a
+finite planned unit that somebody sat down and wrote. Reviewing a landed chapter
+is exactly when a reader wants ALL of them — this project's own chapters closed
+14 and 22 cards, and `20 of 22` is a screen that cannot answer "what shipped".
+It is still a ceiling and not `None`: a pathological chapter must not be able to
+make this read unbounded, and `done_total` stays the honest count behind either
+cap."""
+
 
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
@@ -44,7 +56,7 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     state = stores.state()
     cards = state["cards"]
     live = _facts.holders(stores, now)
-    stone = _which(stores, args)
+    stone = _facts.in_scope(stores, _args.text(args, "milestone", default=""))
     mine = [c for c in cards.values() if not stone or c["milestone"] == stone["id"]]
 
     # The whole review lease, not just the name: a `reviewing` row has to say
@@ -125,26 +137,33 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     # landed. `done_total` is the honest count behind the cap, so a screen can
     # say "20 of 63" instead of implying the chapter closed twenty cards.
     done_total = len(groups["done"])
-    groups["done"] = sorted(groups["done"], key=lambda r: r["since"], reverse=True)[:DONE_SHOWN]
+    cap = DONE_FOCUSED if stone else DONE_SHOWN
+    groups["done"] = sorted(groups["done"], key=lambda r: r["since"], reverse=True)[:cap]
+
+    chapters, landed_total = _facts.chapters(stores)
 
     window = _args.text(args, "window", default="")
     return {
         "done_total": done_total,
+        # Where this repo lives on the web, or absent — `verbs/project.py`.
+        # A board that never recorded one sends nothing, and every consumer
+        # falls back to plain text: no origin, no links, no noise.
+        "repo": state["project"].get("remote"),
         "milestone": stone,
-        "milestones": [m for m in state["milestones"].values() if m["status"] == "open"],
+        # The open chapters AND the recent landed ones. Sending only the open
+        # ones was correct while `open` was the only status a chapter ever had;
+        # the day `landed` became real (`core/replay.py::_milestone`) two
+        # finished chapters — 36 cards, their goals, rules and threads — existed
+        # in the log and on no screen. That is `groups.done`'s bug one level up,
+        # and it is fixed the same way: capped, newest first, with the total.
+        "milestones": chapters,
+        "landed_total": landed_total,
         "groups": groups,
         "team": _team(stores, now),
         "hours": _hours(stores, args, now, window) if window else None,
         "seq": stores.head(),
         "pulse": _context.pulse(stores, actor, now, stone["id"] if stone else ""),
     }
-
-
-def _which(stores: Stores, args: _args.Args) -> Milestone | None:
-    given = _args.text(args, "milestone", default="")
-    if given:
-        return stores.state()["milestones"].get(given)
-    return _facts.open_milestone(stores)
 
 
 def _row(stores: Stores, card: Card, now: float, live: dict[str, str]) -> dict[str, Any]:

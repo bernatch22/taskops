@@ -31,6 +31,58 @@ def open_milestone(stores: Stores) -> Milestone | None:
     return open_ones[0] if len(open_ones) == 1 else None
 
 
+LANDED_SHOWN = 20
+"""How many LANDED chapters `chapters()` carries, newest first.
+
+Same argument as `pulse.DONE_SHOWN`, one level up. Open chapters are bounded by
+how much work is in flight; landed ones only ever grow, so they are capped
+rather than sent whole — the log is replayed forever and this list rides on
+every dashboard poll. 20 is generous where `DONE_SHOWN` is tight because
+chapters accrue at a wholly different rate: cards are a dozen a day, a chapter
+is a human sitting down to write a plan, so 20 is months of history rather than
+a day of it. The caller is handed the real total alongside, the way
+`done_total` sits behind `groups.done`."""
+
+
+def chapters(stores: Stores) -> tuple[list[Milestone], int]:
+    """Every OPEN chapter, then the `LANDED_SHOWN` most recent landed ones, and
+    how many landed there really are.
+
+    Landed chapters are in the SAME list and not a second key on purpose: a
+    chapter carries its own `status`, so every consumer that needs the
+    distinction already has it, and a reader asking "which chapters exist"
+    should not have to know there are two lists. What it costs is that the
+    length of this list stopped meaning "open chapters" — the two places that
+    read it that way (`mcp/render.py::_header` and the dashboard's picker)
+    filter by status, and a test pins each.
+
+    Open first, landed after, because that is the order to read them: a
+    consumer drawing the list top to bottom gets what is in flight before what
+    is history without sorting anything. `dropped` is neither — an abandoned
+    chapter is not work anybody reviews — and falls out here."""
+    everything = list(stores.state()["milestones"].values())
+    landed = sorted(
+        (m for m in everything if m["status"] == "landed"),
+        key=lambda m: m["created"],
+        reverse=True,
+    )
+    open_now = [m for m in everything if m["status"] == "open"]
+    return open_now + landed[:LANDED_SHOWN], len(landed)
+
+
+def in_scope(stores: Stores, given: str) -> Milestone | None:
+    """The chapter a read is narrowed to: the one NAMED, else the single open
+    one (`open_milestone`, None for zero or several).
+
+    A named chapter is looked up by id and NOT filtered by status. That is the
+    whole point of a landed chapter still being listed — focusing one is how
+    anybody reviews finished work — and a status filter here would have made
+    the picker offer something the server then refused to resolve."""
+    if given:
+        return stores.state()["milestones"].get(given)
+    return open_milestone(stores)
+
+
 def holders(stores: Stores, now: float) -> dict[str, str]:
     """task -> actor, for every LIVE lease. This is what makes a card `doing`."""
     return {lease["task"]: lease["actor"] for lease in stores.live.held(now)}

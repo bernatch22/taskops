@@ -13,6 +13,7 @@
  * to agents. That is the hole `<Criteria>` closes, and the reason it is a section
  * of its own rather than a paragraph folded into the spec. */
 import { shortActor } from "../../format";
+import { Ext, Numstat, commitUrl, compareUrl, type Repo } from "../../links";
 import { TONE_FG } from "../board/CardTile";
 import { Markdown } from "../shared/Markdown";
 import { Thread } from "./Thread";
@@ -79,9 +80,26 @@ export function Criteria({ criteria }: { criteria: string[] }): React.JSX.Elemen
  *  payload leaves empty — a card with no collisions must not draw a "Collisions"
  *  heading with nothing under it, because an empty heading reads as "checked, and
  *  fine" exactly like one that was never computed. */
-export function Body({ dossier, now }: { dossier: CardPayload; now: number }): React.JSX.Element {
+export function Body({
+  dossier,
+  now,
+  repo,
+}: {
+  dossier: CardPayload;
+  now: number;
+  /** Where this repo lives on the web, or nothing — the whole GitHub switch
+   *  (`links.tsx`). OPTIONAL so that a caller that has not been taught to pass
+   *  it renders exactly the document this file rendered before. */
+  repo?: Repo | null | undefined;
+}): React.JSX.Element {
   const { card } = dossier;
   const stood = dossier.standing;
+  /* The card AS A PULL REQUEST: base is the chapter's integration branch, head
+   * is the card's own. Both are already on this payload (`_context.py::dossier`
+   * sends `branch`, and `milestone` carries its own), so nothing is constructed
+   * and nothing is guessed — the day a branch is named differently the link
+   * follows it. `null` whenever any of the three facts is missing. */
+  const pr = compareUrl(repo, dossier.branch, dossier.milestone?.branch ?? "");
 
   return (
     <>
@@ -139,6 +157,19 @@ export function Body({ dossier, now }: { dossier: CardPayload; now: number }): R
             <div style={{ color: "var(--text-2)", wordBreak: "break-all", marginTop: "3px" }}>
               {dossier.worktree || "—"}
             </div>
+            {/* No slug, no row: the line does not exist rather than existing
+                dead, so the block is the same height it always was. */}
+            {pr ? (
+              <div style={{ marginTop: "7px" }}>
+                <Ext
+                  href={pr}
+                  title={`${dossier.milestone?.branch ?? "the trunk"}...${dossier.branch}`}
+                  style={{ color: "var(--accent)" }}
+                >
+                  <span data-testid="card-compare">compare ↗</span>
+                </Ext>
+              </div>
+            ) : null}
           </div>
         </Section>
       </div>
@@ -180,33 +211,49 @@ export function Body({ dossier, now }: { dossier: CardPayload; now: number }): R
       {dossier.commits.length > 0 ? (
         <Section title={`Commits · ${dossier.commits.length}${dossier.merged_into ? ` · merged into ${dossier.merged_into}` : ""}`}>
           <div style={{ borderRadius: "13px", background: "var(--pane-2)", overflow: "hidden" }}>
-            {dossier.commits.map((commit) => (
-              <div
-                key={commit.sha}
-                data-testid="commit"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "88px minmax(0,1fr)",
-                  gap: "14px",
-                  alignItems: "center",
-                  padding: "12px 16px",
-                  borderBottom: "1px solid var(--hair)",
-                }}
-              >
-                <span className="mono" style={{ fontSize: "11.5px", color: "var(--accent)" }}>
-                  {commit.sha.slice(0, 8)}
-                </span>
-                <span style={{ fontSize: "13.5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {commit.subject}
-                </span>
-              </div>
-            ))}
+            {dossier.commits.map((commit) => {
+              const href = commitUrl(repo, commit.sha);
+              const short = commit.sha.slice(0, 8);
+              return (
+                <div
+                  key={commit.sha}
+                  data-testid="commit"
+                  style={{
+                    display: "grid",
+                    // The third column is the numstat. `auto` and not a fixed
+                    // width: with no numstat anywhere it collapses to nothing
+                    // and the row is the two columns it always was.
+                    gridTemplateColumns: "88px minmax(0,1fr) auto",
+                    gap: "14px",
+                    alignItems: "center",
+                    padding: "12px 16px",
+                    borderBottom: "1px solid var(--hair)",
+                  }}
+                >
+                  {/* The sha is the anchor when there is one and the same text
+                      when there is not — never an anchor with no href. */}
+                  <span className="mono" style={{ fontSize: "11.5px", color: "var(--accent)" }}>
+                    {href ? (
+                      <Ext href={href} title={commit.sha}>
+                        <span data-testid="commit-link">{short}</span>
+                      </Ext>
+                    ) : (
+                      short
+                    )}
+                  </span>
+                  <span style={{ fontSize: "13.5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {commit.subject}
+                  </span>
+                  <Numstat counts={commit.numstat ?? null} />
+                </div>
+              );
+            })}
           </div>
         </Section>
       ) : null}
 
       <Section title={`Thread · ${dossier.history.length}`}>
-        <Thread history={dossier.history} now={now} />
+        <Thread history={dossier.history} now={now} repo={repo} />
       </Section>
     </>
   );

@@ -22,10 +22,12 @@ from . import (
     take,
     pulse,
     assign,
+    events,
     record,
     report,
     review,
     update,
+    project,
     _waiting,
     _mentions,
 )
@@ -64,6 +66,9 @@ REGISTRY: dict[str, Verb] = {
     ),
     "card": Verb(card.run, "read", BOTH, ""),
     "report": Verb(report.run, "read", BOTH, ""),
+    # The LOG, paged — the one read that answers "what happened" rather than
+    # "what is each card". Board-wide by construction (verbs/events.py).
+    "events": Verb(events.run, "read", BOTH, ""),
     "plan": Verb(
         plan.run,
         "write",
@@ -98,6 +103,9 @@ REGISTRY: dict[str, Verb] = {
     # BOTH roles — a verifier is an ordinary agent; there is no reviewer ROLE.
     "review": Verb(review.run, "write", BOTH, ""),
     "bind": Verb(record.bind, "write", BOTH, ""),
+    # A fact about the repo itself, written by init/join — the only side that
+    # has a clone. BOTH roles: whoever ran the command owns the checkout.
+    "project": Verb(project.run, "write", BOTH, ""),
 }
 
 

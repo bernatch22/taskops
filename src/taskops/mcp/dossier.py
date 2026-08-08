@@ -12,7 +12,7 @@ summary is where context goes to die, and v1's hooks summarised.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from . import before, render, thread
 from .._json import as_rows, as_object, as_strings
@@ -102,8 +102,9 @@ def _items(rows: list[dict[str, Any]]) -> list[str]:
 
 
 def _commits(data: dict[str, Any]) -> list[str]:
-    """With their subjects and the files they touched. A column of hashes says
-    nothing about what was actually built (v1 shipped that, then fixed it)."""
+    """With their subjects, the files they touched and how much of each. A
+    column of hashes says nothing about what was actually built (v1 shipped
+    that, then fixed it), and a file name says nothing about the size of it."""
     commits = as_rows(data.get("commits"))
     merged = data.get("merged_into")
     if not commits and not merged:
@@ -111,13 +112,33 @@ def _commits(data: dict[str, Any]) -> list[str]:
     out = ["## Commits", ""]
     for commit in commits:
         files = as_strings(commit.get("files"))
-        tail = f"  ({', '.join(files)})" if files else ""
+        sized = [_sized(name, commit.get("numstat")) for name in files]
+        tail = f"  ({', '.join(sized)})" if files else ""
         out.append(f"- {str(commit.get('sha', ''))[:8]}  {commit.get('subject', '')}{tail}")
     if not commits:
         out.append("- (none bound yet — `done` needs one, or no_code=true)")
     if merged:
         out += ["", f"_Integrated into {merged}._"]
     return [*out, ""]
+
+
+def _sized(name: str, numstat: Any) -> str:
+    """`src/x.py +3-1`, `logo.png bin`, or just the name on an event written
+    before commits carried counts — absent is absent, never `+0-0`."""
+    counts = as_object(numstat)
+    if name not in counts:
+        return name
+    pair = counts[name]
+    if pair is None:
+        return f"{name} bin"
+    if not isinstance(pair, list):
+        return name
+    numbers = [
+        n for n in cast("list[Any]", pair) if isinstance(n, int) and not isinstance(n, bool)
+    ]
+    if len(numbers) != 2:
+        return name
+    return f"{name} +{numbers[0]}-{numbers[1]}"
 
 
 def _world(data: dict[str, Any]) -> list[str]:

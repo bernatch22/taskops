@@ -27,12 +27,19 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-The wave of `.tsx`-only cards that this file's TODO used to name is rebuilt
-(tk-fadcdc), so `VIEWS` below now asserts what only the finished code emits:
-the Worktrees tab, the header's milestone picker, and the Chapter pane's
-criteria list. Those three are the check that the bundle is the CURRENT source's
-output and not the previous wave's — none of them exists in the bundle this card
-replaced, so a chapter-close that forgot to run `node build.mjs` fails here.
+Two waves of `.tsx`-only cards have now been rebuilt into that bundle, and each
+left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab, the
+milestone picker, the Chapter pane's criteria) and `GITHUB_VISIBLE` (tk-0bc9fa
+— the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
+the dev carrying a worktree, the picker's landed chapters). Both lists are the
+check that the bundle is the CURRENT source's output and not the previous
+wave's: none of those strings existed in the bundle its chapter-close replaced,
+so a close that forgot to run `node build.mjs` fails here.
+
+The one marker that had to be RETIRED rather than added is the Event stream's
+`"no events verb"`. It was true while nothing returned the log; `verbs/events.py`
+made it false, so this file asserts its ABSENCE — an empty pane now means an
+empty log and says so.
 """
 
 from __future__ import annotations
@@ -79,6 +86,23 @@ VIEWS = (
     "milestone-menu",  # the header's picker, open (chrome/MilestonePicker.tsx)
     "chapter-criteria",  # the chapter's criteria list (monitor/Chapter.tsx)
     "standing",  # Live leases' three-figure empty state
+)
+
+#: What the GITHUB-VISIBLE chapter added, on the same terms as `VIEWS`: each is
+#: a `data-testid` written by exactly one card of that wave, and none of the six
+#: is in the bundle this chapter-close rebuilt over. They are the markers that
+#: say the bundle is THIS chapter's output — the anchors (`links.tsx`), the
+#: per-file +/- of a commit event, the Event stream's real rows and its pager,
+#: the dev who carries a worktree, and the landed chapters in the picker.
+GITHUB_VISIBLE = (
+    "commit-link",  # the sha, linking to github.com/<slug>/commit/<sha>
+    "card-compare",  # the card as a PR: /compare/ms...tk
+    "chapter-compare",  # the chapter's own diff
+    "worktree-compare",  # the same link from the Worktrees table
+    "event-numstat",  # the +/- a commit event now carries
+    "event-more",  # the Event stream's keyset pager
+    "worktree-owner",  # the dev carrying the tree
+    "milestone-landed",  # the picker's landed-chapters section
 )
 
 needs_node = pytest.mark.skipif(
@@ -132,10 +156,41 @@ def a_board(root: Path) -> dict[str, Any]:
         {"task": cards[1]["id"], "status": "released", "comment": "got to the rounding"},
     )
 
+    # A chapter that already LANDED, and its own board payload. Built by the
+    # server, like everything else here: `plan`, then `merged milestone=` — the
+    # verb the orchestrator's own landing goes through (`verbs/record.py`), which
+    # is what writes `status: "landed"` through the fold. It is landed
+    # immediately so the board is left with exactly one OPEN chapter and every
+    # other assertion in this file sees the payload it always saw.
+    past = dev.call(
+        "plan",
+        {
+            "milestone": "Nova, panel by panel",
+            "goal": "the dashboard, pane by pane",
+            "rules": ["ts-only diffs, the chapter-close rebuilds"],
+            "criteria": ["every pane is filled"],
+            "tasks": [{"title": "the Chapter pane", "spec": "goal, rules, branch"}],
+        },
+    )
+    dev.call("merged", {"milestone": past["milestone"]["id"], "into": "main", "sha": "beef1234"})
+
     fixture: dict[str, Any] = {
         # `window=` is what makes `hours` exist at all (verbs/pulse.py::run), and
         # `useBoard` passes it on every call so Throughput draws real bars.
         "board": dev.call("board", {"window": "14d", "tz": "UTC"}),
+        # The SAME verb, focused on the chapter that landed — the read that used
+        # to be unreachable, since `milestones` sent only the open ones and the
+        # picker could not name this id.
+        "board_landed": dev.call(
+            "board", {"milestone": past["milestone"]["id"], "window": "14d", "tz": "UTC"}
+        ),
+        # What the landed chapter must still be able to say for itself.
+        "expect_landed": [
+            "Nova, panel by panel",
+            "the dashboard, pane by pane",
+            "ts-only diffs, the chapter-close rebuilds",
+            "every pane is filled",
+        ],
         "card": dev.call("card", {"task": cards[1]["id"]}),
         # The board this credential is looking at owes it an answer, and the
         # page must say so — a mention row carries what was said, not a title.
@@ -197,10 +252,14 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{pane}"' in app, f"{pane} is not in the committed bundle"
     for testid in ("monitor", "board", "criteria", "comment-box"):
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
-    for testid in VIEWS:
+    for testid in VIEWS + GITHUB_VISIBLE:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
-    # The empty state of the pane with no verb behind it, verbatim in the bytes.
-    assert "no events verb" in app
+    # The pane that used to say "no events verb" no longer can: the verb exists
+    # (`verbs/events.py`), so an empty pane now means an empty LOG and says that.
+    assert "no events verb" not in app
+    assert "The log is empty." in app
+    # The anchor host, verbatim in the bytes — without it no link renders at all.
+    assert "github.com" in app
 
 
 _ = T0, _clock

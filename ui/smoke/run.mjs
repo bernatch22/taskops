@@ -29,7 +29,20 @@
  * The fixture is a REAL board payload — `tests/test_ui.py` builds one from a
  * live `LocalBoard` and passes it here, which is what makes this a test of the
  * server's actual answer and not of a shape the UI invented. `smoke/fixture.json`
- * is one such payload, captured, so `npm run smoke` runs with no Python. */
+ * is one such payload, captured, so `npm run smoke` runs with no Python.
+ *
+ * BEING A CAPTURE, IT EXPIRES: a card that teaches `a_board()` to put something
+ * new on the board (`board_landed` was the first) leaves this file one payload
+ * behind, and only `npm run smoke` notices — `tests/test_ui.py` builds its own
+ * and stays green. Re-capture it from the same function, with the same frozen
+ * clock, rather than editing it by hand:
+ *
+ *     uv run python -c 'import json,tempfile,pathlib; \
+ *       from taskops import _clock; from tests.conftest import T0; \
+ *       from tests.test_ui import a_board; _clock.set_now(T0); \
+ *       pathlib.Path("ui/smoke/fixture.json").write_text(json.dumps( \
+ *         a_board(pathlib.Path(tempfile.mkdtemp())/"board"), indent=1, sort_keys=True)+"\n")'
+ */
 import { build } from "esbuild";
 import { mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

@@ -14,9 +14,50 @@ from . import brief, render
 from .._json import as_rows, as_object, as_strings
 from ..board import Board
 from .._errors import Refused, BadRequest
-from ..gitwork import trees
+from ..gitwork import trees, remote
 
 Args = dict[str, Any]
+
+SETTLED = frozenset({"mentions", "done"})
+"""The two board groups that are NOT open work, for the landing gate.
+
+`mentions` is per-viewer, not work at all. `done` is work that is finished AND
+already in the milestone branch — it was added to the payload so closed cards
+stay visible (a chapter's history existed in the log and on no screen), and the
+gate, which excluded only `mentions`, read the new group as a reason to refuse.
+Left that way a chapter could never land again: the FIRST card you integrated
+blocked its own chapter permanently. Found landing a real one — "still has open
+work (done: 8)" with nothing open (2026-08-08).
+
+The rule the gate enforces is "nothing unfinished and nothing unintegrated".
+`done` is the one group that is neither, so it belongs in a named set beside
+`mentions` rather than in a second special case.
+"""
+
+
+def after_update(repo: Path, args: Args, data: Args) -> None:
+    """The git that follows an ACCEPTED update — today, exactly one move: a card
+    that closed `done` gets its branch pushed.
+
+    THE PLACEMENT. `done` travels through the generic `taskops_update` handler,
+    and the only place that knows both "this update carried status=done" and
+    "the board took it" is the point right after `board.call("update", …)`
+    returns: every refusal — not yours, no commit, needs review — raises out of
+    that call, so the refusal path never reaches here and pushes nothing. It
+    lives in `gitmoves` rather than in `tools._update` because this module is
+    where the MCP layer keeps its git, and it takes the RESULT rather than the
+    board because the fact it acts on is the answer, not a second question:
+    the branch is `card["id"]` (verbs/_facts.py::branch_of — a card's branch is
+    its id), so nothing has to be looked up and nothing can disagree.
+
+    Not in a verb: `verbs/` may not touch git and `tests/test_architecture.py`
+    enforces it. Not in the commit hook either — a push there would be on the
+    critical path of every commit, and the milestone's rule is that a push is
+    never a gate.
+    """
+    if str(args.get("status", "")) != "done":
+        return
+    remote.push(repo, str(as_object(data.get("card")).get("id", "")))
 
 
 def assign(board: Board, repo: Path, args: Args, now: float) -> str:
@@ -106,7 +147,7 @@ def _land(board: Board, repo: Path, stone: str, criteria_met: bool) -> str:
     open_work = {
         group: rows
         for group, rows in as_object(view.get("groups")).items()
-        if rows and group != "mentions"  # mentions are per-viewer, not work
+        if rows and group not in SETTLED
     }
     if open_work:
         listed = " · ".join(f"{g}: {len(r)}" for g, r in sorted(open_work.items()))

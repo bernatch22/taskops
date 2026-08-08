@@ -11,6 +11,8 @@ from typing import Any, Callable
 import pytest
 
 from taskops import verbs, _clock
+from taskops.store import log
+from taskops.verbs import pulse, _facts
 from taskops._errors import Refused, NotFound, BadRequest
 from taskops.core.types import LEASE_TTL
 from taskops.store.stores import Stores
@@ -331,6 +333,78 @@ def test_an_integrated_card_stays_visible_under_done(stores: Stores) -> None:
     assert board["groups"]["merge"] == []  # integrated: nothing left to do
     assert [c["id"] for c in board["groups"]["done"]] == [card]  # but still visible
     assert board["done_total"] == 1
+
+
+def test_a_landed_chapter_is_still_on_the_board(stores: Stores) -> None:
+    """The same bug as `done`, one level up: `milestones` filtered to `open`,
+    which was correct until `landed` became a real status — and the day it did,
+    two finished chapters (14 cards and 22) were in the log and on no screen.
+    Berna found both by looking at the dashboard."""
+    stone = planned(stores)["milestone"]["id"]
+    call(stores, "merged", BERNA, milestone=stone, into="main", sha="9c2f")
+
+    board = call(stores, "board", BERNA)
+    listed = {m["id"]: m["status"] for m in board["milestones"]}
+    assert listed == {stone: "landed"}
+    assert board["landed_total"] == 1
+
+    # And it RESOLVES when named — a chapter offered by a picker the server then
+    # refused to focus would be the same hole with an extra click in it.
+    focused = call(stores, "board", BERNA, milestone=stone)
+    assert focused["milestone"]["id"] == stone
+    assert focused["milestone"]["goal"] == "read a bank CSV and issue invoices with VAT"
+
+
+def test_the_landed_chapters_are_capped_newest_first(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Open chapters are bounded by the work in flight; landed ones only grow.
+    Same argument as `DONE_SHOWN`, so the same shape: a cap, newest first, and
+    the honest total beside it."""
+    landed = []
+    start = _clock.now()
+    for n in range(_facts.LANDED_SHOWN + 2):
+        clock(start + n * 86400)  # a chapter is days apart, never the same instant
+        out = call(stores, "plan", BERNA, milestone=f"chapter {n}", goal="g", tasks=[{"title": "t"}])
+        landed.append(out["milestone"]["id"])
+        call(stores, "merged", BERNA, milestone=landed[-1], into="main", sha="9c2f")
+
+    board = call(stores, "board", BERNA)
+    assert board["landed_total"] == _facts.LANDED_SHOWN + 2
+    shown = [m["id"] for m in board["milestones"]]
+    assert len(shown) == _facts.LANDED_SHOWN
+    assert shown[0] == landed[-1]  # newest first
+    assert landed[0] not in shown  # the oldest fell off the tail
+    # Off the list is not out of reach: naming one still resolves it.
+    assert call(stores, "board", BERNA, milestone=landed[0])["milestone"]["id"] == landed[0]
+
+
+def test_focusing_a_chapter_raises_the_done_cap(stores: Stores) -> None:
+    """`DONE_SHOWN` bounds the BOARD's history, which grows forever. A chapter
+    is a finite planned unit, and reviewing a finished one is exactly when
+    somebody wants all of its cards — this project's own chapters closed 14 and
+    22, and `20 of 22` cannot answer "what shipped"."""
+    plan = call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="wide",
+        goal="g",
+        tasks=[{"title": f"card {n}", "spec": "s"} for n in range(pulse.DONE_SHOWN + 2)],
+    )
+    for card in plan["cards"]:
+        call(stores, "take", W1, task=card["id"])
+        call(stores, "update", W1, task=card["id"], status="done", no_code=True, comment="done")
+        call(stores, "merged", BERNA, task=card["id"], sha="9c2f")
+
+    stone = plan["milestone"]["id"]
+    assert len(call(stores, "board", BERNA, milestone=stone)["groups"]["done"]) == len(plan["cards"])
+    # The board-wide read keeps the tight cap: there, `done` is history without end.
+    call(stores, "merged", BERNA, milestone=stone, into="main", sha="9c2f")
+    wide = call(stores, "board", BERNA)
+    assert wide["milestone"] is None  # nothing open — no chapter narrows this read
+    assert len(wide["groups"]["done"]) == pulse.DONE_SHOWN
+    assert wide["done_total"] == len(plan["cards"])
 
 
 # ── the dead worker ─────────────────────────────────────────────────────────
@@ -802,6 +876,50 @@ def test_a_board_that_never_sets_review_behaves_exactly_as_today(stores: Stores)
     assert [c["id"] for c in board["groups"]["merge"]] == [card]
 
 
+def test_a_bound_commit_keeps_its_per_file_counts_and_a_binary_stays_null(
+    stores: Stores,
+) -> None:
+    planned(stores)
+    card = call(stores, "card", BERNA, query="invoice model")["matches"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(
+        stores,
+        "bind",
+        W1,
+        task=card,
+        sha="a1b2c3",
+        subject="feat: model",
+        files=["src/models.py", "logo.png"],
+        numstat={"src/models.py": [12, 3], "logo.png": None},
+    )
+    body = [e["body"] for e in stores.events(card) if e["kind"] == "commit"][0]
+    assert body["files"] == ["src/models.py", "logo.png"]  # unchanged, byte for byte
+    assert body["numstat"] == {"src/models.py": [12, 3], "logo.png": None}
+
+
+def test_a_commit_bound_without_counts_carries_no_numstat_at_all(stores: Stores) -> None:
+    """An old hook, or a commit queued before the key existed. Absent is
+    absent: no key, and nothing invents zeros for it."""
+    planned(stores)
+    call(stores, "bind", W1, sha="deadbee", subject="chore: gitignore", files=[".gitignore"])
+    body = [e["body"] for e in stores.events("project") if e["kind"] == "commit"][0]
+    assert "numstat" not in body
+
+
+def test_counts_that_are_not_a_pair_of_numbers_are_refused(stores: Stores) -> None:
+    planned(stores)
+    with pytest.raises(BadRequest, match="added, deleted"):
+        call(
+            stores,
+            "bind",
+            W1,
+            sha="deadbee",
+            subject="chore",
+            files=["a.py"],
+            numstat={"a.py": "3/1"},
+        )
+
+
 def test_a_commit_with_no_card_is_recorded_at_project_level(stores: Stores) -> None:
     """Nobody is forced to take a card to commit — the board just knows the sha
     happened. The `done` guard is untouched: it still demands a card-bound one.
@@ -817,3 +935,120 @@ def test_a_commit_with_no_card_is_recorded_at_project_level(stores: Stores) -> N
     call(stores, "take", W1, task=card)
     with pytest.raises(Refused, match="no commit bound"):
         call(stores, "update", W1, task=card, status="done", comment="the sha is on project")
+
+
+# ── the repo's web home (verbs/project.py) ──────────────────────────────────
+
+
+def test_the_boards_repo_travels_in_the_board_payload(stores: Stores) -> None:
+    """A project-level fact, so no card exists to carry it — and every client
+    sees it through the same read, local or remote."""
+    planned(stores)
+    assert call(stores, "board", BERNA)["repo"] is None
+    call(
+        stores, "project", BERNA,
+        op="remote", host="github.com", slug="bernatch22/taskops", url="https://github.com/bernatch22/taskops",
+    )
+    assert call(stores, "board", BERNA)["repo"] == {
+        "host": "github.com",
+        "slug": "bernatch22/taskops",
+        "url": "https://github.com/bernatch22/taskops",
+    }
+
+
+def test_recording_the_same_origin_twice_writes_nothing(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """`init` is re-run all the time; the log is replayed forever and has no
+    delete, so an unchanged fact must not append."""
+    args = {"op": "remote", "host": "github.com", "slug": "a/b", "url": "https://github.com/a/b"}
+    first = call(stores, "project", BERNA, **args)
+    clock(60)
+    second = call(stores, "project", BERNA, **args)
+    assert first["recorded"] and not second["recorded"]
+    assert len([e for e in stores.events("project") if e["kind"] == "project"]) == 1
+
+
+def test_a_changed_origin_wins_by_being_later(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    call(stores, "project", BERNA, op="remote", host="github.com", slug="a/b")
+    clock(60)
+    call(stores, "project", BERNA, op="remote", host="gitlab.com", slug="team/sub/c")
+    repo = call(stores, "board", BERNA)["repo"]
+    assert repo == {"host": "gitlab.com", "slug": "team/sub/c", "url": "https://gitlab.com/team/sub/c"}
+
+
+def test_an_unknown_project_fact_is_refused_by_name(stores: Stores) -> None:
+    with pytest.raises(BadRequest, match="not a project fact"):
+        call(stores, "project", BERNA, op="mascot", slug="a/b")
+
+
+# ── the log itself: the events verb and its keyset paging ───────────────────
+
+
+def _noisy(stores: Stores) -> list[str]:
+    """A board whose log is worth paging, and the truth to compare against.
+
+    Every event lands at the SAME instant — the `clock` fixture is frozen — so
+    this is exactly the case a `ts` cursor cannot survive. Ground truth comes
+    from `events.jsonl` itself, in file order, never from the cache the verb
+    reads: comparing a query with itself proves nothing.
+    """
+    planned(stores)
+    card = call(stores, "board", BERNA)["groups"]["take"][0]["id"]
+    for i in range(12):
+        call(stores, "update", BERNA, task=card, comment=f"c{i}")
+    call(stores, "project", BERNA, op="remote", host="github.com", slug="a/b")
+    written, _ = log.read(stores.log_path)
+    return [e["id"] for e in reversed(written)]  # newest first, as the pane reads
+
+
+def test_the_events_verb_answers_with_the_log_newest_first_and_its_real_total(
+    stores: Stores,
+) -> None:
+    newest_first = _noisy(stores)
+    page = call(stores, "events", BERNA, limit=5)
+    assert [e["id"] for e in page["events"]] == newest_first[:5]
+    # The counter is the LOG's length, not this page's.
+    assert page["total"] == len(newest_first) > 5
+    assert page["head"] == stores.head()
+
+
+def test_paging_the_log_crosses_a_boundary_without_dropping_or_repeating_a_row(
+    stores: Stores,
+) -> None:
+    """THE test this verb exists to pass. Every event shares one `ts`, so a
+    cursor on the timestamp would either skip the rows tying at the boundary or
+    serve them twice; the cursor is the rowid and neither can happen."""
+    newest_first = _noisy(stores)
+    seen: list[str] = []
+    cursor: int | None = None
+    pages = 0
+    while True:
+        args: dict[str, Any] = {"limit": 4}
+        if cursor is not None:
+            args["before"] = cursor
+        page = call(stores, "events", BERNA, **args)
+        seen += [e["id"] for e in page["events"]]
+        pages += 1
+        cursor = page["next"]
+        if cursor is None:
+            break
+    assert pages > 3, "the fixture must actually cross several boundaries"
+    assert seen == newest_first  # order kept, nothing dropped
+    assert len(set(seen)) == len(seen)  # nothing served twice
+
+
+def test_the_stream_carries_board_history_and_not_only_cards(stores: Stores) -> None:
+    """`task="project"` rows — a repo bound, a chapter opened — are the board's
+    own history and belong in the stream. A card-shaped filter would hide them."""
+    _noisy(stores)
+    everything = call(stores, "events", BERNA, limit=200)["events"]
+    assert any(e["task"] == "project" for e in everything)
+
+
+def test_a_page_is_refused_a_size_it_cannot_serve(stores: Stores) -> None:
+    _noisy(stores)
+    with pytest.raises(BadRequest, match="outside 1..200"):
+        call(stores, "events", BERNA, limit=5000)

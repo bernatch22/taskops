@@ -9,7 +9,7 @@ import pytest
 
 from taskops import board
 from taskops._errors import Refused, NotFound, TaskopsError
-from taskops.gitwork import run, bind, trees, install, trailer
+from taskops.gitwork import run, bind, trees, remote, install, trailer
 
 
 def repo(path: Path, name: str = "work") -> Path:
@@ -165,6 +165,99 @@ def test_tidy_only_removes_what_is_already_in_the_trunk(tmp_path: Path) -> None:
     assert not merged.exists() and kept.exists()  # unmerged work is never deleted
 
 
+# ── pushing ─────────────────────────────────────────────────────────────────
+
+
+def origin_for(root: Path, path: Path) -> Path:
+    """A bare repo wired up as `origin`."""
+    run.must("init", "-q", "--bare", str(path))
+    run.must("remote", "add", "origin", str(path), cwd=root)
+    return path
+
+
+def test_a_card_branch_reaches_origin_when_there_is_one(tmp_path: Path) -> None:
+    root = repo(tmp_path)
+    bare = origin_for(root, tmp_path / "origin.git")
+    tree = trees.ensure_card(root, "tk-a11111", "tk-a11111", "")
+    (tree / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "feat: model", cwd=tree)
+
+    remote.push(root, "tk-a11111")
+    assert run.must("rev-parse", "tk-a11111", cwd=bare) == run.must(
+        "rev-parse", "HEAD", cwd=tree
+    )
+
+
+def test_with_no_origin_no_push_is_even_attempted(tmp_path: Path) -> None:
+    """Byte-for-byte today's behaviour: the switch is `git remote get-url
+    origin`, and without one git is never asked to push at all — not asked and
+    allowed to fail, which would be a slow no-op and a line of noise."""
+    root = repo(tmp_path)
+    ran: list[tuple[str, ...]] = []
+    real = run.git
+
+    def spy(*args: str, **kwargs: Any) -> Any:
+        ran.append(args)
+        return real(*args, **kwargs)
+
+    remote.run.git = spy  # type: ignore[assignment]
+    try:
+        remote.push(root, "main")
+    finally:
+        remote.run.git = real  # type: ignore[assignment]
+    assert not any(args[0] == "push" for args in ran)
+
+
+def test_a_remote_that_hangs_does_not_reach_the_caller(tmp_path: Path) -> None:
+    """`run.git` RAISES on a timeout — it is the one failure that is not an exit
+    code — and a `done` that raised because origin was slow would be a push used
+    as a gate. Ten seconds is the ceiling, and past it nothing happened."""
+    root = repo(tmp_path)
+    origin_for(root, tmp_path / "origin.git")
+    real = run.git
+
+    def hang(*args: str, **kwargs: Any) -> Any:
+        if args[0] == "push":
+            raise TaskopsError("git push took longer than 10.0s")
+        return real(*args, **kwargs)
+
+    remote.run.git = hang  # type: ignore[assignment]
+    try:
+        remote.push(root, "main")  # returns, says nothing, raises nothing
+    finally:
+        remote.run.git = real  # type: ignore[assignment]
+    assert remote.PUSH_TIMEOUT <= 30.0  # a lifecycle moment may not wait on a remote
+
+
+def test_a_push_that_fails_changes_nothing_about_the_merge(tmp_path: Path) -> None:
+    """origin exists but is unreachable — the integration still happened."""
+    root = repo(tmp_path)
+    run.must("remote", "add", "origin", str(tmp_path / "nowhere.git"), cwd=root)
+    tree = trees.ensure_card(root, "tk-a11111", "tk-a11111", "ms/mvp")
+    (tree / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "feat: model", cwd=tree)
+
+    sha = trees.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
+    assert run.must("rev-parse", "ms/mvp", cwd=root) == sha
+
+
+def test_the_milestone_branch_and_the_card_both_reach_origin_on_a_merge(
+    tmp_path: Path,
+) -> None:
+    root = repo(tmp_path)
+    bare = origin_for(root, tmp_path / "origin.git")
+    tree = trees.ensure_card(root, "tk-a11111", "tk-a11111", "ms/mvp")
+    (tree / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "feat: model", cwd=tree)
+
+    sha = trees.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
+    assert run.must("rev-parse", "ms/mvp", cwd=bare) == sha
+    assert run.git("rev-parse", "--verify", "tk-a11111", cwd=bare).ok
+
+
 # ── binding ─────────────────────────────────────────────────────────────────
 
 
@@ -194,6 +287,47 @@ def test_a_commit_carries_its_card_its_sha_and_its_files(tmp_path: Path) -> None
     assert facts is not None
     assert facts["task"] == "tk-a11111" and facts["files"] == ["tk-a11111.py"]
     assert facts["subject"] == "feat: tk-a11111" and len(facts["sha"]) == 40
+
+
+def test_a_commit_carries_plus_minus_per_file_beside_its_files(tmp_path: Path) -> None:
+    """Additive: `files` is byte-identical to what it always was — the edit
+    surface and collisions() read it — and `numstat` rides beside it."""
+    root = repo(tmp_path)
+    (root / "grew.py").write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
+    (root / "README.md").write_text("bye\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "feat: two\n\nTask: tk-a11111", cwd=root)
+
+    facts = bind.commit_facts(root)
+    assert facts is not None
+    assert facts["files"] == ["README.md", "grew.py"]
+    assert facts["numstat"] == {"README.md": [1, 1], "grew.py": [3, 0]}
+
+
+def test_a_binary_file_counts_as_null_not_zero(tmp_path: Path) -> None:
+    """git prints `-` for a binary. "cannot be counted" is not "nothing
+    changed", and 0 would say the second."""
+    root = repo(tmp_path)
+    (root / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02\x03")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "feat: logo\n\nTask: tk-a11111", cwd=root)
+
+    facts = bind.commit_facts(root)
+    assert facts is not None
+    assert facts["numstat"] == {"logo.png": None}
+
+
+def test_a_rename_is_keyed_by_the_path_files_reports(tmp_path: Path) -> None:
+    """The human --numstat writes `{old => new}` on a rename; -z gives the real
+    new path, so the key matches the name in `files`."""
+    root = repo(tmp_path)
+    run.must("mv", "README.md", "READ.md", cwd=root)
+    run.must("commit", "-q", "-m", "chore: rename\n\nTask: tk-a11111", cwd=root)
+
+    facts = bind.commit_facts(root)
+    assert facts is not None
+    assert facts["files"] == ["READ.md"]
+    assert set(facts["numstat"]) == {"READ.md"}
 
 
 def test_a_commit_with_no_card_is_still_facts_with_no_task(tmp_path: Path) -> None:
@@ -300,3 +434,67 @@ def test_a_bare_taskops_directory_above_is_not_a_project(tmp_path: Path) -> None
     deep = project / "src" / "deep"
     deep.mkdir(parents=True)
     assert board.find_root(deep) == project
+
+
+# ── the repo's web home (gitwork/remote.py) ─────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("git@github.com:owner/repo.git", ("github.com", "owner/repo")),
+        ("ssh://git@github.com/owner/repo.git", ("github.com", "owner/repo")),
+        ("https://github.com/owner/repo", ("github.com", "owner/repo")),
+        ("https://user:token@gitlab.com/group/sub/repo.git", ("gitlab.com", "group/sub/repo")),
+        ("ssh://git@ssh.gitlab.com:2222/group/repo.git", ("ssh.gitlab.com", "group/repo")),
+        ("git://github.com/owner/repo.git", ("github.com", "owner/repo")),
+    ],
+)
+def test_every_origin_form_parses_to_the_same_shape(
+    url: str, expected: tuple[str, str]
+) -> None:
+    found = remote.parse(url)
+    assert found is not None
+    assert (found["host"], found["slug"]) == expected
+    assert found["url"] == f"https://{expected[0]}/{expected[1]}"
+
+
+@pytest.mark.parametrize("url", ["", "   ", "/srv/mirrors/repo.git", "../sibling", "github.com"])
+def test_an_origin_that_is_not_a_web_home_parses_to_nothing(url: str) -> None:
+    """A local path or a bare host is not a page anybody can link to."""
+    assert remote.parse(url) is None
+
+
+def test_init_records_the_origin_and_join_updates_it(tmp_path: Path) -> None:
+    """The write comes from the side that HAS the repo, at the two commands that
+    already touch the board — and a re-run with a changed origin wins."""
+    root = repo(tmp_path)
+    run.must("remote", "add", "origin", "git@github.com:owner/repo.git", cwd=root)
+    from taskops.cli import commands
+
+    commands.init(root)
+    opened = board.open_board(root, "dev:berna")
+    assert opened.call("board", {})["repo"] == {
+        "host": "github.com",
+        "slug": "owner/repo",
+        "url": "https://github.com/owner/repo",
+    }
+    opened.close()
+
+    run.must("remote", "set-url", "origin", "https://gitlab.com/team/repo.git", cwd=root)
+    commands.init(root)
+    opened = board.open_board(root, "dev:berna")
+    assert opened.call("board", {})["repo"]["slug"] == "team/repo"
+    opened.close()
+
+
+def test_no_origin_records_nothing_and_nothing_appears(tmp_path: Path) -> None:
+    """The chapter's third rule: a board without a remote behaves like today."""
+    root = repo(tmp_path)
+    from taskops.cli import commands
+
+    commands.init(root)
+    opened = board.open_board(root, "dev:berna")
+    assert opened.call("board", {})["repo"] is None
+    assert opened.call("board", {})["seq"] == 0  # not one event was written
+    opened.close()

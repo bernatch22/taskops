@@ -24,9 +24,15 @@ class State(TypedDict):
     cards: dict[str, Card]
     milestones: dict[str, Milestone]
 
+    # Facts about the BOARD's repo, one entry per `op` — today just `remote`.
+    # A project fact has no card, so it has no `updated` to arbitrate with: the
+    # arbiter is `project_at`, per op, and property 3 holds through it.
+    project: dict[str, Any]
+    project_at: dict[str, float]
+
 
 def empty() -> State:
-    return State(cards={}, milestones={})
+    return State(cards={}, milestones={}, project={}, project_at={})
 
 
 def fold(events: list[Event], state: State | None = None) -> State:
@@ -57,6 +63,9 @@ def apply(state: State, event: Event, *, force: bool = False) -> bool:
     if event["kind"] == "milestone":
         _milestone(state, event)
         return True
+    if event["kind"] == "project":
+        _project(state, event)
+        return True
     if event["kind"] == "created":
         return _created(state, event)
     card = state["cards"].get(event["task"])
@@ -77,6 +86,21 @@ def _created(state: State, event: Event) -> bool:
     ident = str(card.get("id") or event["task"])
     state["cards"].setdefault(ident, _coerce_card(ident, card, event))
     return True
+
+
+def _project(state: State, event: Event) -> None:
+    """Newest-wins, per `op` — property 3 of this module, for a fact with no card.
+
+    An older event arriving late (another clone's log, a rebuild) must not undo
+    a newer one, exactly as `apply` refuses a stale card fact. `value: None`
+    is a legal value and clears the fact; the timestamp still moves, so the
+    clearing cannot be resurrected by a replay of what it withdrew.
+    """
+    op = str(event["body"].get("op", ""))
+    if not op or event["ts"] + _EPS < state["project_at"].get(op, float("-inf")):
+        return
+    state["project"][op] = event["body"].get("value")
+    state["project_at"][op] = event["ts"]
 
 
 def _mutate(card: Card, event: Event) -> None:

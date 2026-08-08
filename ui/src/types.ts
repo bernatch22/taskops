@@ -41,7 +41,7 @@
  *  error instead of a 400 nobody sees.
  *
  *  @source the subset of `verbs/__init__.py::REGISTRY` this client speaks */
-export type RpcVerb = "board" | "card" | "report" | "mentions" | "update";
+export type RpcVerb = "board" | "card" | "report" | "mentions" | "update" | "events";
 
 /* ── the stored rows (core/types.py) ─────────────────────────────────────── */
 
@@ -264,7 +264,22 @@ export interface Pulse {
 /** @source `verbs/pulse.py::run` */
 export interface BoardPayload {
   milestone: Milestone | null;
-  milestones: Milestone[]; // the open ones only
+  /** Every OPEN chapter, then the most recent landed ones — one list, told
+   *  apart by `Milestone.status` (`verbs/_facts.py::chapters`).
+   *
+   *  It used to be the open ones only, which was correct until `landed` became
+   *  a real status and two finished chapters vanished from this dashboard. So
+   *  `milestones.length` is NOT "how many chapters are open" any more: every
+   *  consumer that means that filters on `status === "open"` — the picker's
+   *  count and Monitor's `chapters` prop both do, and the smoke test pins it. */
+  milestones: Milestone[];
+  /** How many chapters have landed in total, behind `milestones`' cap.
+   *
+   *  OPTIONAL for the usual reason (types.ts header): a board one version
+   *  behind sends neither this nor any landed chapter at all. Consumers read
+   *  `?? 0`, and absent then says the true thing about that board — this screen
+   *  can reach no landed chapter. `verbs/pulse.py::run`. */
+  landed_total?: number;
   groups: BoardGroups;
   team: TeamMember[];
   hours: ReportPayload | null; // only when the call passed window=
@@ -280,6 +295,21 @@ export interface BoardPayload {
    *  optional from the start). Consumers read `?? 0` — absent and `0` say the
    *  same thing to a reader: nothing closed that this screen can count. */
   done_total?: number;
+  /** Where this repo lives on the web, so a sha can become a link.
+   *
+   *  Written ONCE by the side that has a clone (`taskops init` / `taskops join`
+   *  read `git remote get-url origin`), never read from a repo at render time —
+   *  a remote dashboard has none. TWICE optional, and both reasons are real:
+   *  a board one version behind never recorded it, and a repo with NO origin
+   *  never will. Absent means exactly one thing to a reader — draw plain text,
+   *  no links — so there is nothing to distinguish and no fallback beyond `?.`.
+   *
+   *  `host` is the key that picks a link template (`github.com` → `/commit/x`,
+   *  `gitlab.com` → `/-/commit/x`), which is why it is stored beside `url`
+   *  instead of being re-parsed out of it by every consumer.
+   *
+   *  @source `verbs/project.py::_value`, via `verbs/pulse.py::run` */
+  repo?: { host: string; slug: string; url: string } | null;
   seq: number;
   pulse: Pulse;
 }
@@ -346,6 +376,15 @@ export interface Elsewhere {
 export interface CommitRef {
   sha: string;
   subject: string;
+  /** `+/−` per file, as `gitwork/bind.py::numstat` measured it at commit time.
+   *
+   *  OPTIONAL, and this one is optional at the SOURCE as well as across
+   *  versions: `commit_facts` writes the key only when git could count
+   *  something (`if counted:`), so a commit that touches nothing carries no key
+   *  rather than an empty wall of zeros — and a board older than tk-dd6a9b
+   *  never wrote it at all. `null` for a path means BINARY: git prints `-`
+   *  there, and "cannot be counted" is not "nothing changed". */
+  numstat?: Record<string, [number, number] | null>;
   [key: string]: unknown; // an event body is open; extras are kept
 }
 
@@ -422,4 +461,28 @@ export interface ReportPayload {
 export interface MentionsPayload {
   actor: string; // the actor the server RESOLVED — the caller could not have known it
   mentions: MentionRow[];
+}
+
+/* ── the log, paged (verbs/events.py) ────────────────────────────────────── */
+
+/** One keyset page of the whole log, newest first.
+ *
+ *  @source `verbs/events.py::run`
+ *
+ *  `next` is a `seq` — the cache's rowid — and is passed straight back as
+ *  `before=` to get the page behind this one. It is NOT a timestamp and must
+ *  never become one: `ts` ties constantly (a plan of nine writes nine events in
+ *  one millisecond) and a tying cursor drops or repeats the rows sharing the
+ *  boundary instant. `null` means this page is the tail of the log.
+ *
+ *  `total` is the LOG's length, not this page's — it is what the pane's header
+ *  counter draws. The stream is board-wide on purpose: a stored event carries
+ *  no milestone, and `task: "project"` rows are board history belonging to no
+ *  chapter, so there is nothing here to filter by and nothing is. */
+export interface EventPage {
+  events: Event[];
+  next: number | null;
+  total: number;
+  /** the board's sequence at the moment of the read (`store/cache.py::head`) */
+  head: number;
 }

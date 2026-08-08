@@ -43,7 +43,7 @@ def commit_facts(repo: Path, ref: str = "HEAD") -> dict[str, Any] | None:
     branch = run.branch_at(repo)
     card = trailer.card_in(body) or trailer.card_of(branch)
     files = run.git("show", "--name-only", "--format=", ref, cwd=repo).out.splitlines()
-    return {
+    facts: dict[str, Any] = {
         "task": card,
         "sha": sha,
         "subject": subject,
@@ -51,6 +51,52 @@ def commit_facts(repo: Path, ref: str = "HEAD") -> dict[str, Any] | None:
         "branch": branch,
         "ts": float(when),
     }
+    counted = numstat(repo, ref)
+    if counted:
+        # ADDITIVE, never a reshape: `files` is the edit surface every reader
+        # already parses and an event body is forever. A commit whose numstat
+        # could not be read (or that touches nothing) carries no key at all —
+        # absent means absent, not a wall of zeros.
+        facts["numstat"] = counted
+    return facts
+
+
+def numstat(repo: Path, ref: str = "HEAD") -> dict[str, list[int] | None]:
+    """`+/-` per file. A BINARY file maps to None, never to [0, 0]: git prints
+    `-` there, and "cannot be counted" is not "nothing changed".
+
+    `-z` and not the plain form because rename detection folds two paths into
+    `src/{old.py => new.py}` in the human format; with -z the old and the new
+    path arrive as their own records, so the key stays the same string
+    `--name-only` puts in `files`."""
+    raw = run.git("show", "--numstat", "-z", "--format=", ref, cwd=repo)
+    if not raw.ok:
+        return {}
+    return parse_numstat(raw.out)
+
+
+def parse_numstat(out: str) -> dict[str, list[int] | None]:
+    """`added\\tdeleted\\tpath\\0`, or `added\\tdeleted\\t\\0old\\0new\\0` for a rename."""
+    tokens = out.split("\0")
+    counts: dict[str, list[int] | None] = {}
+    index = 0
+    while index < len(tokens):
+        parts = tokens[index].split("\t")
+        index += 1
+        if len(parts) < 3:
+            continue
+        added, deleted, path = parts[0], parts[1], parts[2]
+        if not path:  # a rename: the two paths are the next two records
+            if index + 1 >= len(tokens):
+                break
+            path = tokens[index + 1]
+            index += 2
+        if not path:
+            continue
+        counts[path] = (
+            [int(added), int(deleted)] if added.isdigit() and deleted.isdigit() else None
+        )
+    return counts
 
 
 def record(board: Caller, repo: Path, facts: dict[str, Any]) -> bool:

@@ -11,6 +11,7 @@
  * attached. Splitting them into two lists would break the one thing a thread is
  * for: what happened, in the order it happened. */
 import { ago, shortActor } from "../../format";
+import { Ext, Numstat, commitUrl, readNumstat, type Repo } from "../../links";
 import { TONE_FG, type Tone } from "../board/CardTile";
 import { Markdown, Mentioned } from "../shared/Markdown";
 import type { Event } from "../../types";
@@ -51,13 +52,36 @@ function addressed(event: Event): string[] {
   return Array.isArray(to) ? to.filter((who): who is string => typeof who === "string") : [];
 }
 
-export function Thread({ history, now }: { history: Event[]; now: number }): React.JSX.Element {
+/** The sha a `commit` event carries (`gitwork/bind.py::commit_facts`), read off
+ *  an open body: anything that is not a commit, or a body that never had one,
+ *  is "" and draws no link. */
+function sha(event: Event): string {
+  if (event.kind !== "commit") return "";
+  const value = event.body["sha"];
+  return typeof value === "string" ? value : "";
+}
+
+export function Thread({
+  history,
+  now,
+  repo,
+}: {
+  history: Event[];
+  now: number;
+  /** `BoardPayload.repo` — absent, and a commit line is exactly the text it was
+   *  before this existed. See `links.tsx`. */
+  repo?: Repo | null | undefined;
+}): React.JSX.Element {
   return (
     <div data-testid="thread" style={{ display: "flex", flexDirection: "column" }}>
       {history.map((event) => {
         const tone = DOT[event.kind] ?? "neutral";
         const text = detail(event);
         const to = addressed(event);
+        const ref = sha(event);
+        const href = commitUrl(repo, ref);
+        // Only a `commit` body has one, so every other line is untouched.
+        const counts = event.kind === "commit" ? readNumstat(event.body["numstat"]) : null;
         return (
           <div
             key={event.id}
@@ -89,6 +113,26 @@ export function Thread({ history, now }: { history: Event[]; now: number }): Rea
                   {shortActor(event.actor)}
                 </span>{" "}
                 {event.kind}
+                {/* The sha rides on the kind line, the subject stays below in
+                    `detail()` — a commit's identity and its sentence, in the
+                    two places the thread already puts them. Plain mono text
+                    with no slug: same characters, no anchor. */}
+                {ref ? (
+                  <span className="mono" style={{ color: "var(--accent)", marginLeft: "8px" }}>
+                    {href ? (
+                      <Ext href={href} title={ref}>
+                        <span data-testid="thread-commit-link">{ref.slice(0, 8)}</span>
+                      </Ext>
+                    ) : (
+                      ref.slice(0, 8)
+                    )}
+                  </span>
+                ) : null}
+                {counts ? (
+                  <span style={{ marginLeft: "8px" }}>
+                    <Numstat counts={counts} />
+                  </span>
+                ) : null}
                 {to.length > 0 ? (
                   <span className="mono" style={{ color: "var(--accent)" }}>
                     {" → "}

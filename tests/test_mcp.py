@@ -744,3 +744,35 @@ def test_repo_path_never_reaches_a_verb(repo: Path, boards: Any) -> None:
         patch.setitem(tools.BY_NAME, "taskops_board", tools.BY_NAME["taskops_board"]._replace(run=spy))
         server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert "milestone" in seen and "repo_path" not in seen
+
+
+def test_a_chapter_whose_cards_are_all_integrated_can_land(
+    repo: Path, boards: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`groups.done` is FINISHED work already in the milestone branch — neither
+    unfinished nor unintegrated, which is the only thing this gate is about.
+
+    It was added to the payload so closed cards stay visible (a chapter's
+    history used to exist on no screen), and the gate read the new group as a
+    reason to refuse: the first card you integrated blocked the landing
+    permanently, so no chapter could ever land again. Found by landing a real
+    chapter, 2026-08-08."""
+    from taskops.gitwork import trees
+
+    dev = boards(BERNA)
+    out = dev.call(
+        "plan",
+        {"milestone": "MVP", "goal": "g", "tasks": [{"title": "VAT", "spec": "the whole tax"}]},
+    )
+    stone, card = out["milestone"]["id"], out["cards"][0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+    w1.call("update", {"task": card, "status": "done", "no_code": True, "comment": "done"})
+    dev.call("merged", {"task": card, "sha": "9c2f"})  # integrated: it moves to `done`
+
+    assert [c["id"] for c in dev.call("board", {"milestone": stone})["groups"]["done"]] == [card]
+
+    monkeypatch.setattr(trees, "land_milestone", lambda *_: ("master", "abc123"))
+    text = call(dev, repo, "taskops_merge", milestone=stone)
+    assert "master" in text  # it landed; the settled card was not read as open work

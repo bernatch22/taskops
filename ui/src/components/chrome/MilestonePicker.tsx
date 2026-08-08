@@ -1,5 +1,13 @@
 /* Nova's milestone pill, as the button it is drawn as: a chapter, its count, a
- * `▾`, and the open chapters underneath it.
+ * `▾`, and the chapters underneath it.
+ *
+ * TWO sections, and the split is the point: the open chapters, then — under a
+ * labelled rule, muted, each tagged `landed` — the finished ones. They arrive in
+ * ONE list distinguished by `status` (`types.ts::BoardPayload.milestones`) and
+ * are drawn as two, because being able to reach a landed chapter (its goal, its
+ * rules, its 22 closed cards) and mistaking one for work in flight are opposite
+ * things. The pill says it too: focus a landed chapter and it reads "landed —
+ * history, not in flight" where it otherwise counts open chapters.
  *
  * What it picks is an ARGUMENT, not state of its own: the id travels up to App,
  * joins `window`/`tz` in `useBoard`'s one `board` call, and comes back as a whole
@@ -24,8 +32,12 @@ import { useOverlayStack } from "../shared/Overlay";
 export interface MilestonePickerProps {
   /** The chapter in scope as the SERVER resolved it, "" when it resolved none. */
   milestone: string;
-  /** Every open chapter — the server returns them whole whatever the call filtered by. */
+  /** Every chapter this dashboard can reach — the open ones AND the recent
+   *  landed ones, in one list, told apart by `status` (`types.ts`). The server
+   *  returns them whole whatever the call filtered by. */
   milestones: Milestone[];
+  /** How many chapters landed in total, behind the list's cap. `?? 0`. */
+  landedTotal?: number | undefined;
   /** The chosen id, "" for "all chapters". */
   selected: string;
   onSelect: (id: string) => void;
@@ -82,11 +94,24 @@ function entry(active: boolean): React.CSSProperties {
   };
 }
 
+/** The one place this file decides what a chapter's status means, so the pill
+ *  and the menu cannot drift: `open` is in flight, anything else in this list is
+ *  history. Not `=== "landed"` — a status this UI has never heard of belongs
+ *  with history rather than being drawn as live work. */
+export function isOpen(m: Milestone): boolean {
+  return m.status === "open";
+}
+
 export function MilestonePicker(props: MilestonePickerProps): React.JSX.Element {
-  const { milestone, milestones, selected, onSelect } = props;
+  const { milestone, milestones, selected, onSelect, landedTotal } = props;
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
-  const chapters = milestones.length;
+  /* NOT `milestones.length`: the list carries landed chapters too since they
+   * stopped being invisible, and this figure is about what is in flight. */
+  const chapters = milestones.filter(isOpen).length;
+  /* The chosen chapter is history — the pill has to say so, or a finished
+   * chapter's empty panes read as a board where nothing is happening. */
+  const history = milestones.some((m) => m.id === selected && !isOpen(m));
 
   return (
     <div ref={box} style={{ position: "relative", display: "flex" }}>
@@ -102,8 +127,8 @@ export function MilestonePicker(props: MilestonePickerProps): React.JSX.Element 
             width: "7px",
             height: "7px",
             borderRadius: "50%",
-            background: "var(--accent)",
-            boxShadow: "0 0 0 3px var(--accent-soft)",
+            background: history ? "var(--faint)" : "var(--accent)",
+            boxShadow: history ? "none" : "0 0 0 3px var(--accent-soft)",
             flex: "none",
           }}
         />
@@ -111,8 +136,10 @@ export function MilestonePicker(props: MilestonePickerProps): React.JSX.Element 
           <div style={{ fontSize: "13px", fontWeight: 500, letterSpacing: "-0.02em" }}>
             {milestone || (chapters > 1 ? `${chapters} chapters open` : "no open milestone")}
           </div>
-          <div style={{ fontSize: "10.5px", color: "var(--text-3)" }}>
-            {chapters} open chapter{chapters === 1 ? "" : "s"}
+          <div style={{ fontSize: "10.5px", color: "var(--text-3)" }} data-testid="pill-sub">
+            {history
+              ? "landed — history, not in flight"
+              : `${chapters} open chapter${chapters === 1 ? "" : "s"}`}
           </div>
         </div>
         <span style={{ fontSize: "9px", color: "var(--faint)", marginLeft: "3px", flex: "none" }}>
@@ -123,6 +150,7 @@ export function MilestonePicker(props: MilestonePickerProps): React.JSX.Element 
       {open ? (
         <Menu
           milestones={milestones}
+          landedTotal={landedTotal}
           selected={selected}
           anchor={box}
           onClose={() => setOpen(false)}
@@ -136,8 +164,55 @@ export function MilestonePicker(props: MilestonePickerProps): React.JSX.Element 
   );
 }
 
+/** One row of the menu. The same button for both sections — what changes is the
+ *  weight it is drawn at and the tag, so the two lists cannot drift apart. */
+function Entry({
+  stone,
+  selected,
+  onSelect,
+  landed = false,
+}: {
+  stone: Milestone;
+  selected: string;
+  onSelect: (id: string) => void;
+  landed?: boolean;
+}): React.JSX.Element {
+  const on = selected === stone.id;
+  return (
+    <button
+      style={{ ...entry(on), ...(landed ? { color: on ? "var(--text-2)" : "var(--text-3)" } : {}) }}
+      role="option"
+      aria-selected={on}
+      data-milestone={stone.id}
+      data-landed={landed ? "1" : undefined}
+      onClick={() => onSelect(stone.id)}
+    >
+      <span style={{ width: "12px", flex: "none", color: "var(--accent)" }}>{on ? "✓" : ""}</span>
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+        {stone.title}
+      </span>
+      {landed ? (
+        <span
+          style={{
+            marginLeft: "auto",
+            flex: "none",
+            fontSize: "10px",
+            padding: "2px 7px",
+            borderRadius: "20px",
+            background: "var(--pane-2)",
+            color: "var(--text-3)",
+          }}
+        >
+          landed
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 interface MenuProps {
   milestones: Milestone[];
+  landedTotal?: number | undefined;
   selected: string;
   anchor: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
@@ -146,9 +221,25 @@ interface MenuProps {
 
 /** Split out so the hooks below mount and unmount WITH the dropdown: the stack
  *  slot and the outside-click listener exist exactly while it is open, which is
- *  what makes "the top-most overlay" mean the dropdown and not the pill. */
-function Menu({ milestones, selected, anchor, onClose, onSelect }: MenuProps): React.JSX.Element {
+ *  what makes "the top-most overlay" mean the dropdown and not the pill.
+ *
+ *  EXPORTED for the same reason `Dossier` is exported beside `Drawer`: the open
+ *  menu is state behind a click, and no event handler fires under
+ *  `renderToStaticMarkup`, so the smoke harness could not otherwise reach the
+ *  one thing this card is about — that a landed chapter is offered, and offered
+ *  as history. A seam, not an API: `MilestonePicker` is what the app renders. */
+export function Menu({
+  milestones,
+  landedTotal,
+  selected,
+  anchor,
+  onClose,
+  onSelect,
+}: MenuProps): React.JSX.Element {
   useOverlayStack(onClose);
+  const live = milestones.filter(isOpen);
+  const history = milestones.filter((m) => !isOpen(m));
+  const total = landedTotal ?? history.length;
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -175,27 +266,38 @@ function Menu({ milestones, selected, anchor, onClose, onSelect }: MenuProps): R
         </span>
         <span>all chapters</span>
       </button>
-      {milestones.map((m) => (
-        <button
-          key={m.id}
-          style={entry(selected === m.id)}
-          role="option"
-          aria-selected={selected === m.id}
-          data-milestone={m.id}
-          onClick={() => onSelect(m.id)}
-        >
-          <span style={{ width: "12px", flex: "none", color: "var(--accent)" }}>
-            {selected === m.id ? "✓" : ""}
-          </span>
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-            {m.title}
-          </span>
-        </button>
+      {live.map((m) => (
+        <Entry key={m.id} stone={m} selected={selected} onSelect={onSelect} />
       ))}
       {/* Nothing open is not an error: the board simply has no chapter to focus. */}
-      {milestones.length === 0 ? (
+      {live.length === 0 ? (
         <div style={{ padding: "8px 10px", fontSize: "12px", color: "var(--text-3)" }}>
           no open chapter
+        </div>
+      ) : null}
+      {/* Landed chapters BELOW a labelled rule, never mixed in: they are
+          reachable — that is this card — but a reader picking what to work on
+          must never mistake finished for in flight. The heading, the muted
+          type and the `landed` tag on every row are three separate signals
+          because one of them is a colour, and a colour is not a distinction. */}
+      {history.length > 0 ? (
+        <div data-testid="milestone-landed">
+          <div
+            style={{
+              padding: "9px 10px 5px",
+              marginTop: "4px",
+              borderTop: "1px solid var(--hair)",
+              fontSize: "10.5px",
+              color: "var(--text-3)",
+            }}
+          >
+            {total > history.length
+              ? `Landed — history · ${history.length} of ${total}`
+              : "Landed — history"}
+          </div>
+          {history.map((m) => (
+            <Entry key={m.id} stone={m} selected={selected} onSelect={onSelect} landed />
+          ))}
         </div>
       ) : null}
     </div>

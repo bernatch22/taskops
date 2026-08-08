@@ -168,10 +168,25 @@ default), **Board** (`ui/src/pages/Board.tsx`) and **Worktrees**
 dossier drawer that opens over any of them (`ui/src/App.tsx`) and the header's
 milestone picker. Monitor is no longer a shell: its two-column layout, the
 shared pane chrome and all eight panes are built, one card per panel. The Event
-stream keeps an honest empty state because it has no verb behind it — the pane
-is drawn to its full shape and says what is missing, which is the rule, not a
-gap. Nothing else exists — an "Attention" screen and an "Hours" tab were built
+stream — the last pane that had no verb behind it — is fed: `events` pages the
+log by keyset and the pane draws real rows, so an empty pane now means an empty
+log. Nothing else exists — an "Attention" screen and an "Hours" tab were built
 by mistake and deleted (Hours is Nova's Throughput panel, inside Monitor).
+
+**The board points at the code.** If the repo has an `origin`, every screen
+links out to the forge: a commit sha opens `…/commit/<sha>`, a card offers its
+PR-style diff (`…/compare/ms-…...tk-…`), and a chapter compares against the
+trunk. A commit event carries its `numstat`, so the dossier and the Event stream
+show `+/-` per file — a file git could not count is reported as a binary, never
+as a zero. Branches reach `origin` by best-effort pushes at the three moments
+that already exist (done, integrate, land): a failed push changes nothing about
+the board action that triggered it. The host is a value, not a code path —
+GitHub, GitLab and friends differ only by a row of URL shapes.
+
+**With no `origin`, nothing pushes, nothing links, and nothing degrades.** The
+switch for all of it is `git remote get-url origin`, never a local-vs-remote
+mode; a board without a remote renders exactly the screens it rendered before,
+with no dead anchors and no empty column reserved for one.
 
 The source is React + TypeScript under `ui/src`, with Nova's palette in
 `ui/src/theme/tokens.css` — the one file allowed to contain a literal colour.

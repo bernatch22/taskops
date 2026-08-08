@@ -166,6 +166,10 @@ KINDS: dict[str, Kind] = {
     "commit": Kind(False, ("sha", "subject")),
     "merged": Kind(False, ("into", "sha")),
     "milestone": Kind(True, ("op",)),
+    # A fact about the REPO, not about any card: `task` is PROJECT and the fold
+    # keeps the newest per `op`. Same shape as `milestone` on purpose — an `op`
+    # is how a family of board-level facts grows without a new kind each time.
+    "project": Kind(True, ("op",)),
     # Review is derived from the thread, exactly like a pending mention: both
     # kinds are history-only, and `core/review.py` folds them into a Standing.
     "submitted": Kind(False, ("note",)),  # the worker says it is finished
