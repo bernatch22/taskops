@@ -174,7 +174,10 @@ def test_the_pass_through_shapes_still_make_valid_v2_events() -> None:
 
 
 def test_created_drops_v1_reviewer_and_lands_in_the_real_milestone() -> None:
-    lines = lines_of("defect1-milestone.jsonl", "shapes-one-per-kind.jsonl")
+    # created-with-reviewer.jsonl: 2 of the 25 real created events that carry
+    # the v1-only `reviewer` column — the shapes fixture's created does not
+    lines = lines_of("defect1-milestone.jsonl", "shapes-one-per-kind.jsonl", "created-with-reviewer.jsonl")
+    assert any("reviewer" in (v1.get("body") or {}) for v1 in lines)
     ctx = migrate_v1.prepare(lines)
     counts: collections.Counter[str] = collections.Counter()
     cards = [
