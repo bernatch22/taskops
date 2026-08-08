@@ -202,7 +202,15 @@ export interface ChapterProps {
   /** `board.milestone` — `null` when no milestone is open AND when several are:
    *  the server refuses to guess between chapters. The pane needs the count to
    *  tell those two apart, because "no milestone is open" is a false statement
-   *  on a board with two. */
+   *  on a board with two.
+   *
+   *  The pane reads `title`, `goal`, `rules`, `criteria` and `branch`. It is the
+   *  ONLY place a chapter's `criteria` is drawn in the whole dashboard
+   *  (tk-77dc9c): the field existed in `core/types.py` and had no TypeScript
+   *  transcription at all, so widening the slice past `Milestone` — say, to the
+   *  three fields Nova draws — would have hidden the drift instead of catching
+   *  it. The narrow-slice rule above applies to the PAYLOAD, not to a stored
+   *  row that already is one thing. */
   milestone: Milestone | null;
   /** `board.milestones.length` — how many chapters are open. */
   chapters: number;
