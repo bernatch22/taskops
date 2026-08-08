@@ -43,16 +43,19 @@ import { PaneButton } from "../components/monitor/Pane";
 import {
   TREE_DIR,
   type Tone,
-  type WorktreeDiffProps,
   type WorktreeRow,
   type WorktreesProps,
 } from "../components/monitor/panels";
+/* The second surface, in its own file. Re-exported here because this page is
+ * what renders it and the smoke harness reaches for it through this module. */
+import { WorktreeDiff } from "./WorktreeDiff";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
 import { ownerOf, shortActor } from "../format";
 import { Ext, compareUrl, hasRepo } from "../links";
 import type { BoardRow, Milestone } from "../types";
 
 export type { WorktreesProps };
+export { WorktreeDiff };
 
 /** WHO carries a tree, from the row the table already has.
  *
@@ -259,44 +262,6 @@ const notes: React.CSSProperties = {
   gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))",
   gap: "12px",
 };
-
-/** THE SECOND SURFACE — a PLACEHOLDER, and only that.
- *
- *  This card is the seam: it declares `WorktreeDiffProps`, wires the view state
- *  and proves the click lands here instead of in the card drawer. What the page
- *  DRAWS — the header, the file list, the patches through `links.tsx::cascade` —
- *  is tk-43d78d, which replaces this body against the interface above and
- *  changes nothing else.
- *
- *  It names the branch because that is the one fact a placeholder can be held to:
- *  the row that was clicked is the page that opened. */
-export function WorktreeDiff({ row, onBack }: WorktreeDiffProps): React.JSX.Element {
-  return (
-    <div style={page} data-testid="worktree-diff" data-branch={row.id}>
-      <div style={head}>
-        <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 500, letterSpacing: "-0.035em" }}>
-          {row.id}
-        </h2>
-        <button
-          type="button"
-          data-testid="worktree-diff-back"
-          onClick={onBack}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            fontSize: "12.5px",
-            color: "var(--accent)",
-          }}
-        >
-          ← Worktrees
-        </button>
-      </div>
-      <div style={{ ...shell, padding: "22px 20px", fontSize: "12.5px", color: "var(--text-3)" }}>
-        The diff for {row.id} is drawn here.
-      </div>
-    </div>
-  );
-}
 
 export function Worktrees({
   groups,
