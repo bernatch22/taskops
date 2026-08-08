@@ -643,6 +643,20 @@ files that answer it:
   (`EventStreamPane` beside the pure `EventStream`, `ui/src/useEvents.ts`). It
   opens no second socket — the board payload's identity is its change signal,
   so a frame on the one feed resets it to page one.
+  **Chapter in focus** carries the pane-level version of the same "an honest
+  empty state, never an apology" rule (`components/monitor/Chapter.tsx`):
+  `verbs/_facts.py::in_scope` returns `None` for SEVERAL open chapters as well
+  as for none — it refuses to guess between them, and that refusal stays — but
+  the pane used to read the refusal as a fault and drew a paragraph telling the
+  reader to land or drop one, saying nothing about either. It now LISTS every
+  open chapter, one foldable row each (a real `<button>` with `aria-expanded`),
+  the first expanded, the body identical to the single-chapter pane's because it
+  IS that component. An accordion and not tabs: choosing a chapter is the header
+  picker's job, and a second control that selected would be a second source of
+  one fact with the unchosen entry hidden. Each row's `focus` therefore calls the
+  picker's OWN setter (`App.tsx::setMilestone`, threaded down) — a door, not a
+  copy. Landed chapters are not listed; per-chapter counts are folded from
+  `board.groups` and are drawn nowhere if no row names a chapter.
 * **Board** — the nine groups of `docs/design.md` §4, as the board reports them.
 * **Worktrees** — an INDEX OF PULL REQUESTS (`ui/src/pages/Worktrees.tsx`): one
   tile per inhabited directory, which is idea 2 made visible, in two 50/50

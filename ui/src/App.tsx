@@ -181,7 +181,15 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           </div>
         ) : board ? (
           tab === "monitor" ? (
-            <Monitor board={board} openCard={openCard} now={Date.now() / 1000} client={client} />
+            <Monitor
+              board={board}
+              openCard={openCard}
+              now={Date.now() / 1000}
+              client={client}
+              /* The SAME setter the header picker gets, not a second one: the
+                 Chapter pane's `focus` action and the pill are one state. */
+              onFocusChapter={setMilestone}
+            />
           ) : tab === "worktrees" ? (
             /* No base is passed down: `board.milestone` is the chapter IN FOCUS
                and is `null` under "All milestones", which made every tree ask
