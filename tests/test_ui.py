@@ -81,9 +81,19 @@ PANES = (
 #: built before any panel had content. Each of these is a `data-testid` that
 #: exists in exactly one component written by this wave, and none of the five
 #: is in the bundle this chapter-close rebuilt over.
+#:
+#: `worktree-commits` was a fifth marker here and is deliberately NOT: the
+#: worktrees-as-pull-requests chapter rebuilt that view as two columns of tiles
+#: and the per-branch commit CELL does not exist any more (it drew an em dash —
+#: `WorktreeRow.commits` has never had a source). A marker for a deleted element
+#: would fail the next rebuild and say nothing about the bundle. What it did for
+#: this list — one string per card of the wave — the four below still do. The
+#: worktrees-as-pull-requests chapter owes this file a row of its OWN
+#: (`worktree-column`, `worktree-block`, `worktree-chapter`), and that row lands
+#: with the rebuild that puts those strings in the bundle — added here before
+#: the bundle exists it would only be red.
 VIEWS = (
     "worktrees",  # the third tab (pages/Worktrees.tsx)
-    "worktree-commits",  # its per-branch commit cell
     "milestone-menu",  # the header's picker, open (chrome/MilestonePicker.tsx)
     "chapter-criteria",  # the chapter's criteria list (monitor/Chapter.tsx)
     "standing",  # Live leases' three-figure empty state
