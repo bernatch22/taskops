@@ -174,8 +174,10 @@ Two shapes, and the grammar is strict:
 | `dev:<name>` | orchestrator (human) | `dev:berna` |
 | `agent:<dev>/<name>` | worker (AI) | `agent:berna/w1` |
 
-A worker's name is a **slot**, not a person: `w1` is free again once its card
-closes. Names are lowercase `[a-z0-9._-]`, 1–40 chars.
+A worker's name is bound to the **run** of a card, not to a person and not to a
+slot: `w1` today is not `w1` yesterday, and an agent with no card is history,
+never "free" — there is no roster and no capacity anywhere in this system
+(`ARCHITECTURE.md` §11). Names are lowercase `[a-z0-9._-]`, 1–40 chars.
 
 ### 3.4 Lease — the live claim
 
@@ -212,7 +214,8 @@ Every card has a complete, ordered, never-truncated history. An event:
 }
 ```
 
-Eleven kinds, each with its own `body`:
+Thirteen kinds (`core/types.py::KINDS` is the registry), each with its own
+`body`:
 
 | kind | body | reads as |
 |---|---|---|
@@ -225,6 +228,7 @@ Eleven kinds, each with its own `body`:
 | `commit` | `{sha, subject, files, branch}` | a real git commit landed on it |
 | `merged` | `{into, sha}` | integrated into the milestone branch |
 | `milestone` | `{op, …}` | chapter-level fact |
+| `project` | `{op, …}` | a board-level fact about the REPO (`op=remote`: where it lives on the web), on `task: "project"` |
 | `submitted` | `{note}` | the worker handed the card in for review |
 | `reviewed` | `{verdict, note}` | a verdict: `pass` or `changes`, with the reviewer's words |
 
@@ -238,7 +242,7 @@ it knows about it.
 
 ---
 
-## 4. The board — nine groups, ordered by the move each one needs
+## 4. The board — nine groups, ordered by the move each one needs (plus `done`)
 
 The board's whole organising principle: **cards are grouped by what should
 happen to them next**, not by status. The order below is the order of urgency.
@@ -254,6 +258,10 @@ happen to them next**, not by status. The order below is the order of urgency.
 | `doing` | somebody holds it right now | nothing; this is healthy |
 | `reviewing` | a verifier is on it right now | nothing; this is healthy |
 | `blocked` | waiting on a dependency | close the blocker |
+
+The payload carries a tenth key, `done`, LAST and deliberately not a move: it is
+the only place finished, already-integrated work is visible at all — capped and
+newest-first, because a chapter is bounded and a board is not (`verbs/pulse.py`).
 
 `review` sits above `stalled` because finished work nobody is checking is more
 blocking than work nobody has started; `changes` right after it, because the
@@ -396,12 +404,20 @@ What the board can show about that tree **right now, with no new machinery**:
 * the planner's intended edit surface (`files`) versus what the commits actually
   touched — a genuinely useful comparison that needs no new data at all.
 
-What is **not** available today: file contents, diffs, and live `git status`.
-That is not an oversight — the board server stores events, not repositories, and
-the actual working directories live on the agents' own machines. Anything
-showing file contents or a diff needs a deliberate new mechanism (the client
-sending snapshots up, or the interface running against a board on the same
-machine as the repo). Worth designing for, worth not assuming.
+**Diffs ARE available, and by the second of those two routes** (decided
+2026-08-08, `ARCHITECTURE.md` §16): the board still stores events and never a
+repository, but the window is served by `taskops ui`, which by construction
+stands inside a checkout — so it mounts a read-only `/git` door
+(`http/gitdoor.py`, `gitwork/diff.py`) and the dossier draws **Files changed**
+for the card as a PR, plus each commit's own patch. Nothing is stored: the door
+derives on demand. A host that is NOT in a checkout (`taskops serve`) mounts no
+such door and says so, and the UI falls back down one declared cascade
+(`ui/src/links.tsx::cascade`): numstat from the event → the patch → the forge
+link → one honest sentence.
+
+Still **not** available: live `git status`, and any ref this reader's own clone
+has not fetched — that one is answered in words, naming the `git fetch origin
+tk-<id>` that brings it, never fetched on the reader's behalf.
 
 ---
 
@@ -438,11 +454,12 @@ Milestone  id · title · goal · rules[] · criteria[] · reviews · branch · 
        ├─ derived:  state (ready|doing|blocked|stalled|review|reviewing|changes|done|dropped)
        ├─ Lease     actor · branch · acquired · expires        ← makes it `doing`
        ├─ Event[]   created|edited|claimed|released|status|comment|commit|merged
-       │             |submitted|reviewed
+       │             |milestone|project|submitted|reviewed
        ├─ Worktree  branch tk-<id> · directory .taskops/trees/tk-<id>
        └─ relations blockers · blocks · subtasks · epic · collisions
 
 Actors     dev:<name> orchestrator (human)  ·  agent:<dev>/<name> worker (AI)
-Board      9 groups: merge · mentions · review · changes · stalled · take · doing · reviewing · blocked
+Board      9 move groups: merge · mentions · review · changes · stalled · take · doing · reviewing · blocked
+           + done (history, capped, newest first — not a move)
 Pulse      milestone · goal · counts{doing,ready,blocked,stalled,done} · mentions
 ```

@@ -323,8 +323,8 @@ place:
 
 | § | the sketch | what is built | why |
 |---|---|---|---|
-| 9a.5 | "queries `pending_mentions` through the normal `Board`" | a dedicated read verb, `mentions` (`verbs/pulse.py`), and the hook calls THAT | every other read opens with `live.renew(actor)` — right for a call the actor typed (the call IS the heartbeat), fatal here: a hook firing on the orchestrator's `Read` of a dead worker's worktree would renew that worker's lease and its card would never reach STALLED. A stored `doing` grown back by the side door. The verb renews nothing, and a test pins it |
-| 9a.3 | the hook resolves the card's holder itself | the hook sends `for_task=tk-X` and the SERVER resolves the addressee (`pulse._addressee`) | the holder lives in `live.sqlite`, which a remote client cannot read — resolving client-side would have worked only for local boards, silently |
+| 9a.5 | "queries `pending_mentions` through the normal `Board`" | a dedicated read verb, `mentions` (`verbs/_mentions.py`), and the hook calls THAT | every other read opens with `live.renew(actor)` — right for a call the actor typed (the call IS the heartbeat), fatal here: a hook firing on the orchestrator's `Read` of a dead worker's worktree would renew that worker's lease and its card would never reach STALLED. A stored `doing` grown back by the side door. The verb renews nothing, and a test pins it |
+| 9a.3 | the hook resolves the card's holder itself | the hook sends `for_task=tk-X` and the SERVER resolves the addressee (`_mentions._addressee`) | the holder lives in `live.sqlite`, which a remote client cannot read — resolving client-side would have worked only for local boards, silently |
 | 9a.4 | throttle, then ask | the stamp is written BEFORE the board is asked | a board that is down would otherwise be retried once per keystroke: the throttle exists precisely for the case where asking is expensive |
 
 The stamp file is `.taskops/hook-seen.json` (gitignored by `install.IGNORED`),
