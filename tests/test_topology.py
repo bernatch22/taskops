@@ -1735,6 +1735,38 @@ def test_an_anonymous_write_is_refused_naming_how_a_key_gets_registered(
         assert "taskops join" in message and "invite" in message, (verb, message)
 
 
+def test_each_of_the_two_write_walls_stands_on_its_own() -> None:
+    """A MUTATION FINDING, and the reason this test exists at all.
+
+    Anonymous is refused a write TWICE: `http/auth.py::anonymous` never hands
+    out a credential for a write, and `verbs/__init__.py::call` refuses the role
+    at the registry. Over a socket that is defence in depth — and it made both
+    guards look pinned while neither was. Deleting the capability check left the
+    suite green (the registry caught it); declaring a write verb with WATCHERS
+    left it green too (the HTTP door caught it). So each is asserted HERE,
+    against its own function, where the other cannot answer for it.
+    """
+    from taskops import verbs
+    from taskops.http import auth
+    from taskops.core.types import ANON
+
+    # Wall one: the capability. A public board, a write, no credential.
+    with pytest.raises(Refused, match="needs a registered key"):
+        auth.anonymous(public=True, need="write")
+    assert auth.anonymous(public=True, need="read").subject == ANON
+    assert auth.ANONYMOUS.caps == frozenset({"read"})  # it could not carry a write
+
+    # Wall two: the role, with no HTTP anywhere near it. `Stores` is never even
+    # opened — `call` refuses on the registry before it touches one.
+    stores: Any = None
+    for verb, spec in verbs.REGISTRY.items():
+        if spec.kind != "write":
+            continue
+        with pytest.raises(Refused, match="needs a registered key") as refused:
+            verbs.call(stores, verb, ANON, {})
+        assert "taskops join" in str(refused.value), verb
+
+
 def test_an_anonymous_write_is_refused_on_a_private_board_too(server: BoardServer) -> None:
     """No credential is no credential: the private board says what it has always
     said, and the sentence a reader learned to recognise does not move."""
@@ -1865,6 +1897,44 @@ def test_join_with_no_invite_against_a_public_board_is_a_read_only_window(
     assert [row["title"] for row in watching.call("board", {})["groups"]["take"]][0] == "invoice model"
     with pytest.raises(Refused, match="needs a registered key"):
         watching.call("update", {"task": "tk-000000", "status": "done"})
+
+
+def test_taskops_ui_serves_a_watchers_window_with_no_credential_anywhere(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 5's second half — and a MUTATION FINDING: making `Mounts.public`
+    answer False for a bearer-less window left the suite green, because nothing
+    exercised the door `taskops ui` actually opens for a viewer.
+
+    Built through `serve()` exactly as `cli/serving.py::ui` builds it for a
+    read-only join: an `Upstream` with NO token. The window lets its own browser
+    read and forwards the call bare; the REMOTE is what decides, which is why the
+    write comes back in the server's own words and not this process's."""
+    from tests.test_git import repo
+    from taskops.http.upstream import Upstream
+
+    plan(client(server, BERNA))
+    publish(server, owner)
+    httpd = serve(
+        tmp_path / "watcher", "127.0.0.1", 0,
+        repo=repo(tmp_path, "watcher-clone"),
+        upstream=Upstream(url_of(server), ""),  # the viewer's join: no bearer at all
+    )
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_address[1]}/board"
+        before = _fingerprint(server)
+        status, body = _get_post(base, "", {"verb": "board"})
+        assert status == 200, body
+        assert [c["title"] for c in body["data"]["groups"]["take"]] == ["invoice model", "CSV parser"]
+
+        status, body = _get_post(base, "", {"verb": "update", "args": {"task": "tk-000000"}})
+        assert status == 409 and "needs a registered key" in body["error"]["message"]
+        assert _fingerprint(server) == before  # the whole window session, zero bytes
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 def test_a_private_board_refuses_a_join_with_no_invite_exactly_as_today(
