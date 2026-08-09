@@ -1406,3 +1406,64 @@ status split and dependency edge was reconciled against that board's own v1
 never against an exit code. agenda, notas and probe carry no milestone because
 their v1 logs never created one; their `context` entries are named drops, not
 silent ones.
+
+**The host has an OWNER since 2026-08-09** (tk-c37061) — the FOURTH run of
+README's *Upgrading a host*, and the only one whose go the human wrote out
+loud, because it is the run that gives the box an identity. Same three steps,
+same order:
+
+* **the rollback first, and PROVEN**: the wheel installed by tk-df8e64 was
+  copied to `~/taskops-v2-app/rollback/taskops-2.0.0a0-20260809-preupgrade-c37061.whl`
+  and checked module by module — all **80** `taskops/*.py` in it md5-identical
+  to site-packages, still carrying `taskops/http/static.py`, and NOT carrying
+  `taskops/http/login.py`, which is what makes it the pre-chapter wheel rather
+  than a leftover in `/tmp`;
+* **the artefact checked before it left the laptop**: the wheel carries
+  `taskops/http/login.py`, `admin.py` and `ingest.py`, and its
+  `taskops/ui/app.js` still carries `chapter-goal` and `markdown-inline`;
+* `pip install --force-reinstall` out of `/tmp/tk-c37061/`, `pm2 restart
+  taskops-v2`.
+
+Verified by CONTENT at the real domain: axion's `/rpc` answers seq **847** with
+its 4252-character goal **to its legacy bearer token** (the fleet rule, proven
+against the fleet and not a fresh keyed board), the other three refuse that
+same token with the board-scoped message they refused it with before,
+`/<board>/ui/` still answers **410**, and the four `events.jsonl` are
+md5-identical before and after.
+
+Then the one command that is meant to run over ssh, and **the last ssh this
+host needs**: `taskops server init --root /home/berna/taskops-v2-server --key
+<berna.pub> --owner berna`, the public half of this laptop's `~/.ssh/id_ed25519`
+shipped over. `/login` had been answering the pre-init refusal that names that
+exact command; with no restart at all it began answering a nonce. Everything
+since has gone over the API from the laptop with the key DISCOVERED, no `--key`
+and no URL: `taskops remote add https://taskops.bernardocastro.dev` · `board
+create` (→ `taskops-v2`) · `board ls` (which is also the four legacy boards'
+content check: agenda 35, axion 847, notas 48, probe 17) · `board visibility
+public`.
+
+**`taskops-v2` is the first PUBLIC board**, and the stranger was simulated
+rather than argued: a fresh `git clone` of this repo into a scratch directory
+with a fake `HOME` — no invite, no token, no ssh key to discover — ran `taskops
+join https://taskops.bernardocastro.dev/taskops-v2` and got a read-only join
+(`board.json` with `"readonly": true`, a `remote.json` holding an empty token,
+nothing minted, no key registered). Anonymously over HTTP the board answers
+`visibility: "public"`; an anonymous `plan` is refused with the invite-and-key
+sentence; a private board (`axion`) still refuses anonymous read entirely. And
+the rule held where it is invisible: after the whole anonymous crawl the board
+is still at **seq 2** and `team` still lists only `dev:berna`, so not one read
+by `anon` renewed a lease or wrote a presence row.
+
+What is NOT done here is **this repo's own promotion**. `taskops board push`
+was run bare and refused, correctly and by construction:
+
+    somebody is holding a lease on this board right now (agent:berna/k9 on
+    tk-c37061) — a push moves a history, and a card being worked on is a fact
+    that has not finished happening.
+
+The card that ships the promotion is the last card of the chapter, so its own
+lease is the thing in the way — the push therefore belongs AFTER that card
+closes, run by the orchestrator, and step 5 of `cli/push.py` (`board.json` +
+`remote.json`, `.taskops/board/` archived) is what commits the URL a cloner
+then gets for free. Nothing was forced and no config was flipped: `board.json`
+was still `{}` after the refusal.

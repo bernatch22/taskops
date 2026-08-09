@@ -478,7 +478,11 @@ Three things that are not optional, in this order:
    a stale render. **And prove it is the pre-upgrade one**, because a leftover
    `/tmp` wheel is a guess: compare every `taskops/*.py` inside it against
    site-packages by md5, and check it still carries whatever the upgrade
-   withdraws (for the 410 upgrade: `taskops/http/static.py`).
+   withdraws (for the 410 upgrade: `taskops/http/static.py`). An upgrade that
+   withdraws nothing — most of them — proves the same thing from the other
+   side: the rollback wheel must NOT carry what the new one ADDS (for the
+   owner upgrade: `taskops/http/login.py`). Either way the claim is that the
+   wheel you kept is the one from *before*, not merely a wheel.
 2. **The wheel must carry the built dashboard** — the check above, on the
    artefact, before it goes anywhere. Not for the host, which serves no
    dashboard and never reads those bytes: it is the SAME wheel a teammate

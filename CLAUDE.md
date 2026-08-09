@@ -43,11 +43,21 @@ pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
 boards and the boards' `events.jsonl` are md5-identical across the upgrade.
-**The server-has-an-owner chapter is NOT on production yet**: it is green in
-the trunk and the human's go was never written, so the box still runs the
-tree tk-df8e64 shipped. Upgrading it is README's *Upgrading a host*, third
-run, plus this chapter's own proof — sign in with the owner key from the
-laptop, one admin verb end to end, legacy tokens still answering.
+**The server-has-an-owner chapter IS on production since 2026-08-09**
+(tk-c37061, README's *Upgrading a host*, FOURTH run — ARCHITECTURE.md §17):
+the host has an OWNER (`berna`, the laptop's `~/.ssh/id_ed25519.pub`),
+`/login` answers a challenge, and the whole admin surface runs from the
+laptop over the API with the DISCOVERED key — `board create`, `board ls`,
+`board visibility` all bare. `server init` was the last ssh this host will
+need. The four legacy boards are untouched and their bearer tokens still
+answer (`board ls` reads agenda 35 · axion 847 · notas 48 · probe 17 — the
+same counts as before the upgrade, and the four `events.jsonl` are
+md5-identical across it). A fifth board, **`taskops-v2`, is PUBLIC**: anyone
+may read it with no credential and every write is refused naming the way in.
+**This repo's own history is not on it yet** — `taskops board push` refuses
+while a lease is live and the closing card held one, by construction; the
+push, and committing the `.taskops/board.json` that gives a cloner the URL
+for free, are the one step left of the promotion.
 
 ## The four ideas everything rests on
 
