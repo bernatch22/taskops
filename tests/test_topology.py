@@ -2509,6 +2509,103 @@ def test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered(
     assert not list((repo / ".taskops").glob("board.local-*"))
 
 
+def configured(server: BoardServer, name: str, op: str, body: dict[str, Any]) -> None:
+    """A project fact written straight onto the target's log — how the host's own
+    verbs leave one behind, without a second client having to exist here."""
+    from taskops.core.event import make
+    from taskops.core.types import PROJECT
+
+    stores = server.mounts.stores(name)
+    stores.write([make(PROJECT, "dev:berna", "project", {"op": op, "value": body}, 1786000000.0)])
+
+
+def worked_on(server: BoardServer, name: str) -> None:
+    """ONE card event on the target — the fact that narrows the exemption back
+    to the birth certificate and puts the two-histories wall back up."""
+    from taskops.core.event import make
+
+    stores = server.mounts.stores(name)
+    stores.write([make("tk-0ffff0", "dev:berna", "created", {"card": {"title": "theirs"}}, 1786000000.0)])
+
+
+def test_a_board_configured_before_it_was_filled_still_accepts_its_push(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """THE REPRODUCTION (2026-08-09, promoting this repo's own board): `board
+    create` then `board visibility public` and only LATER `board push`. The
+    target held two project events, one of them not `created`, and the
+    two-histories wall refused a push with nothing to merge. Configuration of a
+    container is not a history of work — and the visibility SURVIVES the push,
+    which is the user-visible point: the board you made public stays public."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    admin(server, owner, "board.visibility", {"board": "promoted", "visibility": "public"})
+    monkeypatch.chdir(repo)
+
+    assert pushed(f"{host_of(server)}/promoted", keyed) == 0
+
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    lines = theirs.strip().splitlines()
+    assert [json.loads(line)["body"]["op"] for line in lines[:2]] == ["created", "visibility"]
+    assert [json.loads(line)["id"] for line in lines[2:]] == [json.loads(line)["id"] for line in mine]
+    assert server.mounts.stores("promoted").head() == len(mine) + 2
+
+    from taskops.verbs.project import visibility
+
+    assert visibility(server.mounts.stores("promoted")) == "public"
+
+
+def test_a_recorded_remote_is_configuration_too_and_does_not_block_the_push(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """The other member of the closed list: `project op=remote` is what
+    `gitwork/remote.py` records about the CONTAINER, and it has no order to
+    invent against the work either."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    configured(server, "promoted", "remote", {"url": "git@github.com:x/y.git"})
+    monkeypatch.chdir(repo)
+
+    assert pushed(f"{host_of(server)}/promoted", keyed) == 0
+    assert server.mounts.stores("promoted").head() == len(mine) + 2
+
+
+def test_one_card_event_on_the_target_puts_the_wall_straight_back_up(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """The wall does not move an inch. Created AND configured is exempt; created,
+    configured and WORKED ON is two histories, and the refusal is today's."""
+    repo = local_repo(tmp_path)
+    admin(server, owner, "board.create", {"name": "promoted"})
+    admin(server, owner, "board.visibility", {"board": "promoted", "visibility": "public"})
+    worked_on(server, "promoted")
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(TaskopsError) as refused:
+        pushed(f"{host_of(server)}/promoted", keyed)
+    # The visibility event stops being exempt as well — TWO events it never observed.
+    assert "already holds 2 event(s) this push never observed" in str(refused.value)
+    assert "no force flag" in str(refused.value)
+    assert "url" not in read_config(repo)
+
+
+def test_a_project_op_outside_the_closed_list_still_refuses_the_push(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """The list is CLOSED on purpose: an op added later must argue its way into
+    `_configuration` rather than fall in because it happens to be board-level."""
+    repo = local_repo(tmp_path)
+    admin(server, owner, "board.create", {"name": "promoted"})
+    configured(server, "promoted", "archived", {"why": "a fact this list never judged"})
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(TaskopsError) as refused:
+        pushed(f"{host_of(server)}/promoted", keyed)
+    assert "already holds 1 event(s) this push never observed" in str(refused.value)
+
+
 def test_a_board_somebody_is_working_on_is_not_pushed(
     server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
 ) -> None:
