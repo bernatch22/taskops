@@ -1095,6 +1095,11 @@ class TestOneCallIntegratesTheChapter:
         out = call(dev, repo, "taskops_merge", done=True)
 
         assert "3 of 3 integrated" in out
+        integration = trees.integration_tree(repo, stone_branch)
+        subjects = run.must("log", "--format=%s", cwd=integration).splitlines()
+        assert [s for s in subjects if s.startswith("merge tk-")] == [  # the GROUP's order
+            f"merge {card}" for card in reversed(ids)
+        ]
         assert not dev.call("board", {})["groups"]["merge"]  # the group emptied itself
 
     def test_a_failure_stops_the_batch_there_and_a_re_run_continues(
