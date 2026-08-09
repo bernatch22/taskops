@@ -7,23 +7,23 @@
     taskops revoke --key <SHA256:…> | --invite <id>
 
 Every one of these is a signed call to the server's own `/rpc` (`http/admin.py`),
-authenticated by the session an ssh key mints. Before them, all four were an ssh
-session on the box — which is the anomaly this chapter exists to kill.
+authenticated by the session an ssh key mints — `--key` on any of them signs in
+on the spot, which is what makes the FIRST one runnable (`signed_in`). Before
+them, all four were an ssh session on the box: the anomaly this chapter kills.
 
 **THE BREAK-GLASS PATH SURVIVES**: `--root <dir>` runs the same act against the
 files directly, on the machine that holds them, and it is what you use when the
-server is down or the owner's key is lost. It is not deprecated and must not be
-removed — a system whose only door is its own API cannot be repaired when that
-API is what broke. Those two acts live in `cli/admin.py`, beside `server init`,
-because that module is the one that runs ON the box; this one is the laptop.
+server is down or the owner's key is lost. Not deprecated, never to be removed —
+a system whose only door is its own API cannot be repaired when that API is what
+broke. Those two acts live in `cli/admin.py`, beside `server init`: that module
+runs ON the box, this one is the laptop.
 
 **No host alias registry, and that is a decision.** `taskops host add prod …`
-was the obvious next command and it is deliberately NOT here: the host is
-already recorded, per project, by the join that registered the key —
-`remote.json`'s `login.host` (`session.py`). So inside a checkout no host
-argument is needed at all, and outside one a URL is a paste. An alias table
-would be a THIRD place a server's address lives, next to `board.json` and
-`remote.json`, and the first of the three to drift.
+was the obvious next command and it is deliberately NOT here: the host is already
+recorded, per project, by the join that registered the key — `remote.json`'s
+`login.host` (`session.py`). So inside a checkout no host argument is needed, and
+outside one a URL is a paste. An alias table would be a THIRD place a server's
+address lives, next to `board.json` and `remote.json`, and the first to drift.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ import argparse
 from typing import Any
 from pathlib import Path
 
-from . import admin
+from . import admin, commands
 from .. import _wire, _clock, session
 from .._json import as_object
 from ..board import find_root, read_config
@@ -51,17 +51,17 @@ def board(args: argparse.Namespace) -> int:
     it, so the whole address is one argument and nothing has to be repeated."""
     action, target = str(args.action), str(args.target)
     if action == "visibility":
-        return _visibility(target, str(getattr(args, "visibility", "") or ""))
+        return _visibility(args, target, str(getattr(args, "visibility", "") or ""))
     if action == "create":
         host, name = address(target)
         if not name:
             raise TaskopsError("taskops board create <host>/<name> — which board?")
-        made = call(host, "board.create", {"name": name})
+        made = call(host, "board.create", {"name": name}, signed_in(host, args))
         print(f"{made['board']} created on {host} by {made['created_by']}")
         print(f"  invite somebody: taskops invite <who> --board {made['board']}")
         return 0
     host, _ = address(target)
-    answer = call(host, "board.list", {})
+    answer = call(host, "board.list", {}, signed_in(host, args))
     rows: list[dict[str, Any]] = [as_object(row) for row in answer.get("boards", [])]
     print(f"{host} — {len(rows)} board(s), as {answer.get('role', '?')}")
     for row in rows:
@@ -69,7 +69,7 @@ def board(args: argparse.Namespace) -> int:
     return 0
 
 
-def _visibility(target: str, wanted: str) -> int:
+def _visibility(args: argparse.Namespace, target: str, wanted: str) -> int:
     """`taskops board visibility <host>/<name> public|private` — the owner's call.
 
     It prints what public MEANS, every time, and not only the word it set: the
@@ -85,7 +85,7 @@ def _visibility(target: str, wanted: str) -> int:
         raise TaskopsError(
             f"taskops board visibility {target} public|private — a board is one or the other"
         )
-    out = call(host, "board.visibility", {"board": name, "visibility": wanted})
+    out = call(host, "board.visibility", {"board": name, "visibility": wanted}, signed_in(host, args))
     moved = "already" if not out.get("recorded") else "now"
     print(f"{out['board']} on {host} is {moved} {out['visibility']} (by {out.get('by', '?')})")
     if out["visibility"] == "public":
@@ -105,7 +105,7 @@ def invite(args: argparse.Namespace) -> int:
     if not name:
         raise TaskopsError("which board? taskops invite <who> --board <name>")
     host, _ = address(str(args.host))
-    made = call(host, "invite.mint", {"who": who, "board": name})
+    made = call(host, "invite.mint", {"who": who, "board": name}, signed_in(host, args))
     print(f"one-time invite for {who} (id {made['id']}, 7 days):")
     print(f"  taskops join \"{host}/{made['board']}?invite={made['token']}\" --key ~/.ssh/id_ed25519")
     return 0
@@ -120,7 +120,7 @@ def revoke(args: argparse.Namespace) -> int:
         return admin.on_box_revoke(Path(str(args.root)).expanduser(), key, ident)
     host, _ = address(str(args.host))
     verb = "key.revoke" if key else "invite.revoke"
-    gone = call(host, verb, {"key": key} if key else {"invite": ident})
+    gone = call(host, verb, {"key": key} if key else {"invite": ident}, signed_in(host, args, "sign_key"))
     print(f"revoked {key or ident} ({gone.get('principal') or gone.get('subject')}) on {host}")
     return 0
 
@@ -128,26 +128,40 @@ def revoke(args: argparse.Namespace) -> int:
 # ── the transport ───────────────────────────────────────────────────────────
 
 
-def call(host: str, verb: str, args: dict[str, Any], token: str = "") -> dict[str, Any]:
+def signed_in(host: str, args: argparse.Namespace, flag: str = "key") -> str:
+    """The token these five verbs call with, and the whole of `--key` / `--as`.
+
+    `session.establish` is what makes this keyed rather than a token somebody
+    pasted: an expired session is re-minted by signing the host's challenge, and
+    a checkout that never joined signs in from the key on the command line —
+    the ONLY way the owner's first ever command runs from the laptop (the
+    deadlock is in `session.NO_SESSION`). Nobody is asked for anything, and the
+    `login` block is cached once the HOST accepted the signature, so the second
+    command needs no flags. `flag` names where the key path is: on `revoke`,
+    `--key` is already a FINGERPRINT — the thing being revoked — so there the
+    one that signs you in is `--sign-key`."""
+    root = find_root(Path.cwd())
+    config = read_config(root)
+    token, door = session.establish(
+        root, host, config, _flag(args, flag), _flag(args, "principal"), commands.principal()
+    )
+    if door and session.is_own_host(config, host):
+        session.cache_login(root, door)
+    return token
+
+
+def _flag(args: argparse.Namespace, name: str) -> str:
+    """A flag whose verb may not have declared it."""
+    return str(getattr(args, name, "") or "")
+
+
+def call(host: str, verb: str, args: dict[str, Any], token: str) -> dict[str, Any]:
     """One server-scope call, through the same decoder every other client uses.
 
-    `session.fresh` is what makes this keyed rather than a token somebody pasted:
-    an expired session is re-minted here by signing the host's challenge, and
-    nobody is asked for anything (`session.py`). The envelope and the refusal
-    come back through `_wire.post`, so the server's own sentence survives.
-
-    `token=` is for the ONE caller that already has one and must not look for a
-    second: `push.py` signs in with the key it was handed, in a repo whose
-    config still points at nothing, so asking the config here would find the
-    empty local board and refuse a push that is perfectly authorised."""
-    if not token:
-        root = find_root(Path.cwd())
-        token = session.fresh(root, read_config(root), _clock.now())
-    if not token:
-        raise TaskopsError(
-            f"no session for {host} — join it with a key first: "
-            "taskops join <url>?invite=… --key ~/.ssh/id_ed25519"
-        )
+    The envelope and the refusal come back through `_wire.post`, so the server's
+    own sentence survives. The token is always the CALLER's — `push.py` signs in
+    with the key it was handed, in a repo whose config still points at nothing,
+    so looking one up here would find the empty local board."""
     return _wire.post(
         f"{host.rstrip('/')}/rpc",
         {"verb": verb, "args": args},

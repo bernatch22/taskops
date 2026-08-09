@@ -29,6 +29,8 @@ from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
 
+AS_HELP = "the principal that key belongs to (default: $USER)"
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="taskops", description=__doc__)
@@ -66,12 +68,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=["", "public", "private"],
         help="visibility: public means ANONYMOUS READ — writing always needs a key",
     )
-    boards.add_argument("--key", default="", help="push: the ssh key that signs you in")
+    boards.add_argument("--key", default="", help="the ssh key that signs you in")
     boards.add_argument("--invite", default="", help="push: register that key first")
+    boards.add_argument("--as", dest="principal", default="", help=AS_HELP)
     invite = sub.add_parser("invite", help="a single-use link for a teammate")
     invite.add_argument("who", nargs="?", default="")
     invite.add_argument("--board", default="")
     invite.add_argument("--host", default="", help="the server (default: the one you joined)")
+    invite.add_argument("--key", default="", help="the ssh key that signs you in")
+    invite.add_argument("--as", dest="principal", default="", help=AS_HELP)
     # `--root` is BREAK-GLASS and so it has no default: passing it is the deliberate
     # choice to work on the files, on the box, when the API is what broke.
     invite.add_argument("--root", default="", help="break-glass: the boards dir, ON the host")
@@ -79,6 +84,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     kill.add_argument("--key", default="", help="a fingerprint: SHA256:…")
     kill.add_argument("--invite", default="", help="a credential id")
     kill.add_argument("--host", default="")
+    # NOT `--key`: on this verb that word is already the fingerprint being revoked.
+    kill.add_argument("--sign-key", default="", help="the ssh key that signs YOU in")
+    kill.add_argument("--as", dest="principal", default="", help=AS_HELP)
     kill.add_argument("--root", default="", help="break-glass: the boards dir, ON the host")
     tidy = sub.add_parser("tidy", help="remove integrated worktrees and branches")
     tidy.add_argument("--trunk", default="")
