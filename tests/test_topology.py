@@ -1028,9 +1028,16 @@ def _argv(command: str, **fields: str) -> Any:
 
 @pytest.fixture()
 def virgin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A checkout that has never joined anything, and cwd inside it."""
+    """A checkout that has never joined anything, and cwd inside it.
+
+    HOME is a fixture directory with an EMPTY `.ssh`, and that is not tidiness:
+    since key discovery exists, a bare verb reads `~/.ssh/id_ed25519`, so a test
+    left on the real HOME would sign the runner's own key against a throwaway
+    server and pass or fail by whose laptop it ran on."""
     project = tmp_path / "laptop"
     (project / ".git").mkdir(parents=True)
+    (tmp_path / "home" / ".ssh").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("TASKOPS_ACTOR", BERNA)
     monkeypatch.chdir(project)
     return project
@@ -1048,7 +1055,14 @@ def test_the_owner_creates_the_first_board_from_the_laptop_with_only_a_key(
     assert (server.mounts.root / "e2e").is_dir()
 
     saved = json.loads((virgin / ".taskops" / "remote.json").read_text())
-    assert saved["login"] == {"host": host_of(server), "principal": "berna", "key": str(keyed)}
+    # `board` joins the block with the name this very command chose: the address
+    # is one fact, and the bare `board push` after it must not re-guess it.
+    assert saved["login"] == {
+        "host": host_of(server),
+        "principal": "berna",
+        "key": str(keyed),
+        "board": "e2e",
+    }
     assert saved["token"]
 
     capsys.readouterr()
@@ -1108,6 +1122,139 @@ def test_with_no_session_and_no_key_the_refusal_names_both_doors(
     refusal = capsys.readouterr().err
     assert "--key ~/.ssh/id_ed25519" in refusal and "--as <principal>" in refusal
     assert "taskops join" in refusal
+    # …and, since discovery, WHAT it tried: an empty `~/.ssh` is the other reason
+    # this refusal appears, and a refusal that hides its search is unactionable.
+    for name in ("id_ed25519", "id_ecdsa", "id_rsa"):
+        assert f"~/.ssh/{name}" in refusal, name
+
+
+# ── the git ergonomics: host once, key discovered, verbs bare ───────────────
+#
+# «esto debería ser como git — taskops remote add / board create / board push,
+# pero sin --key». Git asks for neither a URL nor an identity file on every
+# push, and both reasons are copied: the address is recorded per checkout, the
+# key is discovered the way ssh discovers one. These go through `main()` and the
+# real argv for the same reason the block above does — the WIRING is what three
+# cards of this chapter got caught on.
+
+
+@pytest.fixture()
+def discoverable(server: BoardServer, tmp_path: Path, virgin: Path) -> Path:
+    """The owner's key where SSH ITSELF would look, under the fixture HOME that
+    `virgin` installed — the runner's real ~/.ssh is never read or written."""
+    from taskops.cli import admin
+
+    key = keygen(tmp_path / "home" / ".ssh" / "id_ed25519")
+    admin.init(tmp_path / "boards", f"{key}.pub", "berna")
+    return key
+
+
+def test_remote_add_then_the_verbs_go_bare(
+    server: BoardServer, discoverable: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criteria 1 and 3. Two commands, and the second carries a name only because
+    this test wants a name it did not pick: no URL and no --key on either."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create", "bare"]) == 0
+    assert (server.mounts.root / "bare").is_dir()
+
+    login = json.loads((virgin / ".taskops" / "remote.json").read_text())["login"]
+    assert login == {
+        "host": host_of(server),
+        "principal": "berna",
+        "key": str(discoverable),  # DISCOVERED, and recorded as if it had been --key
+        "board": "bare",
+    }
+    capsys.readouterr()
+    assert main(["board", "ls"]) == 0 and "bare" in capsys.readouterr().out
+    assert main(["board", "visibility", "public"]) == 0  # bare: the recorded name
+
+
+def test_a_board_nobody_named_takes_the_directory_name(
+    server: BoardServer, discoverable: Path, virgin: Path
+) -> None:
+    """Criterion 3, `gh repo create`'s convention: the checkout is `laptop/`."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create"]) == 0
+    assert (server.mounts.root / virgin.name).is_dir()
+
+
+def test_the_name_board_create_chose_is_the_one_bare_push_uses(
+    server: BoardServer, discoverable: Path, virgin: Path
+) -> None:
+    """The amendment's own scenario. A custom name followed by a bare `push` used
+    to re-derive the DIRECTORY name, find no such board and refuse — making the
+    human repeat a name they had already chosen. The recorded name beats it."""
+    from taskops.cli import main
+    from taskops.cli.remote import default_board
+
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create", "minombre"]) == 0
+    assert default_board(virgin) == "minombre" != virgin.name
+
+    seed_local_board(virgin)
+    assert main(["board", "push"]) == 0
+    assert json.loads((virgin / ".taskops" / "board.json").read_text())["url"].endswith("/minombre")
+
+
+def test_discovery_tries_sshs_identity_files_in_sshs_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Criterion 2. `ssh_config(5)`'s order, and `--key` is the override (`ssh -i`).
+    Files, not keys: what exists is what is tried, so this needs no crypto."""
+    from taskops import session
+
+    home = tmp_path / "elsewhere"
+    (home / ".ssh").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    assert session.discover_key() is None
+
+    (home / ".ssh" / "id_rsa").write_text("x")
+    assert session.discover_key() == home / ".ssh" / "id_rsa"
+    (home / ".ssh" / "id_ecdsa").write_text("x")
+    assert session.discover_key() == home / ".ssh" / "id_ecdsa"
+    (home / ".ssh" / "id_ed25519").write_text("x")
+    assert session.discover_key() == home / ".ssh" / "id_ed25519"
+
+
+def test_remote_add_refuses_a_second_different_host_without_replace(
+    server: BoardServer, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 5. Where a board lives is a decision, not a typo — and every bare
+    verb afterwards points at whatever is recorded, so a silent overwrite is how
+    a push lands on the wrong server. `taskops remote` prints what is recorded."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", host_of(server) + "/"]) == 0  # a trailing slash is not a host
+    capsys.readouterr()
+    assert main(["remote"]) == 0 and host_of(server) in capsys.readouterr().out
+
+    assert main(["remote", "add", "https://otro.example.com"]) == 1
+    assert "--replace" in capsys.readouterr().err
+    assert main(["remote", "add", host_of(server)]) == 0  # the SAME host is not a conflict
+    assert main(["remote", "add", "https://otro.example.com", "--replace"]) == 0
+    assert main(["remote", "add", "no-scheme.example.com", "--replace"]) == 1
+    assert "not a host URL" in capsys.readouterr().err
+
+
+def test_the_explicit_host_slash_name_form_is_unchanged_by_any_of_it(
+    server: BoardServer, discoverable: Path, virgin: Path
+) -> None:
+    """Criterion 4. The URL form is git's other spelling and it wins over both the
+    recorded host and the recorded name — that is what makes it explicit."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", "https://otro.example.com"]) == 0
+    assert main(["board", "create", f"{host_of(server)}/explicito", "--key", str(discoverable)]) == 0
+    assert (server.mounts.root / "explicito").is_dir()
+    # and the checkout still operates the host IT recorded: an explicit call is
+    # one call, never a re-pointing of the clone (`session.is_own_host`).
+    login = json.loads((virgin / ".taskops" / "remote.json").read_text())["login"]
+    assert login == {"host": "https://otro.example.com"}
 
 
 def test_operating_another_host_leaves_this_checkouts_own_session_alone(
@@ -2217,11 +2364,17 @@ def test_two_conflicting_verdicts_leave_the_board_coherent(server: BoardServer) 
 
 def local_repo(tmp_path: Path, name: str = "clone") -> Path:
     """A repo with a LOCAL board in it — what `taskops init` leaves behind."""
-    from taskops.board import LocalBoard
-
     repo = tmp_path / name
     (repo / ".taskops").mkdir(parents=True)
     (repo / ".taskops" / "board.json").write_text("{}\n", encoding="utf-8")
+    return seed_local_board(repo)
+
+
+def seed_local_board(repo: Path) -> Path:
+    """The events part of it, alone — a checkout that already exists (the bare
+    `board push` test) needs a history in it without a second `.taskops`."""
+    from taskops.board import LocalBoard
+
     board = LocalBoard(repo / ".taskops" / "board", BERNA)
     try:
         cards = plan(board)  # type: ignore[arg-type]  # a LocalBoard is a Board

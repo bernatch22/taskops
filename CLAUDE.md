@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **97 Python files / ~11.000 lines under `src/taskops`**, plus the
+~340 files) as **98 Python files / ~11.200 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**397 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 396+1; see below), ruff +
+**403 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 402+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -173,8 +173,9 @@ presence.
    http/    server mounts watcher rpc admin scoped grants ingest auth login
             feed static gitdoor upstream
 6  cli/     commands (init join hook) · watch (the viewer's join) · serving
-            (serve ui) · operate (board invite revoke) · push (board push)
-            · admin (server init + break-glass) · claude wording
+            (serve ui) · remote (remote add: which host, which board) · operate
+            (board invite revoke) · push (board push) · admin (server init +
+            break-glass) · claude wording
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
@@ -215,8 +216,14 @@ uv run python -m taskops.cli serve --root <dir>
 uv run python -m taskops.cli join "http://host/<board>?token=…"
 ```
 
-The CLI is like git: `init join serve tidy ui` + the six that OPERATE a host
-over its own API, keyed (`board create` · `board ls` · `board push` ·
+The CLI is like git — and since 2026-08-09 that is literal: `taskops remote add
+<url>` records the host once per checkout (`cli/remote.py`, git's origin in
+`.taskops/remote.json`), `board create` records the name it chose, and the key
+is DISCOVERED as ssh discovers one (`session.py::discover_key`: id_ed25519,
+id_ecdsa, id_rsa), so `board create` / `board push` / `board visibility` / `ls`
+/ `invite` all run BARE — no URL, no `--key`, no repeated name. `--key` is the
+override (`ssh -i`) and `<host>/<name>` the explicit URL form. `init join serve
+tidy ui` + the six that OPERATE a host over its own API, keyed (`board create` · `board ls` · `board push` ·
 `board visibility` · `invite` · `revoke` — `http/admin.py` and
 `http/grants.py`, and `--root <dir>` is the break-glass path that still runs
 them against the files ON the box, now in `cli/admin.py`; `--key`, plus `--as`

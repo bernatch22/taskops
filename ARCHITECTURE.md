@@ -240,7 +240,7 @@ flowchart TB
         httpsrv["http/server, mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
+        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
     end
 
     L1 --> L0
@@ -410,14 +410,42 @@ acts that used to be an ssh session on the box are now signed calls from the
 laptop:
 
 ```sh
-taskops board create <host>/<name>      owner only — THE way a board comes to exist
+taskops remote add <url>                the host, once per checkout — git's origin
+taskops board create [<name>]           owner only — THE way a board comes to exist
 taskops board ls [<host>]               owner: all of them; member: their own
-taskops board push <host>/<name>        a LOCAL board becomes the hosted one
+taskops board push [<name>]             a LOCAL board becomes the hosted one
+taskops board visibility [<name>] public|private     owner only
 taskops invite <who> --board <name>     owner only — prints the join line
 taskops revoke --key SHA256:… | --invite <id>
 ```
 
-**`--key ~/.ssh/id_ed25519` is accepted by every one of them, and that is what
+**And they read like git: host once, key discovered, verbs bare**
+(`cli/remote.py`, 2026-08-09 — the human's words: «esto debería ser como git …
+pero sin --key»). Git asks for neither a URL nor an identity file on every push,
+and both reasons are copied rather than invented. The ADDRESS is recorded per
+checkout — `taskops remote add <url>` writes `login.host` into
+`.taskops/remote.json`, the uncommitted per-machine file a `join --key` already
+cached the same field into, which is git's `.git/config` and NOT the host alias
+registry §11 refuses: what was refused is a TABLE, many names and global; this
+is ONE host, in the file that already holds it, acquired by an explicit command
+instead of only as a side effect of a join the owner on day one cannot run.
+`board create` records the NAME it chose in the same block, so the bare `board
+push` after `board create minombre` does not re-derive the directory and make
+the human repeat a name — precedence is explicit argument > recorded name >
+directory (`gh repo create`'s convention). The block is merged FIELD BY FIELD
+(`_locate.py::write_remote`) because three writers own three of its fields and a
+whole-block update would let a sign-in silently drop the recorded name. The KEY
+is DISCOVERED the way ssh discovers one — `~/.ssh/id_ed25519`, `id_ecdsa`,
+`id_rsa`, ssh's own files in ssh's own order, in ONE function
+(`session.py::discover_key`) that `establish` consumes so no verb guesses for
+itself; `--key` stays as the override, exactly as `ssh -i` is, and the refusal
+when none exists lists what it tried. Recording an address is not signing in:
+`remote add` mints nothing and touches no key. Creating a board on a DIFFERENT
+host from inside a joined checkout records nothing here — the same rule
+`session.is_own_host` holds the token to, and the suite caught the first version
+without it.
+
+**A key is accepted by every one of them, and that is what
 makes the FIRST one runnable** (`session.py::establish`, 2026-08-09 — found by
 running the chapter end to end on a clean host, not by a test). Without it the
 owner of a new box was deadlocked: `operate.call` only knew the session a

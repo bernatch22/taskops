@@ -1,5 +1,7 @@
-"""`taskops board push <host>/<name>` — this repo's local board becomes the hosted one.
+"""`taskops board push` — this repo's local board becomes the hosted one.
 
+    taskops board push                     the recorded host, the recorded name, the
+                                           discovered key (`cli/remote.py`)
     taskops board push https://taskops.example.com/facturador --key ~/.ssh/id_ed25519
 
 What this replaces is a README paragraph that said "scp the events.jsonl to the
@@ -33,7 +35,7 @@ from typing import Any
 from pathlib import Path
 from collections import Counter
 
-from . import operate
+from . import remote, operate
 from .. import _clock, session
 from .._json import as_object
 from ..board import DIR, find_root, read_config
@@ -62,8 +64,8 @@ STILL_WORKING = (
     "Wait for them, or let the lease lapse, then push."
 )
 NO_KEY = (
-    "no session for {host} — say which key signs you in: "
-    "taskops board push <host>/<name> --key ~/.ssh/id_ed25519 "
+    "no session for {host}, and no ssh key to make one with — tried {tried}. Say which "
+    "key signs you in: taskops board push <host>/<name> --key <path> "
     "(add --invite <token> the first time, so the host registers it)"
 )
 MISMATCH = (
@@ -75,9 +77,7 @@ MISMATCH = (
 
 def run(args: argparse.Namespace) -> int:
     """The five steps, in the one order that is safe to fail in."""
-    host, name = operate.address(str(args.target))
-    if not name:
-        raise TaskopsError("taskops board push <host>/<name> — which board?")
+    host, name = remote.named(str(args.target))
     root = find_root(Path.cwd())
     config = read_config(root)
     if config.get("url"):

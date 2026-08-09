@@ -20,10 +20,12 @@ runs ON the box, this one is the laptop.
 
 **No host alias registry, and that is a decision.** `taskops host add prod …`
 was the obvious next command and it is deliberately NOT here: the host is already
-recorded, per project, by the join that registered the key — `remote.json`'s
-`login.host` (`session.py`). So inside a checkout no host argument is needed, and
-outside one a URL is a paste. An alias table would be a THIRD place a server's
-address lives, next to `board.json` and `remote.json`, and the first to drift.
+recorded, per project, in `remote.json`'s `login.host` — by the join that
+registered the key, or by `taskops remote add <url>`, the same fact acquired
+earlier and NOT the table that was refused. WHICH host and WHICH board a bare
+call is about is `cli/remote.py`'s question, and it answers it once for all of
+these verbs; `--key` has the same story (`session.discover_key`). The explicit
+`<host>/<name>` spelling is unchanged — it is the URL form, as in git.
 """
 
 from __future__ import annotations
@@ -36,14 +38,10 @@ from . import admin, commands
 from .. import _wire, _clock, session
 from .._json import as_object
 from ..board import find_root, read_config
+from .remote import named, address, record_board
 from .._errors import TaskopsError
 
 TIMEOUT = 20.0
-
-NO_HOST = (
-    "which host? Pass --host https://<host>, or run this in a checkout joined to one "
-    "with `taskops join <url> --key ~/.ssh/id_ed25519` (the join is what records it)"
-)
 
 
 def board(args: argparse.Namespace) -> int:
@@ -53,10 +51,9 @@ def board(args: argparse.Namespace) -> int:
     if action == "visibility":
         return _visibility(args, target, str(getattr(args, "visibility", "") or ""))
     if action == "create":
-        host, name = address(target)
-        if not name:
-            raise TaskopsError("taskops board create <host>/<name> — which board?")
+        host, name = named(target)
         made = call(host, "board.create", {"name": name}, signed_in(host, args))
+        record_board(find_root(Path.cwd()), host, str(made["board"]))
         print(f"{made['board']} created on {host} by {made['created_by']}")
         print(f"  invite somebody: taskops invite <who> --board {made['board']}")
         return 0
@@ -78,9 +75,12 @@ def _visibility(args: argparse.Namespace, target: str, wanted: str) -> int:
     saying the value was already that — an unchanged fact writes no event
     (`verbs/project.py`), so re-running this is free and says so.
     """
-    host, name = address(target)
-    if not name:
-        raise TaskopsError("taskops board visibility <host>/<name> public|private — which board?")
+    if not wanted and target in ("public", "private"):
+        # `taskops board visibility public` — bare, so the ONE argument is the
+        # visibility and not the board. argparse fills its positionals left to
+        # right and cannot know that; the two vocabularies do not overlap.
+        target, wanted = "", target
+    host, name = named(target)
     if wanted not in ("public", "private"):
         raise TaskopsError(
             f"taskops board visibility {target} public|private — a board is one or the other"
@@ -168,28 +168,6 @@ def call(host: str, verb: str, args: dict[str, Any], token: str) -> dict[str, An
         {"Authorization": f"Bearer {token}"},
         TIMEOUT,
     )
-
-
-def address(target: str) -> tuple[str, str]:
-    """`<host>/<name>`, `<host>`, `<name>` or nothing — into (host, name).
-
-    A URL is recognised by its scheme and never by counting slashes: `https://h/b`
-    has three and `h/b` has one, and guessing between them is how a board called
-    `https:` gets created."""
-    text = target.strip().rstrip("/")
-    if "://" in text:
-        base, _, name = text.rpartition("/")
-        return (text, "") if base.endswith(":/") else (base, name)
-    host = _joined_host()
-    if not host:
-        raise TaskopsError(NO_HOST)
-    return host, text
-
-
-def _joined_host() -> str:
-    """The server this checkout is joined to, from the block `join --key` wrote."""
-    root = find_root(Path.cwd())
-    return str(as_object(read_config(root).get("login")).get("host", ""))
 
 
 def _ago(row: dict[str, Any]) -> str:

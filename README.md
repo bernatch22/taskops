@@ -48,13 +48,36 @@ That is the last shell on the box. Everything after it runs **from your laptop**
 signed by the key `server init` registered — creating the board included:
 
 ```sh
-# the FIRST one names the key, because this laptop has never joined anything yet
-taskops board create https://host:8787/my-project --key ~/.ssh/id_ed25519
-taskops board ls                                     # from here on, no flags: the session is cached
-taskops board push https://host:8787/my-project      # a LOCAL board becomes this one
+cd your-project
+taskops remote add https://host:8787   # once per checkout — git's `remote add origin`
+taskops board create                   # the directory's name, or `board create my-project`
+taskops board push                     # a LOCAL board becomes that one
+```
+
+**No URL and no `--key` after the first line**, on purpose: the host is recorded
+in this checkout (`.taskops/remote.json`, uncommitted — git keeps origin in
+`.git/config` for the same reason), the board's name is recorded by `board
+create` so you never type it twice, and the key is **discovered** the way ssh
+discovers one — `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa`, `~/.ssh/id_rsa`, in that
+order. `--key <path>` is the override, exactly as `ssh -i` is, and `--as
+<principal>` names who the key belongs to when it is not your unix user. The
+explicit `taskops board create https://host:8787/my-project` keeps working
+unchanged — it is the URL form, as in git.
+
+**After a verified push there is exactly ONE source.** The config flips only
+once the server has the history and the counts agree, and then `.taskops/board/`
+is RENAMED to `.taskops/board.local-<date>`: a dead archive, which no process
+reads or writes again. Nothing syncs, nothing is kept in step — this repo now
+reads the hosted board and only that. Delete the archive whenever you like; it
+is there so the bytes that were pushed are still findable the day after.
+
+The rest of the admin surface, from the same laptop and with the same session:
+
+```sh
+taskops board ls                                     # every board on the host
 taskops invite ana --board my-project                # one-time link, 7 days
 taskops revoke --invite <id>                         # or --key SHA256:… to retire a key
-taskops board visibility https://host:8787/my-project public   # anyone may WATCH it
+taskops board visibility public                      # anyone may WATCH it
 ```
 
 **A board is PRIVATE until its owner publishes it**, and public is GitHub's
@@ -82,12 +105,13 @@ Delete the file and it comes back. Without `--key` the join is the one it always
 was and the token is a standing one, which is why every board joined before this
 keeps working untouched.
 
-**`--key` works on every one of these verbs, and it is what makes the FIRST one
+**A key works on every one of these verbs, and it is what makes the FIRST one
 runnable.** A fresh laptop has no session, and the owner of a brand-new host has
 nothing to join — the invite `join` wants is minted by `taskops invite`, for a
-board nobody has created yet. So `--key ~/.ssh/id_ed25519` signs you in on the
-spot, `--as <principal>` names who that key belongs to when it is not your unix
-user, and the login is remembered: the second command needs no flags at all.
+board nobody has created yet. So the discovered key (or `--key <path>`) signs
+you in on the spot, `--as <principal>` names who that key belongs to when it is
+not your unix user, and the login is remembered: the second command needs no
+flags at all. The refusal when there is no key anywhere lists what it tried.
 (On `revoke` the signing key is `--sign-key`, because there `--key` is already
 the fingerprint being retired.)
 
@@ -96,9 +120,11 @@ That same session is what `board create`, `board ls`, `board visibility`,
 (`src/taskops/http/admin.py`), authorized by the principal's role — owner,
 member, anon — and not by a board credential, which says nothing about the host.
 A member calling an owner verb is refused naming the role that may. The host is
-taken from `remote.json` when you are in a joined checkout, so no address is
-repeated and there is deliberately **no host-alias registry**: an alias table
-would be a third place a server's address lives, and the first to drift.
+taken from `remote.json` — written by `taskops remote add` or by the join that
+registered the key — so no address is repeated, and there is deliberately **no
+host-alias registry**: a TABLE of names would be a third place a server's
+address lives, and the first to drift. One host per checkout, in the file that
+already holds it, is git's answer and it is this one.
 
 **Break-glass, and it is not deprecated.** `--root <dir>` runs `invite` and
 `revoke` against the files, on the machine that holds them — for the day the
@@ -360,11 +386,12 @@ are where trust enters, because authorising a remote bootstrap would need a
 credential the host does not have yet. Every operation after them is a `taskops`
 command run from wherever you are, signed by the key `server init` registered —
 **the first board included**, which is the one case that used to send you back
-to the box: a laptop with no session names its key and signs in on the spot:
+to the box: a laptop with no session signs in with the key ssh itself would use:
 
 ```sh
-# the first command from a laptop that never joined carries the key that signs it in
-taskops board create https://<host>/<name> --key ~/.ssh/id_ed25519    # and now a board exists
+# a laptop that never joined records the host once, then everything goes bare
+taskops remote add https://<host>             # git's `remote add origin`, per checkout
+taskops board create <name>                   # and now a board exists (key: discovered)
 taskops board ls https://<host>               # every board here, with size and last activity
 taskops invite <who> --board <name>           # the join line, minted by the host that honours it
 taskops revoke --invite <id> | --key SHA256:… # take one back (--sign-key signs YOU in)
@@ -376,8 +403,9 @@ taskops board visibility <host>/<name> public|private   # owner only — public 
 four above plus a fifth — never a file copy:
 
 ```sh
-taskops board create https://<host>/<name> --key ~/.ssh/id_ed25519   # an empty board, on the host
-taskops board push https://<host>/<name> --key ~/.ssh/id_ed25519
+taskops remote add https://<host>   # once, if this checkout has no remote yet
+taskops board create               # an empty board, on the host — its name is remembered
+taskops board push                 # the history crosses, verified, and the config flips
 ```
 
 Run from the repo whose `.taskops/board/` holds the history. The order is the
