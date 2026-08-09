@@ -2411,7 +2411,7 @@ def test_a_local_board_becomes_the_hosted_one_and_the_config_flips_last(
     # The history is THERE, event for event, and the ids are the same ids. Line
     # one is the board's own birth certificate — `board.create` records WHO made
     # it, so the target of a correct push is never literally empty, and the whole
-    # local log lands AFTER it (`http/ingest.py::_birth`).
+    # local log lands AFTER it (`http/ingest.py::_configuration`).
     theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
     lines = theirs.strip().splitlines()
     assert json.loads(lines[0])["body"]["op"] == "created"
