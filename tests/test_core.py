@@ -528,6 +528,23 @@ def test_a_review_tie_on_the_timestamp_keeps_arrival_order() -> None:
     assert stood.verdict == "changes"
 
 
+def test_a_minted_secret_can_always_be_passed_to_the_cli() -> None:
+    """A token that starts with `-` is one argparse reads as an option, so
+    `--invite -Ab9…` refuses with "expected one argument" — on a value the user
+    cannot influence. `token_urlsafe` draws from an alphabet containing `-`, so
+    about one in 64 was unusable until it was rerolled at the mint.
+
+    2000 draws puts the odds of a false green here around 1e-14; the entropy is
+    checked too, because stripping the hyphen instead of rerolling would pass
+    the first assertion while quietly shortening the secret."""
+    from taskops._ids import new_token
+
+    minted = [new_token() for _ in range(2000)]
+    assert not [t for t in minted if t.startswith("-")]
+    assert len(set(minted)) == len(minted)  # no collisions, so nothing is truncated
+    assert all(len(t) == len(minted[0]) for t in minted)
+
+
 def test_review_states_follow_the_documented_precedence() -> None:
     """The documented precedence of the review states, every row, in order.
 

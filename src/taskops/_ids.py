@@ -51,5 +51,21 @@ def digest(canonical: str) -> str:
 
 
 def new_token() -> str:
-    """A credential or invite secret. Only the sha256 of this is ever stored."""
-    return secrets.token_urlsafe(24)
+    """A credential or invite secret. Only the sha256 of this is ever stored.
+
+    **Never starts with `-`.** `token_urlsafe` draws from `A-Za-z0-9_-`, so
+    roughly one token in 64 begins with a hyphen — and every one of those is a
+    token that cannot be passed to the CLI: `taskops join x --invite -Ab9…`
+    makes argparse read the secret as an option and refuse with *expected one
+    argument*. It fails for the user who was unlucky, on a value they cannot
+    influence, with a message about the flag rather than the value.
+
+    Fixed HERE, at the one place a secret is minted, rather than by quoting or
+    `--invite=` at each call site: the token also travels in URLs, briefs and
+    shell snippets nobody controls. Found by CI — the runner drew a leading
+    hyphen on the first run this suite ever had off this laptop.
+
+    Rerolling (not stripping) keeps every token the full 24 bytes of entropy."""
+    while (token := secrets.token_urlsafe(24)).startswith("-"):
+        pass
+    return token
