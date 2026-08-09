@@ -8,7 +8,9 @@ do I talk to its board* needs the stores, the verbs and the network.
 Two files make a project, and only `init`/`join` ever write them:
 
     .taskops/board.json    {"url": …}   committed — the address travels with the code
-    .taskops/remote.json   {"token": …} 0600, gitignored — the secret never does
+    .taskops/remote.json   {"token", "token_expires", "login"}   0600, gitignored —
+                           the secret never travels, and with a `login` block the
+                           token is a SESSION this machine re-mints (`session.py`)
 """
 
 from __future__ import annotations

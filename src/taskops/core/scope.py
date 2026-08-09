@@ -58,6 +58,10 @@ OPERATIONS: dict[str, Operation] = {
         KEYED,
         f"writing to a board needs a registered key (owner or member) — {ENROL}",
     ),
+    "session.mint": Operation(
+        KEYED,
+        f"signing in needs a key this host knows (owner or member) — {ENROL}",
+    ),
     "key.add": Operation(
         OWNER,
         "registering a key is the server OWNER's move",

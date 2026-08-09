@@ -1,4 +1,4 @@
-"""The ONE way this package runs git.
+"""The ONE way this package runs a command — git, and `ssh-keygen` beside it.
 
 `(code, out, err)` — always all three, and **stderr is never discarded**. In v1
 one of four different subprocess wrappers returned `None` on any failure, so
@@ -6,7 +6,10 @@ one of four different subprocess wrappers returned `None` on any failure, so
 this ran", in an infinite retry loop. Whatever git says, the caller gets.
 
 This is also the only module in the package allowed to import `subprocess`,
-and `tests/test_architecture.py` enforces it.
+and `tests/test_architecture.py` enforces it. That rule is why `tool()` exists:
+the ssh login (`gitwork/sig.py`) shells out to OpenSSH's own `ssh-keygen -Y
+sign/verify`, and a second wrapper next to it is exactly the shape that cost v1
+its swallowed stderr. One runner, one place that knows a process can be absent.
 """
 
 from __future__ import annotations
@@ -30,22 +33,43 @@ class Result(NamedTuple):
         return self.code == 0
 
 
-def git(*args: str, cwd: Path | None = None, timeout: float = TIMEOUT) -> Result:
-    """Run git and come back with everything it said. Never raises on exit code."""
+def tool(
+    name: str,
+    *args: str,
+    stdin: str = "",
+    cwd: Path | None = None,
+    timeout: float = TIMEOUT,
+    missing: str = "",
+) -> Result:
+    """Run a program and come back with everything it said. Never raises on exit
+    code — an absent binary DOES raise, because that is a machine to fix and not
+    an answer to interpret, and `missing=` is the sentence that names the fix."""
     try:
         done = subprocess.run(  # noqa: S603 — arguments are ours, never a shell string
-            ["git", *args],
+            [name, *args],
             cwd=str(cwd) if cwd else None,
+            input=stdin,
             capture_output=True,
             text=True,
             timeout=timeout,
             check=False,
         )
     except FileNotFoundError as err:
-        raise TaskopsError("git is not on PATH — taskops needs it for worktrees") from err
+        raise TaskopsError(missing or f"{name} is not on PATH") from err
     except subprocess.TimeoutExpired as err:
-        raise TaskopsError(f"git {' '.join(args)} took longer than {timeout}s") from err
+        raise TaskopsError(f"{name} {' '.join(args)} took longer than {timeout}s") from err
     return Result(done.returncode, done.stdout.strip(), done.stderr.strip())
+
+
+def git(*args: str, cwd: Path | None = None, timeout: float = TIMEOUT) -> Result:
+    """Run git and come back with everything it said. Never raises on exit code."""
+    return tool(
+        "git",
+        *args,
+        cwd=cwd,
+        timeout=timeout,
+        missing="git is not on PATH — taskops needs it for worktrees",
+    )
 
 
 def must(*args: str, cwd: Path | None = None, why: str = "") -> str:

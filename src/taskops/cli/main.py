@@ -34,6 +34,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     join = sub.add_parser("join", help="join a board and install the hooks")
     join.add_argument("url", help="https://host/<board>?token=… or ?invite=…")
     join.add_argument("--as", dest="actor", default="", help="dev:<name> (default: $USER)")
+    join.add_argument(
+        "--key",
+        default="",
+        help="the ssh key that signs you in (its .pub is registered): ~/.ssh/id_ed25519",
+    )
     server = sub.add_parser("serve", help="host boards")
     server.add_argument("--root", default="~/taskops-boards")
     server.add_argument("--host", default="127.0.0.1")
@@ -68,7 +73,7 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "init":
         return commands.init(here)
     if args.command == "join":
-        return commands.join(here, str(args.url), str(args.actor))
+        return commands.join(here, str(args.url), str(args.actor), str(args.key))
     if args.command == "serve":
         return serving.serve(args)
     if args.command == "server":

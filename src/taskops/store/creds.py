@@ -37,6 +37,11 @@ CREATE INDEX IF NOT EXISTS credentials_hash ON credentials(hash);
 
 WEEK = 7 * 24 * 3600.0
 
+EXPIRED = "that credential expired"
+"""The refusal a run-out session wears, named so the CLIENT can recognise its own
+case (`board.py`) instead of matching a sentence that would drift the first time
+somebody reworded it. The words after it stay a human's instruction."""
+
 
 class Credential(NamedTuple):
     id: str
@@ -98,7 +103,7 @@ class Credentials:
             if revoked:
                 raise Refused("that credential was revoked — ask for a new invite")
             if expires and float(expires) < now:
-                raise Refused("that credential expired — ask for a new invite")
+                raise Refused(f"{EXPIRED} — ask for a new invite")
             if str(scope) not in ("*", board):
                 raise Refused(f"that credential is not for board {board!r}")
             grants = frozenset(str(caps).split(","))
