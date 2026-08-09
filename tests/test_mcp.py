@@ -115,10 +115,10 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     # had to shrink to leave the panorama room. Contract, not wording, pinned.)
     for mention in ("✉", "answer on that card and it clears", "no mark-as-read"):
         assert mention in text
-    # docs/fan-out.md's D, delivered where planning happens rather than filed:
+    # The seam rule, delivered where planning happens rather than filed:
     # the seams land serialized BEFORE a fan-out, because a parallel worker
     # branches before they exist and its (correct) search finds nothing.
-    for seam in ("ONE serialized card", "search finds nothing", "docs/fan-out.md"):
+    for seam in ("ONE serialized card", "search finds nothing"):
         assert seam in text
     # …and its sibling (fan-out.md §11): a committed BUILD OUTPUT is rebuilt by
     # one card at the end, because N cards regenerating one artifact is N-1
@@ -595,7 +595,7 @@ def test_a_card_that_is_not_behind_takes_exactly_the_path_it_always_did(
 def test_a_milestones_criteria_travel_into_every_take_the_way_rules_do(
     repo: Path, boards: Any
 ) -> None:
-    """docs/fan-out.md §4: every card was green and the milestone was not,
+    """Every card was green and the milestone was not,
     because no worker ever saw what the WHOLE would be judged against. The
     chapter's criteria ride above the spec, next to its rules."""
     dev = boards(BERNA)
@@ -629,7 +629,7 @@ def test_landing_shows_the_chapters_criteria_and_the_human_answers_out_loud(
 ) -> None:
     """The gate SHOWS the criteria and refuses until the human says they hold —
     nothing is judged by the machine, nothing stored as status: the answer
-    travels in the call and lands in the `landed` event (docs/fan-out.md §8B)."""
+    travels in the call and lands in the `landed` event."""
 
     dev = boards(BERNA)
     out = dev.call(

@@ -1,5 +1,5 @@
 /* The seam every smoke section is written against — `monitor/panels.ts`'s move,
- * applied to the harness (docs/fan-out.md).
+ * applied to the harness.
  *
  * WHY THIS FILE EXISTS. The smoke list used to be ONE file that every UI card
  * APPENDED a section to, and in two days that cost four real incidents: a

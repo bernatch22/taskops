@@ -9,7 +9,7 @@
  *
  * So `Pane` is used WITHOUT `title` here — that is why the prop is optional.
  *
- * A milestone also carries `criteria` (docs/fan-out.md §10), and Nova has NO
+ * A milestone also carries `criteria`, and Nova has NO
  * slot for it: the design predates the field. tk-60334f raised it as a design
  * question and tk-77dc9c answered it — the field now reaches the browser
  * (`types.ts::Milestone.criteria`) and is drawn HERE, as a second numbered list

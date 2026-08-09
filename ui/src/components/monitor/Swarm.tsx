@@ -65,7 +65,7 @@
  *
  * A dashed edge means two cards DECLARED a path in common. `files` is typed
  * into `taskops_plan` by a human; the board never reads a diff and taskops never
- * parses source (`docs/fan-out.md` §10 declines to widen this on purpose). So
+ * parses source (widening this was declined on purpose). So
  * the dashed edge is, in the Edit surface pane's own words, "a warning, never a
  * lock" — that wording is reused verbatim rather than reworded, because two
  * spellings of one caveat is two things a reader has to reconcile.

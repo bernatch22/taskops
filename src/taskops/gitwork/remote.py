@@ -23,7 +23,7 @@ A non-GitHub host becomes a VALUE here, never a second code path.
 This file was born twice in one wave — two workers, each over the 200-line
 budget in a different module, each split the origin concern out under the
 obvious name, neither could see the other. The same-path collision made the
-merge refuse loudly (unlike the silent `ago()` twins docs/fan-out.md records),
+merge refuse loudly (unlike the silent `ago()` twins),
 and the halves were complementary, so the union IS the module. The lesson is
 the fan-out rule, third notch: a CONCEPT named by two specs is a seam, and a
 seam lands serialized first.

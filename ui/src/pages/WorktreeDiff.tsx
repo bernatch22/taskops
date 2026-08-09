@@ -36,7 +36,7 @@ import { Thread } from "../components/card/Thread";
  * (`components/monitor/panels.ts`) beside `WorktreeDiffProps`, and re-exported
  * here because this is the module that renders it. It spent one wave declared
  * in this file — panels.ts was held by another card and a concept two workers
- * touch in one file is the conflict `docs/fan-out.md` is about — and came back
+ * touch in one file is the conflict the last fan-out produced — and came back
  * at the chapter close, exactly as this comment promised it would. The seam
  * never changed. */
 import {

@@ -87,7 +87,7 @@ class RemoteBoard:
         self.token = token
         self.actor = actor
         # Per-board, not global: a caller that must not be kept waiting says so
-        # once, at open(). The delivery hook opens with 2s (MENTIONS.md §9a) —
+        # once, at open(). The delivery hook opens with 2s —
         # a hook that can hang a turn is worse than no hook.
         self.timeout = timeout
         # How to get another session when this one runs out, or None when the

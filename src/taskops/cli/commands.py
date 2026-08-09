@@ -147,7 +147,7 @@ def _wire(root: Path, who: str) -> None:
     install.install_hooks(root, sys.executable)
     install.write_gitignore(root)
     claudefiles.write_mcp(root, sys.executable, who)
-    claudefiles.write_claude_hooks(root, sys.executable)  # delivery only — MENTIONS.md §9
+    claudefiles.write_claude_hooks(root, sys.executable)  # delivery only
     remote.remember(open_board(root, who), root)
 
 

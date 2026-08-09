@@ -4,7 +4,7 @@
  * milestone that five workers share, and it exists because the last time a prop
  * contract was written as a COMMENT, three pages were built against a version of
  * it that had not been merged when they were written — every card closed green
- * and nothing fitted together (`docs/fan-out.md`). A declared interface is a
+ * and nothing fitted together. A declared interface is a
  * compile error in five worktrees at once; a comment is nothing.
  *
  * ── The rule these interfaces follow ──────────────────────────────────────
@@ -595,7 +595,7 @@ export interface SwarmNode {
  *  (`BoardRow.files`). It is the same fact the Edit surface pane states, in the
  *  same words: a warning, never a lock. `files` is what a card DECLARED, never
  *  what a worker actually edited — the board never parses source
- *  (`docs/fan-out.md`), so this edge can be silent while the tree is wrong and
+ *  so this edge can be silent while the tree is wrong and
  *  loud while nothing is. */
 export interface SwarmEdge {
   from: string;

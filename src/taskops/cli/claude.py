@@ -6,7 +6,7 @@ a commit and a Claude hook that stalls a turn are the same bug, and v1 shipped
 both.
 
 This is the one Claude hook this project has, added on 2026-08-06 by the person
-who wrote the rule against them (MENTIONS.md §9). The rule did not disappear, it
+who wrote the rule against them. The rule did not disappear, it
 NARROWED:
 
     a hook may DELIVER — it may never decide, never store, never write.

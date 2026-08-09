@@ -21,11 +21,11 @@
  *  1. **Only what a card DECLARED.** `files` is typed into `taskops_plan` by a
  *     human. A worker that edits a file nobody listed is invisible here — the
  *     board never reads a diff and taskops never parses source
- *     (`docs/fan-out.md` §10 declines to widen this on purpose).
+ *     (widening this was declined on purpose).
  *  2. **Exact path equality only.** `ui/src/format.ts` and `src/format.ts` are
  *     two different rows. So are the same file spelled relative and absolute.
  *  3. **The same CONCEPT in different files is not a collision at all.** This
- *     is the defect `docs/fan-out.md` is the post-mortem of: four workers wrote
+ *     is the defect the last fan-out produced: four workers wrote
  *     four `ago()`/`initials()` in four different paths, and this warning was
  *     CORRECTLY silent for every one of them. Zero collisions reported, and the
  *     merged tree was still wrong. A pane that implied it would have caught

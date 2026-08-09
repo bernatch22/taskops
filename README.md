@@ -15,7 +15,7 @@ agents working in parallel, with a human who decides.
   into the milestone branch. Nothing else.
 
 What exists and why: [ARCHITECTURE.md](ARCHITECTURE.md). How to work in this
-repo: [CLAUDE.md](CLAUDE.md). Mentions: [MENTIONS.md](MENTIONS.md).
+repo: [CLAUDE.md](CLAUDE.md).
 
 ## Quickstart
 
@@ -145,7 +145,7 @@ committed, it travels with the code) and, for `join`, `.taskops/remote.json`
 delivery hook that carries a pending `✉` mention into a working agent's very
 next tool call, and — to the orchestrator only — the `◆` groups it is sitting
 on, done-but-unmerged, handed-in-but-unchecked, owned-but-stalled
-([MENTIONS.md](MENTIONS.md) §9 and §9f; read-only, deletable, never decides).
+(read-only, deletable, never decides).
 **Restart your Claude Code session in that project after** — MCP
 servers load once, at session start, from `.mcp.json`; from then on
 `taskops_board` is a tool call, not a shell command.
@@ -302,8 +302,8 @@ resolve it by rebuilding, never by hand:
 cd ui && node build.mjs && git add ../src/taskops/ui && git commit --no-edit
 ```
 
-(`docs/fan-out.md` §11 — five parallel cards each rebuilding the bundle cost a
-milestone six merge round trips.)
+(Five parallel cards each rebuilding the bundle once cost a milestone six
+merge round trips.)
 
 `npm run check` is the closure and its four steps run: typecheck, build,
 `ui/smoke/run.mjs` (the headless harness — `react-dom/server`, no browser and
@@ -582,7 +582,7 @@ reader gets back next, whatever they call, and lists it on their
 itself the moment they write anything on that card, or when the card closes:
 "still unanswered" is derived from the thread on every read, like `doing` and
 `blocked`, so there is no `read` flag, no ack verb, and no hook checking for
-one. [MENTIONS.md](MENTIONS.md) is the design.
+one.
 
 ## Talking across teams
 

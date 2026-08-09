@@ -10,7 +10,7 @@ The wording is half the feature. This text is injected into a transcript that is
 doing something else, so each line is: **the count, what is wrong, and the exact
 call that clears it** — a reader mid-turn must be able to act without opening
 anything. A line that makes somebody go look is noise, and noise is how a hook
-gets deleted (MENTIONS.md §9).
+gets deleted.
 
 The three orchestrator lines come in the board's own ranking — merge, review,
 stalled (`verbs/pulse.py`'s docstring) — and MENTIONS sits between merge and

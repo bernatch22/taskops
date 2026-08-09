@@ -76,7 +76,7 @@ def _apart(brief: dict[str, Any]) -> list[str]:
     return [
         f"> ⚠ the wave holds this apart from {why.get('with')}: {verb} — "
         f"{', '.join(shared)}. Land the seam serialized first, or expect two of it "
-        "(docs/fan-out.md). Dispatching anyway is your call; nothing is blocked."
+        "Dispatching anyway is your call; nothing is blocked."
     ]
 
 

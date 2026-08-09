@@ -75,7 +75,7 @@ class Verb(NamedTuple):
 REGISTRY: dict[str, Verb] = {
     "board": Verb(pulse.run, "read", WATCHERS, ""),
     # The ✉ half of `board` alone, and the only read that does NOT renew: the
-    # delivery hook calls it on somebody else's behalf (MENTIONS.md §9a).
+    # delivery hook calls it on somebody else's behalf.
     "mentions": Verb(_mentions.mentions, "read", WATCHERS, ""),
     # The orchestrator's three groups of `board`, and the OTHER read that does
     # not renew — same delivery hook, same reason (`verbs/_waiting.py`). DEV

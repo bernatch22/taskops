@@ -125,7 +125,7 @@ def _land(board: Board, repo: Path, stone: str, criteria_met: bool) -> str:
     if crits and not criteria_met:
         # The chapter's criteria are the human's question, never the machine's:
         # every card can be green while the assembled thing is not
-        # (docs/fan-out.md §4 — six green cards, one placeholder page). Nothing
+        # (six green cards, one placeholder page). Nothing
         # is judged or stored here; the answer travels in the call and is
         # recorded in the `landed` event.
         listed = "\n".join(f"  {n}. {c}" for n, c in enumerate(crits, 1))

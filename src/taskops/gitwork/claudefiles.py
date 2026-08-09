@@ -4,7 +4,7 @@ Split out of `install.py` at its own seam: that file writes what GIT needs
 (hooks, gitignore, the board address), this one what CLAUDE reads. Both are
 merged, never clobbered — these files are the user's, not ours.
 
-One Claude hook, and exactly one, since 2026-08-06 (MENTIONS.md §9). It reads
+One Claude hook, and exactly one, since 2026-08-06. It reads
 the board and injects a line; it decides nothing and stores nothing, so deleting
 it costs immediacy and nothing else. What stays banned is the v1 shape: a hook
 that held state, gated an action, or was a second place where truth lived.

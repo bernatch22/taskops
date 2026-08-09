@@ -29,7 +29,7 @@ def rules(data: dict[str, Any]) -> list[str]:
     a rule you read after building is a rewrite.
 
     The chapter's `criteria` travel with them: a worker whose card is green
-    while the milestone is not (docs/fan-out.md §4) never saw what the whole
+    while the milestone is not — never saw what the whole
     would be judged against."""
     stone = as_object(data.get("milestone"))
     out: list[str] = []

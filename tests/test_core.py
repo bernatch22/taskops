@@ -529,7 +529,7 @@ def test_a_review_tie_on_the_timestamp_keeps_arrival_order() -> None:
 
 
 def test_review_states_follow_the_documented_precedence() -> None:
-    """The §2.4 table of docs/implement-reviewer.md, every row, in order.
+    """The documented precedence of the review states, every row, in order.
 
     Two placements look wrong if you skim and are deliberate: `review` sits
     ABOVE `doing` (a submitted card whose worker is still alive is waiting for a

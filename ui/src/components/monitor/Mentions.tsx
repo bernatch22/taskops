@@ -6,12 +6,12 @@
  * the card id in `--accent` beside the card's title.
  *
  * There is NO dismiss and NO mark-as-read here, and there must never be one: a
- * mention clears by being ANSWERED on its card (MENTIONS.md; ARCHITECTURE.md §11
+ * mention clears by being ANSWERED on its card (ARCHITECTURE.md §11
  * bans the ack verb outright). Clicking a row opens the Dossier, where the one
  * comment box in the UI lives — that is the entire interaction.
  *
- * `initials()`, `shortActor()` and `ago()` come from ../../format; `docs/fan-out.md`
- * is the post-mortem of the fan-out that wrote them twice. */
+ * `initials()`, `shortActor()` and `ago()` come from ../../format —
+ * a past fan-out wrote them twice, which is why they live in one place. */
 import { ago, initials, shortActor } from "../../format";
 import { Pane, PaneButton, PaneEmpty } from "./Pane";
 import { Markdown } from "../shared/Markdown";

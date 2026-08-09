@@ -6,8 +6,8 @@
  * ways. This file is those five shapes, once, so that five workers building five
  * panels in five worktrees cannot each derive a slightly different hover.
  *
- * That is not a hypothetical: `docs/fan-out.md` is the post-mortem of the last
- * fan-out, which came back with two `ago()` and three `initials()` — nobody
+ * That is not a hypothetical: the last fan-out came back with
+ * two `ago()` and three `initials()` — nobody
  * conflicted, and the tree was still wrong. The seam lands first, or it does not
  * land at all.
  *

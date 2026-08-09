@@ -30,7 +30,7 @@
  * type inside them) is a dict assembled by hand across `pulse.py`, `card.py`,
  * `_context.py` and `report.py`; there is no declared key set to compare
  * against, and inferring one means parsing Python source — which
- * `docs/fan-out.md` concluded taskops does not do. Anything stronger than the
+ * taskops deliberately does not do. Anything stronger than the
  * TypedDict test is that machinery, and it is not worth it. The row test is
  * cheap and is proposed on the card; it is not written here because this card's
  * diff is `.ts`-only. */
@@ -74,7 +74,7 @@ export interface Milestone {
    *  every take. */
   rules: string[];
   /** What the CHAPTER is accepted against — `rules`' sibling, spec and not
-   *  status (`core/types.py::Milestone.criteria`, docs/fan-out.md §10). Shown
+   *  status (`core/types.py::Milestone.criteria`). Shown
    *  to the human at `taskops_merge milestone=`, never judged by the machine.
    *
    *  OPTIONAL, and not because the Python says so — `core/types.py` declares it

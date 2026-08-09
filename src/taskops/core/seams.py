@@ -1,7 +1,7 @@
 """seams — which ready cards name the same CONCEPT, from the specs alone.
 
 THE COST. This project's most repeated failure is two workers building the same
-thing at the same time: two `ago()`, three `initials()` (docs/fan-out.md), two
+thing at the same time: two `ago()`, three `initials()`, two
 `src/taskops/gitwork/remote.py` — same path, complementary halves — "because
 both their specs said check `git remote get-url origin`" (ARCHITECTURE.md §16),
 two smoke sections both numbered §9, two `const reviewed` in one scope.

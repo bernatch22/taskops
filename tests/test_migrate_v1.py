@@ -146,7 +146,7 @@ def test_defect4b_the_9_project_rules_reach_milestone_rules() -> None:
 
 def test_defect5_only_the_17_message_mentions_survive_and_that_is_correct() -> None:
     """82 v1 events carry mentions; all 65 handoffs name ONLY their assignee, so
-    MENTIONS.md §5's companion-comment rule fires zero times. 17 is the truth,
+    the companion-comment rule fires zero times. 17 is the truth,
     not a loss — the assignment itself carries the other 65."""
     out, _ = mapped("defect5-mentions.jsonl")
     with_mentions = [b for _, b in out if b.get("mentions")]

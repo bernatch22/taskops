@@ -11,8 +11,7 @@ file describes what is *built* — if it ever disagrees with the code, the code
 is right and this is a bug.
 
 Companions: [`README.md`](README.md) (install it, run it, serve the UI) ·
-[`CLAUDE.md`](CLAUDE.md) (how to work in this repo) ·
-[`MENTIONS.md`](MENTIONS.md) (mentions, and why they are not a hook).
+[`CLAUDE.md`](CLAUDE.md) (how to work in this repo).
 
 The v1 post-mortem behind each rule is inline, in the docstring of the module
 that carries it — that is on purpose: a design document nobody opens is how a
@@ -51,7 +50,7 @@ adding a command that reacts to them after the fact:
    this one table — v1 re-took the same decision by hand at 25 call sites and
    four of them disagreed.
 4. **Context rides in the tool result, not in a hook that decides.** One
-   delivery-only Claude hook exists (`MENTIONS.md` §9); it reads and injects,
+   delivery-only Claude hook exists; it reads and injects,
    never writes. What a worker needs to act — the milestone's goal, the full spec,
    the whole comment thread, file collisions with other live work, the
    previous worker's handover note, its own worktree path — comes back
@@ -325,7 +324,7 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 |---|---|---|---|
 | `board` | read | both + **anon** | — |
 | `mentions` | read | both + **anon** | — (a delivery-hook read: one of the two that renew no lease; for `anon` it is empty by construction) |
-| `waiting` | read | `dev` | *"these are the orchestrator's moves, not yours. Your own picture: `taskops_board`"* — the other non-renewing read: MERGE / REVIEW / STALLED for the delivery hook (`MENTIONS.md` §9f) |
+| `waiting` | read | `dev` | *"these are the orchestrator's moves, not yours. Your own picture: `taskops_board`"* — the other non-renewing read: MERGE / REVIEW / STALLED for the delivery hook |
 | `card` | read | both + **anon** | — |
 | `report` | read | both + **anon** | — |
 | `events` | read | both + **anon** | — (the LOG, one keyset page at a time, newest first; board-wide by construction — see `verbs/events.py`) |
@@ -607,7 +606,7 @@ filesystem before recording the result as a verb (v1's `recover` ran git on
 the *server* and reported paths from a machine that was never the caller's);
 `taskops_review` is the verifier's ONE door — `task=` claims the review lease
 and returns the whole dossier, `verdict=` judges — because a `review=true` flag
-on `taskops_take` was built and then deleted (docs/implement-reviewer.md §10b):
+on `taskops_take` was built and then deleted:
 two tool surfaces over one verb is the duplicate-channel shape that broke v1,
 and `take` holds the WORK lease and nothing else; and
 `taskops_update` + `taskops_comment` are two tools over the ONE `update`
@@ -758,8 +757,8 @@ nobody has touched yet.
 |---|---|---|
 | **MCP over stdio** | Claude / any MCP host, per-repo | newline-delimited JSON-RPC 2.0. `initialize` returns `instructions`: the whole role protocol AND the board as of that moment (`mcp/hello.py` — the same verb and renderer an agent would call, so it is a delivered answer, not a second version of one). That is what a v1 system prompt was, minus the second place for truth to live, and it needs no hook and no settings file to be trusted. **One server per SESSION, shared by every sub-agent**, which is why identity rides on the call (`actor=`, §5) and not in the process's environment. `tools/call` on a refusal answers `isError: true` with the refusal *as the text content* — never a protocol-level error, because an agent that cannot read the way out will invent one; an unexpected exception answers the same way rather than ending the loop, since that loop is the session's only door to the board. |
 | **HTTP RPC** | a remote board's clients (`RemoteBoard`, the browser) | `POST /<board>/rpc` with `{"verb", "args", "actor"}`, `Authorization: Bearer <token>`. Answer is always an envelope: `{"ok": true, "seq": N, "data": {...}}` or `{"ok": false, "error": {"code", "message"}}` — v1 let three verbs answer with a bare array and the decoder silently turned it into `{}`. |
-| **WebSocket feed** | the browser UI only | `GET /<board>/feed`, upgraded via the RFC 6455 handshake (`HTTP/1.1` required for the 101 response to be accepted — the one bug class invisible to a library-based test, caught only with a raw-socket test). A message is a *signal* (`{"type": "changed"}`), never a payload — the client refetches, so a dropped or duplicated frame can never show something the board never said. SSE is the automatic fallback for a proxy that eats the Upgrade. Agents never use this: their live channel is the "pulse" line appended to every tool result. The UI carries exactly ONE write — a comment box with a mention picker on the card panel, through the same `/rpc` door and token (`MENTIONS.md` §9c). |
-| **Delivery hook** | Claude Code sessions in a joined repo | `taskops hook claude`, wired by `init`/`join` into `.claude/settings.json` on `PostToolUse` + `UserPromptSubmit`. Read-only and one-way: resolves the reader (env, else worktree-path → card → holder) and injects context — `✉ …` when a mention is pending, for ANYBODY (throttled per reader per 30s); and `◆ …`, one line per group with the count and the call that clears it, when MERGE / REVIEW / STALLED is non-empty and the reader is a `dev:` (throttled per 180s, its own key — `MENTIONS.md` §9f). Silence otherwise, exit 0 always, any failure silent. Both reads (`mentions`, `waiting`) renew no lease. The one sanctioned Claude hook: it may deliver, never decide, store, or write (`MENTIONS.md` §9). |
+| **WebSocket feed** | the browser UI only | `GET /<board>/feed`, upgraded via the RFC 6455 handshake (`HTTP/1.1` required for the 101 response to be accepted — the one bug class invisible to a library-based test, caught only with a raw-socket test). A message is a *signal* (`{"type": "changed"}`), never a payload — the client refetches, so a dropped or duplicated frame can never show something the board never said. SSE is the automatic fallback for a proxy that eats the Upgrade. Agents never use this: their live channel is the "pulse" line appended to every tool result. The UI carries exactly ONE write — a comment box with a mention picker on the card panel, through the same `/rpc` door and token. |
+| **Delivery hook** | Claude Code sessions in a joined repo | `taskops hook claude`, wired by `init`/`join` into `.claude/settings.json` on `PostToolUse` + `UserPromptSubmit`. Read-only and one-way: resolves the reader (env, else worktree-path → card → holder) and injects context — `✉ …` when a mention is pending, for ANYBODY (throttled per reader per 30s); and `◆ …`, one line per group with the count and the call that clears it, when MERGE / REVIEW / STALLED is non-empty and the reader is a `dev:` (throttled per 180s, its own key). Silence otherwise, exit 0 always, any failure silent. Both reads (`mentions`, `waiting`) renew no lease. The one sanctioned Claude hook: it may deliver, never decide, store, or write. |
 
 ---
 
@@ -768,10 +767,10 @@ nobody has touched yet.
 | removed / never built | why | where it's enforced |
 |---|---|---|
 | a `recover` verb | doing is derived from the live lease; nothing is ever wrong to recover | no entry in `verbs/__init__.py::REGISTRY`; `tests/test_verbs.py::test_a_dead_workers_card_comes_back_by_itself` |
-| a reviewer ROLE, a stored review STATUS, automatic reviewer assignment | v1's review system: `peer` deadlocks, 14 closing rules over 6 modules, reviewers eating the budget of the work | review EXISTS since 2026-08-07 but narrowed (docs/implement-reviewer.md is the paper trail): optional per card, derived from history-only events + a second lease, judged by an ordinary agent that may never judge its own work. `CARD_STATUSES` stays three; there is no reviewer role and nothing auto-assigns |
+| a reviewer ROLE, a stored review STATUS, automatic reviewer assignment | v1's review system: `peer` deadlocks, 14 closing rules over 6 modules, reviewers eating the budget of the work | review EXISTS since 2026-08-07 but narrowed: optional per card, derived from history-only events + a second lease, judged by an ordinary agent that may never judge its own work. `CARD_STATUSES` stays three; there is no reviewer role and nothing auto-assigns |
 | AUTOMATIC merges to `main` | v1's `land` merged as a side effect of closing a card and ran checkout under working agents | a CARD cannot be merged to main — `taskops_merge task=` takes no target. A finished MILESTONE lands via `taskops_merge milestone=` (2026-08-07): explicit, refused while any card is open or unintegrated, refused off-trunk, recorded as a `milestone landed` event. What stays impossible is main moving as a side effect of anything |
 | git replication between clones | split-brain, two machines "owning" the same card | `RemoteBoard` never falls back to a local store on write failure (`Unreachable` instead) |
-| Claude hooks **that decide or store** | latency, another thing to install and drift; v1's held state and gated actions | context travels in `initialize.instructions` + tool responses. The ONE exception, sanctioned 2026-08-06: `taskops hook claude`, delivery-only (`MENTIONS.md` §9) — it reads, injects a ✉ or ◆ line, and can be deleted with no loss but immediacy. `tests/test_claude.py` pins its safety properties, one test each — the module docstring lists them and `grep -c '^def test_' tests/test_claude.py` counts them |
+| Claude hooks **that decide or store** | latency, another thing to install and drift; v1's held state and gated actions | context travels in `initialize.instructions` + tool responses. The ONE exception, sanctioned 2026-08-06: `taskops hook claude`, delivery-only — it reads, injects a ✉ or ◆ line, and can be deleted with no loss but immediacy. `tests/test_claude.py` pins its safety properties, one test each — the module docstring lists them and `grep -c '^def test_' tests/test_claude.py` counts them |
 | a mark-as-read / ack verb for mentions | a stored `read` flag is `recover` again: a write whose only job is to contradict an earlier one | `core/mentions.py::pending()` derives it from the thread; `tests/test_verbs.py::test_a_mention_clears_itself_the_moment_the_actor_touches_the_card` |
 | PER-REQUEST SIGNING (every call carrying an SSHSIG envelope, no sessions) | it was the first design and sessions won on cost, not on taste: a signature per request means teaching a signature envelope to THREE transports — the stdlib `http.server`, the WebSocket handshake on `/feed`, and the MCP layer that opens a board once and holds it — and every one of them would have had to learn nonce replay, clock skew and canonicalisation separately, for exactly the result a bearer already has. It also needs the private key FILE on every call, in every worker, forever; a session needs it twice a day. And the fleet argument decides it: a signed envelope is a NEW wire format, so production's four boards would have had to be re-joined, which rule 3 forbids | `/login` is the only door that verifies a signature (`http/login.py`), and what it hands back is an ordinary `Credential` — the same row, the same table, the same `Authorization: Bearer` every legacy token uses (`store/creds.py`). The client half is `session.py` (the token's life: mint, refresh, remember) with `identity.py` beside it (WHO signs in and with WHICH key — `discover_key`, `establish`, the one door `--key` comes in through); each is well under the budget *because* each has one job. `tests/test_topology.py::test_a_legacy_only_board_still_works_on_rpc` and its three siblings are the fleet half: production's exact state — no principal, no key, an empty `allowed_signers` — driven through /rpc, /feed, the MCP handshake and the `taskops ui` window |
 | HAND-ROLLED CRYPTO, and a pip crypto DEPENDENCY | two ways to lose the same argument. Writing ed25519 verification by hand is the classic own-goal; adding `cryptography` or `PyNaCl` to buy it back breaks "a wheel and a directory" — the property that makes `pip install taskops` on a bare box a deploy (§17) — and puts a compiled wheel in the path of every agent's install | the verifier is OpenSSH's own: `ssh-keygen -Y sign` / `-Y verify -f allowed_signers`, the same SSHSIG mechanism git uses to sign commits, invoked through the ONE subprocess module (`gitwork/sig.py`, under `gitwork/run.py`). `pyproject.toml` has no runtime dependency at all, and `tests/test_architecture.py` keeps `subprocess` out of every layer but that one |
@@ -804,9 +803,8 @@ rule exists, which is the whole convention of this codebase.
 it lives in path space. The Nova UI milestone (2026-08-07) fanned four cards
 onto pairwise-disjoint paths — the warning was correctly silent — and the
 merged tree still came back with two `ago()` and three `initials()`, because
-that class of failure lives in *symbol* space. **`docs/fan-out.md`** is the
-post-mortem, with the file:line evidence and the four proposals weighed. Its
-conclusion is deliberately conservative and belongs here: taskops does NOT
+that class of failure lives in *symbol* space. The conclusion of that
+post-mortem is deliberately conservative and belongs here: taskops does NOT
 learn to parse source (a symbol scanner is the first component that would have
 to know what a language is, and §14's layering has nowhere to put it);
 `collisions()` is not widened; language-specific duplicate detection stays in
@@ -817,7 +815,7 @@ ordering rule is one sentence in `mcp/server.py::INSTRUCTIONS`, delivered at
 the handshake inside `hello.py`'s budget; `Milestone.criteria` travels into
 every take like `rules` and is SHOWN at `taskops_merge milestone=`, which
 refuses until the human answers `criteria_met=true` — recorded in the `landed`
-event, never judged by the machine. `docs/fan-out.md` §10 is the map from each
+event, never judged by the machine. §10 of that post-mortem was the map from each
 adoption to its test.
 
 ---
@@ -899,14 +897,10 @@ Two habits, for whoever works here next:
 * **Mutation-check every fix.** Break it on purpose, watch the test fail, put
   it back. Two tests in this repo looked green with the fix removed until this
   was done.
-* **Docs are part of the diff.** This file, `README.md`, `CLAUDE.md` and
-  `MENTIONS.md` describe what is true NOW — counts, "not yet" and status tables
-  all expire, and a statement that can be re-derived by a command beats a number
-  that rots in silence. `docs/` splits in two: `implement-reviewer.md` and
-  `fan-out.md` are dated paper trails, each pinned to the tree it was written
-  against — their history is not rewritten, only their current-tense claims are
-  kept honest — while `docs/design.md` is a live reference of the data model
-  and is held to the same standard as this file.
+* **Docs are part of the diff.** This file, `README.md` and `CLAUDE.md`
+  describe what is true NOW — counts, "not yet" and status tables all expire,
+  and a statement that can be re-derived by a command beats a number that rots
+  in silence.
 
 ---
 
@@ -927,8 +921,8 @@ files that answer it:
   two-column layout (`ui/src/pages/Monitor.tsx`) and the shared pane chrome
   (`components/monitor/Pane.tsx`) landed FIRST, with every panel's props
   declared as an interface in `components/monitor/panels.ts` — the seam
-  serialized ahead of the fan-out, which is `docs/fan-out.md`'s own prescription
-  applied to the milestone that produced it. Nova drew **eight** `<section>`
+  serialized ahead of the fan-out — the prescription of the post-mortem that
+  the same milestone produced. Nova drew **eight** `<section>`
   panes in six layout slots (three stacked blocks left, three panes right); the
   **ninth is Swarm** (`components/monitor/Swarm.tsx`), who is attached to what
   right now — the team's `dev:` at the centre, a circle per actor and per card
@@ -976,7 +970,7 @@ files that answer it:
   picker's OWN setter (`App.tsx::setMilestone`, threaded down) — a door, not a
   copy. Landed chapters are not listed; per-chapter counts are folded from
   `board.groups` and are drawn nowhere if no row names a chapter.
-* **Board** — the board's own groups (`docs/design.md` §4), folded into SIX
+* **Board** — the board's own groups, folded into SIX
   columns (`ui/src/pages/Board.tsx`): Ready · In flight (`doing` + `stalled`,
   which carries a danger marker) · Review (`review` + `reviewing` + `changes`,
   three chips in one column) · Blocked · To merge · Done.
@@ -1092,7 +1086,7 @@ files that answer it:
 * **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
-  (`MENTIONS.md` §9c). The header's milestone picker scopes every tab at once.
+  . The header's milestone picker scopes every tab at once.
 
 Removed on purpose and not to be rebuilt: an "Attention" screen, which is in no
 Nova section, and an "Hours" tab, which in Nova is the Throughput panel *inside*
@@ -1361,10 +1355,10 @@ A repo joined to nothing behaves exactly as it did.
 `gitwork/remote.py` was born TWICE in one wave: two workers, each over the
 200-line budget in a different module, each split the origin concern out under
 the obvious name, neither able to see the other. Both specs said "check `git
-remote get-url origin`". Unlike `docs/fan-out.md`'s silent `ago()` twins, the
+remote get-url origin`". Unlike the earlier fan-out's silent `ago()` twins, the
 same-path collision made the merge refuse loudly and the halves were
 complementary, so the union IS the module — the full post-mortem is its
-docstring. The planning lesson generalises the one `docs/fan-out.md` already
+docstring. The planning lesson generalises the one that fan-out already
 concluded: taskops still never parses source, and `collisions()` is still not
 widened; what changes is what the human looks for before dispatching. A NOUN
 that appears in two specs is a seam, and a seam lands serialized first.
