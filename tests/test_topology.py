@@ -420,7 +420,7 @@ def signed(principal: str, nonce: str, key: Path) -> str:
 
 
 def test_a_registered_key_signs_in_and_the_minted_token_works_on_rpc(
-    server: BoardServer, keyed: Path
+    server: BoardServer, keyed: Path, clock: Any
 ) -> None:
     """Criterion 1, end to end and over a socket: challenge → ssh-keygen -Y sign →
     verify against allowed_signers → a bearer token that /rpc already understood."""
@@ -438,6 +438,12 @@ def test_a_registered_key_signs_in_and_the_minted_token_works_on_rpc(
     # bearer on the ordinary door, for a board it was never told the name of.
     board = RemoteBoard(url_of(server), minted["token"], BERNA)
     assert board.call("board", {})["seq"] >= 0
+
+    # And it is SHORT-lived for real, not just in the number it reported: the
+    # credential itself carries the TTL, so a day later this token is nobody's.
+    clock(12 * 3600.0 + 1.0)
+    with pytest.raises(Refused, match="that credential expired"):
+        board.call("board", {})
 
 
 def test_a_challenge_is_single_use_and_dies_of_old_age(
@@ -558,6 +564,12 @@ def test_an_expired_session_signs_itself_in_again_with_no_human(
     again = cast("Remote", open_board(project, BERNA))
     assert again.token != first.token
     assert again.call("board", {})["seq"] >= 0
+
+    # A session about to run out is replaced BEFORE it can die mid-call: a token
+    # that expires between the check and the call it authorises would be a bug
+    # reproducing once a day, which is the worst reproduction rate there is.
+    nearly = {"token": "old", "token_expires": _clock.now() + 60.0, "login": door}
+    assert session.fresh(project, nearly, _clock.now()) != "old"
 
     # And the case `open_board` cannot cover: a process that outlives its own
     # token. The MCP server opens a board once and keeps it for the session.
