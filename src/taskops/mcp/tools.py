@@ -119,8 +119,10 @@ TOOLS: list[Tool] = [
     ),
     _tool(
         "taskops_merge",
-        "Integrate a DONE card into its milestone branch (--no-ff, in the integration "
-        "worktree). A conflict aborts clean. main is never touched. Orchestrator only.",
+        "Integrate DONE cards into their milestone branch (--no-ff, in the integration "
+        "worktree): task= one, tasks=[…] those in order, done=true every card waiting under "
+        "MERGE. A batch stops at the first failure, reports per card, and continues on a "
+        "re-run. A conflict aborts clean. main is never touched. Orchestrator only.",
         gitmoves.merge,
     ),
     _tool(
