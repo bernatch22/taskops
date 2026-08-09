@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import _args, _facts, _context
+from . import _args, _cards, _facts, _context
 from .. import _clock
 from .._ids import new_task_id, is_milestone_id, new_milestone_id
 from ..core import graph
@@ -53,7 +53,7 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         # future is a card whose next edit looks stale to `replay` and is
         # dropped — which is exactly what the dispatch test caught here.
         stamp = now - (len(rows) - 1 - index) * ORDER
-        card = _card(row, ids[index], stone, actor, stamp, ids)
+        card = _cards.card(row, ids[index], stone, actor, stamp, ids)
         fresh[card["id"]] = card
 
     combined = dict(stores.state()["cards"]) | fresh
@@ -152,48 +152,3 @@ def _milestone(
             'taskops_plan milestone="<title>" goal="<why>" tasks=[…]'
         )
     return stone
-
-
-def _card(
-    row: _args.Args, ident: str, stone: Milestone, actor: str, now: float, batch: list[str]
-) -> Card:
-    return Card(
-        id=ident,
-        title=_args.text(row, "title"),
-        spec=_args.text(row, "spec", default=""),
-        criteria=_args.strings(row, "criteria"),
-        status="open",
-        # Inherited from the chapter's `reviews` default; the card's own flag wins.
-        review=_args.flag(row, "review", default=bool(stone.get("reviews", False))),
-        priority=_args.number(row, "priority", default=2, low=0, high=3),
-        milestone=stone["id"],
-        parent=_ref(row.get("parent"), batch),
-        after=[r for r in (_ref(x, batch) for x in _list(row.get("after"))) if r],
-        files=_args.strings(row, "files"),
-        labels=_args.strings(row, "labels"),
-        assignee="",
-        created_by=actor,
-        created=now,
-        updated=now,
-    )
-
-
-def _list(value: object) -> list[object]:
-    if value is None or value == "":
-        return []
-    return list(value) if isinstance(value, list) else [value]  # type: ignore[arg-type]
-
-
-def _ref(value: object, batch: list[str]) -> str | None:
-    """A reference is an index into this call's `tasks`, or a real card id."""
-    if value is None or value == "":
-        return None
-    if isinstance(value, bool):
-        raise BadRequest("parent/after take an index or a card id, not a boolean")
-    if isinstance(value, int):
-        if not 0 <= value < len(batch):
-            raise BadRequest(f"index {value} is outside this call's tasks (0..{len(batch) - 1})")
-        return batch[value]
-    if isinstance(value, str):
-        return value
-    raise BadRequest(f"parent/after take an index or a card id, got {type(value).__name__}")

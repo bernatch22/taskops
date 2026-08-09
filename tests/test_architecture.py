@@ -32,6 +32,7 @@ LEVELS: list[tuple[str, int]] = [
     ("board", 4),
     ("gitwork", 4),
     ("session", 4),
+    ("identity", 4),  # session.py's caller-facing half: who signs in, with which key
     ("mcp", 5),
     ("http", 5),
     ("cli", 6),

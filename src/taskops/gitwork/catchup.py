@@ -1,7 +1,7 @@
 """Bring one worktree up to date with a branch — the mechanical half of an
 integration, and nothing else.
 
-WHY THIS EXISTS. `trees.behind` diagnosed a stale branch and the board REFUSED,
+WHY THIS EXISTS. `landing.behind` diagnosed a stale branch and the board REFUSED,
 naming the two commands the human then executed unchanged: ~9 times in two days
 the orchestrator ran `cd <tree> && git merge <branch>` and called
 `taskops_merge` again. When the diagnosis AND the remedy are both the board's,

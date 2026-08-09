@@ -16,7 +16,7 @@ from taskops.board import LocalBoard, RemoteBoard
 from tests.conftest import T0
 from tests.test_git import repo as git_repo
 from taskops._errors import Refused, BadRequest
-from taskops.gitwork import run, trees, remote as remote_mod
+from taskops.gitwork import run, trees, remote as remote_mod, landing
 from taskops.mcp.schema import SCHEMAS
 from taskops.http.server import BoardServer, serve as http_serve
 
@@ -487,7 +487,7 @@ def behind_by_one(
     (integration / "shared.py").write_text("VAT = 21\n", encoding="utf-8")
     run.must("add", "-A", cwd=integration)
     run.must("commit", "-q", "-m", "chapter moves", cwd=integration)
-    assert trees.behind(repo, stone_branch, card_branch) == 1
+    assert landing.behind(repo, stone_branch, card_branch) == 1
     return dev, card, stone_branch, card_branch, tree
 
 
@@ -561,7 +561,7 @@ def test_a_dirty_worktree_is_never_touched_and_gets_todays_refusal_verbatim(
         f"then taskops_merge task={card} again"
     )
     assert run.git("status", "--porcelain", cwd=tree).out == before  # untouched
-    assert trees.behind(repo, stone_branch, card_branch) == 1  # not caught up either
+    assert landing.behind(repo, stone_branch, card_branch) == 1  # not caught up either
 
 
 def test_a_missing_worktree_is_refused_and_never_conjured(repo: Path, boards: Any) -> None:
@@ -630,7 +630,6 @@ def test_landing_shows_the_chapters_criteria_and_the_human_answers_out_loud(
     """The gate SHOWS the criteria and refuses until the human says they hold —
     nothing is judged by the machine, nothing stored as status: the answer
     travels in the call and lands in the `landed` event (docs/fan-out.md §8B)."""
-    from taskops.gitwork import trees
 
     dev = boards(BERNA)
     out = dev.call(
@@ -653,7 +652,7 @@ def test_landing_shows_the_chapters_criteria_and_the_human_answers_out_loud(
     assert "all three tabs render" in str(refusal.value)  # shown, not summarised
     assert not (repo / ".taskops" / "trees").exists()  # refused before git ran
 
-    monkeypatch.setattr(trees, "land_milestone", lambda repo_, branch: ("main", "abc123"))
+    monkeypatch.setattr(landing, "land_milestone", lambda repo_, branch: ("main", "abc123"))
     call(dev, repo, "taskops_merge", milestone=stone, criteria_met=True)
     landed = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"]
     assert landed and landed[-1]["body"].get("criteria_met") is True  # on the record
@@ -1046,7 +1045,6 @@ def test_a_chapter_whose_cards_are_all_integrated_can_land(
     reason to refuse: the first card you integrated blocked the landing
     permanently, so no chapter could ever land again. Found by landing a real
     chapter, 2026-08-08."""
-    from taskops.gitwork import trees
 
     dev = boards(BERNA)
     out = dev.call(
@@ -1062,7 +1060,7 @@ def test_a_chapter_whose_cards_are_all_integrated_can_land(
 
     assert [c["id"] for c in dev.call("board", {"milestone": stone})["groups"]["done"]] == [card]
 
-    monkeypatch.setattr(trees, "land_milestone", lambda *_: ("master", "abc123"))
+    monkeypatch.setattr(landing, "land_milestone", lambda *_: ("master", "abc123"))
     text = call(dev, repo, "taskops_merge", milestone=stone)
     assert "master" in text  # it landed; the settled card was not read as open work
 
@@ -1266,7 +1264,7 @@ def chapter_ready_to_land(
     run.must("commit", "-q", "-m", "card", cwd=tree)
     dev.call("bind", {"task": card, "sha": "a1b2c3", "subject": "feat: VAT"})
     w1.call("update", {"task": card, "status": "done", "comment": "done"})
-    sha = trees.merge_card(repo, stone_branch, str(dossier["branch"]), card)
+    sha = landing.merge_card(repo, stone_branch, str(dossier["branch"]), card)
     dev.call("merged", {"task": card, "into": stone_branch, "sha": sha})
 
     # ...and NOW the trunk moves under it: another chapter landed.
@@ -1288,7 +1286,7 @@ class TestAChapterLandsOverAMovedTrunk:
         """No human runs git: one call, and master carries both the trunk's own
         commit and the chapter."""
         dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards)
-        assert trees.behind_trunk(repo, stone_branch) == ("master", 1)
+        assert landing.behind_trunk(repo, stone_branch) == ("master", 1)
 
         text = call(dev, repo, "taskops_merge", milestone=stone)
 
@@ -1350,7 +1348,7 @@ class TestAChapterLandsOverAMovedTrunk:
         dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards)
         run.must("merge", "--no-edit", "master", cwd=tree)  # already caught up by hand
         before = run.must("rev-parse", "HEAD", cwd=tree)
-        assert trees.behind_trunk(repo, stone_branch) == ("master", 0)
+        assert landing.behind_trunk(repo, stone_branch) == ("master", 0)
 
         call(dev, repo, "taskops_merge", milestone=stone)
 

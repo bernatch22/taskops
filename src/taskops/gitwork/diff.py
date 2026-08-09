@@ -62,21 +62,17 @@ fact lives in the commit graph and is derived per request, ARCHITECTURE.md §16,
 and this module still knows nothing about a board (it does not, and must not,
 read the `merged` event's sha, even though the board has one).
 
-The patch is capped in BYTES and the cap is stated in the answer: a silently cut
-patch is a lie, a flagged one is a fact.
+Turning a resolved range into text and numbers — `stat`, `patch`, `between`,
+and the byte cap — is `patch.py`, this file's sibling; here live the walls and
+the range arithmetic only.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any
 from pathlib import Path
 
-from . import run, bind
-
-CAP = 512 * 1024
-"""Bytes of patch text returned at most. Comfortably above a human-sized card
-diff and far below anything that would stall a browser."""
+from . import run
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 """git's own empty tree — what a root commit is diffed against."""
@@ -156,45 +152,3 @@ def compare_range(repo: Path, a: str, b: str) -> tuple[str, str] | None:
     if base == right:
         return (integration_base(repo, left, right) or base), right
     return base, right
-
-
-def stat(repo: Path, a: str, b: str) -> dict[str, list[int] | None]:
-    """`+/-` per file between two RESOLVED shas, in the exact vocabulary
-    `bind.py` writes into a commit event: `[added, deleted]`, or None for a file
-    git could not count (a binary — never `[0, 0]`). One vocabulary everywhere."""
-    raw = run.git("diff", "--numstat", "-z", a, b, cwd=repo)
-    return bind.parse_numstat(raw.out) if raw.ok else {}
-
-
-def patch(
-    repo: Path, a: str, b: str, path: str | None = None, cap: int = CAP
-) -> tuple[str, bool]:
-    """(text, truncated). The path filter goes after `--`: git cannot read it
-    as an option there, whatever it says."""
-    args = ["diff", "--patch", "--no-color", a, b]
-    if path:
-        args += ["--", path]
-    raw = run.git(*args, cwd=repo)
-    if not raw.ok:
-        return "", False
-    text = raw.out
-    encoded = text.encode("utf-8", "replace")
-    if len(encoded) <= cap:
-        return text, False
-    return encoded[:cap].decode("utf-8", "ignore"), True
-
-
-def between(
-    repo: Path, a: str, b: str, path: str | None = None, cap: int = CAP
-) -> dict[str, Any]:
-    """The whole answer for one range, already resolved. The HTTP door wraps it;
-    it decides nothing about transport and knows nothing about a board."""
-    text, cut = patch(repo, a, b, path, cap)
-    return {
-        "base": a,
-        "head": b,
-        "stat": stat(repo, a, b),
-        "patch": text,
-        "truncated": cut,
-        "cap": cap,
-    }

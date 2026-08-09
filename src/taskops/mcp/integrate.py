@@ -39,7 +39,7 @@ from . import render
 from .._json import as_rows, as_object
 from ..board import Board
 from .._errors import Refused, BadRequest, TaskopsError
-from ..gitwork import trees, catchup
+from ..gitwork import trees, catchup, landing
 
 Args = dict[str, Any]
 
@@ -66,7 +66,7 @@ def one(board: Board, repo: Path, task: str) -> tuple[str, str]:
         raise BadRequest(f"{task} belongs to no milestone, so there is no branch to integrate into")
     card_branch = str(dossier.get("branch", task))
     catch_up_or_refuse(repo, branch, card_branch, task)
-    sha = trees.merge_card(repo, branch, card_branch, task)
+    sha = landing.merge_card(repo, branch, card_branch, task)
     return sha, render.plain(board.call("merged", {"task": task, "into": branch, "sha": sha}))
 
 
@@ -96,7 +96,7 @@ def catch_up_or_refuse(repo: Path, branch: str, card_branch: str, task: str) -> 
     nothing was attempted — and a conflict carries git's own words on top of the
     behind-count, because now the human genuinely is the only one who can decide.
     """
-    count = trees.behind(repo, branch, card_branch)
+    count = landing.behind(repo, branch, card_branch)
     if not count:
         return  # not behind: from here on the path is byte-for-byte what it was
     got = catchup.catch_up(trees.card_tree(repo, task), branch)

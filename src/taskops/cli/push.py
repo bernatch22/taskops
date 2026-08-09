@@ -36,7 +36,7 @@ from pathlib import Path
 from collections import Counter
 
 from . import remote, operate
-from .. import _clock, session
+from .. import _clock, identity
 from .._json import as_object
 from ..board import DIR, find_root, read_config
 from .._errors import TaskopsError
@@ -136,7 +136,7 @@ def _session(
     `board.json` still names no url, so `open_board` still opens the local board
     and every step above still fails into a repo that decides what it did before.
     So the `login` block comes back UNWRITTEN and step 5 places it — this is the
-    one caller of `session.establish` that has an order to keep, and the reason
+    one caller of `identity.establish` that has an order to keep, and the reason
     that helper returns the block rather than caching it (`operate.py` does).
     """
     from . import commands
@@ -144,10 +144,10 @@ def _session(
     host = target.rpartition("/")[0]
     if invite and not key:
         raise TaskopsError("--invite registers a KEY — pass --key ~/.ssh/id_ed25519 with it")
-    who = session.principal_for(config, "", commands.principal())
+    who = identity.principal_for(config, "", commands.principal())
     if key and invite:
         commands.redeem(target, invite, who, commands.pubkey(key))
-    return session.establish(root, host, config, key, who, refusal=NO_KEY)
+    return identity.establish(root, host, config, key, who, refusal=NO_KEY)
 
 
 def _compare(events: list[Event], answer: dict[str, Any]) -> str | None:

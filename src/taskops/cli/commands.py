@@ -17,7 +17,7 @@ from .._wire import post as post_json
 from ..board import DIR, find_root, open_board
 from ..store import log
 from .._errors import TaskopsError
-from ..gitwork import run, bind, remote, install, trailer
+from ..gitwork import run, bind, remote, install, trailer, claudefiles
 
 # ── the commands ────────────────────────────────────────────────────────────
 
@@ -146,8 +146,8 @@ def _wire(root: Path, who: str) -> None:
     can only learn from the side that has a clone (`gitwork/remote.py`)."""
     install.install_hooks(root, sys.executable)
     install.write_gitignore(root)
-    install.write_mcp(root, sys.executable, who)
-    install.write_claude_hooks(root, sys.executable)  # delivery only — MENTIONS.md §9
+    claudefiles.write_mcp(root, sys.executable, who)
+    claudefiles.write_claude_hooks(root, sys.executable)  # delivery only — MENTIONS.md §9
     remote.remember(open_board(root, who), root)
 
 

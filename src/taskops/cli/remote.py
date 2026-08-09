@@ -7,7 +7,7 @@ Git asks for neither a URL nor an identity file on every push, and the two
 reasons it does not are both copied here: the address is recorded per CLONE
 (`.git/config`, uncommitted — here `.taskops/remote.json`, the private,
 per-machine file `join --key` and `board push --key` already cache the same
-`login.host` into), and the key is DISCOVERED (`session.discover_key`, ssh's own
+`login.host` into), and the key is DISCOVERED (`identity.discover_key`, ssh's own
 identity files in ssh's own order). With both, every operate verb goes bare.
 
 **This is NOT the host alias registry `operate.py` refuses, and the difference is
@@ -30,7 +30,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .. import session
+from .. import identity
 from .._json import as_object
 from ..board import find_root, read_config
 from .._errors import TaskopsError
@@ -129,11 +129,11 @@ def record_board(root: Path, host: str, name: str) -> None:
 
     Only when `host` is the one this checkout operates — creating a board on a
     DIFFERENT server from inside a joined checkout is legitimate and must leave
-    this file alone, the same rule `session.is_own_host` holds the token to.
+    this file alone, the same rule `identity.is_own_host` holds the token to.
     Without the guard the next bare `board push` here would aim at a board on a
     server this checkout has nothing to do with (caught by
     `test_operating_another_host_leaves_this_checkouts_own_session_alone`)."""
-    if session.is_own_host(read_config(root), host):
+    if identity.is_own_host(read_config(root), host):
         write_remote(root, {"login": {"board": name}})
 
 

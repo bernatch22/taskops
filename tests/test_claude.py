@@ -19,7 +19,7 @@ import pytest
 from taskops.cli import claude
 from taskops.board import LocalBoard
 from taskops._errors import Refused
-from taskops.gitwork import install
+from taskops.gitwork import claudefiles
 from taskops.cli.claude import STAMP
 
 pytestmark = pytest.mark.usefixtures("clock")
@@ -115,8 +115,8 @@ def test_joining_twice_writes_the_delivery_hook_once_and_keeps_foreign_ones(
     path.parent.mkdir()
     theirs = {"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "mine.sh"}]}]}}
     path.write_text(json.dumps(theirs), encoding="utf-8")
-    assert install.write_claude_hooks(tmp_path, "py") == ["PostToolUse", "UserPromptSubmit"]
-    assert install.write_claude_hooks(tmp_path, "py") == []  # a no-op, not a duplicate
+    assert claudefiles.write_claude_hooks(tmp_path, "py") == ["PostToolUse", "UserPromptSubmit"]
+    assert claudefiles.write_claude_hooks(tmp_path, "py") == []  # a no-op, not a duplicate
     settings = json.loads(path.read_text(encoding="utf-8"))
     commands = [
         hook["command"]
@@ -124,12 +124,12 @@ def test_joining_twice_writes_the_delivery_hook_once_and_keeps_foreign_ones(
         for entry in entries
         for hook in entry["hooks"]
     ]
-    assert commands.count("mine.sh") == 1 and commands.count(install.claude_command("py")) == 2
+    assert commands.count("mine.sh") == 1 and commands.count(claudefiles.claude_command("py")) == 2
 
     # ...and re-joining from a DIFFERENT interpreter REPLACES ours, never adds a
     # second: the real repo had one entry per python and the hook fired twice
     # per tool call. Ours is recognised by the module, not by the whole command.
-    assert install.write_claude_hooks(tmp_path, "/other/python") == []
+    assert claudefiles.write_claude_hooks(tmp_path, "/other/python") == []
     settings = json.loads(path.read_text(encoding="utf-8"))
     commands = [
         hook["command"]
@@ -137,8 +137,8 @@ def test_joining_twice_writes_the_delivery_hook_once_and_keeps_foreign_ones(
         for entry in entries
         for hook in entry["hooks"]
     ]
-    assert commands.count(install.claude_command("py")) == 0
-    assert commands.count(install.claude_command("/other/python")) == 2
+    assert commands.count(claudefiles.claude_command("py")) == 0
+    assert commands.count(claudefiles.claude_command("/other/python")) == 2
     assert commands.count("mine.sh") == 1  # somebody else's is still untouched
 
 

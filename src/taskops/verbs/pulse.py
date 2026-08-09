@@ -26,10 +26,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import _args, _facts, report, project, _context, _mentions
+from . import _args, _rows, _facts, project, _context, _mentions
 from .. import _clock
 from ..core import graph, seams
-from ..core.types import Card
 from ..store.stores import Stores
 
 DONE_SHOWN = 20
@@ -85,7 +84,7 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     }
     for card in sorted(mine, key=lambda c: (c["priority"], c["created"])):
         shown = graph.derived(cards, card, live, checking, stood)
-        row = _row(stores, card, now, live)
+        row = _rows.row(stores, card, now, live)
         if shown == "done":
             if not _facts.merged_into(stores.events(card["id"])):
                 groups["merge"].append(row)
@@ -159,42 +158,8 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         # Which of the READY cards are safe to fan out together — derived, never
         # stored, and ADVICE (`core/seams.py`). Computed over `groups.take` only.
         "wave": seams.wave(cards, [row["id"] for row in groups["take"]]),
-        "team": _team(stores, now),
-        "hours": _hours(stores, args, now, window) if window else None,
+        "team": _rows.team(stores, now),
+        "hours": _rows.hours(stores, args, now, window) if window else None,
         "seq": stores.head(),
         "pulse": _context.pulse(stores, actor, now, stone["id"] if stone else ""),
     }
-
-
-def _row(stores: Stores, card: Card, now: float, live: dict[str, str]) -> dict[str, Any]:
-    """One line of the board. `quiet_for` is what makes STALLED actionable: it
-    says how long since the owner last said anything, not a guess about why."""
-    holder = live.get(card["id"])
-    lease = stores.live.lease(card["id"], now) if holder else None
-    return {
-        "id": card["id"],
-        "title": card["title"],
-        # The chapter's ID, never its title: `milestones` already carries the
-        # words, so a reader joins the two and neither can age past the other.
-        "milestone": card["milestone"],
-        "priority": card["priority"],
-        "assignee": card["assignee"],
-        "holder": holder,
-        "since": lease["acquired"] if lease else card["updated"],
-        "quiet_for": None if holder else now - card["updated"],
-        "files": card["files"],
-        "labels": card["labels"],
-    }
-
-
-def _team(stores: Stores, now: float) -> list[dict[str, Any]]:
-    return [
-        {"actor": actor, "seen": seen, "ago": now - seen}
-        for actor, seen in stores.live.present(now - 24 * 3600)
-    ]
-
-
-def _hours(stores: Stores, args: _args.Args, now: float, window: str) -> dict[str, Any]:
-    """`window="7d"` folds the report into the same read — one call, one picture."""
-    tz = _args.text(args, "tz", default="UTC") or "UTC"
-    return report.summary(stores, now, report.days(window), tz)

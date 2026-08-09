@@ -14,7 +14,7 @@ from . import brief, render, integrate
 from .._json import as_rows, as_object, as_strings
 from ..board import Board
 from .._errors import Refused, BadRequest
-from ..gitwork import trees, remote, catchup
+from ..gitwork import trees, remote, catchup, landing
 
 Args = dict[str, Any]
 
@@ -135,7 +135,7 @@ def _land(board: Board, repo: Path, stone: str, criteria_met: bool) -> str:
             f"taskops_merge milestone={stone} criteria_met=true"
         )
     _catch_up_to_trunk(repo, str(named.get("branch", "")), stone)
-    trunk, sha = trees.land_milestone(repo, str(named.get("branch", "")))
+    trunk, sha = landing.land_milestone(repo, str(named.get("branch", "")))
     record: Args = {"milestone": stone, "into": trunk, "sha": sha}
     if crits:
         record["criteria_met"] = True  # the human's answer, on the record
@@ -172,7 +172,7 @@ def _catch_up_to_trunk(repo: Path, branch: str, stone: str) -> None:
     in it) is never touched and falls through to exactly today's behaviour:
     `land_milestone` runs, and its own conflict refusal is the one that speaks.
     """
-    trunk, count = trees.behind_trunk(repo, branch)
+    trunk, count = landing.behind_trunk(repo, branch)
     if not count:
         return  # not behind: from here on the path is byte-for-byte what it was
     tree = trees.integration_tree(repo, branch)

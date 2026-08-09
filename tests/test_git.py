@@ -9,7 +9,18 @@ import pytest
 
 from taskops import board
 from taskops._errors import Refused, NotFound, TaskopsError
-from taskops.gitwork import run, bind, diff, trees, remote, install, trailer
+from taskops.gitwork import (
+    run,
+    bind,
+    diff,
+    patch,
+    trees,
+    remote,
+    install,
+    landing,
+    trailer,
+    claudefiles,
+)
 
 
 def repo(path: Path, name: str = "work") -> Path:
@@ -109,7 +120,7 @@ def test_merge_integrates_into_the_milestone_branch(tmp_path: Path) -> None:
     run.must("add", "-A", cwd=tree)
     run.must("commit", "-q", "-m", "feat: model", cwd=tree)
 
-    sha = trees.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
+    sha = landing.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
     integration = trees.integration_tree(root, "ms/mvp")
     assert (integration / "models.py").exists()
     assert run.must("rev-parse", "HEAD", cwd=integration) == sha
@@ -131,7 +142,7 @@ def test_a_conflict_aborts_clean_and_names_the_files(tmp_path: Path) -> None:
     run.must("commit", "-q", "-m", "mine", cwd=tree)
 
     with pytest.raises(Refused) as caught:
-        trees.merge_card(root, "ms/mvp", "tk-d44444", "tk-d44444")
+        landing.merge_card(root, "ms/mvp", "tk-d44444", "tk-d44444")
     assert "models.py" in str(caught.value)
     assert run.must("rev-parse", "HEAD", cwd=integration) == before  # untouched
     assert not (integration / ".git" / "MERGE_HEAD").exists()
@@ -149,7 +160,7 @@ def test_a_conflict_aborts_clean_and_names_the_files(tmp_path: Path) -> None:
     (resolved / "models.py").write_text("both\n", encoding="utf-8")
     run.must("add", "-A", cwd=resolved)
     run.must("commit", "-q", "--no-verify", "-m", "resolve", cwd=resolved)
-    assert trees.merge_card(root, "ms/mvp", "tk-d44444", "tk-d44444")  # now it lands
+    assert landing.merge_card(root, "ms/mvp", "tk-d44444", "tk-d44444")  # now it lands
 
 
 def test_tidy_only_removes_what_is_already_in_the_trunk(tmp_path: Path) -> None:
@@ -239,7 +250,7 @@ def test_a_push_that_fails_changes_nothing_about_the_merge(tmp_path: Path) -> No
     run.must("add", "-A", cwd=tree)
     run.must("commit", "-q", "-m", "feat: model", cwd=tree)
 
-    sha = trees.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
+    sha = landing.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
     assert run.must("rev-parse", "ms/mvp", cwd=root) == sha
 
 
@@ -253,7 +264,7 @@ def test_the_milestone_branch_and_the_card_both_reach_origin_on_a_merge(
     run.must("add", "-A", cwd=tree)
     run.must("commit", "-q", "-m", "feat: model", cwd=tree)
 
-    sha = trees.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
+    sha = landing.merge_card(root, "ms/mvp", "tk-a11111", "tk-a11111")
     assert run.must("rev-parse", "ms/mvp", cwd=bare) == sha
     assert run.git("rev-parse", "--verify", "tk-a11111", cwd=bare).ok
 
@@ -370,7 +381,7 @@ def test_install_writes_two_hooks_and_ignores_the_secret(tmp_path: Path) -> None
     ]
     install.write_config(root, "https://example.test/facturador", "s3cret")
     install.write_gitignore(root)
-    install.write_mcp(root, "/usr/bin/python3", "dev:berna")
+    claudefiles.write_mcp(root, "/usr/bin/python3", "dev:berna")
 
     assert (root / ".taskops" / "remote.json").stat().st_mode & 0o777 == 0o600
     assert ".taskops/remote.json" in (root / ".gitignore").read_text(encoding="utf-8")
@@ -392,7 +403,7 @@ def test_a_foreign_hook_is_never_overwritten(tmp_path: Path) -> None:
 def test_mcp_config_keeps_the_other_servers(tmp_path: Path) -> None:
     root = repo(tmp_path)
     (root / ".mcp.json").write_text('{"mcpServers": {"axion": {"command": "x"}}}', encoding="utf-8")
-    install.write_mcp(root, "/usr/bin/python3", "dev:berna")
+    claudefiles.write_mcp(root, "/usr/bin/python3", "dev:berna")
     import json
 
     config: Any = json.loads((root / ".mcp.json").read_text(encoding="utf-8"))
@@ -574,7 +585,7 @@ def test_a_merge_commit_diffs_against_its_first_parent_only(tmp_path: Path) -> N
     sha = merged(root)
     found = diff.commit_range(root, sha)
     assert found is not None
-    counted = diff.stat(root, *found)
+    counted = patch.stat(root, *found)
     assert sorted(counted) == ["a.txt", "b.txt"]
     assert "later.txt" not in counted
 
@@ -586,7 +597,7 @@ def test_a_root_commit_diffs_against_the_empty_tree(tmp_path: Path) -> None:
     first = run.must("rev-list", "--max-parents=0", "HEAD", cwd=root)
     found = diff.commit_range(root, first)
     assert found == (diff.EMPTY_TREE, first)
-    assert "README.md" in diff.stat(root, *found)
+    assert "README.md" in patch.stat(root, *found)
 
 
 def test_a_compare_is_what_the_head_adds_over_the_merge_base(tmp_path: Path) -> None:
@@ -597,7 +608,7 @@ def test_a_compare_is_what_the_head_adds_over_the_merge_base(tmp_path: Path) -> 
     sha = merged(root)
     found = diff.compare_range(root, f"{sha}^1", "side")
     assert found is not None
-    counted = diff.stat(root, *found)
+    counted = patch.stat(root, *found)
     assert sorted(counted) == ["a.txt", "b.txt"]
 
 
@@ -616,7 +627,7 @@ def test_an_integrated_card_compares_against_the_merge_s_first_parent(
     assert found is not None
     assert found[0] == run.must("rev-parse", f"{sha}^1~1", cwd=root)
     assert found[1] == run.must("rev-parse", "side", cwd=root)
-    counted = diff.stat(root, *found)
+    counted = patch.stat(root, *found)
     assert sorted(counted) == ["a.txt", "b.txt"]
 
 
@@ -645,7 +656,7 @@ def test_the_merge_that_counts_is_the_one_that_brought_the_card_in(
 
     found = diff.compare_range(root, "main", "side")
     assert found is not None and found[0] == branch_point
-    assert sorted(diff.stat(root, *found)) == ["a.txt"]
+    assert sorted(patch.stat(root, *found)) == ["a.txt"]
 
 
 def test_a_fast_forwarded_branch_keeps_the_empty_range_rather_than_guess(
@@ -663,7 +674,7 @@ def test_a_fast_forwarded_branch_keeps_the_empty_range_rather_than_guess(
     run.must("merge", "-q", "--ff-only", "side", cwd=root)
     head = run.must("rev-parse", "side", cwd=root)
     assert diff.compare_range(root, "main", "side") == (head, head)
-    assert diff.stat(root, head, head) == {}
+    assert patch.stat(root, head, head) == {}
 
 
 def test_the_numstat_vocabulary_is_the_one_bind_already_writes(tmp_path: Path) -> None:
@@ -676,7 +687,7 @@ def test_the_numstat_vocabulary_is_the_one_bind_already_writes(tmp_path: Path) -
     run.must("commit", "-q", "-m", "mixed", cwd=root)
     found = diff.commit_range(root, "HEAD")
     assert found is not None
-    assert diff.stat(root, *found) == {"text.txt": [2, 0], "blob.bin": None}
+    assert patch.stat(root, *found) == {"text.txt": [2, 0], "blob.bin": None}
 
 
 def test_a_patch_over_the_cap_is_truncated_AND_flagged(tmp_path: Path) -> None:
@@ -687,11 +698,11 @@ def test_a_patch_over_the_cap_is_truncated_AND_flagged(tmp_path: Path) -> None:
     run.must("commit", "-q", "-m", "big", cwd=root)
     found = diff.commit_range(root, "HEAD")
     assert found is not None
-    text, cut = diff.patch(root, *found, cap=500)
+    text, cut = patch.patch(root, *found, cap=500)
     assert cut and len(text.encode()) <= 500
-    whole, uncut = diff.patch(root, *found)
+    whole, uncut = patch.patch(root, *found)
     assert not uncut and len(whole) > 500
-    payload = diff.between(root, *found, cap=500)
+    payload = patch.between(root, *found, cap=500)
     assert payload["truncated"] is True and payload["cap"] == 500
 
 
@@ -703,11 +714,11 @@ def test_a_path_filter_narrows_the_patch_and_is_never_an_option(tmp_path: Path) 
     run.must("commit", "-q", "-m", "two files", cwd=root)
     found = diff.commit_range(root, "HEAD")
     assert found is not None
-    text, _ = diff.patch(root, *found, path="one.txt")
+    text, _ = patch.patch(root, *found, path="one.txt")
     assert "one.txt" in text and "two.txt" not in text
     # A path is user input too. After `--` git cannot read it as an option —
     # and the proof is a file that is NOT written. It lives under tmp_path, so
     # a mutant that DOES write it cannot poison the next run.
     written = tmp_path / "tk-d50e0a-pwned"
-    hostile, _ = diff.patch(root, *found, path=f"--output={written}")
+    hostile, _ = patch.patch(root, *found, path=f"--output={written}")
     assert hostile == "" and not written.exists()

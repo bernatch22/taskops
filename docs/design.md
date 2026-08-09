@@ -408,7 +408,7 @@ What the board can show about that tree **right now, with no new machinery**:
 2026-08-08, `ARCHITECTURE.md` §16): the board still stores events and never a
 repository, but the window is served by `taskops ui`, which by construction
 stands inside a checkout — so it mounts a read-only `/git` door
-(`http/gitdoor.py`, `gitwork/diff.py`) and the dossier draws **Files changed**
+(`http/gitdoor.py`, `gitwork/diff.py` + `gitwork/patch.py`) and the dossier draws **Files changed**
 for the card as a PR, plus each commit's own patch. Nothing is stored: the door
 derives on demand. A host that is NOT in a checkout (`taskops serve`) mounts no
 such door and says so, and the UI falls back down one declared cascade

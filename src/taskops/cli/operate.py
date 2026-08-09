@@ -24,7 +24,7 @@ recorded, per project, in `remote.json`'s `login.host` — by the join that
 registered the key, or by `taskops remote add <url>`, the same fact acquired
 earlier and NOT the table that was refused. WHICH host and WHICH board a bare
 call is about is `cli/remote.py`'s question, and it answers it once for all of
-these verbs; `--key` has the same story (`session.discover_key`). The explicit
+these verbs; `--key` has the same story (`identity.discover_key`). The explicit
 `<host>/<name>` spelling is unchanged — it is the URL form, as in git.
 """
 
@@ -35,7 +35,7 @@ from typing import Any
 from pathlib import Path
 
 from . import admin, commands
-from .. import _wire, _clock, session
+from .. import _wire, _clock, identity
 from .._json import as_object
 from ..board import find_root, read_config
 from .remote import named, address, record_board
@@ -131,22 +131,22 @@ def revoke(args: argparse.Namespace) -> int:
 def signed_in(host: str, args: argparse.Namespace, flag: str = "key") -> str:
     """The token these five verbs call with, and the whole of `--key` / `--as`.
 
-    `session.establish` is what makes this keyed rather than a token somebody
+    `identity.establish` is what makes this keyed rather than a token somebody
     pasted: an expired session is re-minted by signing the host's challenge, and
     a checkout that never joined signs in from the key on the command line —
     the ONLY way the owner's first ever command runs from the laptop (the
-    deadlock is in `session.NO_SESSION`). Nobody is asked for anything, and the
+    deadlock is in `identity.NO_SESSION`). Nobody is asked for anything, and the
     `login` block is cached once the HOST accepted the signature, so the second
     command needs no flags. `flag` names where the key path is: on `revoke`,
     `--key` is already a FINGERPRINT — the thing being revoked — so there the
     one that signs you in is `--sign-key`."""
     root = find_root(Path.cwd())
     config = read_config(root)
-    token, door = session.establish(
+    token, door = identity.establish(
         root, host, config, _flag(args, flag), _flag(args, "principal"), commands.principal()
     )
-    if door and session.is_own_host(config, host):
-        session.cache_login(root, door)
+    if door and identity.is_own_host(config, host):
+        identity.cache_login(root, door)
     return token
 
 

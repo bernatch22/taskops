@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict, cast
 
+from . import chapters
 from .types import KINDS, PROJECT, EDITABLE, CARD_STATUSES, Card, Event, Milestone
 
 _EPS = 1e-9
@@ -61,7 +62,7 @@ def apply(state: State, event: Event, *, force: bool = False) -> bool:
     if kind is None or not kind.replayed:
         return True  # history-only (comment, commit, merged) or from a newer version
     if event["kind"] == "milestone":
-        _milestone(state, event)
+        chapters.fold(state["milestones"], event)
         return True
     if event["kind"] == "project":
         _project(state, event)
@@ -118,60 +119,6 @@ def _mutate(card: Card, event: Event) -> None:
         field = str(body.get("field", ""))
         if field in EDITABLE:
             card[field] = body.get("to")  # type: ignore[literal-required]
-
-
-def _milestone(state: State, event: Event) -> None:
-    body = event["body"]
-    ident = str(body.get("id") or event["id"])
-    op = body.get("op")
-    if op == "create":
-        state["milestones"].setdefault(
-            ident,
-            Milestone(
-                id=ident,
-                title=str(body.get("title", "")),
-                goal=str(body.get("goal", "")),
-                rules=[str(r) for r in body.get("rules", []) if r],
-                criteria=[str(c) for c in body.get("criteria", []) if c],
-                reviews=bool(body.get("reviews", False)),
-                branch=str(body.get("branch", "")),
-                status="open",
-                created=event["ts"],
-            ),
-        )
-        return
-    stone = state["milestones"].get(ident)
-    if stone is None:
-        return
-    if op == "status":
-        stone["status"] = str(body.get("to", stone["status"]))
-    elif op == "landed":
-        # Landing IS closing: `merge milestone=` already refuses while any card
-        # is open or unintegrated, so a landed chapter has nothing left to hold
-        # open. Found on the first real landing (2026-08-07): this op used to
-        # fall through unfolded, the chapter stayed "open" forever, and from the
-        # SECOND chapter on `open_milestone` — which answers None for "several"
-        # — could never focus again: no Chapter pane, `plan` demanding
-        # milestone= on every call, permanently. The event log already carried
-        # the truth; the fold just never read it.
-        stone["status"] = "landed"
-    elif op == "edit":
-        for field in ("title", "goal"):
-            if field in body:
-                stone[field] = str(body[field])  # type: ignore[literal-required]
-        if "rules" in body:
-            # The WHOLE list, like every other list field: an append-only edit
-            # would leave no way to withdraw a rule short of a `retire` event,
-            # which is the machinery this deliberately does not have.
-            stone["rules"] = [str(r) for r in body["rules"] if r]
-        if "criteria" in body:
-            # Same shape, same reason: the whole list or nothing.
-            stone["criteria"] = [str(c) for c in body["criteria"] if c]
-        if "reviews" in body:
-            # Only a DEFAULT for cards planned after it: turning it on does not
-            # retro-flag a card, and turning it off does not un-flag one. A card
-            # carries its own `review`, and that is the fact the guards read.
-            stone["reviews"] = bool(body["reviews"])
 
 
 def _coerce_card(ident: str, raw: dict[str, Any], event: Event) -> Card:

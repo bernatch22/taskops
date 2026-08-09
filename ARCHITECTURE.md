@@ -200,6 +200,7 @@ flowchart TB
         actors["actors — presence, folded from events"]
         event["event — construct + hash"]
         replay["replay — fold(events) → State"]
+        chapters["chapters — the milestone half of the fold: create/status/landed/edit"]
         machine["machine — transition guards"]
         graph["graph — ready/blocked/doing/stalled"]
         scope["scope — the SERVER-scope roles: owner | member | anon"]
@@ -224,21 +225,27 @@ flowchart TB
         mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
         projectv["project — board-level facts: op=remote, op=visibility"]
+        helpersv["_args _cards _context _facts _rows — the helpers; the _ says 'not a verb'"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
     subgraph L4["4 · board.py + gitwork (the ONLY git, client-side)"]
         board["board.py — LocalBoard | RemoteBoard, routing decided ONCE"]
-        run["gitwork/run"]; trees["gitwork/trees — worktrees"]
+        run["gitwork/run"]; trees["gitwork/trees — worktrees: the GEOMETRY"]
+        landing["gitwork/landing — the MERGES: card→chapter, chapter→trunk"]
         catchup["gitwork/catchup — one worktree, up to date with a branch"]
-        trailer["gitwork/trailer"]; bind["gitwork/bind"]; install["gitwork/install"]
+        trailer["gitwork/trailer"]; bind["gitwork/bind"]
+        install["gitwork/install — what GIT needs: hooks, gitignore, the address"]
+        claudef["gitwork/claudefiles — what CLAUDE reads: .mcp.json, settings.json"]
         remote["gitwork/remote — origin: {host, slug, url}, and best-effort push"]
-        diff["gitwork/diff — read-only, what the /git door serves"]
+        diff["gitwork/diff — the walls and the range arithmetic"]
+        patchm["gitwork/patch — a resolved range → text and numbers"]
         sigm["gitwork/sig — SSHSIG: ssh-keygen -Y sign / -Y verify"]
-        sessionm["session.py — the client half of the login: sign in, cache, refresh"]
+        sessionm["session.py — the token's life: mint, refresh, remember"]
+        identitym["identity.py — WHO signs in, with WHICH key: discover, establish"]
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, integrate, dossier, before, render, brief, schema, thread, boards, fields"]
-        httpsrv["http/server, mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, feed, static, gitdoor, upstream"]
+        httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
         cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
@@ -258,6 +265,33 @@ only under `store/`, the wall clock only in `_clock.py` and `core/hours.py`
 (the one module whose whole subject is time), and every module stays
 under 200 lines — a budget that forces a split to land on a cohesive boundary
 instead of an arbitrary one.
+
+**A leading `_` marks plumbing for the layer above, and it is a three-zone
+convention**: the package root (`_errors _ids _clock _json _locate _version
+_wire` are level 0; `board.py`, `session.py` and `identity.py` are that layer's
+doors), and `verbs/` (`_args _cards _context _facts _mentions _rows _waiting`
+are helpers — the un-prefixed files are the registry's entries, one per verb).
+Nowhere else carries it, because every module under `core/ store/ gitwork/
+http/ mcp/ cli/` is internal to its layer and there is nothing to distinguish;
+`import taskops` exposes five errors and a version, so module names are a
+contract with nobody. This is NOT anthropic-sdk-python's convention, where `_`
+marks the half of a *library* users must not import — taskops has no such half,
+and renaming a package to `_core/` to resemble one would be cargo cult.
+
+**Zero headroom is a finding, not a pass** (audited 2026-08-09). The budget test
+is `<= 200`, and it was green with SIX modules at exactly 200 and fifteen within
+ten lines — a seventh of the package that could not accept one line, so the next
+card to touch any of them would have had to split it *under pressure*, which is
+the one condition under which a split lands somewhere arbitrary. Eight modules
+were split in cold blood instead, each at a seam that already existed:
+`verbs/pulse → _rows`, `session → identity`, `http/server → handler`,
+`gitwork/trees → landing`, `gitwork/install → claudefiles`, `gitwork/diff →
+patch`, `core/replay → chapters`, `verbs/plan → _cards`. The cap is now 196 and
+nothing sits on the line. Re-derive it rather than trusting this paragraph:
+
+```sh
+find src/taskops -name '*.py' -exec wc -l {} + | awk '$2!="total" && $1>=190' | sort -rn
+```
 
 ---
 
@@ -438,7 +472,7 @@ directory (`gh repo create`'s convention). The block is merged FIELD BY FIELD
 whole-block update would let a sign-in silently drop the recorded name. The KEY
 is DISCOVERED the way ssh discovers one — `~/.ssh/id_ed25519`, `id_ecdsa`,
 `id_rsa`, ssh's own files in ssh's own order, in ONE function
-(`session.py::discover_key`) that `establish` consumes so no verb guesses for
+(`identity.py::discover_key`) that `establish` consumes so no verb guesses for
 itself; `--key` stays as the override, exactly as `ssh -i` is, and the refusal
 when none exists lists what it tried. Recording an address is not signing in:
 `remote add` mints nothing and touches no key. Creating a board on a DIFFERENT
@@ -447,7 +481,7 @@ host from inside a joined checkout records nothing here — the same rule
 without it.
 
 **A key is accepted by every one of them, and that is what
-makes the FIRST one runnable** (`session.py::establish`, 2026-08-09 — found by
+makes the FIRST one runnable** (`identity.py::establish`, 2026-08-09 — found by
 running the chapter end to end on a clean host, not by a test). Without it the
 owner of a new box was deadlocked: `operate.call` only knew the session a
 previous `join --key` had cached, the invite that `join` wants is minted by
@@ -602,7 +636,7 @@ flowchart LR
     update_t -->|"close / release / drop / rewrite"| verbU["verb: update"]
     comment_t -->|"say something on ANY open card (+mentions)"| verbU
     review_t -->|"task= claims · verdict= judges"| verbR["verb: review"] --> liveR["live.sqlite — the REVIEW lease"]
-    merge_t -->|"--no-ff in integration worktree"| gitM["gitwork/trees.merge_card"] --> verbM["verb: merged"]
+    merge_t -->|"--no-ff in integration worktree"| gitM["gitwork/landing.merge_card"] --> verbM["verb: merged"]
 ```
 
 ---
@@ -739,7 +773,7 @@ nobody has touched yet.
 | git replication between clones | split-brain, two machines "owning" the same card | `RemoteBoard` never falls back to a local store on write failure (`Unreachable` instead) |
 | Claude hooks **that decide or store** | latency, another thing to install and drift; v1's held state and gated actions | context travels in `initialize.instructions` + tool responses. The ONE exception, sanctioned 2026-08-06: `taskops hook claude`, delivery-only (`MENTIONS.md` §9) — it reads, injects a ✉ or ◆ line, and can be deleted with no loss but immediacy. `tests/test_claude.py` pins its safety properties, one test each — the module docstring lists them and `grep -c '^def test_' tests/test_claude.py` counts them |
 | a mark-as-read / ack verb for mentions | a stored `read` flag is `recover` again: a write whose only job is to contradict an earlier one | `core/mentions.py::pending()` derives it from the thread; `tests/test_verbs.py::test_a_mention_clears_itself_the_moment_the_actor_touches_the_card` |
-| PER-REQUEST SIGNING (every call carrying an SSHSIG envelope, no sessions) | it was the first design and sessions won on cost, not on taste: a signature per request means teaching a signature envelope to THREE transports — the stdlib `http.server`, the WebSocket handshake on `/feed`, and the MCP layer that opens a board once and holds it — and every one of them would have had to learn nonce replay, clock skew and canonicalisation separately, for exactly the result a bearer already has. It also needs the private key FILE on every call, in every worker, forever; a session needs it twice a day. And the fleet argument decides it: a signed envelope is a NEW wire format, so production's four boards would have had to be re-joined, which rule 3 forbids | `/login` is the only door that verifies a signature (`http/login.py`), and what it hands back is an ordinary `Credential` — the same row, the same table, the same `Authorization: Bearer` every legacy token uses (`store/creds.py`). The client half is `session.py` and it is under 200 lines *because* it has one job (sign in, cache, refresh — plus `establish`, the one door `--key` comes in through). `tests/test_topology.py::test_a_legacy_only_board_still_works_on_rpc` and its three siblings are the fleet half: production's exact state — no principal, no key, an empty `allowed_signers` — driven through /rpc, /feed, the MCP handshake and the `taskops ui` window |
+| PER-REQUEST SIGNING (every call carrying an SSHSIG envelope, no sessions) | it was the first design and sessions won on cost, not on taste: a signature per request means teaching a signature envelope to THREE transports — the stdlib `http.server`, the WebSocket handshake on `/feed`, and the MCP layer that opens a board once and holds it — and every one of them would have had to learn nonce replay, clock skew and canonicalisation separately, for exactly the result a bearer already has. It also needs the private key FILE on every call, in every worker, forever; a session needs it twice a day. And the fleet argument decides it: a signed envelope is a NEW wire format, so production's four boards would have had to be re-joined, which rule 3 forbids | `/login` is the only door that verifies a signature (`http/login.py`), and what it hands back is an ordinary `Credential` — the same row, the same table, the same `Authorization: Bearer` every legacy token uses (`store/creds.py`). The client half is `session.py` (the token's life: mint, refresh, remember) with `identity.py` beside it (WHO signs in and with WHICH key — `discover_key`, `establish`, the one door `--key` comes in through); each is well under the budget *because* each has one job. `tests/test_topology.py::test_a_legacy_only_board_still_works_on_rpc` and its three siblings are the fleet half: production's exact state — no principal, no key, an empty `allowed_signers` — driven through /rpc, /feed, the MCP handshake and the `taskops ui` window |
 | HAND-ROLLED CRYPTO, and a pip crypto DEPENDENCY | two ways to lose the same argument. Writing ed25519 verification by hand is the classic own-goal; adding `cryptography` or `PyNaCl` to buy it back breaks "a wheel and a directory" — the property that makes `pip install taskops` on a bare box a deploy (§17) — and puts a compiled wheel in the path of every agent's install | the verifier is OpenSSH's own: `ssh-keygen -Y sign` / `-Y verify -f allowed_signers`, the same SSHSIG mechanism git uses to sign commits, invoked through the ONE subprocess module (`gitwork/sig.py`, under `gitwork/run.py`). `pyproject.toml` has no runtime dependency at all, and `tests/test_architecture.py` keeps `subprocess` out of every layer but that one |
 | ANONYMOUS WRITES, in any form — including the invisible one | a public board is anonymous READ and nothing else. The subtle failure is not a card somebody could see: every read verb opens with `stores.live.renew(actor, now)`, an INSERT into `presence`, so a public board without a guard has every visitor writing to `live.sqlite` on every page load — no event, no card, nothing any ordinary test would notice. There is also no "anonymous-write grace" and no third visibility | `http/auth.py::anonymous` never hands out a credential with more than `{"read"}`, and refuses a write with the sentence that names how a key gets registered; `store/live.py::renew` is the ONE place that decides the presence row. `tests/test_topology.py::test_an_anonymous_crawl_of_a_public_board_moves_not_one_byte` asserts `events.jsonl` and `live.sqlite` (with `-wal` and `-shm`) hash-identical across a crawl of every read door there is, and `…::test_anonymous_may_not_claim_to_be_somebody` closes the `actor=` hole |
 | a `--force` on `taskops board push`, and a SYNC channel behind `board.ingest` | a non-empty target means two histories, and giving them an order they never had fabricates a timeline the board never observed. The precondition ("no history but its own beginning") is true exactly once in a board's life, which is what keeps the door a promotion and not replication between clones — the thing banned two rows up | `http/ingest.py` refuses and says so; `tests/test_topology.py::test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered`, and the argument is the module's own docstring |
@@ -1218,7 +1252,7 @@ all of it (`the page's pane is a page's`, `the card's own thread is on the page`
 
 What did NOT change: `events.jsonl` still stores references and measures and
 never content; the door DERIVES on demand and nothing it returns is written
-back; git still lives only in `gitwork/` (`gitwork/diff.py`), read-only, behind
+back; git still lives only in `gitwork/` (`gitwork/diff.py` + `gitwork/patch.py`), read-only, behind
 the same token door as `/rpc` and the same envelope as `rpc.py`. **A ref from a
 browser is refused by shape, then resolved by `git rev-parse --verify --quiet`
 as one argv element, and from there only the 40-hex sha is used** — nothing is

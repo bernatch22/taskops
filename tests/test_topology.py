@@ -1206,19 +1206,19 @@ def test_discovery_tries_sshs_identity_files_in_sshs_order(
 ) -> None:
     """Criterion 2. `ssh_config(5)`'s order, and `--key` is the override (`ssh -i`).
     Files, not keys: what exists is what is tried, so this needs no crypto."""
-    from taskops import session
+    from taskops import identity
 
     home = tmp_path / "elsewhere"
     (home / ".ssh").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
-    assert session.discover_key() is None
+    assert identity.discover_key() is None
 
     (home / ".ssh" / "id_rsa").write_text("x")
-    assert session.discover_key() == home / ".ssh" / "id_rsa"
+    assert identity.discover_key() == home / ".ssh" / "id_rsa"
     (home / ".ssh" / "id_ecdsa").write_text("x")
-    assert session.discover_key() == home / ".ssh" / "id_ecdsa"
+    assert identity.discover_key() == home / ".ssh" / "id_ecdsa"
     (home / ".ssh" / "id_ed25519").write_text("x")
-    assert session.discover_key() == home / ".ssh" / "id_ed25519"
+    assert identity.discover_key() == home / ".ssh" / "id_ed25519"
 
 
 def test_remote_add_refuses_a_second_different_host_without_replace(
@@ -1252,7 +1252,7 @@ def test_the_explicit_host_slash_name_form_is_unchanged_by_any_of_it(
     assert main(["board", "create", f"{host_of(server)}/explicito", "--key", str(discoverable)]) == 0
     assert (server.mounts.root / "explicito").is_dir()
     # and the checkout still operates the host IT recorded: an explicit call is
-    # one call, never a re-pointing of the clone (`session.is_own_host`).
+    # one call, never a re-pointing of the clone (`identity.is_own_host`).
     login = json.loads((virgin / ".taskops" / "remote.json").read_text())["login"]
     assert login == {"host": "https://otro.example.com"}
 
@@ -1945,6 +1945,21 @@ def test_a_visibility_outside_the_pair_is_refused_by_name(
     with pytest.raises(BadRequest, match="'private' or 'public'"):
         admin(server, owner, "board.visibility", {"board": BOARD, "visibility": "unlisted"})
     assert client(server, BERNA).call("board", {})["visibility"] == "private"
+
+
+def test_an_admin_argument_that_is_not_text_is_refused_and_never_coerced(
+    server: BoardServer, owner: str
+) -> None:
+    """`scoped.text` REFUSES a non-string, exactly as `verbs/_args.text` does.
+
+    It used to `str()` whatever arrived, and a JSON number survives that intact:
+    `{"name": 123}` became the board `"123"` — `mounts.named` allows [a-z0-9-],
+    so the name wall could not catch it either. Two doors onto one argument
+    shape must not disagree about what an argument is."""
+    with pytest.raises(BadRequest, match="this call needs name="):
+        admin(server, owner, "board.create", {"name": 123})
+    assert "123" not in {b["name"] for b in admin(server, owner, "board.list", {})["boards"]}
+    assert not (server.mounts.root / "123").exists()  # and nothing was left behind
 
 
 def test_a_public_board_answers_every_read_verb_with_no_credential(

@@ -29,7 +29,7 @@ from pathlib import Path
 
 from ..board import RemoteBoard
 from .._errors import TaskopsError
-from ..gitwork import install
+from ..gitwork import install, claudefiles
 from ..core.types import ANON
 
 NO_LINK = "that URL carries no ?token= or ?invite= — ask for a fresh link"
@@ -45,7 +45,7 @@ def watch(root: Path, base: str) -> int:
         raise TaskopsError(f"{NO_LINK}. (Reading it as nobody was refused: {err})") from err
     install.write_config(root, base, "", readonly=True)
     install.write_gitignore(root)
-    install.write_mcp(root, sys.executable, ANON)
+    claudefiles.write_mcp(root, sys.executable, ANON)
     print(f"watching {base} — read only, as nobody. Nothing was minted and no key registered.")
     print("  to write on it, ask the owner for an invite: taskops join <url>?invite=… --key …")
     return 0

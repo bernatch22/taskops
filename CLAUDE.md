@@ -2,8 +2,8 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **101 Python files / ~11.450 lines under `src/taskops`**, plus the
-dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
+~340 files) as **110 Python files / ~11.775 lines under `src/taskops`**, plus the
+dashboard — **45 TypeScript files / ~11.736 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -41,8 +41,8 @@ waits — derived per read, nothing stored, specs and never source, and ADVICE:
 the assign it warns about still goes through.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**440 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 436+4; see below), ruff +
+**441 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 437+4; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -198,19 +198,22 @@ presence.
 
 ```
 0  _errors _ids _clock _json _locate _version _wire   stdlib only
-1  core/    types actors event replay machine graph    PURE: no I/O at all
+1  core/    types actors event replay chapters machine graph  PURE: no I/O at all
             hours mentions review scope challenge seams
 2  store/   log cache live reviews creds stores       the ONLY SQL
             server pubkeys  (the HOST's own identity)
 3  verbs/   plan take update card pulse assign         + the REGISTRY
-            record report review _mentions _waiting project events   no git, no render, no net
+            record report review project events
+            _args _cards _context _facts _mentions _rows _waiting   no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
-   gitwork/ run trees catchup remote trailer bind install diff sig  the ONLY subprocess
-   session.py  the CLIENT half of the ssh login: sign in, cache, refresh
+   gitwork/ run trees landing catchup remote trailer bind install    the ONLY subprocess
+            claudefiles diff patch sig
+   session.py   the token's life: mint, refresh, remember
+   identity.py  WHO signs in and with WHICH key — session.py's caller-facing half
 5  mcp/     server hello tools gitmoves integrate schema render boardview
             dossier before brief thread boards fields
-   http/    server mounts watcher rpc admin scoped grants ingest auth login
-            feed static gitdoor upstream
+   http/    server handler mounts watcher rpc admin scoped grants ingest
+            auth login feed static gitdoor upstream
 6  cli/     commands (init join hook) · watch (the viewer's join) · serving
             (serve ui) · remote (remote add: which host, which board) · operate
             (board invite revoke) · push (board push) · admin (server init +
@@ -222,6 +225,27 @@ imports, SQL only in `store/`, `subprocess` only in `gitwork/run.py`, the clock
 only in `_clock.py` + `core/hours.py`, ≤200 lines per module, no `assert` in
 `src/`. **A rule with no test is a suggestion** — if you split a module to fit
 the budget, split it where it is cohesive, never relax the rule.
+
+**A leading `_` means "plumbing for the layer above it", not "private".** It is
+a THREE-ZONE convention, and the zones are where an entry point and its helpers
+share a directory:
+
+* the package ROOT — `_errors _ids _clock _json _locate _version _wire` are
+  level-0 plumbing; `board.py`, `session.py` and `identity.py` sit beside them
+  with no underscore because they are the layer's real doors;
+* `verbs/` — `_args _cards _context _facts _mentions _rows _waiting` are
+  helpers, and the un-prefixed files are the REGISTRY's own entries, one per
+  verb. The prefix is what says "this one is not a verb";
+* everywhere else — `core/ store/ gitwork/ http/ mcp/ cli/` — nothing carries
+  it, because every module in them is internal to its layer and there is no
+  distinction to draw. `import taskops` exposes five errors and a version
+  (`__init__.py`), so module names are not a contract with anybody.
+
+Stated because it had to be deduced once: the rule was applied correctly by
+every chapter and written down by none, and the layer table above had silently
+lost `_args`, `_context` and `_facts` as a result. Do NOT rename a package to
+`_core/` to look like a library — anthropic-sdk-python's underscores mark the
+half of a LIBRARY that users must not import, and taskops has no such half.
 
 ## Storage
 

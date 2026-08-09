@@ -30,8 +30,11 @@ class Verb(NamedTuple):
 
 
 def text(args: dict[str, Any], key: str) -> str:
-    """A required argument, refused by NAME when it is missing or blank."""
-    value = str(args.get(key, "")).strip()
-    if not value:
+    """A required argument, refused by NAME when it is missing or blank.
+
+    Refused, never coerced, same as `verbs/_args.text`: `str()` on a stray
+    number or list would smuggle `"123"` or `"['a']"` into a board name."""
+    value = args.get(key, "")
+    if not isinstance(value, str) or not value.strip():
         raise BadRequest(f"this call needs {key}=")
-    return value
+    return value.strip()

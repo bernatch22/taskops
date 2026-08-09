@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from .._errors import NotFound, BadRequest
-from ..gitwork import diff
+from ..gitwork import diff, patch
 
 NO_REPO = (
     "this host serves boards, not a repository — it was started outside a "
@@ -72,7 +72,7 @@ def answer(repo: Path | None, tail: str, query: str) -> dict[str, Any]:
             raise NotFound(_stale(*(r for r in (left, right) if not diff.resolve(repo, r))))
     else:
         raise BadRequest("git/commit/<ref> or git/compare/<a>...<b>")
-    return diff.between(repo, found[0], found[1], path)
+    return patch.between(repo, found[0], found[1], path)
 
 
 def _stale(*refs: str) -> str:
