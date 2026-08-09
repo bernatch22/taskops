@@ -1,5 +1,7 @@
-"""`taskops board push <host>/<name>` — this repo's local board becomes the hosted one.
+"""`taskops board push` — this repo's local board becomes the hosted one.
 
+    taskops board push                     the recorded host, the recorded name, the
+                                           discovered key (`cli/remote.py`)
     taskops board push https://taskops.example.com/facturador --key ~/.ssh/id_ed25519
 
 What this replaces is a README paragraph that said "scp the events.jsonl to the
