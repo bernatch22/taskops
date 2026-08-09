@@ -156,7 +156,8 @@ def _compare(events: list[Event], answer: dict[str, Any]) -> str | None:
 
     The remote side is READ BACK from the server's store and counts the events of
     THIS push only — a board created for one already holds its own birth
-    certificate (`http/ingest.py::_birth`), so comparing the board's whole size
+    certificate, and possibly a visibility or a remote set before it was filled
+    (`http/ingest.py::_configuration`), so comparing the board's whole size
     against this log's would be off by one on every correct push there is."""
     mine = Counter(event["kind"] for event in events)
     theirs = {str(k): int(v) for k, v in as_object(answer.get("kinds")).items()}
