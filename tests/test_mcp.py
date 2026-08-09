@@ -1213,3 +1213,165 @@ class TestOneCallIntegratesTheChapter:
         props = SCHEMAS["taskops_merge"]["properties"]
         assert {"task", "tasks", "done"} <= set(props)
         assert "tasks" in tools.BY_NAME["taskops_merge"].description
+
+
+# ── a chapter lands over a moved trunk ──────────────────────────────────────
+
+DOCS = ("ARCHITECTURE.md", "CLAUDE.md")
+
+
+def chapter_ready_to_land(
+    repo: Path, boards: Any, *, clash: bool = False, criteria: list[str] | None = None
+) -> tuple[LocalBoard, str, str, Path]:
+    """A FINISHED chapter — one card, done and already integrated — over a real
+    repo whose trunk (`master`) has MOVED since the chapter was cut.
+
+    `clash` reproduces the two-sided docs edit verbatim: the chapter and the
+    trunk both rewrite ARCHITECTURE.md and CLAUDE.md, which is what conflicted
+    twice in two days. Without it the trunk's commit is pure drift and the
+    catch-up is clean. Returns (dev, milestone id, milestone branch, integration
+    worktree).
+    """
+    run.must("init", "-q", "-b", "master", str(repo))
+    run.must("config", "user.email", "test@example.com", cwd=repo)
+    run.must("config", "user.name", "Test", cwd=repo)
+    for name in DOCS:
+        (repo / name).write_text(f"{name}: cut here\n", encoding="utf-8")
+    run.must("add", "-A", cwd=repo)
+    run.must("commit", "-q", "-m", "first", cwd=repo)
+
+    dev = boards(BERNA)
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "MVP",
+            "goal": "invoice a bank CSV",
+            "criteria": criteria or [],
+            "tasks": [{"title": "VAT", "spec": "the whole tax"}],
+        },
+    )
+    stone, card = str(out["milestone"]["id"]), str(out["cards"][0]["id"])
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+
+    dossier = dev.call("card", {"task": card})
+    stone_branch = str(dossier["milestone"]["branch"])
+    tree = trees.ensure_card(repo, card, str(dossier["branch"]), stone_branch)
+    (tree / "card.py").write_text("VAT = 21\n", encoding="utf-8")
+    if clash:  # the chapter legitimately rewrites the same two docs
+        for name in DOCS:
+            (tree / name).write_text(f"{name}: the chapter's line\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "card", cwd=tree)
+    dev.call("bind", {"task": card, "sha": "a1b2c3", "subject": "feat: VAT"})
+    w1.call("update", {"task": card, "status": "done", "comment": "done"})
+    sha = trees.merge_card(repo, stone_branch, str(dossier["branch"]), card)
+    dev.call("merged", {"task": card, "into": stone_branch, "sha": sha})
+
+    # ...and NOW the trunk moves under it: another chapter landed.
+    for name in DOCS:
+        (repo / name).write_text(f"{name}: the trunk moved on\n", encoding="utf-8")
+    run.must("add", "-A", cwd=repo)
+    run.must("commit", "-q", "-m", "another chapter landed", cwd=repo)
+    return dev, stone, stone_branch, trees.integration_tree(repo, stone_branch)
+
+
+class TestAChapterLandsOverAMovedTrunk:
+    """`gitmoves._land` — the landing gate catches the chapter up to a trunk that
+    moved while it was in flight, on the same `catchup.catch_up` the single-card
+    path uses. Gate first, catch-up second, land third."""
+
+    def test_a_chapter_behind_a_clean_trunk_catches_up_and_lands_in_one_call(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """No human runs git: one call, and master carries both the trunk's own
+        commit and the chapter."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards)
+        assert trees.behind_trunk(repo, stone_branch) == ("master", 1)
+
+        text = call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert "master" in text
+        subjects = run.must("log", "--format=%s", cwd=repo).splitlines()
+        assert f"land {stone_branch}" == subjects[0]
+        assert "another chapter landed" in subjects  # the trunk's commit survived
+        assert (repo / "card.py").exists()  # ...and so did the chapter's work
+        # the catch-up happened in the integration worktree, not the checkout
+        assert f"Merge branch 'master' into {stone_branch}" in run.must(
+            "log", "--format=%s", cwd=tree
+        ).splitlines()
+
+    def test_the_two_sided_docs_conflict_refuses_and_master_is_untouched(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """The reproduction, verbatim: ARCHITECTURE.md and CLAUDE.md written by
+        both sides. It still aborts and still refuses — what is new is only the
+        behind-count, so the cause is in the sentence."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards, clash=True)
+        before = run.must("rev-parse", "master", cwd=repo)
+
+        with pytest.raises(Refused) as refusal:
+            call(dev, repo, "taskops_merge", milestone=stone)
+
+        said = str(refusal.value)
+        assert f"{stone_branch} is 1 commit behind master" in said
+        for name in DOCS:
+            assert f"  {name}" in said
+        assert "master is untouched" in said
+        assert f"taskops_merge milestone={stone} again" in said
+        assert run.must("rev-parse", "master", cwd=repo) == before  # byte for byte
+        assert not run.dirty(tree)  # aborted, never left mid-merge for somebody to find
+        assert not (tree / ".git").exists() or not (tree / "MERGE_HEAD").exists()
+
+    def test_the_criteria_refusal_comes_before_any_git_runs(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """The chapter's criteria are the human's question and the catch-up is
+        git: unanswered and behind, the criteria refusal wins and the integration
+        worktree's HEAD has not moved."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(
+            repo, boards, criteria=["all three tabs render"]
+        )
+        before = run.must("rev-parse", "HEAD", cwd=tree)
+
+        with pytest.raises(Refused, match="criteria_met=true") as refusal:
+            call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert "all three tabs render" in str(refusal.value)
+        assert run.must("rev-parse", "HEAD", cwd=tree) == before  # no merge ran
+
+        call(dev, repo, "taskops_merge", milestone=stone, criteria_met=True)
+        assert run.must("rev-parse", "HEAD", cwd=tree) != before  # answered: now it caught up
+
+    def test_a_chapter_level_with_the_trunk_takes_todays_path_byte_for_byte(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards)
+        run.must("merge", "--no-edit", "master", cwd=tree)  # already caught up by hand
+        before = run.must("rev-parse", "HEAD", cwd=tree)
+        assert trees.behind_trunk(repo, stone_branch) == ("master", 0)
+
+        call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert run.must("rev-parse", "HEAD", cwd=tree) == before  # nothing was merged into it
+        assert f"land {stone_branch}" == run.must("log", "--format=%s", cwd=repo).splitlines()[0]
+
+    def test_a_dirty_integration_worktree_is_never_touched(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """Somebody may be mid-thought in there even though every card is done.
+        Blocked is not a refusal of its own: the landing falls through to exactly
+        today's behaviour and `land_milestone`'s own conflict message speaks."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards, clash=True)
+        (tree / "scratch.txt").write_text("mid-thought\n", encoding="utf-8")
+        run.must("add", "-A", cwd=tree)
+        before = run.must("rev-parse", "HEAD", cwd=tree)
+
+        with pytest.raises(Refused) as refusal:
+            call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert f"{stone_branch} conflicts with master in:" in str(refusal.value)  # today's words
+        assert "behind master" not in str(refusal.value)  # nothing was attempted
+        assert run.must("rev-parse", "HEAD", cwd=tree) == before
+        assert (tree / "scratch.txt").read_text(encoding="utf-8") == "mid-thought\n"

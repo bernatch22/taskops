@@ -79,6 +79,17 @@ def behind(repo: Path, milestone_branch: str, card_branch: str) -> int:
     return int(count) if count.isdigit() else 0
 
 
+def behind_trunk(repo: Path, milestone_branch: str) -> tuple[str, int]:
+    """`behind`, one level up: how far a chapter is from the trunk it lands into.
+
+    A chapter is cut from `base_ref` at its first assign, and chapters overlap —
+    while one is in flight another lands — so by landing time the trunk has
+    moved. Returns (trunk, count); the trunk is `base_ref`'s to name.
+    """
+    trunk = base_ref(repo)
+    return trunk, behind(repo, trunk, milestone_branch)
+
+
 def merge_card(repo: Path, milestone_branch: str, card_branch: str, card: str) -> str:
     """Integrate one card. Returns the merge sha, or refuses with git's own words.
 
