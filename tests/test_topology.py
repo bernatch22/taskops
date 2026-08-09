@@ -877,8 +877,14 @@ def test_a_board_credential_cannot_operate_the_host_and_the_refusal_names_the_ke
 def test_an_unknown_server_verb_names_the_ones_this_host_has(
     server: BoardServer, owner: str
 ) -> None:
-    with pytest.raises(BadRequest, match="board.create, board.list"):
+    """Every verb this host has, not a hand-copied prefix of them: the registry is
+    what the refusal must stay in step with, and a list written out here goes
+    stale the first time a verb is added (it did, at `board.ingest`)."""
+    from taskops.http.admin import REGISTRY
+
+    with pytest.raises(BadRequest) as refused:
         admin(server, owner, "board.destroy", {})
+    assert str(refused.value).endswith(", ".join(sorted(REGISTRY)))
 
 
 def test_the_root_rpc_is_the_server_and_a_board_named_rpc_is_still_reachable(

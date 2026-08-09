@@ -67,6 +67,12 @@ class Stores:
     def head(self) -> int:
         return self.cache.head()
 
+    def ids(self) -> set[str]:
+        return self.cache.ids()
+
+    def kinds(self) -> dict[str, int]:
+        return self.cache.kinds()
+
     def events(self, task: str) -> list[Event]:
         return self.cache.by_task(task)
 
