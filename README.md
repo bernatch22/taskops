@@ -25,7 +25,7 @@ have `taskops` importable leaves commits un-stamped, silently (the hook prints
 the error but never blocks the commit, by design):
 
 ```sh
-uv tool install --from ~/taskops-v2 --force taskops   # --force: replaces v1 if it's on PATH
+uv tool install --from ~/taskops-v2 taskops
 ```
 
 **Local — one machine, no server.** For solo work, or before you trust the
