@@ -74,8 +74,9 @@ def install_hooks(repo: Path, python: str) -> list[str]:
     return written
 
 
-def write_config(
-    repo: Path, url: str, token: str, login: dict[str, str] | None = None, expires: float = 0.0
+def write_config(  # noqa: PLR0913 — one config file, one writer; the fields are the file
+    repo: Path, url: str, token: str, login: dict[str, str] | None = None,
+    expires: float = 0.0, readonly: bool = False,
 ) -> None:
     """board.json is public, remote.json is not — and the modes say so.
 
@@ -83,10 +84,17 @@ def write_config(
     the host, the principal and the key that can mint the next token with nobody
     watching (`session.py`). Absent, this is the join every board did before the
     keys existed and the token is a standing one — milestone rule 3.
+
+    `readonly` is the VIEWER's join (`cli/watch.py`): a public board, no token
+    minted. RECORDED, not inferred from an empty token — "no token" is also what
+    a BROKEN join leaves, and one is a window, the other a bug (`board.py`).
     """
     folder = repo / ".taskops"
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "board.json").write_text(json.dumps({"url": url}, indent=2) + "\n", encoding="utf-8")
+    address: dict[str, Any] = {"url": url}
+    if readonly:
+        address["readonly"] = True
+    (folder / "board.json").write_text(json.dumps(address, indent=2) + "\n", encoding="utf-8")
     secret = folder / "remote.json"
     body: dict[str, Any] = {"token": token}
     if login:

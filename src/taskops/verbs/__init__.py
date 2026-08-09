@@ -32,7 +32,8 @@ from . import (
     _mentions,
 )
 from .._errors import Refused, BadRequest
-from ..core.types import ROLE_DEV, ROLE_AGENT, role_of
+from ..core.scope import ENROL
+from ..core.types import ROLE_DEV, ROLE_ANON, ROLE_AGENT, role_of
 from ..store.stores import Stores
 
 Args = dict[str, Any]
@@ -41,6 +42,27 @@ Run = Callable[[Stores, str, Args], dict[str, Any]]
 DEV = frozenset({ROLE_DEV})
 AGENT = frozenset({ROLE_AGENT})
 BOTH = frozenset({ROLE_DEV, ROLE_AGENT})
+
+WATCHERS = frozenset({ROLE_DEV, ROLE_AGENT, ROLE_ANON})
+"""BOTH plus nobody: a read that a PUBLIC board answers with no credential.
+
+GitHub's model, exactly — anonymous read, keyed write, no third state. The set
+is on the READ verbs only, so "may anon do this" is answered by the same table
+that answers "may a worker plan", and there is no second place to say no.
+
+`waiting` deliberately keeps `DEV`: it is the orchestrator's three groups, not
+a wider read. `mentions` carries this set and is EMPTY for anon by
+construction — a comment can only name an actor somebody registered, and `anon`
+is outside the actor grammar (`core/actors.py::ANON`), so nothing can address it.
+"""
+
+NO_KEY = (
+    "anonymous may read this board and nothing else — writing needs a registered key. "
+    f"Ask the board's owner for an invite (`taskops invite <you> --board <name>`) and join "
+    f"with it: taskops join <url>?invite=… --key ~/.ssh/id_ed25519. {ENROL}"
+)
+"""The refusal an unkeyed writer gets, and it names the way IN — the house rule,
+extended to the one caller that has no identity to be told about."""
 
 
 class Verb(NamedTuple):
@@ -51,10 +73,10 @@ class Verb(NamedTuple):
 
 
 REGISTRY: dict[str, Verb] = {
-    "board": Verb(pulse.run, "read", BOTH, ""),
+    "board": Verb(pulse.run, "read", WATCHERS, ""),
     # The ✉ half of `board` alone, and the only read that does NOT renew: the
     # delivery hook calls it on somebody else's behalf (MENTIONS.md §9a).
-    "mentions": Verb(_mentions.mentions, "read", BOTH, ""),
+    "mentions": Verb(_mentions.mentions, "read", WATCHERS, ""),
     # The orchestrator's three groups of `board`, and the OTHER read that does
     # not renew — same delivery hook, same reason (`verbs/_waiting.py`). DEV
     # only, because merging, verifying and re-dispatching are the dev's moves.
@@ -64,11 +86,11 @@ REGISTRY: dict[str, Verb] = {
         DEV,
         "these are the orchestrator's moves, not yours. Your own picture: taskops_board",
     ),
-    "card": Verb(card.run, "read", BOTH, ""),
-    "report": Verb(report.run, "read", BOTH, ""),
+    "card": Verb(card.run, "read", WATCHERS, ""),
+    "report": Verb(report.run, "read", WATCHERS, ""),
     # The LOG, paged — the one read that answers "what happened" rather than
     # "what is each card". Board-wide by construction (verbs/events.py).
-    "events": Verb(events.run, "read", BOTH, ""),
+    "events": Verb(events.run, "read", WATCHERS, ""),
     "plan": Verb(
         plan.run,
         "write",
@@ -117,7 +139,13 @@ def call(stores: Stores, verb: str, actor: str, args: Args) -> dict[str, Any]:
         raise BadRequest(f"unknown verb {verb!r} — this board answers: {known}")
     role = role_of(actor)
     if role not in spec.roles:
-        raise Refused(f"{actor} may not {verb}: {spec.refusal}")
+        # ANON is refused in its OWN words: half the write verbs carry an empty
+        # `refusal` because a dev and an agent both may run them, so the generic
+        # sentence would end in a colon and say nothing at all — and the one
+        # reader who most needs to be told the way in is the one with no
+        # identity yet. `waiting` (a read anon may not run) keeps its own.
+        unkeyed = role == ROLE_ANON and spec.kind == "write"
+        raise Refused(f"{actor} may not {verb}: {NO_KEY if unkeyed else spec.refusal}")
     return spec.fn(stores, actor, args)
 
 

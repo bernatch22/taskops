@@ -63,13 +63,16 @@ class Upstream:
 
         Returns rather than raises: this sits under an HTTP handler whose job is
         to hand the page what the board said, and a refusal IS an answer."""
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            # No token is the VIEWER's window onto a public board: sending an
+            # empty `Bearer ` would be a credential offered and refused, where
+            # what is true is that there is none. The server reads that as `anon`.
+            headers["Authorization"] = f"Bearer {self.token}"
         request = Request(  # noqa: S310 — the scheme comes from the board's own config
             f"{self.url}/rpc",
             data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.token}",
-            },
+            headers=headers,
             method="POST",
         )
         try:

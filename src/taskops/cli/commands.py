@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 
+from . import watch
 from .. import session
 from .._json import query
 from .._wire import post as post_json
@@ -74,7 +75,8 @@ def join(here: Path, url: str, given: str, key: str = "", discard: bool = False)
         if key:
             door = {"host": _host_of(base), "principal": name, "key": str(Path(key).expanduser())}
     if not token:
-        raise TaskopsError("that URL carries no ?token= or ?invite= — ask for a fresh link")
+        # No credential at all — a PUBLIC board is joined read-only (`watch.py`).
+        return watch.watch(root, base.rstrip("/"))
     install.write_config(root, base.rstrip("/"), token, door or None)
     if door:
         session.sign_in(root, door["host"], door["principal"], Path(door["key"]))

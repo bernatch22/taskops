@@ -118,12 +118,18 @@ class RemoteBoard:
             return self._post(verb, args, who)
 
     def _post(self, verb: str, args: dict[str, Any], who: str) -> dict[str, Any]:
-        return _wire.post(
-            f"{self.url}/rpc",
-            {"verb": verb, "args": args, "actor": who},
-            {"Authorization": f"Bearer {self.token}", "X-Taskops-Actor": who},
-            self.timeout,
-        )
+        body: dict[str, Any] = {"verb": verb, "args": args, "actor": who}
+        headers = {"Authorization": f"Bearer {self.token}", "X-Taskops-Actor": who}
+        if not self.token:
+            # A viewer's window onto a PUBLIC board (`open_board`): no credential
+            # to send, and — the part that matters — no ACTOR either. Claiming
+            # `dev:berna` while proving nothing is exactly what the server refuses
+            # (`http/auth.py::authorize`), so a read-only clone that kept sending
+            # its local identity could not read the board it just joined. With
+            # neither, the server resolves the caller as `anon`, which is true.
+            body.pop("actor")
+            headers = {}
+        return _wire.post(f"{self.url}/rpc", body, headers, self.timeout)
 
     def close(self) -> None:
         return None
@@ -170,6 +176,13 @@ def open_board(start: Path, actor: str, timeout: float = TIMEOUT) -> Board:
     url = str(config.get("url", ""))
     if url:
         token = session.fresh(root, config, _clock.now())
+        if not token and config.get("readonly"):
+            # The VIEWER's window: `taskops join <url>` with no invite against a
+            # PUBLIC board. There is no credential because none was ever minted,
+            # which is a state and not a failure — reads answer as `anon` and the
+            # first write comes back in the SERVER's words, naming how a key gets
+            # registered. No `refresh`: there is no session to renew.
+            return RemoteBoard(url, "", actor, timeout)
         if not token:
             raise Unreachable(
                 f"{root / DIR}/board.json points at {url} but there is no credential in "

@@ -28,36 +28,23 @@ this door — `check(token, "*", …)` can never match one.
 
 from __future__ import annotations
 
-from typing import Any, Callable, NamedTuple
+from typing import Any
 
-from . import ingest, mounts as _mounts
+from . import grants, ingest, mounts as _mounts
+from .. import verbs
 from .auth import Credential
 from ..core import scope
 from .._json import as_object
 from .mounts import Mounts
+from .scoped import Call, Verb, text as _text
 from .._errors import Refused, BadRequest
 from ..core.event import make
 from ..core.types import PROJECT
-from ..store.creds import WEEK
 
 NO_SESSION = (
     "operating this host needs a SESSION, which an ssh key mints: join with "
     "`taskops join <url>?invite=… --key ~/.ssh/id_ed25519` and every call signs itself in"
 )
-
-
-class Call(NamedTuple):
-    mounts: Mounts
-    actor: str  # dev:<principal> — the credential's own subject, already proved
-    role: str
-    args: dict[str, Any]
-    now: float
-
-
-class Verb(NamedTuple):
-    operation: str  # the `core/scope.py` operation that gates it
-    need: str  # the capability the credential must carry: read | write
-    run: Callable[[Call], dict[str, Any]]
 
 
 def answer(mounts: Mounts, token: str, body: dict[str, Any], now: float) -> dict[str, Any]:
@@ -92,6 +79,24 @@ def _create(call: Call) -> dict[str, Any]:
     return {"board": name, "created_by": call.actor, "seq": stores.head()}
 
 
+def _visibility(call: Call) -> dict[str, Any]:
+    """PUBLIC or PRIVATE, GitHub's flag — recorded on the BOARD, not on the host.
+
+    It goes through `verbs.call` and not through `make()` beside `_create`
+    above, and that difference is deliberate: `verbs/project.py` owns the op
+    table, the two legal values and the rule that re-recording an unchanged
+    value writes NOTHING. Reaching past it would put a second spelling of
+    "public" in this file, and the day they disagree a board is readable by one
+    of them and not the other.
+    """
+    name = _mounts.named(_text(call.args, "board"))
+    call.mounts.check(name)
+    args = {"op": "visibility", "visibility": _text(call.args, "visibility")}
+    out = verbs.call(call.mounts.stores(name), "project", call.actor, args)
+    wanted = as_object(out.get("value")).get("visibility")
+    return {"board": name, "visibility": wanted, "recorded": out.get("recorded"), "by": call.actor}
+
+
 def _list(call: Call) -> dict[str, Any]:
     """Everything, for the owner; a member's own boards, for a member.
     "Their own" is DERIVED and not a membership table: a board somebody holds a
@@ -104,64 +109,19 @@ def _list(call: Call) -> dict[str, Any]:
     return {"boards": [_summary(call.mounts, name) for name in names], "role": call.role}
 
 
-def _invite(call: Call) -> dict[str, Any]:
-    """The same mint the on-box `taskops invite` runs — reached over the API.
-    The board is checked FIRST, so an invite is never minted for a name this host
-    does not serve: that token would be handed to a teammate and fail at their
-    `join`, a day later and a machine away from the typo."""
-    who, board = _text(call.args, "who"), _text(call.args, "board")
-    call.mounts.check(board)
-    token, credential = call.mounts.credentials.mint(
-        f"invite:{who}", board, call.now, ttl=WEEK, once=True
-    )
-    return {
-        "id": credential.id,
-        "token": token,
-        "board": board, "who": who, "expires": call.now + WEEK,
-    }
-
-
 def _ingest(call: Call) -> dict[str, Any]:
     """A whole local history, moved onto an EMPTY board. `ingest.py` is the wall."""
     return ingest.run(call.mounts, call.args)
 
 
-def _revoke_key(call: Call) -> dict[str, Any]:
-    """A key stops signing anybody in, and `allowed_signers` is rewritten whole
-    by the store — so revoking is one row and the file follows."""
-    wanted = _text(call.args, "key")
-    store = call.mounts.host.store()
-    held = [key for key in store.keys(live=False) if key.fingerprint == wanted]
-    if not held:
-        raise Refused(
-            f"no key {wanted!r} on this host — `taskops board ls` names the host; "
-            "a fingerprint is what `ssh-keygen -lf <path.pub>` prints (SHA256:…)"
-        )
-    store.revoke_key(wanted)
-    return {"fingerprint": wanted, "principal": held[0].principal, "revoked": True}
-
-
-def _revoke_invite(call: Call) -> dict[str, Any]:
-    """An UPDATE that matches nothing is a silent success, so the id is checked
-    first: a typo used to print `revoked` and leave the credential live."""
-    ident = _text(call.args, "invite")
-    subject = call.mounts.credentials.subject_of(ident)
-    if not subject:
-        raise Refused(
-            f"this host minted no credential {ident!r} — the id is the one "
-            "`taskops invite` printed beside the link"
-        )
-    call.mounts.credentials.revoke(ident)
-    return {"id": ident, "subject": subject, "revoked": True}
-
-
 REGISTRY: dict[str, Verb] = {
     "board.create": Verb("board.create", "write", _create),
     "board.list": Verb("board.list", "read", _list),
+    "board.visibility": Verb("board.visibility", "write", _visibility),
     "board.ingest": Verb("board.ingest", "write", _ingest),
-    "invite.mint": Verb("invite.mint", "write", _invite),
-    "key.revoke": Verb("key.revoke", "write", _revoke_key),
-    "invite.revoke": Verb("invite.revoke", "write", _revoke_invite),
+    "invite.mint": Verb("invite.mint", "write", grants.mint),
+    "key.revoke": Verb("key.revoke", "write", grants.revoke_key),
+    "invite.revoke": Verb("invite.revoke", "write", grants.revoke_invite),
 }
 
 
@@ -191,10 +151,3 @@ def _summary(mounts: Mounts, name: str) -> dict[str, Any]:
     active = stores.log_path.stat().st_mtime if stores.log_path.exists() else 0.0
     cards = len(stores.state()["cards"])
     return {"name": name, "cards": cards, "seq": stores.head(), "active": active}
-
-
-def _text(args: dict[str, Any], key: str) -> str:
-    value = str(args.get(key, "")).strip()
-    if not value:
-        raise BadRequest(f"this call needs {key}=")
-    return value

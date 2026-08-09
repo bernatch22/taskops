@@ -17,7 +17,7 @@ from typing import Any
 from pathlib import Path
 
 from .._errors import TaskopsError
-from ..core.types import LEASE_TTL, Lease
+from ..core.types import ANON, LEASE_TTL, Lease
 
 DDL = """
 CREATE TABLE IF NOT EXISTS leases (
@@ -97,7 +97,23 @@ class Live:
 
     def renew(self, actor: str, now: float, ttl: float = LEASE_TTL) -> None:
         """Any call from `actor` proves it is alive — that is the whole heartbeat.
-        Review leases renew by the same rule: the traffic is the heartbeat."""
+        Review leases renew by the same rule: the traffic is the heartbeat.
+
+        **`anon` renews NOTHING, and this is the one place that decides it.**
+        Every read verb opens with `renew(actor)` — six call sites today
+        (`pulse`, `card`, `report`, `events`, plus the two writes' own) — so a
+        public board's anonymous reader would INSERT a presence row on every
+        page load: a write caused by a stranger's question, the milestone's
+        second rule broken by the most ordinary request there is. Guarding the
+        six callers instead is the shape of v1's bug (`verbs/__init__.py`'s
+        docstring: one decision re-taken at 25 sites, four of them differently)
+        — a seventh read verb would be written next month by somebody who never
+        read this file. Here it cannot be forgotten: `anon` holds no lease by
+        construction (`take` is a write and a write is refused before it gets
+        here), so there is nothing this call could legitimately do for it.
+        """
+        if actor == ANON:
+            return
         self._write(
             [
                 (

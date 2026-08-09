@@ -16,9 +16,24 @@ from .._errors import BadRequest
 
 SYSTEM = "taskops"  # the actor of events nobody typed
 
+ANON = "anon"
+"""NOBODY: a reader of a PUBLIC board who carries no credential.
+
+A whole identity rather than an empty string, and that is the decision: an
+actor is threaded through every verb, every lease call and every mention fold,
+so "no actor" as `""` would be a hole that each of those has to remember to
+check. `anon` is a name with a role, refused by the registry from every write
+in ONE place, and the store's `renew` is a no-op for it — so the milestone's
+rule (ANONYMOUS NEVER CAUSES A WRITE) is two guards, not thirty.
+
+It is deliberately outside the `<role>:<name>` grammar: no invite, no key and
+no `TASKOPS_ACTOR` can ever spell it, so nobody can log in AS anonymous.
+"""
+
 ROLE_DEV = "dev"
 ROLE_AGENT = "agent"
 ROLE_SYSTEM = "system"
+ROLE_ANON = "anon"
 
 _NAME_OK = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
 
@@ -27,6 +42,8 @@ def role_of(actor: str) -> str:
     """Derive the role from the actor grammar, or refuse with the way out."""
     if actor == SYSTEM:
         return ROLE_SYSTEM
+    if actor == ANON:
+        return ROLE_ANON
     head, sep, rest = actor.partition(":")
     if not sep or not rest:
         raise BadRequest(
