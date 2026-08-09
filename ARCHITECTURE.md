@@ -554,12 +554,13 @@ Both remaining items are done. The migration ran against all four v1 boards
 (§17), and `taskops.bernardocastro.dev` serves v2 since 2026-08-08 — not via
 `shipway`, which moves a code tree to a pm2 app: a board host is a wheel plus a
 directory of board logs, so it is `pip install` into a venv and one pm2 entry
-(README, "Deployed"). **The box is one chapter behind this tree**: it still runs
-the wheel from tk-c86312, so `https://taskops.bernardocastro.dev/<board>/ui/`
-still answers a dashboard where the trunk answers `410` (§16, §17). Re-derivable:
+(README, "Deployed"). **The box runs this tree** since 2026-08-09 (tk-df8e64,
+§17), so `https://taskops.bernardocastro.dev/<board>/ui/` answers `410` and one
+sentence, exactly as the trunk does (§16, §17). Re-derivable:
 `curl -s https://taskops.bernardocastro.dev/healthz` and
-`curl -o /dev/null -w '%{http_code}' https://taskops.bernardocastro.dev/axion/ui/`
-— measured `{"boards": 4}` and `200` on 2026-08-09. The repo is under git and its history is real:
+`curl -w '%{http_code}' https://taskops.bernardocastro.dev/axion/ui/`
+— measured `{"boards": 4}` (after all four boards had been addressed through
+`/rpc`) and `410` with `http/static.py::NO_UI` as the body, on 2026-08-09. The repo is under git and its history is real:
 the board's own milestones land on `master` through `taskops_merge
 milestone=`.
 
@@ -1125,9 +1126,30 @@ Since §16's "API ONLY" amendment the host serves no bundle: `/<board>/ui/`
 answers `410` and one sentence, so there is nothing at the domain to md5. The
 wheel is still checked for its markers *before* it ships — it is the same wheel
 teammates install to get `taskops ui` — and the domain is verified by DATA,
-through `/rpc`. Production is still running the wheel from tk-c86312 and will
-keep serving its `/ui/` until the chapter's own deploy card replaces it; the
-tree is what changed here, not the box.
+through `/rpc`.
+
+**Production runs this tree since 2026-08-09** (tk-df8e64). The upgrade was the
+same three steps and its second run of README's "Upgrading a host": the wheel
+installed at tk-c86312 was copied to `~/taskops-v2-app/rollback/` and PROVEN to
+be the pre-upgrade one — every `taskops/*.py` in it md5-identical to what was in
+site-packages, and it still carried `taskops/http/static.py` and
+`taskops/ui/app.js`, the mount this upgrade withdraws — then the new wheel was
+checked for `chapter-goal` and `markdown-inline` in `taskops/ui/app.js` before it
+left the laptop, `pip install --force-reinstall`, `pm2 restart taskops-v2`. All
+four `/<board>/ui/` now answer **410** with `http/static.py::NO_UI` verbatim,
+`/healthz` says 4 once each board has been addressed, axion's chapter still
+carries its 4252-character goal through the public `/rpc`, and the four
+`events.jsonl` are md5-identical before and after. End to end: `taskops ui` from
+`~/axion-v3` served the window on `127.0.0.1`, its `/board/rpc` answered from the
+remote (seq 847) and its `/board/git/compare/…` returned numstat **and** patch
+read from that clone — the case §16 designed the local window for.
+
+Two things README said that reality corrected, and both are fixed there: the
+upgrade's `scp` target `/tmp/taskops-*.whl` collides with wheels left by earlier
+runs, so `pip` is handed a glob it refuses (`Invalid wheel filename`) — ship into
+a directory named for the card instead; and touching `/<board>/ui/` does NOT
+mount a board any more, so it no longer moves `/healthz`'s count. Only `/rpc`
+does.
 
 The four boards migrated as: axion 926 v1 events → 845 + 81 named drops (86
 cards, one chapter `ms-fe528b`, its 4252-character goal and 9 rules intact),

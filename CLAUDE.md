@@ -40,10 +40,9 @@ Status: built and green end to end. `./scripts/lint && ./scripts/test` →
 **321 passed** (no skips once `npm ci` has run in `ui/` — otherwise
 `tests/test_ui.py`'s harness half skips and it is 320+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
-four boards since 2026-08-08 (ARCHITECTURE.md §17) — but it runs the wheel from
-tk-c86312, **not this tree**: this chapter's server change (`/<board>/ui/` → 410)
-is in the trunk and NOT on the box. The deploy is its own card, waiting on
-Berna's go.
+four boards since 2026-08-08 and runs **this tree** since 2026-08-09
+(tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
+boards and the boards' `events.jsonl` are md5-identical across the upgrade.
 
 ## The four ideas everything rests on
 
@@ -396,5 +395,6 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    standing in a checkout has either. The bundle still ships inside the wheel —
    what went is the server-side mount, because a dashboard reads diffs from the
    viewer's clone and the server deliberately has none. `http/static.py` is the
-   post-mortem. Production still runs the older wheel and still serves its
-   `/ui/` until the chapter's deploy card replaces it.
+   post-mortem. Production runs it since 2026-08-09 (tk-df8e64): all four of
+   `taskops.bernardocastro.dev`'s `/<board>/ui/` answer 410 with that module's
+   sentence, and the window that replaces them is `taskops ui` in your clone.
