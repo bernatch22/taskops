@@ -75,7 +75,7 @@ const panel: React.CSSProperties = {
  *
  *  Pure, and exported, for the reason `submit()` is (CLAUDE.md): no handler
  *  fires under `react-dom/server`, so a rule left inside the closure would have
- *  no test at all. `ui/smoke/main.tsx` §9. */
+ *  no test at all. `ui/smoke/sections/diff-page.tsx`. */
 export function onTab(next: TabId): { tab: TabId; tree: string | null } {
   return { tab: next, tree: null };
 }

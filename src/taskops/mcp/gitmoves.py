@@ -10,11 +10,11 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 
-from . import brief, render
+from . import brief, render, integrate
 from .._json import as_rows, as_object, as_strings
 from ..board import Board
 from .._errors import Refused, BadRequest
-from ..gitwork import trees, remote, catchup
+from ..gitwork import trees, remote
 
 Args = dict[str, Any]
 
@@ -90,75 +90,17 @@ def merge(board: Board, repo: Path, args: Args, now: float) -> str:
     in the shared checkout and the board never learned the milestone shipped.
     What stays impossible is landing one with open work: the gate below refuses
     while ANY card of the chapter is not both closed and integrated.
+
+    tasks=[…] and done=true are the SAME card merge, N times — the loop lives in
+    `integrate.py` and calls the single-card path per card, so there is no second
+    merge implementation to keep in step. This function stays the dispatcher.
     """
     stone = str(args.get("milestone", ""))
     if stone:
         return _land(board, repo, stone, bool(args.get("criteria_met")))
-    task = str(args.get("task", ""))
-    dossier = board.call("card", {"task": task})
-    state = str(dossier.get("state", ""))
-    if state != "done":
-        # BEFORE git runs, not after: the `merged` verb refuses a non-done card
-        # anyway, but by then the branch would already carry the merge — code
-        # integrated into ms/* that the board never recorded.
-        raise Refused(
-            f"{task} is {state or 'unknown'}, not done — nothing merges until the card closes "
-            f'(the worker closes it: taskops_update task={task} status=done note="…")'
-        )
-    branch = str(as_object(dossier.get("milestone")).get("branch", ""))
-    if not branch:
-        raise BadRequest(f"{task} belongs to no milestone, so there is no branch to integrate into")
-    card_branch = str(dossier.get("branch", task))
-    _catch_up_or_refuse(repo, branch, card_branch, task)
-    sha = trees.merge_card(repo, branch, card_branch, task)
-    return render.plain(board.call("merged", {"task": task, "into": branch, "sha": sha}))
-
-
-def _stale(task: str, count: int, branch: str) -> str:
-    """The cause, counted — every message below starts from this sentence, so
-    the fix cannot un-learn WHY the refusal existed: merged blind, a stale
-    branch comes back as a conflict about a FILE with the cause nowhere in it.
-    ("behind" with no number reads as a bigger problem than three commits.)"""
-    return f"{task} is {count} commit{'s' if count != 1 else ''} behind {branch}"
-
-
-def _by_hand(repo: Path, branch: str, task: str) -> str:
-    return f"  cd {trees.card_tree(repo, task)} && git merge {branch}\nthen taskops_merge task={task} again"
-
-
-def _catch_up_or_refuse(repo: Path, branch: str, card_branch: str, task: str) -> None:
-    """A done card that is behind its chapter catches ITSELF up, when git says clean.
-
-    This used to refuse and print the two commands; the human's next act was to
-    execute them unchanged, ~9 times in two days (`gitwork/catchup.py` is the
-    post-mortem, including why doing it here does not violate "the worker's
-    branch is the worker's": the card is `done` and the orchestrator is already
-    integrating it).
-
-    It still refuses, and every refusal keeps the cause in the sentence: a dirty
-    or absent worktree is NEVER touched — today's message, verbatim, because
-    nothing was attempted — and a conflict carries git's own words on top of the
-    behind-count, because now the human genuinely is the only one who can decide.
-    """
-    count = trees.behind(repo, branch, card_branch)
-    if not count:
-        return  # not behind: from here on the path is byte-for-byte what it was
-    got = catchup.catch_up(trees.card_tree(repo, task), branch)
-    if got.sha:
-        return
-    if got.blocked:
-        raise Refused(
-            f"{_stale(task, count, branch)} — merge it in your own worktree first:\n"
-            + _by_hand(repo, branch, task)
-        )
-    raise Refused(
-        f"{_stale(task, count, branch)}, and catching it up conflicts in:\n"
-        + "\n".join(f"  {f}" for f in got.conflicts)
-        + f"\n  (merge aborted — {trees.card_tree(repo, task)} is exactly as it was)"
-        + f"\n  git said: {got.said}"
-        + "\n  → only the worker can resolve this, in its own worktree:\n"
-        + _by_hand(repo, branch, task)
-    )
+    if "tasks" in args or args.get("done"):
+        return integrate.batch(board, args, lambda task: integrate.one(board, repo, task)[0])
+    return integrate.one(board, repo, str(args.get("task", "")))[1]
 
 
 def _land(board: Board, repo: Path, stone: str, criteria_met: bool) -> str:

@@ -41,8 +41,13 @@ waits — derived per read, nothing stored, specs and never source, and ADVICE:
 the assign it warns about still goes through.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**421 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+<<<<<<< HEAD
+**431 passed** (no skips once `npm ci` has run in `ui/` — otherwise
 `tests/test_ui.py`'s harness half skips and it is 420+1; see below), ruff +
+=======
+**417 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 413+4; see below), ruff +
+>>>>>>> ms/parallel-by-mechanism-the-board-
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -123,7 +128,13 @@ main ─────────────────────────
 
 Each branch is pinned to a directory for life; "changing branch" is `cd`. Git
 itself refuses the same branch in two worktrees — a third lock nobody has to
-remember. `taskops_merge task=` takes no target: merging a CARD to `main`
+remember. One call integrates a whole chapter — `taskops_merge tasks=[…]` in the
+order given, or `done=true` for the MERGE group the board resolves itself — and
+it is a LOOP over the single-card path, never a second merge implementation
+(`mcp/integrate.py` is the post-mortem): it stops at the first failure of any
+kind, reports `merged <sha>` · `stopped: <the refusal, verbatim>` · `not
+reached` per card, and a re-run continues where it stopped. `taskops_merge
+task=` takes no target: merging a CARD to `main`
 cannot be expressed. A FINISHED milestone lands with `taskops_merge
 milestone=` — the human's explicit call, refused while any card is open or
 unintegrated, recorded on the board. Raw `git merge` in the shared checkout is
@@ -183,7 +194,11 @@ presence.
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees catchup remote trailer bind install diff sig  the ONLY subprocess
    session.py  the CLIENT half of the ssh login: sign in, cache, refresh
+<<<<<<< HEAD
 5  mcp/     server hello tools gitmoves schema render boardview dossier
+=======
+5  mcp/     server hello tools gitmoves integrate schema render dossier
+>>>>>>> ms/parallel-by-mechanism-the-board-
             before brief thread boards fields
    http/    server mounts watcher rpc admin scoped grants ingest auth login
             feed static gitdoor upstream
@@ -296,6 +311,18 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   steps run and all four are green. The diff clause goes red while a wave of
   `.tsx`-only cards is in flight and green again at the chapter-close rebuild —
   that drift is what it exists to report, not a fault.
+- **A smoke section is a FILE, never an append.** `ui/smoke/sections/<slug>.tsx`,
+  one per section, named by what it pins — slugs, NEVER numbers, since the
+  §-numbering was itself the collision — each exporting `run(fixture, check,
+  harness)` against the `sections/section.ts` seam. `run.mjs` (and `npm run
+  typecheck`) regenerate `sections/index.generated.ts` from a `readdir` in
+  filename order; it is gitignored, so the list can never conflict, and two
+  files claiming one slug are refused loudly. The appendix it replaced —
+  `ui/smoke/main.tsx`, ~2.300 lines every UI card appended to — cost a 293-line
+  conflict block, an auto-stacked duplicate `const` that only tsc caught, two
+  sections both numbered §9 and a docs audit of dangling §N. The property is
+  pinned as such:
+  `tests/test_ui.py::test_two_cards_adding_a_smoke_section_in_parallel_do_not_conflict`.
 - **Do not run browser/UI demos unless asked.** The UI is tested headlessly —
   `tests/test_ui.py` builds a real board and hands the server's own payload to
   `ui/smoke/run.mjs`, which renders the modules `src/main.tsx` bundles through
@@ -408,7 +435,7 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    and the door derives on demand. One cascade decides what a reader gets —
    `ui/src/links.tsx::cascade`: numstat → the patch → the forge link → one
    honest sentence — and `components/card/Patch.tsx` only draws the step it is
-   handed. All four steps are pinned headlessly (`ui/smoke/main.tsx`, the `cascade`
+   handed. All four steps are pinned headlessly (`ui/smoke/sections/git-diff.tsx`, the `cascade`
    assertions, from the door's OWN payload); `useGitDiff`'s effect firing is not reachable under
    `react-dom/server` and is covered against a real server in
    `tests/test_topology.py` instead.

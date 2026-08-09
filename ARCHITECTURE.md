@@ -237,7 +237,7 @@ flowchart TB
         sessionm["session.py — the client half of the login: sign in, cache, refresh"]
     end
     subgraph L5["5 · transports"]
-        mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread, boards, fields"]
+        mcpsrv["mcp/server, hello, tools, gitmoves, integrate, dossier, before, render, brief, schema, thread, boards, fields"]
         httpsrv["http/server, mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
@@ -662,7 +662,7 @@ sequenceDiagram
 
     Dev->>Board: taskops_board
     Board-->>Dev: group MERGE: [tk-a1]
-    Dev->>Board: taskops_merge task=tk-a1
+    Dev->>Board: taskops_merge task=tk-a1  (or tasks=[tk-a1, tk-b2] / done=true — the same path per card, in order, stopping at the first failure)
     Board->>Git: trees.behind() — if tk-a1 lacks the ms/* head, catchup.catch_up() merges ms/* IN tk-a1's own worktree (dirty or missing: refused, untouched; conflict: aborted clean, git's files + the count)
     Board->>Git: merge_card() --no-ff into ms/<milestone>, in the integration worktree
     Git-->>Board: sha (or refused, conflict files named, ms/* untouched)
@@ -735,8 +735,8 @@ nobody has touched yet.
 | a SILENT `taskops join` over a local board | the local history stayed on disk byte for byte and nothing ever looked at it again or said so — a command about connecting is what made it invisible | `cli/commands.py::_keep_or_archive` refuses naming `taskops board push` and `--discard-local` (which archives, never deletes); `tests/test_topology.py::test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out` |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
-| a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/main.tsx` asserts the words `free`, `slot` and `capacity` appear nowhere in that markup ("actors: NO WORKER SLOTS, under that name or any other") |
-| a TILE per ephemeral sub-agent | the first Actors page drew one per ACTOR: sixty-seven tiles, sixty-six of them processes that had already died with their cards, each wearing the human's layout — the page contradicted its own goal | the top level is the DEV (`devRows()`), an agent is a row inside it, and `ui/smoke/main.tsx` pins that a board with one dev and many agents draws exactly one card per dev and none per agent ("actors: one card per dev is DRAWN, and no card for an agent") |
+| a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/sections/actors.tsx` asserts the words `free`, `slot` and `capacity` appear nowhere in that markup ("actors: NO WORKER SLOTS, under that name or any other") |
+| a TILE per ephemeral sub-agent | the first Actors page drew one per ACTOR: sixty-seven tiles, sixty-six of them processes that had already died with their cards, each wearing the human's layout — the page contradicted its own goal | the top level is the DEV (`devRows()`), an agent is a row inside it, and `ui/smoke/sections/actors.tsx` pins that a board with one dev and many agents draws exactly one card per dev and none per agent ("actors: one card per dev is DRAWN, and no card for an agent") |
 
 ---
 
@@ -1078,7 +1078,7 @@ branches and the UI's own sentences are NOT prose and are drawn as text. A
 chapter goal is the longest writing the board carries — axion's is 4,252
 characters — so the pane gives it a max height and its own scroll: never a
 clamp and never an ellipsis, since a cut goal is a lie about what the chapter
-says. `ui/smoke/main.tsx` pins all of it from the server's own payload (the
+says. `ui/smoke/sections/monitor-panes.tsx` pins all of it from the server's own payload (the
 `the goal renders as markdown, not as characters` group).
 
 Colour lives in exactly one file, `ui/src/theme/tokens.css`; the theme is an
@@ -1111,7 +1111,7 @@ Three mechanisms, all client-side, all in the layers that already had git:
 local-vs-remote mode.** With no origin: nothing pushes, no link renders, and
 nothing degrades — a board without a remote behaves byte-for-byte like the
 taskops that predates this chapter, with no dead anchors and no column reserved
-for one. That case is pinned headlessly (`ui/smoke/main.tsx`, the `no slug` assertions: *not one anchor
+for one. That case is pinned headlessly (`ui/smoke/sections/forge-links.tsx`, the `no slug` assertions: *not one anchor
 is rendered*, and the Worktrees index still draws both its columns and every row
 in them) because it is the default, not the exception: this repo's own board
 records no origin.
@@ -1168,7 +1168,7 @@ DISCOVERED, not configured: the first refusal whose words are
 `gitdoor.py::NO_REPO` flips a module-level flag for the session and nothing asks
 again — an unknown ref does not flip it, because that means "ask again for
 another ref". All four steps are drawn from the door's own payload in
-`ui/smoke/main.tsx` (the `cascade` groups, from `fixture.git`); what no
+`ui/smoke/sections/git-diff.tsx` (the `cascade` groups, from `fixture.git`); what no
 headless harness reaches is `useGitDiff`'s
 effect firing, and that half is covered against a real server in
 `tests/test_topology.py`.
@@ -1201,7 +1201,7 @@ same `CommentBox`, fed the dossier `App` already opened when it opened the tree,
 writing through the same `update comment=`. There is **no worktree comment and
 there must never be one** — a worktree has no identity apart from its card
 (`gitwork/trees.py` pins `tk-<id>` as branch, directory and id at once), and a
-second thread would be two places to say one thing. `ui/smoke/main.tsx` pins
+second thread would be two places to say one thing. `ui/smoke/sections/diff-page.tsx` pins
 all of it (`the page's pane is a page's`, `the card's own thread is on the page`),
 `split()` against the door's own patch.
 

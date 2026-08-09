@@ -1065,3 +1065,151 @@ def test_a_chapter_whose_cards_are_all_integrated_can_land(
     monkeypatch.setattr(trees, "land_milestone", lambda *_: ("master", "abc123"))
     text = call(dev, repo, "taskops_merge", milestone=stone)
     assert "master" in text  # it landed; the settled card was not read as open work
+
+
+# ── one call integrates the chapter ─────────────────────────────────────────
+
+
+def three_done(repo: Path, boards: Any, *, clash: bool = False) -> tuple[
+    LocalBoard, list[str], str, dict[str, Path]
+]:
+    """Three done cards, each one commit behind its chapter.
+
+    `behind_by_one` one card wider, and deliberately not folded into it: that
+    helper is the single-card catch-up's own fixture and its shape (one card,
+    one file name knob) is what those tests read. With `clash`, the SECOND card
+    writes the same file the chapter did, so its catch-up conflicts — the batch
+    stops in the middle rather than at either end.
+    """
+    dev, cards = seeded(boards)
+    ids = [str(c["id"]) for c in cards]
+    dev.call("assign", {"tasks": ids, "workers": ["w1", "w2", "w3"]})
+    for n, card in enumerate(ids, 1):
+        worker = boards(f"agent:berna/w{n}")
+        worker.call("take", {"task": card})
+        dev.call("bind", {"task": card, "sha": f"a1b2c{n}", "subject": f"feat: {n}"})
+        worker.call("update", {"task": card, "status": "done", "comment": "done"})
+
+    run.must("init", "-q", "-b", "main", str(repo))
+    run.must("config", "user.email", "test@example.com", cwd=repo)
+    run.must("config", "user.name", "Test", cwd=repo)
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    run.must("add", "README.md", cwd=repo)
+    run.must("commit", "-q", "-m", "first", cwd=repo)
+
+    stone_branch = str(dev.call("card", {"task": ids[0]})["milestone"]["branch"])
+    cut: dict[str, Path] = {}
+    for n, card in enumerate(ids, 1):
+        branch = str(dev.call("card", {"task": card})["branch"])
+        tree = trees.ensure_card(repo, card, branch, stone_branch)
+        name = "shared.py" if clash and n == 2 else f"card{n}.py"
+        (tree / name).write_text(f"X = {n}\n", encoding="utf-8")
+        run.must("add", "-A", cwd=tree)
+        run.must("commit", "-q", "-m", f"card {n}", cwd=tree)
+        cut[card] = tree
+
+    integration = trees.integration_tree(repo, stone_branch)
+    (integration / "shared.py").write_text("VAT = 21\n", encoding="utf-8")
+    run.must("add", "-A", cwd=integration)
+    run.must("commit", "-q", "-m", "chapter moves", cwd=integration)
+    return dev, ids, stone_branch, cut
+
+
+class TestOneCallIntegratesTheChapter:
+    """`taskops_merge tasks=[…]` and `done=true` — the batch. It adds no second
+    merge implementation: every card goes through the single-card path, catch-up
+    included, so a batch of one is byte-for-byte a `task=` call."""
+
+    def test_tasks_integrate_in_order_through_the_single_card_path(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, ids, stone_branch, _cut = three_done(repo, boards)
+
+        out = call(dev, repo, "taskops_merge", tasks=ids)
+
+        assert "3 of 3 integrated" in out
+        for card in ids:  # per card, and a sha, not just a count
+            assert f"{card}  merged " in out
+        integration = trees.integration_tree(repo, stone_branch)
+        subjects = run.must("log", "--format=%s", cwd=integration).splitlines()
+        # the chapter carries one --no-ff merge per card, newest first: the ORDER given
+        assert [s for s in subjects if s.startswith("merge tk-")] == [
+            f"merge {card}" for card in reversed(ids)
+        ]
+        for n in (1, 2, 3):  # each card's own file arrived
+            assert (integration / f"card{n}.py").exists()
+        for card in ids:  # ...and the board recorded every one of them
+            events = dev.call("events", {"task": card})["events"]
+            assert any(e.get("kind") == "merged" for e in events)
+
+    def test_done_true_resolves_the_merge_group_itself(self, repo: Path, boards: Any) -> None:
+        """The orchestrator names nothing: the cards are the ones the board
+        already groups under MERGE, in that group's own order."""
+        dev, ids, stone_branch, _cut = three_done(repo, boards)
+        assert [r["id"] for r in dev.call("board", {})["groups"]["merge"]] == ids
+
+        out = call(dev, repo, "taskops_merge", done=True)
+
+        assert "3 of 3 integrated" in out
+        integration = trees.integration_tree(repo, stone_branch)
+        subjects = run.must("log", "--format=%s", cwd=integration).splitlines()
+        assert [s for s in subjects if s.startswith("merge tk-")] == [  # the GROUP's order
+            f"merge {card}" for card in reversed(ids)
+        ]
+        assert not dev.call("board", {})["groups"]["merge"]  # the group emptied itself
+
+    def test_a_failure_stops_the_batch_there_and_a_re_run_continues(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """Partial completion is real and not rollback-able — each merge that went
+        through is a --no-ff commit and a `merged` event. So the answer says which
+        of the three happened, and the re-run picks up exactly where it stopped."""
+        dev, ids, stone_branch, cut = three_done(repo, boards, clash=True)
+
+        out = call(dev, repo, "taskops_merge", done=True)
+
+        assert f"{ids[0]}  merged " in out
+        # the refusal VERBATIM inside the report — head, git's own conflict file
+        # and the tail that names the only person who can resolve it
+        assert f"{ids[1]}  stopped: {ids[1]} is " in out
+        assert f"behind {stone_branch}, and catching it up conflicts in:" in out
+        assert "shared.py" in out
+        assert "only the worker can resolve this" in out
+        assert f"{ids[2]}  not reached" in out
+        assert "1 of 3 integrated" in out
+        integration = trees.integration_tree(repo, stone_branch)
+        assert (integration / "card1.py").exists()
+        assert not (integration / "card3.py").exists()  # nothing past the stop
+
+        # the worker resolves its own conflict, exactly as the refusal says
+        tree = cut[ids[1]]
+        run.git("merge", "--no-edit", stone_branch, cwd=tree)
+        run.must("checkout", "--ours", "shared.py", cwd=tree)
+        run.must("add", "shared.py", cwd=tree)
+        run.must("commit", "-q", "--no-edit", cwd=tree)
+
+        again = call(dev, repo, "taskops_merge", done=True)
+
+        assert "2 of 2 integrated" in again  # the first card is no longer in the group
+        assert f"{ids[1]}  merged " in again and f"{ids[2]}  merged " in again
+        assert (integration / "card3.py").exists()
+
+    def test_an_empty_merge_group_answers_honestly_and_errors_on_nothing(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, _cards = seeded(boards)
+        assert "Nothing to integrate" in call(dev, repo, "taskops_merge", done=True)
+
+    def test_tasks_with_no_card_in_it_names_both_spellings(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, _cards = seeded(boards)
+        with pytest.raises(BadRequest) as refusal:
+            call(dev, repo, "taskops_merge", tasks=[])
+        assert "tasks=[tk-a, tk-b]" in str(refusal.value)
+        assert "done=true" in str(refusal.value)
+
+    def test_both_spellings_are_declared_where_a_caller_discovers_them(self) -> None:
+        props = SCHEMAS["taskops_merge"]["properties"]
+        assert {"task", "tasks", "done"} <= set(props)
+        assert "tasks" in tools.BY_NAME["taskops_merge"].description
