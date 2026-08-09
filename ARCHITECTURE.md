@@ -229,6 +229,7 @@ flowchart TB
     subgraph L4["4 · board.py + gitwork (the ONLY git, client-side)"]
         board["board.py — LocalBoard | RemoteBoard, routing decided ONCE"]
         run["gitwork/run"]; trees["gitwork/trees — worktrees"]
+        catchup["gitwork/catchup — one worktree, up to date with a branch"]
         trailer["gitwork/trailer"]; bind["gitwork/bind"]; install["gitwork/install"]
         remote["gitwork/remote — origin: {host, slug, url}, and best-effort push"]
         diff["gitwork/diff — read-only, what the /git door serves"]
@@ -662,7 +663,7 @@ sequenceDiagram
     Dev->>Board: taskops_board
     Board-->>Dev: group MERGE: [tk-a1]
     Dev->>Board: taskops_merge task=tk-a1
-    Board->>Git: trees.behind() — refuses first if tk-a1 lacks the ms/* head, naming the count and the two commands
+    Board->>Git: trees.behind() — if tk-a1 lacks the ms/* head, catchup.catch_up() merges ms/* IN tk-a1's own worktree (dirty or missing: refused, untouched; conflict: aborted clean, git's files + the count)
     Board->>Git: merge_card() --no-ff into ms/<milestone>, in the integration worktree
     Git-->>Board: sha (or refused, conflict files named, ms/* untouched)
     Board-->>Dev: merged
