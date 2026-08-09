@@ -237,10 +237,10 @@ flowchart TB
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread, boards, fields"]
-        httpsrv["http/server, mounts, rpc, auth, login, feed, static, gitdoor, upstream"]
+        httpsrv["http/server, mounts, rpc, admin, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key · hook   ·   serving: serve · invite · ui   ·   admin: server init"]
+        cli["commands: init · join --key · hook   ·   serving: serve · ui   ·   operate: board · invite · revoke   ·   admin: server init"]
     end
 
     L1 --> L0
@@ -355,6 +355,38 @@ stored fact whose only job is to be contradicted, which is `recover`'s shape).
 The subprocess runs through `gitwork/run.py::tool`, the ONE module allowed to
 start a process, and `tests/test_architecture.py` still enforces exactly that.
 ZERO pip dependencies, no hand-rolled crypto.
+
+**The host is OPERATED from `taskops`, over its own API** (`http/admin.py`,
+`cli/operate.py` — 2026-08-09, the anomaly this chapter exists to kill). Four
+acts that used to be an ssh session on the box are now signed calls from the
+laptop:
+
+```sh
+taskops board create <host>/<name>      owner only — THE way a board comes to exist
+taskops board ls [<host>]               owner: all of them; member: their own
+taskops invite <who> --board <name>     owner only — prints the join line
+taskops revoke --key SHA256:… | --invite <id>
+```
+
+They are SERVER-SCOPE verbs in a registry of their own, gated by
+`scope.permit`, authenticated by the session an ssh key mints, and they answer
+on the **root `/rpc`** — one segment, because `admin` is a legal board name and
+`/admin/rpc` would be that board's own door character for character. The
+envelope is the board rpc's, so `_wire.py` is the client for both.
+`board.create` refuses an existing name (`Mounts.create` is
+`mkdir(exist_ok=True)`, so without the refusal it would hand somebody else's
+history back as new) and writes WHO made it as the board's first project-level
+event — the one fact no later event could reconstruct. A member's "their own
+boards" is DERIVED from the credentials they hold, never a membership table.
+
+**The on-box commands survive as break-glass**: `taskops invite/revoke --root
+<dir>` still work against the files, on the machine that holds them, for the day
+the server is down or the owner's key is lost. Not deprecated — a system whose
+only door is its own API cannot be repaired when that API is what broke. And
+there is deliberately **no `taskops host add`**: the host is already recorded per
+project by the join that registered the key (`remote.json`'s `login.host`), so an
+alias table would be a third place a server's address lives and the first to
+drift.
 
 The client half is `session.py`: `board.py::open_board` refreshes an absent or
 expiring session before it hands a board back, and `RemoteBoard.call` retries

@@ -74,6 +74,10 @@ OPERATIONS: dict[str, Operation] = {
         OWNER,
         "minting an invite is the server OWNER's move",
     ),
+    "invite.revoke": Operation(
+        OWNER,
+        "revoking an invite is the server OWNER's move",
+    ),
 }
 
 

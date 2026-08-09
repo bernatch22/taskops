@@ -4,7 +4,8 @@
     taskops join <url>      join one (?token= or ?invite=), install the hooks
     taskops serve           host boards — an events API, no dashboard
     taskops server init     bootstrap THIS host: its owner and their ssh key
-    taskops invite <who>    a single-use link  ·  --revoke <id>
+    taskops board create    make a board on a host  ·  board ls, from anywhere
+    taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
     taskops tidy            remove worktrees whose work is already in the trunk
     taskops ui              the dashboard — serves it if nothing is, opens the browser
     taskops hook …          what the two git hooks and the Claude hook call
@@ -21,7 +22,7 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import admin, claude, serving, commands
+from . import admin, claude, operate, serving, commands
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -48,11 +49,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     host.add_argument("--root", default="~/taskops-boards")
     host.add_argument("--key", default="", help="the owner's pubkey: a path, or - for stdin")
     host.add_argument("--owner", default="", help="the owner's name (default: $USER)")
+    boards = sub.add_parser("board", help="create or list the boards on a host")
+    boards.add_argument("action", choices=["create", "ls"])
+    boards.add_argument("target", nargs="?", default="", help="<host>/<name>, or just <name>")
     invite = sub.add_parser("invite", help="a single-use link for a teammate")
     invite.add_argument("who", nargs="?", default="")
     invite.add_argument("--board", default="")
-    invite.add_argument("--root", default="~/taskops-boards")
-    invite.add_argument("--revoke", default="", help="a credential id")
+    invite.add_argument("--host", default="", help="the server (default: the one you joined)")
+    # `--root` is BREAK-GLASS and so it has no default: passing it is the deliberate
+    # choice to work on the files, on the box, when the API is what broke.
+    invite.add_argument("--root", default="", help="break-glass: the boards dir, ON the host")
+    kill = sub.add_parser("revoke", help="a key or an invite stops working")
+    kill.add_argument("--key", default="", help="a fingerprint: SHA256:…")
+    kill.add_argument("--invite", default="", help="a credential id")
+    kill.add_argument("--host", default="")
+    kill.add_argument("--root", default="", help="break-glass: the boards dir, ON the host")
     tidy = sub.add_parser("tidy", help="remove integrated worktrees and branches")
     tidy.add_argument("--trunk", default="")
     sub.add_parser("ui", help="the dashboard: serve if needed, open the browser, token included")
@@ -78,8 +89,12 @@ def _run(args: argparse.Namespace) -> int:
         return serving.serve(args)
     if args.command == "server":
         return admin.server(args)
+    if args.command == "board":
+        return operate.board(args)
     if args.command == "invite":
-        return serving.invite(args)
+        return operate.invite(args)
+    if args.command == "revoke":
+        return operate.revoke(args)
     if args.command == "tidy":
         removed = trees.tidy(find_root(here), str(args.trunk))
         print("\n".join(removed) if removed else "nothing to tidy — no integrated worktrees")
