@@ -1174,6 +1174,43 @@ def test_a_shared_concept_holds_a_card_even_with_disjoint_files(stores: Stores) 
     assert wave["held"][0]["why"] == {"with": first, "terms": ["git remote get-url origin"]}
 
 
+def test_when_both_hold_the_reader_gets_the_declared_fact(stores: Stores) -> None:
+    """THE LIVE CASE, from this repo's own board on 2026-08-09: the orchestrator
+    held tk-dfaff7 apart from tk-814c7b by hand because both declare
+    `src/taskops/mcp/gitmoves.py` and `tests/test_mcp.py` — and both specs also
+    name `taskops_merge`. Files and terms both fire; the answer is the FILES,
+    because a declared file is a fact the planner wrote and a term is an
+    inference from prose."""
+    out = call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="landing",
+        goal="one call integrates the chapter, and a chapter lands over a moved trunk",
+        tasks=[
+            {
+                "title": "batch",
+                "spec": "one taskops_merge call integrates every done card",
+                "files": ["src/taskops/mcp/gitmoves.py", "tests/test_mcp.py"],
+            },
+            {
+                "title": "landing gate",
+                "spec": "taskops_merge milestone= catches the trunk up first",
+                "files": ["src/taskops/mcp/gitmoves.py", "tests/test_mcp.py"],
+            },
+        ],
+    )
+    first, second = (c["id"] for c in out["cards"])
+    wave = waved(stores, milestone=out["milestone"]["id"])
+    assert wave["safe"] == [first]
+    assert wave["held"][0]["why"] == {
+        "with": first,
+        "files": ["src/taskops/mcp/gitmoves.py", "tests/test_mcp.py"],
+    }
+    both = {"tk-a": out["cards"][0]["spec"], "tk-b": out["cards"][1]["spec"]}
+    assert seams.overlaps(both) == [("tk-a", "tk-b", frozenset({"taskops_merge"}))]
+
+
 def test_one_ready_card_has_no_wave_to_compute(stores: Stores) -> None:
     out = call(
         stores,
