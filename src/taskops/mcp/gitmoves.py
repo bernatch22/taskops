@@ -14,7 +14,7 @@ from . import brief, render, integrate
 from .._json import as_rows, as_object, as_strings
 from ..board import Board
 from .._errors import Refused, BadRequest
-from ..gitwork import trees, remote
+from ..gitwork import trees, remote, catchup
 
 Args = dict[str, Any]
 
@@ -134,8 +134,58 @@ def _land(board: Board, repo: Path, stone: str, criteria_met: bool) -> str:
             "Look at the assembled thing, not the board — then, if each one holds, say so: "
             f"taskops_merge milestone={stone} criteria_met=true"
         )
+    _catch_up_to_trunk(repo, str(named.get("branch", "")), stone)
     trunk, sha = trees.land_milestone(repo, str(named.get("branch", "")))
     record: Args = {"milestone": stone, "into": trunk, "sha": sha}
     if crits:
         record["criteria_met"] = True  # the human's answer, on the record
     return render.plain(board.call("merged", record))
+
+
+def _catch_up_to_trunk(repo: Path, branch: str, stone: str) -> None:
+    """A finished chapter that is behind a MOVED trunk catches itself up first.
+
+    THE COST, twice in two days, the second time verbatim:
+
+        ✗ ms/the-server-becomes-v2-taskops-be conflicts with master in:
+          ARCHITECTURE.md
+          CLAUDE.md
+          (merge aborted — master is untouched)
+
+    By construction, not by accident: a chapter branch is cut from the trunk AS
+    OF ITS FIRST `assign`, chapters overlap, and the docs both of them
+    legitimately touch (CLAUDE.md's counts, ARCHITECTURE's status) drift apart.
+    Both times the human's fix was `git merge <trunk>` in the integration
+    worktree and a second landing call — and the FIRST time it was even clean.
+
+    It is `integrate.catch_up_or_refuse` one level up, on the SAME mechanism
+    (`gitwork/catchup.py`: a directory and a branch, no card and no milestone),
+    because a card catching up to its chapter and a chapter catching up to the
+    trunk are one act on two pairs. What is not shared is the wording, which is
+    each caller's own.
+
+    ORDER, and it is load-bearing: this runs AFTER the gate — open work,
+    then the criteria. The chapter's criteria are the human's question and no
+    git may run before it is answered, so a chapter that is both unanswered and
+    behind gets the criteria refusal and an integration worktree whose HEAD has
+    not moved. A blocked tree (missing, or dirty because somebody is mid-thought
+    in it) is never touched and falls through to exactly today's behaviour:
+    `land_milestone` runs, and its own conflict refusal is the one that speaks.
+    """
+    trunk, count = trees.behind_trunk(repo, branch)
+    if not count:
+        return  # not behind: from here on the path is byte-for-byte what it was
+    tree = trees.integration_tree(repo, branch)
+    got = catchup.catch_up(tree, trunk)
+    if got.sha or got.blocked:
+        return
+    raise Refused(
+        f"{branch} is {count} commit{'s' if count != 1 else ''} behind {trunk}, "
+        f"and catching it up conflicts in:\n"
+        + "\n".join(f"  {f}" for f in got.conflicts)
+        + f"\n  (merge aborted — {trunk} is untouched, and {tree} is exactly as it was)"
+        + f"\n  git said: {got.said}"
+        + "\n  → resolve it where the chapter is integrated:\n"
+        + f"      cd {tree} && git merge {trunk}\n"
+        + f"    fix the conflict, commit, then taskops_merge milestone={stone} again"
+    )
