@@ -9,12 +9,12 @@ and hoped; a short copy was found out days later, from a board missing a week.
 **THE ORDER IS THE SAFETY, and the config flips LAST.** Nothing here changes
 until the server has the history and the counts have been compared, so a failure
 at ANY point above leaves the repo as it was — still local, still the only copy,
-and the command is simply run again:
+and the command is run again:
 
     1  the target exists and is EMPTY          (the server answers; `http/ingest.py`)
     2  no live lease here                      nobody is mid-work during the move
     3  stream the log through `board.ingest`   idempotent ids make a retry a no-op
-    4  verify: count, seq and count-per-KIND   a mismatch STOPS, config untouched
+    4  verify: the count and the count per KIND  a mismatch STOPS, config untouched
     5  only now: board.json + remote.json, and `.taskops/board/` is ARCHIVED
 
 Step 5 archives and never deletes: the directory it came from is the last thing
@@ -22,8 +22,8 @@ that proves what was pushed, so it is renamed and left where somebody finds it.
 
 **Retry is by construction, not by bookkeeping.** An event id is `sha256` of its
 own canonical bytes, so re-sending the whole log after an interruption writes
-only what is missing and the second run reports `already_held` — no resume
-cursor to get wrong, and no state on either side saying where it stopped.
+only what is missing and the second run reports `already_held` — no resume cursor
+to get wrong, and no state anywhere saying where the last attempt stopped.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 from pathlib import Path
+from collections import Counter
 
 from . import operate
 from .. import _clock, session
@@ -95,15 +96,15 @@ def run(args: argparse.Namespace) -> int:
         raise TaskopsError(MISMATCH.format(host=host, name=name, table=table))
     held = int(answer.get("already_held", 0))
     retry = f" ({held} were already there — this was a retry)" if held else ""
-    print(f"  verified: {answer.get('count')} events, seq {answer.get('seq')}{retry}")
+    print(f"  verified: {answer.get('landed')} landed, seq {answer.get('seq')}{retry}")
     _flip(root, host, name, token, door)
     return 0
 
 
 def _idle(local: Path) -> None:
     """Step 2. `live.sqlite` does not travel — it is a fact about processes that
-    are running, and none of them will run against the new host. So the check is
-    not "copy the leases", it is "there must be none to lose"."""
+    are running, and none will run against the new host. So the check is not
+    "copy the leases", it is "there must be none to lose"."""
     from ..store.live import Live
 
     live = Live(local / "live.sqlite")
@@ -123,8 +124,8 @@ def _session(
 
     A repo with a LOCAL board has never joined anything, so there is usually
     nothing in `remote.json` to sign with — `--key` is how the push says who it
-    is, and `--invite` registers that key with the host first, through the SAME
-    redemption `taskops join --key` runs (`commands.redeem`).
+    is, and `--invite` registers that key first, through the SAME redemption
+    `taskops join --key` runs (`commands.redeem`).
 
     Signing in caches the token in `remote.json`, and that is NOT the config flip:
     `board.json` still names no url, so `open_board` still opens the local board
@@ -136,7 +137,8 @@ def _session(
     if invite and not key:
         raise TaskopsError("--invite registers a KEY — pass --key ~/.ssh/id_ed25519 with it")
     if key:
-        who = str(as_object(config.get("login")).get("principal") or commands.actor().partition(":")[2])
+        named = as_object(config.get("login")).get("principal")
+        who = str(named or commands.actor().partition(":")[2])
         if invite:
             commands.redeem(target, invite, who, commands.pubkey(key))
         path = Path(key).expanduser()
@@ -153,22 +155,19 @@ def _session(
 
 
 def _compare(events: list[Event], answer: dict[str, Any]) -> str | None:
-    """Step 4. Per KIND and not just a total: a total that matches while the mix
-    does not is the interesting failure. `None` means every row agreed."""
-    mine = _kinds(events)
+    """Step 4, and `None` means every row agreed. Per KIND and not just a total:
+    a total that matches while the mix does not is the interesting failure.
+
+    The remote side is READ BACK from the server's store and counts the events of
+    THIS push only — a board created for one already holds its own birth
+    certificate (`http/ingest.py::_birth`), so comparing the board's whole size
+    against this log's would be off by one on every correct push there is."""
+    mine = Counter(event["kind"] for event in events)
     theirs = {str(k): int(v) for k, v in as_object(answer.get("kinds")).items()}
-    rows = [("events", len(events), int(answer.get("count", 0)))]
-    rows += [("seq", len(events), int(answer.get("seq", 0)))]
+    rows = [("events", len(events), int(answer.get("landed", 0)))]
     rows += [(kind, mine.get(kind, 0), theirs.get(kind, 0)) for kind in sorted(mine | theirs)]
     table = "\n".join(f"  {label:<18} local {a:>6}   remote {b:>6}" for label, a, b in rows)
     return None if all(a == b for _, a, b in rows) else table
-
-
-def _kinds(events: list[Event]) -> dict[str, int]:
-    counted: dict[str, int] = {}
-    for event in events:
-        counted[str(event["kind"])] = counted.get(str(event["kind"]), 0) + 1
-    return counted
 
 
 def _flip(root: Path, host: str, name: str, token: str, door: dict[str, str] | None) -> None:

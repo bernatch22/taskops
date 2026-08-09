@@ -37,11 +37,13 @@ new board starts with nobody working on anything, which is true.
 from __future__ import annotations
 
 from typing import Any
+from collections import Counter
 
 from .mounts import Mounts, named
 from .._errors import Refused, NotFound, BadRequest
 from ..core.event import verify, from_line
-from ..core.types import Event
+from ..core.types import PROJECT, Event
+from ..store.stores import Stores
 
 TWO_HISTORIES = (
     "board {name!r} on this host already holds {held} event(s) this push never "
@@ -69,12 +71,13 @@ def run(mounts: Mounts, args: dict[str, Any]) -> dict[str, Any]:
         raise NotFound(NO_BOARD.format(name=name)) from err
 
     held = stores.ids()
-    foreign = held - {event["id"] for event in incoming}
+    foreign = held - {event["id"] for event in incoming} - _birth(stores)
     if foreign:
         raise Refused(TWO_HISTORIES.format(name=name, held=len(foreign)))
 
     fresh = [event for event in incoming if event["id"] not in held]
     stores.write(fresh)
+    landed = [event for event in incoming if event["id"] in stores.ids()]
     return {
         "board": name,
         "received": len(incoming),
@@ -82,9 +85,30 @@ def run(mounts: Mounts, args: dict[str, Any]) -> dict[str, Any]:
         # Non-zero on a RETRY and zero otherwise — the one number that says the
         # second run of an interrupted push did what it was supposed to: nothing.
         "already_held": len(incoming) - len(fresh),
+        # READ BACK from the store, not counted from the payload: the whole point
+        # of the comparison the client prints is that it is about what landed.
+        "landed": len(landed),
+        "kinds": Counter(event["kind"] for event in landed),
         "seq": stores.head(),
         "count": len(stores.ids()),
-        "kinds": stores.kinds(),
+    }
+
+
+def _birth(stores: Stores) -> set[str]:
+    """A board's own birth certificate — and the reason "empty" is not `seq == 0`.
+
+    `board.create` records WHO made the board as the board's FIRST event
+    (`http/admin.py::_create`), because a creator is not derivable from a log
+    that starts after the creation. So the board a push is aimed at — created
+    minutes earlier by the same person, for this — already holds exactly one
+    event, and a literal emptiness check refuses every correct push there is.
+    The precondition is therefore "no history but its own beginning", and it is
+    still true exactly once: after this call the board has a past.
+    """
+    return {
+        event["id"]
+        for event in stores.events(PROJECT)
+        if event["kind"] == "project" and str(event["body"].get("op", "")) == "created"
     }
 
 
