@@ -277,6 +277,25 @@ export interface Pulse {
   mentions: number; // addressed to the reader of THIS call, unanswered
 }
 
+/** Why one ready card is held out of the wave: the card it clashes with, and
+ *  the exact overlap — EITHER the declared files (a fact the planner wrote) OR
+ *  the spec terms (an inference from prose), never both, because `wave` reports
+ *  the first clash it finds and prefers the fact.
+ *
+ *  @source `core/seams.py::_clash` */
+export interface WaveClash {
+  with: string;
+  files?: string[];
+  terms?: string[];
+}
+
+/** @source `core/seams.py::wave`, via `verbs/pulse.py::run` */
+export interface Wave {
+  /** Card ids, in the board's own priority order — greedy, not optimal. */
+  safe: string[];
+  held: { id: string; title: string; why: WaveClash }[];
+}
+
 /** @source `verbs/pulse.py::run` */
 export interface BoardPayload {
   milestone: Milestone | null;
@@ -297,6 +316,20 @@ export interface BoardPayload {
    *  can reach no landed chapter. `verbs/pulse.py::run`. */
   landed_total?: number;
   groups: BoardGroups;
+  /** Which READY cards are safe to fan out together, and why each of the rest
+   *  waits. Derived per read from `groups.take`, never stored, and ADVICE: a
+   *  view that greys out a held card, or refuses a dispatch, is contradicting
+   *  the rule the whole thing rests on. NOTHING IN THIS DASHBOARD DRAWS IT YET
+   *  — the key is declared here so the pane that eventually does starts from
+   *  the server's real shape rather than re-guessing it.
+   *
+   *  OPTIONAL by the header's rule, and NULL on purpose when there are fewer
+   *  than two ready cards: absent means "this board is older than the wave",
+   *  null means "there was nothing to decide". Consumers must not collapse the
+   *  two into one empty state.
+   *
+   *  @source `verbs/pulse.py::run`, computed by `core/seams.py::wave` */
+  wave?: Wave | null;
   team: TeamMember[];
   hours: ReportPayload | null; // only when the call passed window=
   /** How many closed cards the chapter really has, behind `groups.done`'s cap.

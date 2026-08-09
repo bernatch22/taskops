@@ -17,6 +17,7 @@ from typing import Any
 
 from . import _args, _facts, _context
 from .. import _clock
+from ..core import seams
 from .._errors import Refused, BadRequest
 from ..core.event import make
 from ..core.types import Card, Event
@@ -31,11 +32,17 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     names = _names(stores, actor, args, len(tasks), now)
     events: list[Event] = []
     briefs: list[dict[str, Any]] = []
+    # The wave over THIS call's cards — advice, computed before anything is
+    # written and never consulted again: the assign proceeds either way (the
+    # chapter's own rule, "a warning is never a lock"). It rides in each brief so
+    # the sub-agent that gets spawned reads it too, not only the orchestrator.
+    apart = seams.wave(stores.state()["cards"], tasks)
+    held = {row["id"]: row["why"] for row in (apart or {}).get("held", [])}
     for task, name in zip(tasks, names, strict=True):
         card = _facts.find(stores, task)
         _check(stores, card, now)
         events.append(make(card["id"], actor, "edited", {"field": "assignee", "to": name}, now))
-        briefs.append(_brief(stores, card, name, now))
+        briefs.append(_brief(stores, card, name, now) | {"apart": held.get(task)})
     seq = stores.write(events)
     stores.live.renew(actor, now)
     stone = _facts.milestone_of(stores, _facts.find(stores, tasks[0]))
