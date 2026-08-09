@@ -41,6 +41,10 @@ export interface DrawerProps {
    *  nullable both: without it the diff panes fall through the cascade, which
    *  is a drawn state and not a missing feature (`links.tsx`). */
   reader?: GitReader | null | undefined;
+  /** This window is watching a public board as `anon` — the comment box renders
+   *  its refusal instead of a form (`CommentBox.tsx::watching`). Optional and
+   *  defaulting to false: every existing caller is a reader with a credential. */
+  readOnly?: boolean;
 }
 
 /** The drawer: the dossier, inside the overlay that owns Escape.
@@ -60,7 +64,7 @@ export function Drawer(props: DrawerProps): React.JSX.Element {
 }
 
 export function Dossier(props: DrawerProps): React.JSX.Element {
-  const { dossier, openId, team, now, onClose, onComment, repo, reader } = props;
+  const { dossier, openId, team, now, onClose, onComment, repo, reader, readOnly } = props;
   const card = dossier?.card;
   const tone = dossier ? (STATE[dossier.state] ?? "neutral") : "neutral";
   const holder = dossier?.lease?.actor ?? "";
@@ -151,7 +155,7 @@ export function Dossier(props: DrawerProps): React.JSX.Element {
         {dossier && card ? <Body dossier={dossier} now={now} repo={repo} reader={reader} /> : null}
       </div>
 
-      <CommentBox team={team} onSend={onComment} />
+      <CommentBox team={team} onSend={onComment} readOnly={readOnly} />
     </>
   );
 }

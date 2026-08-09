@@ -33,6 +33,7 @@
  * boxes, two fetches of the same dossier). */
 import { useEffect, useState } from "react";
 
+import { watching } from "./components/card/CommentBox";
 import { Drawer } from "./components/card/Drawer";
 import { Header } from "./components/chrome/Header";
 import { KpiRail } from "./components/chrome/KpiRail";
@@ -231,6 +232,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 dossier={card}
                 team={board.team}
                 onComment={comment}
+                readOnly={watching(board.pulse)}
               />
             ),
           } satisfies Record<TabId, () => React.JSX.Element>)[tab]()
@@ -250,6 +252,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           now={Date.now() / 1000}
           onClose={() => openCard(null)}
           onComment={comment}
+          readOnly={watching(board?.pulse)}
           repo={board?.repo}
           reader={client}
         />

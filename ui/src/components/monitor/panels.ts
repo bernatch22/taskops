@@ -539,6 +539,10 @@ export interface ThreadProps {
   /** The dashboard's ONE write. Absent, the thread is read-only and no box is
    *  drawn — a send button with nowhere to send is worse than no box. */
   onComment?: ((text: string, mentions: string[]) => Promise<void>) | undefined;
+  /** This window is watching a PUBLIC board as `anon`, so the box renders its
+   *  refusal instead of a form it cannot submit (`card/CommentBox.tsx`).
+   *  Optional: every caller with a credential passes nothing and is unchanged. */
+  readOnly?: boolean;
 }
 
 /* ── 9. Swarm topology ────────────────────────────────────────────────────── */
