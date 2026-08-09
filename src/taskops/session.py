@@ -25,15 +25,13 @@ failed login into the caller's error."""
 
 from __future__ import annotations
 
-import os
-import json
 from typing import Any, Callable
 from pathlib import Path
 
 from . import _wire, _clock
 from ._json import as_object
 from ._errors import Unreachable, TaskopsError
-from ._locate import DIR
+from ._locate import write_remote
 from .gitwork.sig import sign
 from .core.challenge import payload
 
@@ -44,19 +42,25 @@ SLACK = 300.0
 call it authorises would be a bug that reproduces once a day at most, which is
 the worst reproduction rate there is."""
 
+IDENTITIES = ("id_ed25519", "id_ecdsa", "id_rsa")
+"""ssh's OWN identity files, in ssh's own order (`ssh_config(5)`, IdentityFile).
+`--key` stays as the override, exactly as `ssh -i` is, and this tuple is the one
+place the order lives: six verbs each guessing it is six places for it to drift."""
+TRIED = ", ".join(f"~/.ssh/{name}" for name in IDENTITIES)
+
 NO_SESSION = (
-    "no session for {host} — sign in with your ssh key: add "
-    "--key ~/.ssh/id_ed25519 (and --as <principal> when your unix user is not that name), "
-    "or join the host first: taskops join <url>?invite=… --key ~/.ssh/id_ed25519"
+    "no session for {host}, and no ssh key to make one with — tried {tried}. Sign in "
+    "with your ssh key: add --key <path> (and --as <principal> when your unix user is "
+    "not that name), or join the host first: taskops join <url>?invite=… "
+    "--key ~/.ssh/id_ed25519"
 )
 """The refusal every operate verb hands back, and it names BOTH doors on purpose.
 
-It used to name only `join`, which is the wrong sentence for the one person who
-cannot follow it: the OWNER on day one. The invite `join` wants is minted by
-`taskops invite`, which wants a session of its own, for a board that does not
-exist yet — a deadlock whose only exit was ssh onto the box, i.e. the anomaly
-this chapter exists to kill (found by running the flow end to end on a clean
-host, 2026-08-09; no test saw it because every test had already joined)."""
+It used to name only `join`, the wrong sentence for the one person who cannot
+follow it: the OWNER on day one, whose invite is minted by `taskops invite`,
+which wants a session of its own for a board nobody has created — a deadlock
+whose only exit was ssh onto the box, the anomaly this chapter kills (found by
+running the flow on a clean host, 2026-08-09; every test had already joined)."""
 
 
 def establish(
@@ -84,16 +88,28 @@ def establish(
 
     The `login` block is RETURNED and never written: `push.py` writes it in its
     own step 5 and not a moment earlier, because the order of that command is
-    its safety. A caller with nothing to sequence uses `cache_login`."""
-    if key:
-        named = principal_for(config, principal, default)
-        path = Path(key).expanduser()
-        door = {"host": host, "principal": named, "key": str(path)}
-        return sign_in(root, host, named, path, cache=is_own_host(config, host)), door
-    token = fresh(root, config, _clock.now())
-    if not token:
-        raise TaskopsError((refusal or NO_SESSION).format(host=host))
-    return token, None
+    its safety. A caller with nothing to sequence uses `cache_login`.
+
+    With no `--key` and no cached session it is DISCOVERED (`discover_key`)."""
+    if not key:
+        token = fresh(root, config, _clock.now())
+        if token:
+            return token, None
+        found = discover_key()
+        if not found:
+            raise TaskopsError((refusal or NO_SESSION).format(host=host, tried=TRIED))
+        key = str(found)
+    named = principal_for(config, principal, default)
+    path = Path(key).expanduser()
+    door = {"host": host, "principal": named, "key": str(path)}
+    return sign_in(root, host, named, path, cache=is_own_host(config, host)), door
+
+
+def discover_key() -> Path | None:
+    """The first of ssh's identity files that EXISTS, or None when none does.
+    `establish` is its only caller on purpose: discovery is a DEFAULT for
+    `--key`, never a second way in — everything after it is the one sign-in."""
+    return next((p for p in (Path.home() / ".ssh" / n for n in IDENTITIES) if p.is_file()), None)
 
 
 def principal_for(config: dict[str, Any], principal: str = "", default: str = "") -> str:
@@ -118,7 +134,7 @@ def cache_login(root: Path, door: dict[str, str]) -> None:
     """Remember WHICH key signed in, so the next command needs no flags at all.
     Written only once the host ACCEPTED the signature: a `--key` naming a key it
     never registered must leave the config saying nothing, not something false."""
-    _rewrite(root, {"login": door})
+    write_remote(root, {"login": door})
 
 
 def fresh(root: Path, config: dict[str, Any], now: float) -> str:
@@ -162,22 +178,7 @@ def sign_in(
 def remember(root: Path, token: str, expires: float) -> None:
     """Rewrite remote.json, keeping everything else in it — the `login` block
     lives in the same file and a session refresh must not eat it."""
-    _rewrite(root, {"token": token, "token_expires": expires})
-
-
-def _rewrite(root: Path, fields: dict[str, Any]) -> None:
-    """Merge `fields` into remote.json, keeping every other key it holds."""
-    path = root / DIR / "remote.json"
-    body: dict[str, Any] = {}
-    if path.exists():
-        try:
-            body = as_object(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, ValueError):
-            body = {}
-    body.update(fields)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
-    os.chmod(path, 0o600)
+    write_remote(root, {"token": token, "token_expires": expires})
 
 
 def refresher(root: Path, config: dict[str, Any]) -> Callable[[], str] | None:

@@ -2,9 +2,12 @@
 
     taskops init            a local board in this repo
     taskops join <url>      join one (?token= or ?invite=), install the hooks
+    taskops remote add <url>  the host this checkout operates, like git's origin
     taskops serve           host boards — an events API, no dashboard
     taskops server init     bootstrap THIS host: its owner and their ssh key
     taskops board create    make a board on a host  ·  board ls, from anywhere
+                            with a remote recorded and a key on disk, all of these
+                            go BARE: no URL, no --key, no board name
     taskops board push      THIS repo's local board becomes the hosted one
     taskops board visibility <host>/<name> public|private   owner only
     taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
@@ -24,7 +27,7 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import push as promote, admin, claude, operate, serving, commands
+from . import push as promote, admin, claude, remote, operate, serving, commands
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -48,6 +51,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--key",
         default="",
         help="the ssh key that signs you in (its .pub is registered): ~/.ssh/id_ed25519",
+    )
+    origin = sub.add_parser("remote", help="the host this checkout operates (git's origin)")
+    origin.add_argument("action", nargs="?", default="", choices=["", "add"])
+    origin.add_argument("url", nargs="?", default="", help="https://<host>")
+    origin.add_argument(
+        "--replace", action="store_true", help="this checkout already names another host"
     )
     server = sub.add_parser("serve", help="host boards")
     server.add_argument("--root", default="~/taskops-boards")
@@ -111,6 +120,8 @@ def _run(args: argparse.Namespace) -> int:
         return commands.join(
             here, str(args.url), str(args.actor), str(args.key), bool(args.discard_local)
         )
+    if args.command == "remote":
+        return remote.remote(args)
     if args.command == "serve":
         return serving.serve(args)
     if args.command == "server":
