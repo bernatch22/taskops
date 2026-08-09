@@ -5,7 +5,7 @@
   "description": "The taskops dashboard: React over the board's own HTTP contracts.",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node smoke/sections.mjs && tsc --noEmit",
     "build": "npm run typecheck && node build.mjs",
     "smoke": "node smoke/run.mjs",
     "check": "npm run build && npm run smoke && git diff --exit-code ../src/taskops/ui"
