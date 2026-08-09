@@ -792,6 +792,29 @@ def test_two_cards_adding_a_smoke_section_in_parallel_do_not_conflict(tmp_path: 
 
 
 @needs_node
+def test_the_run_order_is_the_filename_order_whatever_the_filesystem_says() -> None:
+    """`order()` is pure and separate from the `readdir` for this reason: APFS
+    hands names back sorted and ext4 hands them back in hash order, so a test
+    that reads a real directory pins the filesystem, not the rule. Mutation-checked:
+    dropping `.sort()` is invisible against a directory here and red against this."""
+    said = subprocess.run(
+        [
+            "node",
+            "--input-type=module",
+            "-e",
+            f"const m = await import({str(GENERATOR)!r});"
+            ' console.log(JSON.stringify(m.order(["z.tsx", "a.tsx", "index.generated.ts",'
+            ' "section.ts", "m.ts", "notes.md"])));',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert said.returncode == 0, said.stderr
+    assert json.loads(said.stdout) == ["a.tsx", "m.ts", "z.tsx"], said.stdout
+
+
+@needs_node
 def test_two_section_files_claiming_one_slug_are_refused_loudly(tmp_path: Path) -> None:
     """One name, one section — the §9 bug (two workers, one number) reborn as an
     extension collision, which is the case the filesystem does NOT catch."""

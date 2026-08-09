@@ -25,13 +25,21 @@ import { fileURLToPath } from "node:url";
 
 const HERE = new URL("./sections/", import.meta.url);
 
-/** Every section file, by slug, in filename order. `section.ts` is the seam, not
- *  a section; the generated index is not a section either. */
-export async function discover(dir = HERE) {
-  const names = (await readdir(fileURLToPath(dir)))
+/** The order, as a PURE function of the names — separate from the `readdir` on
+ *  purpose, so it is pinned by a test and not by whatever order a filesystem
+ *  happens to hand back (APFS returns names sorted; ext4 returns hash order, and
+ *  a run order that changes with the filesystem is not a run order). */
+export function order(names) {
+  return names
     .filter((n) => /\.tsx?$/.test(n))
     .filter((n) => n !== "section.ts" && n !== "index.generated.ts")
     .sort();
+}
+
+/** Every section file, by slug, in filename order. `section.ts` is the seam, not
+ *  a section; the generated index is not a section either. */
+export async function discover(dir = HERE) {
+  const names = order(await readdir(fileURLToPath(dir)));
 
   const bySlug = new Map();
   for (const name of names) {
