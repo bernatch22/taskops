@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **98 Python files / ~11.200 lines under `src/taskops`**, plus the
+~340 files) as **99 Python files / ~11.300 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,7 +37,7 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**403 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+**406 passed** (no skips once `npm ci` has run in `ui/` — otherwise
 `tests/test_ui.py`'s harness half skips and it is 402+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
@@ -177,7 +177,7 @@ presence.
 3  verbs/   plan take update card pulse assign         + the REGISTRY
             record report review _mentions _waiting project events   no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
-   gitwork/ run trees remote trailer bind install diff sig  the ONLY subprocess
+   gitwork/ run trees catchup remote trailer bind install diff sig  the ONLY subprocess
    session.py  the CLIENT half of the ssh login: sign in, cache, refresh
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread boards fields
    http/    server mounts watcher rpc admin scoped grants ingest auth login
