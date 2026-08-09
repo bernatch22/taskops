@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **100 Python files / ~11.400 lines under `src/taskops`**, plus the
+~340 files) as **101 Python files / ~11.450 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -34,11 +34,20 @@ GitHub-visible chapter and lives in `ARCHITECTURE.md` §16, not in fan-out.md**
 two workers independently created `src/taskops/gitwork/remote.py`, same path,
 complementary halves, because both their specs said "check `git remote get-url
 origin`". A CONCEPT named by two cards is a seam — land it serialized first.
-The module's own docstring is the post-mortem.
+The module's own docstring is the post-mortem. **The board now computes that
+rule** (`core/seams.py`, ARCHITECTURE.md §16): `taskops_board` names, under
+TAKE, which ready cards are safe to fan out together and why each of the rest
+waits — derived per read, nothing stored, specs and never source, and ADVICE:
+the assign it warns about still goes through.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
+<<<<<<< HEAD
+**431 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 420+1; see below), ruff +
+=======
 **417 passed** (no skips once `npm ci` has run in `ui/` — otherwise
 `tests/test_ui.py`'s harness half skips and it is 413+4; see below), ruff +
+>>>>>>> ms/parallel-by-mechanism-the-board-
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -177,7 +186,7 @@ presence.
 ```
 0  _errors _ids _clock _json _locate _version _wire   stdlib only
 1  core/    types actors event replay machine graph    PURE: no I/O at all
-            hours mentions review scope challenge
+            hours mentions review scope challenge seams
 2  store/   log cache live reviews creds stores       the ONLY SQL
             server pubkeys  (the HOST's own identity)
 3  verbs/   plan take update card pulse assign         + the REGISTRY
@@ -185,7 +194,11 @@ presence.
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees catchup remote trailer bind install diff sig  the ONLY subprocess
    session.py  the CLIENT half of the ssh login: sign in, cache, refresh
+<<<<<<< HEAD
+5  mcp/     server hello tools gitmoves schema render boardview dossier
+=======
 5  mcp/     server hello tools gitmoves integrate schema render dossier
+>>>>>>> ms/parallel-by-mechanism-the-board-
             before brief thread boards fields
    http/    server mounts watcher rpc admin scoped grants ingest auth login
             feed static gitdoor upstream

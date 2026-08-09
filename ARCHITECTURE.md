@@ -1324,6 +1324,39 @@ concluded: taskops still never parses source, and `collisions()` is still not
 widened; what changes is what the human looks for before dispatching. A NOUN
 that appears in two specs is a seam, and a seam lands serialized first.
 
+**And since 2026-08-09 the board computes it** (tk-1eecbf). "What the human
+looks for before dispatching" was a sentence in `mcp/server.py::INSTRUCTIONS`,
+and twice in one week it was not remembered, because nothing derived it.
+`core/seams.py` is that derivation, PURE and level 1: `terms(spec)` reads the
+planner's PROSE — backticked spans longer than one bare word, and identifiers
+joined by `::`, `.`, `/` or `_` — and `wave(cards, ready)` partitions the READY
+column, greedily, in its own priority order, into what is safe to fan out
+together and what is held, each held card naming the card it clashes with and
+the exact overlap. FILES before TERMS: a declared file is a fact the planner
+wrote, a shared term is an inference from prose.
+
+Three lines hold it to the rules above it. **Nothing is stored** — the wave is
+recomputed on every `taskops_board` and there is no new event, table or cache.
+**taskops still never parses source**: `terms` reads specs and `collisions()`
+is still not widened. **A warning is never a lock**: the wave rides under TAKE
+in `mcp/boardview.py` and in the brief of an assign that names cards it holds
+apart (`mcp/brief.py::_apart`), and the assign proceeds regardless.
+
+The extraction is deliberately NARROW, and that is the whole design: ordinary
+prose yields the empty set, a lone `` `done` `` is not a concept, and `-` is
+not a joiner so "post-mortem" is prose. A missed seam costs one duplicated
+helper; a false hold costs the feature, because an orchestrator that is held
+back over a coincidence stops reading the advice. `render.py` passed its
+200-line budget when the wave line was added, so the board panorama moved to
+`mcp/boardview.py` at the seam that file already had — the one big screen on
+one side, what every other tool result is made of on the other.
+
+The dashboard draws NOTHING of this yet: `BoardPayload.wave` is declared in
+`ui/src/types.ts` with its `@source` line so the pane that eventually draws it
+starts from the server's real shape, and `null` (fewer than two ready cards,
+nothing to decide) is deliberately a different state from absent (a board older
+than the wave).
+
 ---
 
 ## 17. Deployed — taskops.bernardocastro.dev is v2 (2026-08-08)
