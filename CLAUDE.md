@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**417 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 413+4; see below), ruff +
+**422 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 418+4; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -129,7 +129,14 @@ task=` takes no target: merging a CARD to `main`
 cannot be expressed. A FINISHED milestone lands with `taskops_merge
 milestone=` — the human's explicit call, refused while any card is open or
 unintegrated, recorded on the board. Raw `git merge` in the shared checkout is
-never the move: the board must learn the milestone shipped.
+never the move: the board must learn the milestone shipped. **A chapter behind
+a MOVED trunk catches itself up in that same call** — chapters overlap, so by
+landing time the docs both of them touched have drifted, and it conflicted
+twice in two days. It is `catchup.catch_up` again, on the integration worktree
+and `base_ref`, and the ORDER inside `gitmoves._land` is load-bearing: gate
+first (open work, then the criteria — the human's answer before any git),
+catch-up second, land third. A conflict still aborts with git's own files and
+the trunk untouched; a dirty integration worktree is never touched at all.
 
 **3. Two roles, enforced by the server.** The verb registry
 (`verbs/__init__.py`) declares `kind` (read/write) and `roles` once:

@@ -669,6 +669,10 @@ sequenceDiagram
     Board-->>Dev: merged
 
     Note over Dev: the HUMAN decides how ms/<milestone> reaches main: a PR, or taskops_merge milestone= once every card is closed and integrated
+    Dev->>Board: taskops_merge milestone=ms-x criteria_met=true
+    Board->>Board: the GATE first — open work, then the chapter's criteria (no answer, no git)
+    Board->>Git: trees.behind_trunk() — if ms/* lacks base_ref's head, the SAME catchup.catch_up() merges the trunk IN the integration worktree (dirty or missing: untouched, today's path; conflict: aborted clean, git's files + the count)
+    Board->>Git: land_milestone() --no-ff into the trunk, in the shared checkout
 ```
 
 ## 9. Sequence — the case v2 exists to remove
