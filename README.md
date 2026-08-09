@@ -318,18 +318,31 @@ uv build --wheel                                    # from the commit you mean t
 python3 -c "import zipfile,sys
 w = zipfile.ZipFile(sys.argv[1]).read('taskops/ui/app.js').decode()
 print({m: w.count(m) for m in ('chapter-goal', 'markdown-inline')})" dist/taskops-*.whl
-ssh <host> 'cp /tmp/taskops-*.whl ~/taskops-v2-app/rollback/'   # THE ROLLBACK, first
-scp dist/taskops-*.whl <host>:/tmp/
-ssh <host> '~/taskops-v2-app/.venv/bin/pip install --force-reinstall /tmp/taskops-*.whl'
+# THE ROLLBACK, first — the wheel that is installed NOW, named for when it was:
+ssh <host> 'cp /tmp/<the wheel installed now>.whl ~/taskops-v2-app/rollback/taskops-<version>-<when>-preupgrade.whl'
+ssh <host> 'mkdir -p /tmp/<card>'                   # a dir per upgrade, never bare /tmp
+scp dist/taskops-*.whl <host>:/tmp/<card>/
+ssh <host> '~/taskops-v2-app/.venv/bin/pip install --force-reinstall /tmp/<card>/taskops-*.whl'
 ssh <host> 'pm2 restart taskops-v2'
 ```
+
+**Ship into a directory named for the upgrade, not into bare `/tmp`.** Earlier
+runs leave their wheels there, so `pip install /tmp/taskops-*.whl` expands to
+several paths and pip refuses the lot with `Invalid wheel filename (wrong number
+of parts)` — which the shell reports *after* `pm2 restart` has already run in the
+same chain, i.e. a restart onto the OLD code that looks like a deploy. And do not
+rename a wheel on the way: pip parses the filename, so `taskops-<card>.whl` is
+refused before it is ever opened.
 
 Three things that are not optional, in this order:
 
 1. **Record the rollback before replacing anything** — keep the wheel that is
    installed now, under a name that says when it was installed. If the new one
    fails to serve, put it back first and report second: an outage is worse than
-   a stale render.
+   a stale render. **And prove it is the pre-upgrade one**, because a leftover
+   `/tmp` wheel is a guess: compare every `taskops/*.py` inside it against
+   site-packages by md5, and check it still carries whatever the upgrade
+   withdraws (for the 410 upgrade: `taskops/http/static.py`).
 2. **The wheel must carry the built dashboard** — the check above, on the
    artefact, before it goes anywhere. Not for the host, which serves no
    dashboard and never reads those bytes: it is the SAME wheel a teammate
@@ -349,7 +362,9 @@ Two things a host must have that no exit code will tell you:
   mounted the first time somebody addresses it, so a freshly restarted process
   honestly says `1` after one request and `4` once all four have been asked
   for. It catches a server that came up beside its data instead of on it —
-  touch each board first, then read it.
+  touch each board first, then read it. **`/rpc` is what mounts a board**, and
+  even a refused one does: `/<board>/ui/` is answered by `http/static.py` before
+  any store is opened, so hitting all four `/ui/` leaves the count at 1.
 * A credential per board. `taskops invite <who> --board <name> --root <dir>`
   prints a one-time link; `taskops join` on the other end burns it and mints
   that machine's standing token into `.taskops/remote.json` (0600, gitignored).
