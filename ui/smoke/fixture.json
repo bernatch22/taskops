@@ -1089,6 +1089,7 @@
    },
    "truncated": false
   },
-  "no_repo": "this host serves boards, not a repository \u2014 it was started outside a checkout (taskops serve), so there is no clone here to read a diff from. A host that sits in a repo (taskops ui) answers /git."
+  "no_repo": "this host serves boards, not a repository \u2014 it was started outside a checkout (taskops serve), so there is no clone here to read a diff from. A host that sits in a repo (taskops ui) answers /git.",
+  "stale": "tk-b22222 is not in your clone yet \u2014 `git fetch origin tk-b22222` brings it. The board is shared and the code is not: a card's branch reaches origin when it closes, and this window reads only the checkout it stands in. Nothing is fetched for you."
  }
 }

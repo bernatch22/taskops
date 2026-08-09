@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 from typing import Any, Callable, Iterator
 from pathlib import Path
 
@@ -11,13 +12,18 @@ import pytest
 
 from taskops import _clock
 from taskops.mcp import hello, tools, server
-from taskops.board import LocalBoard
+from taskops.board import LocalBoard, RemoteBoard
 from tests.conftest import T0
+from tests.test_git import repo as git_repo
 from taskops._errors import Refused, BadRequest
+from taskops.gitwork import run, trees, remote as remote_mod
 from taskops.mcp.schema import SCHEMAS
+from taskops.http.server import BoardServer, serve as http_serve
 
 BERNA = "dev:berna"
 W1 = "agent:berna/w1"
+W2 = "agent:berna/w2"
+REMOTE_BOARD = "facturador"
 
 pytestmark = pytest.mark.usefixtures("clock")
 
@@ -744,6 +750,140 @@ def test_repo_path_never_reaches_a_verb(repo: Path, boards: Any) -> None:
         patch.setitem(tools.BY_NAME, "taskops_board", tools.BY_NAME["taskops_board"]._replace(run=spy))
         server.handle(server.Boards(dev, repo, BERNA), json.dumps(request))
     assert "milestone" in seen and "repo_path" not in seen
+
+
+# ── code travels by git, and the board is REMOTE ────────────────────────────
+#
+# The point of this section is the pair: the board answers over a socket and the
+# git runs HERE, in the process that has the repo. A LocalBoard cannot show that
+# — the two halves live in the same process and a server-side push would look
+# identical. The server never gains a repo, a clone, or a credential; it hears
+# `done`, and the client that asked makes the branch visible on origin.
+
+
+@pytest.fixture()
+def remote_pair(tmp_path: Path) -> Iterator[tuple[BoardServer, Path, Path]]:
+    """A real HTTP board on a real port, a real work repo, a real bare origin."""
+    httpd = http_serve(tmp_path / "boards", "127.0.0.1", 0)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    root = git_repo(tmp_path)
+    bare = tmp_path / "origin.git"
+    run.must("init", "-q", "--bare", str(bare))
+    run.must("remote", "add", "origin", str(bare), cwd=root)
+    yield httpd, root, bare
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def remote_client(httpd: BoardServer, actor: str, subject: str | None = None) -> RemoteBoard:
+    token, _ = httpd.mounts.credentials.mint(subject or actor, REMOTE_BOARD, _clock.now())
+    return RemoteBoard(f"http://127.0.0.1:{httpd.server_address[1]}/{REMOTE_BOARD}", token, actor)
+
+
+def card_on(httpd: BoardServer, root: Path) -> tuple[RemoteBoard, RemoteBoard, str, str]:
+    """Plan → assign → take → a real commit on the card's own branch, bound.
+
+    Everything up to the moment `done` becomes possible, over the wire.
+    """
+    dev = remote_client(httpd, BERNA)
+    worker = remote_client(httpd, W1, subject=BERNA)
+    cards = dev.call(
+        "plan",
+        {
+            "milestone": "MVP facturador",
+            "goal": "read a bank CSV",
+            "tasks": [{"title": "invoice model", "spec": "the Invoice dataclass"}],
+        },
+    )["cards"]
+    card = cards[0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"], "worktrees": False})
+    worker.call("take", {"task": card})
+    tree = trees.ensure_card(root, card, card, "")
+    (tree / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "feat: model", cwd=tree)
+    sha = run.must("rev-parse", "HEAD", cwd=tree)
+    worker.call("bind", {"task": card, "sha": sha, "subject": "feat: model"})
+    return dev, worker, card, sha
+
+
+def on_origin(bare: Path, branch: str) -> str:
+    result = run.git("rev-parse", "--verify", branch, cwd=bare)
+    return result.out if result.ok else ""
+
+
+def test_a_done_accepted_by_a_remote_board_pushes_the_card_branch_to_origin(
+    remote_pair: tuple[BoardServer, Path, Path],
+) -> None:
+    """How code travels between two devs now that the server is an events API.
+
+    The board learns the sha; the branch reaches origin; the other dev fetches
+    it into their OWN clone and reads the diff there. Nothing about the objects
+    passes through taskops — which is exactly why this has to be pinned against
+    a board that is genuinely somewhere else.
+    """
+    httpd, root, bare = remote_pair
+    dev, worker, card, sha = card_on(httpd, root)
+    assert not on_origin(bare, card)  # nothing pushed by taking or committing
+
+    text = tools.call(worker, root, "taskops_update",
+                      {"task": card, "status": "done", "note": "model + tests"}, _clock.now())
+
+    assert "done" in text
+    assert on_origin(bare, card) == sha  # `git fetch origin tk-<id>` now finds it
+    assert dev.call("card", {"task": card})["state"] == "done"  # and the board has the sha
+
+
+def test_a_done_the_remote_board_refuses_pushes_nothing(
+    remote_pair: tuple[BoardServer, Path, Path],
+) -> None:
+    """The refusal travels as an exception out of `board.call`, so the push below
+    it is not skipped by a check — it is unreachable. A card closed by somebody
+    who does not hold it must leave no trace anywhere, origin included."""
+    httpd, root, bare = remote_pair
+    _dev, _worker, card, _sha = card_on(httpd, root)
+    stranger = remote_client(httpd, W2, subject=BERNA)
+
+    with pytest.raises(Refused, match="agent:berna/w1"):
+        tools.call(stranger, root, "taskops_update",
+                   {"task": card, "status": "done", "note": "not mine"}, _clock.now())
+
+    assert not on_origin(bare, card)
+
+
+def test_with_no_origin_the_card_still_closes_and_nothing_is_pushed(
+    tmp_path: Path,
+) -> None:
+    """The whole feature's switch is `git remote get-url origin`. Without one,
+    the board move is untouched and git is never even asked to push — a push is
+    never a gate, so its absence can never be one either."""
+    httpd = http_serve(tmp_path / "boards", "127.0.0.1", 0)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        root = git_repo(tmp_path)  # no origin added
+        _dev, worker, card, _sha = card_on(httpd, root)
+        ran: list[tuple[str, ...]] = []
+        real = run.git
+
+        def spy(*args: str, **kwargs: Any) -> Any:
+            ran.append(args)
+            return real(*args, **kwargs)
+
+        remote_mod.run.git = spy  # type: ignore[assignment]
+        try:
+            text = tools.call(worker, root, "taskops_update",
+                              {"task": card, "status": "done", "note": "no origin here"},
+                              _clock.now())
+        finally:
+            remote_mod.run.git = real  # type: ignore[assignment]
+
+        assert "done" in text  # the board move happened
+        assert not any(args[0] == "push" for args in ran)  # not attempted, not failed
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 def test_a_chapter_whose_cards_are_all_integrated_can_land(

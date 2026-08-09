@@ -327,9 +327,23 @@ export type DiffStep =
   | { step: "forge"; href: string; why: string }
   | { step: "none"; why: string };
 
-/** Why there is no patch, in the reader's terms. The no-clone case is NOT an
- *  error and must not read as one — it is this host being what it is. */
-function why(): string {
+/** Why there is no patch, in the reader's terms.
+ *
+ *  A refusal the door actually sent WINS, verbatim. Two of them say things this
+ *  side could not know and must not paraphrase: "this host serves boards, not a
+ *  repository" (`gitdoor.py::NO_REPO`) and "that branch is not in your clone yet
+ *  — `git fetch origin tk-…` brings it" (`gitdoor.py::STALE`). The second is the
+ *  everyday one on a SHARED board: the board travels over HTTP and the code
+ *  travels by git, so a card somebody else closed an hour ago has a branch this
+ *  clone has never seen. Neither is an error — one is this host being what it
+ *  is, the other is this disk being where it is — and the honest, actionable
+ *  sentence is the server's, which is why nothing here rewrites it.
+ *
+ *  Only when there is no refusal to quote (nothing was asked, or the flag
+ *  already learned this host has no clone in an earlier pane) does this side
+ *  speak for itself. */
+function why(refusal?: string | null): string {
+  if (refusal) return refusal;
   return hostHasClone
     ? "this host could not read that diff"
     : "this host serves boards, not a clone, so there is no repository here to read a diff from";
@@ -340,17 +354,18 @@ function why(): string {
 export function cascade(
   repo: Repo | null | undefined,
   target: GitTarget,
-  state: { diff: GitDiff | null; loading: boolean },
+  state: { diff: GitDiff | null; loading: boolean; refusal?: string | null },
 ): DiffStep {
   const forge = gitForge(repo, target);
+  const reason = why(state.refusal);
   if (state.loading) return { step: "loading" };
   // 2 · the real patch. `truncated` carries the forge link with it rather than
   //     replacing it: a cut patch is still the best thing on screen.
   if (state.diff !== null) return { step: "patch", diff: state.diff, forge };
   // 3 · the forge, when this board has a slug at all.
-  if (forge !== null) return { step: "forge", href: forge, why: why() };
+  if (forge !== null) return { step: "forge", href: forge, why: reason };
   // 4 · the sentence. No anchor, no pane, no apology.
-  return { step: "none", why: `${why()}, and this board has no remote to link out to` };
+  return { step: "none", why: `${reason}, and this board has no remote to link out to` };
 }
 
 /** What `useGitDiff` needs of a client — declared structurally, like `Repo`
@@ -367,16 +382,20 @@ export interface GitReader {
  *  half of the rule, and the reason the flag is checked HERE rather than in each
  *  component.
  *
- *  A refusal is not surfaced as an error: it teaches the flag and then resolves
- *  to `diff: null`, which IS the cascade's third step. The pane says the honest
- *  sentence; nothing throws into a render. */
+ *  A refusal is not surfaced as an error: it teaches the flag, is KEPT as words
+ *  for `cascade()` to quote, and then resolves to `diff: null`, which IS the
+ *  cascade's third step. The pane says the honest sentence; nothing throws into
+ *  a render. Keeping the message is what lets "not in your clone yet — git fetch
+ *  origin tk-… brings it" reach the reader: only the door knows which ref was
+ *  missing, and a sentence composed on this side would have to guess. */
 export function useGitDiff(
   reader: GitReader | null | undefined,
   target: GitTarget,
   on: boolean,
   path?: string,
-): { diff: GitDiff | null; loading: boolean } {
+): { diff: GitDiff | null; loading: boolean; refusal: string | null } {
   const [diff, setDiff] = useState<GitDiff | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const route = gitRoute(target, path);
 
@@ -387,6 +406,7 @@ export function useGitDiff(
     let mine = true;
     if (!reader || !on || !gitAvailable()) {
       setDiff(null);
+      setRefusal(null);
       setLoading(false);
       return;
     }
@@ -394,11 +414,18 @@ export function useGitDiff(
     reader
       .git<GitDiff>(route)
       .then((answer) => {
-        if (mine) setDiff(answer);
+        if (mine) {
+          setDiff(answer);
+          setRefusal(null);
+        }
       })
       .catch((failure: unknown) => {
-        noteGitRefusal(failure instanceof Error ? failure.message : "");
-        if (mine) setDiff(null);
+        const said = failure instanceof Error ? failure.message : "";
+        noteGitRefusal(said);
+        if (mine) {
+          setDiff(null);
+          setRefusal(said || null);
+        }
       })
       .finally(() => {
         if (mine) setLoading(false);
@@ -408,5 +435,5 @@ export function useGitDiff(
     };
   }, [reader, route, on]);
 
-  return { diff, loading };
+  return { diff, loading, refusal };
 }

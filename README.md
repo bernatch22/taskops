@@ -39,7 +39,7 @@ taskops init                # .taskops/board/ (log + 2 sqlite files), 2 git hook
 **Remote — a team, one shared board.**
 
 ```sh
-taskops serve --root ~/taskops-boards &              # host; the dashboard ships inside the package
+taskops serve --root ~/taskops-boards &              # host: /rpc, /feed, /healthz — no dashboard
 taskops invite ana --board my-project                # one-time link, 7 days (--revoke <id>)
 ```
 
@@ -117,18 +117,76 @@ taskops ui        # the dashboard: serves it if nothing is, opens the browser, t
 ```
 
 `taskops ui` is the whole story of the dashboard — no port, no token, no flags.
-Local board: it serves right there (blocking, ctrl-c stops it; an agent runs it
-in the background) and opens the browser with a minted token; run it again and
-it just reopens the running one. Remote board: it opens the server's /ui/ with
-the credential `join` already saved. The old `taskops open` sent you to a
-paste-a-token screen holding a token the machine already had.
+It **always serves right there**, in the checkout you ran it from (blocking,
+ctrl-c stops it; an agent runs it in the background) and opens the browser with
+a minted local token; run it again and it just reopens the running one.
+
+A board on a server changes exactly one thing: who answers `/board/rpc`. The
+window forwards it, with the credential `join` saved in `.taskops/remote.json`,
+and the page never sees that credential — it holds only the local token. It used
+to redirect you to the server's own `/ui/` instead, and that page is served by a
+machine with no repository, so every diff in it fell through to a link.
+
+**The server no longer serves a dashboard at all.** `taskops serve` answers
+`/rpc`, `/feed` and `/healthz`; its `/ui/` answers one sentence naming
+`taskops ui`, at `410 Gone`, and there is no flag that puts a bundle back on it.
+The bundle still ships inside the wheel — that is what `taskops ui` serves. A
+board host having no clone is not an accident to work around: a dashboard shows
+diffs, a diff is read from the reader's own clone, so a window served from the
+server could only ever be a degraded one. The binary serves the window; the
+server serves the truth (`src/taskops/http/static.py` carries the post-mortem).
 
 The diffs the dossier shows — **Files changed** on a card, the patch under a
 commit — come from **your own clone**, read on demand by the host `taskops ui`
-started inside it; nothing is stored on the board and nothing goes to the
-network. A host with no checkout (`taskops serve`, which sits in a directory of
-boards) mounts no such door and says so, and the page falls back to the GitHub
-link when the repo has an origin, or to one plain sentence when it does not.
+started inside it; nothing is stored on the board, in either mode. A host with
+no checkout (`taskops serve`, which sits in a directory of boards) mounts no
+such door and says so, and the page falls back to the GitHub link when the repo
+has an origin, or to one plain sentence when it does not.
+
+On a shared board most branches belong to other people's cards, and a card's
+branch reaches `origin` when it closes. Until you fetch, it is simply not on
+your disk — so the pane says exactly that and names the command:
+
+```
+tk-91a27e is not in your clone yet — `git fetch origin tk-91a27e` brings it.
+```
+
+Nothing is ever fetched for you: that would move a branch under a worktree
+somebody is sitting in.
+
+### How code travels between two devs
+
+**The board carries references; git carries objects.** A shared board is an
+events API and nothing else — it never holds a repository, a clone or a git
+credential, so a sha on a screen is a *name*, and the bytes it names live in
+git. The meeting point is whatever `origin` is: GitHub, GitLab, a bare repo on
+a box, it makes no difference.
+
+So the two halves are:
+
+1. Berna closes a card — `taskops_update task=tk-91a27e status=done note="…"`.
+   The board records the commit that closed it, and the client that made the
+   call (the one machine with the repo) pushes `tk-91a27e` to `origin`.
+   **Best effort, never a gate**: no origin, no network, a protected branch —
+   the card is closed either way and the board carries the sha regardless.
+2. Ana, in her own clone of the same repo, fetches it and reads it locally:
+
+   ```sh
+   git fetch origin tk-91a27e
+   git log --oneline main..FETCH_HEAD
+   git diff main...FETCH_HEAD
+   ```
+
+   Her `taskops ui` shows the same diff without leaving the browser, because it
+   reads *her* clone — and until she fetches, it says so and names that exact
+   command instead of pretending the branch is empty.
+
+The same push happens at the other two lifecycle moments that already existed:
+integrating a card into its milestone branch, and landing a milestone. Push
+failures are silent by design and are never recorded on the board — a push is
+infrastructure, not a board fact, and the next lifecycle moment pushes again.
+Pinned against a real HTTP board and a real `origin` in
+`tests/test_mcp.py` ("code travels by git, and the board is REMOTE").
 
 ### Working on the dashboard itself
 
@@ -234,6 +292,20 @@ It binds loopback on purpose; TLS and the public name are a reverse proxy's
 job, and the proxy must pass `Upgrade`/`Connection` through or the dashboard's
 live feed silently degrades.
 
+**A host serves no dashboard.** `/rpc`, `/feed` and `/healthz` are the whole
+public surface; `https://<host>/<board>/ui/` answers `410` and one sentence.
+Everybody on the team opens the board the same way, and it is not a URL you
+send them — it is a command they run in their own checkout of the repo:
+
+```sh
+taskops join "https://<host>/<board>?invite=<token>"   # once
+taskops ui                                             # every time
+```
+
+That window is served from their laptop, reads the board over `/rpc` from this
+host, and reads every diff from their own clone. Nothing about it needs the
+host to know what a repository is.
+
 ### Upgrading a host
 
 The boards are outside the install, so an upgrade is the package and nothing
@@ -258,12 +330,17 @@ Three things that are not optional, in this order:
    installed now, under a name that says when it was installed. If the new one
    fails to serve, put it back first and report second: an outage is worse than
    a stale render.
-2. **The wheel must carry the built dashboard.** `src/taskops/ui/` is committed
-   precisely so the wheel does; check the artefact for the markers of whatever
-   you are shipping (`tests/test_ui.py` names them) *before* it goes anywhere.
-3. **Verify by CONTENT at the real domain.** A 200 is not the claim. Fetch
-   `https://<host>/<board>/ui/app.js` and confirm it carries the marker you
-   built for — its md5 should equal the committed `src/taskops/ui/app.js`.
+2. **The wheel must carry the built dashboard** — the check above, on the
+   artefact, before it goes anywhere. Not for the host, which serves no
+   dashboard and never reads those bytes: it is the SAME wheel a teammate
+   `pip install`s to get `taskops ui`, so a wheel built over a stale
+   `src/taskops/ui/` ships everybody a stale window. `tests/test_ui.py` names
+   the markers.
+3. **Verify by CONTENT at the real domain.** A 200 is not the claim, and there
+   is no page to look at — so the claim is the DATA: call `/rpc` through the
+   public name (the `curl` below) and reconcile the counts against what the
+   board actually holds. What the dashboard renders is verified where the
+   dashboard runs: `taskops ui` in a checkout joined to this host.
 
 Two things a host must have that no exit code will tell you:
 

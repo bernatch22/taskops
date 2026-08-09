@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **79 Python files / ~8.200 lines under `src/taskops`**, plus the
+~340 files) as **80 Python files / ~8.500 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,10 +37,13 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**304 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 303+1; see below), ruff +
-pyright strict clean. Deployed: `taskops.bernardocastro.dev` serves
-this, four boards, since 2026-08-08 (ARCHITECTURE.md §17).
+**321 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 320+1; see below), ruff +
+pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
+four boards since 2026-08-08 (ARCHITECTURE.md §17) — but it runs the wheel from
+tk-c86312, **not this tree**: this chapter's server change (`/<board>/ui/` → 410)
+is in the trunk and NOT on the box. The deploy is its own card, waiting on
+Berna's go.
 
 ## The four ideas everything rests on
 
@@ -161,7 +164,7 @@ presence.
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees remote trailer bind install      the ONLY git (client-side)
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread
-   http/    server mounts rpc auth feed static
+   http/    server mounts rpc auth feed static gitdoor upstream
 6  cli/     commands (init join hook) · serving (serve invite ui) · claude wording
 ```
 
@@ -218,7 +221,7 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   is a live reference and is held to the same standard as this file. Prefer a
   command somebody can re-run over a number that rots silently.
 - **The dashboard is built, not hand-written.** Source in `ui/` (React +
-  TypeScript, esbuild); `node ui/build.mjs` writes `index.html`, `app.js` and
+  TypeScript, esbuild); `cd ui && node build.mjs` writes `index.html`, `app.js` and
   `style.css` into `src/taskops/ui/`, and **that output is committed** — that is
   what makes `pip install taskops` serve a dashboard with no node toolchain.
   React is bundled, never a CDN. `npm run check` in `ui/` is the closure:
@@ -299,6 +302,19 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    **without one, nothing pushes, nothing links, and nothing degrades**, which
    is this repo's own board, so that is the case the harness pins.
 
+   And the window it is served in is ALWAYS local (§16, decided 2026-08-08):
+   `taskops ui` serves the bundle and mounts `/git` from the checkout it stands
+   in whether the board is this repo's or a server's, and the ONLY difference is
+   that `/board/rpc` is forwarded to `<url>/rpc` with the bearer from
+   `remote.json` (`http/upstream.py`, `http/rpc.py::answered`). The routes never
+   change, so the committed bundle knows nothing about it. It used to redirect a
+   remote board to the server's own `/ui/` — a page on a machine with no clone,
+   where every diff fell through to a link. The live signal there is a POLL of
+   the remote `seq` poking the socket already served, never a relayed
+   WebSocket, and a ref this clone has not fetched says so and names the `git
+   fetch origin tk-<id>` that brings it — it is not an error and nothing is
+   fetched for the reader.
+
    It also shows the **real diff, read from your own clone** (§16's amendment,
    decided 2026-08-08): the dossier gained **Files changed** — the card as a PR,
    `compare/ms/<slug>...tk-<id>`, +/− per file, each file's patch on expand —
@@ -371,5 +387,13 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    measured under the hours and the rule is on screen in `core/hours.py`'s own
    words.
 
-   It is live: `taskops.bernardocastro.dev/<board>/ui/` is this dashboard,
-   served by the same package that hosts the boards (ARCHITECTURE.md §17).
+   And the SERVER stops serving it (ARCHITECTURE.md §16, "API ONLY is now
+   literal"). `taskops serve` answers `/rpc`, `/feed` and `/healthz`;
+   `/<board>/ui/` answers **410** and one sentence naming `taskops ui`, and the
+   `--ui` flag is removed rather than left dead. `Mounts.ui` is `repo`'s shadow:
+   one construction-time switch mounts `/git` and the bundle, and only a process
+   standing in a checkout has either. The bundle still ships inside the wheel —
+   what went is the server-side mount, because a dashboard reads diffs from the
+   viewer's clone and the server deliberately has none. `http/static.py` is the
+   post-mortem. Production still runs the older wheel and still serves its
+   `/ui/` until the chapter's deploy card replaces it.

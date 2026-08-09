@@ -1,8 +1,41 @@
-"""Serving the UI bundle. Small on purpose: the board is an API, not a website."""
+"""Serving the UI bundle. Small on purpose: the board is an API, not a website.
+
+**And only a WINDOW serves it.** `taskops serve` — a board host — answers /rpc,
+/feed, /healthz and nothing else; its /ui/ is one sentence naming `taskops ui`
+(`NO_UI` below, answered `410 Gone`).
+
+Why, and it is the same rule as /git's (ARCHITECTURE.md §16): a dashboard shows
+DIFFS, and a diff is read from the reader's own clone. The server deliberately
+has no clone — it never gains a repo, a checkout or a git credential — so a page
+served from it could only ever fall through every step of `links.tsx::cascade`
+to a forge link or a sentence. That was serving a degraded window and calling it
+*the* window. The binary serves the window; the server serves the truth.
+
+`410 Gone` rather than 404 because the two say different things to whoever typed
+the URL: 404 is "no idea what that is, maybe later", and this is neither vague
+nor temporary. The page WAS here, it was withdrawn on purpose, and it is never
+coming back to this host. The body is plain text, not the JSON error envelope,
+because the one reader who reaches this door is a human with a browser.
+
+The bundle is NOT removed from the package: `src/taskops/ui/` still ships inside
+the wheel, which is what lets `pip install taskops` + `taskops ui` serve a
+dashboard with no node toolchain. Only the server-side mount went, and the
+`--ui` flag that configured it went with it rather than staying as a dead option.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
+
+NO_UI = (
+    "this host serves the board, not the dashboard — run `taskops ui` in a "
+    "checkout joined to this board and it serves the window itself, reading "
+    "diffs from your own clone.\n"
+)
+
+MISSING = "no UI bundle is installed here — this checkout's taskops has none.\n"
+"""A window that HAS a clone but whose install carries no bundle. Distinct from
+`NO_UI`: that one is a design, this one is a broken install."""
 
 TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -49,3 +82,15 @@ def payload(root: Path, rest: str) -> tuple[bytes, str] | None:
     a cache would serve the previous build after every `node ui/build.mjs`."""
     path = resolve(root, rest)
     return (path.read_bytes(), content_type(path)) if path else None
+
+
+def answer(root: Path | None, rest: str) -> tuple[int, bytes, str]:
+    """The WHOLE /ui door: (status, body, content-type). `root is None` means
+    this process is a board host — see the module docstring for why that is a
+    410 and one sentence rather than a page."""
+    if root is None:
+        return 410, NO_UI.encode(), "text/plain; charset=utf-8"
+    found = payload(root, rest)
+    if found is None:
+        return 404, MISSING.encode(), "text/plain; charset=utf-8"
+    return 200, found[0], found[1]
