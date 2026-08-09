@@ -39,15 +39,104 @@ taskops init                # .taskops/board/ (log + 2 sqlite files), 2 git hook
 **Remote — a team, one shared board.**
 
 ```sh
+# once, ON THE HOST — the only ssh in this design: it is where trust enters
+taskops server init --root ~/taskops-boards --key ~/.ssh/id_ed25519.pub
 taskops serve --root ~/taskops-boards &              # host: /rpc, /feed, /healthz — no dashboard
-taskops invite ana --board my-project                # one-time link, 7 days (--revoke <id>)
 ```
+
+That is the last shell on the box. Everything after it runs **from your laptop**,
+signed by the key `server init` registered — creating the board included:
+
+```sh
+cd your-project
+taskops remote add https://host:8787   # once per checkout — git's `remote add origin`
+taskops board create                   # the directory's name, or `board create my-project`
+taskops board push                     # a LOCAL board becomes that one
+```
+
+**No URL and no `--key` after the first line**, on purpose: the host is recorded
+in this checkout (`.taskops/remote.json`, uncommitted — git keeps origin in
+`.git/config` for the same reason), the board's name is recorded by `board
+create` so you never type it twice, and the key is **discovered** the way ssh
+discovers one — `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa`, `~/.ssh/id_rsa`, in that
+order. `--key <path>` is the override, exactly as `ssh -i` is, and `--as
+<principal>` names who the key belongs to when it is not your unix user. The
+explicit `taskops board create https://host:8787/my-project` keeps working
+unchanged — it is the URL form, as in git.
+
+**After a verified push there is exactly ONE source.** The config flips only
+once the server has the history and the counts agree, and then `.taskops/board/`
+is RENAMED to `.taskops/board.local-<date>`: a dead archive, which no process
+reads or writes again. Nothing syncs, nothing is kept in step — this repo now
+reads the hosted board and only that. Delete the archive whenever you like; it
+is there so the bytes that were pushed are still findable the day after.
+
+The rest of the admin surface, from the same laptop and with the same session:
+
+```sh
+taskops board ls                                     # every board on the host
+taskops invite ana --board my-project                # one-time link, 7 days
+taskops revoke --invite <id>                         # or --key SHA256:… to retire a key
+taskops board visibility public                      # anyone may WATCH it
+```
+
+**A board is PRIVATE until its owner publishes it**, and public is GitHub's
+word for GitHub's thing: anonymous READ, and a write that always needs a
+registered key. There is no third state. Anyone may then
+`taskops join https://host:8787/my-project` with no invite at all — config
+written, nothing minted, no key registered — and `taskops ui` opens a viewer's
+window whose comment box says so instead of offering a form it cannot send.
+An anonymous crawl of a public board leaves `events.jsonl` and `live.sqlite`
+byte-identical: reads renew no lease and record no presence for `anon`, which
+is pinned as a hash comparison in `tests/test_topology.py`.
 
 Ana, in **her own** checkout of the same repo:
 
 ```sh
-taskops join "https://host:8787/my-project?invite=<token>"
+taskops join "https://host:8787/my-project?invite=<token>" --key ~/.ssh/id_ed25519
 ```
+
+`--key` is what turns the credential into something nobody has to look after:
+the invite and the PUBLIC half of that key travel in the same call, the server
+burns the invite and registers the key, and the key signs Ana in on the spot.
+From then on `remote.json` is a SESSION cache — when the token runs out (12
+hours), the next call signs in again by itself, with nobody asked for anything.
+Delete the file and it comes back. Without `--key` the join is the one it always
+was and the token is a standing one, which is why every board joined before this
+keeps working untouched.
+
+**A key works on every one of these verbs, and it is what makes the FIRST one
+runnable.** A fresh laptop has no session, and the owner of a brand-new host has
+nothing to join — the invite `join` wants is minted by `taskops invite`, for a
+board nobody has created yet. So the discovered key (or `--key <path>`) signs
+you in on the spot, `--as <principal>` names who that key belongs to when it is
+not your unix user, and the login is remembered: the second command needs no
+flags at all. The refusal when there is no key anywhere lists what it tried.
+(On `revoke` the signing key is `--sign-key`, because there `--key` is already
+the fingerprint being retired.)
+
+That same session is what `board create`, `board ls`, `board visibility`,
+`invite` and `revoke` travel on: they are **server-scope** calls to the host's own `/rpc`
+(`src/taskops/http/admin.py`), authorized by the principal's role — owner,
+member, anon — and not by a board credential, which says nothing about the host.
+A member calling an owner verb is refused naming the role that may. The host is
+taken from `remote.json` — written by `taskops remote add` or by the join that
+registered the key — so no address is repeated, and there is deliberately **no
+host-alias registry**: a TABLE of names would be a third place a server's
+address lives, and the first to drift. One host per checkout, in the file that
+already holds it, is git's answer and it is this one.
+
+**Break-glass, and it is not deprecated.** `--root <dir>` runs `invite` and
+`revoke` against the files, on the machine that holds them — for the day the
+server is down or the owner's key is lost. A system whose only door is its own
+API cannot be repaired when that API is what broke.
+
+The login is OpenSSH's own mechanism, the same one signed commits use: the
+server answers a random single-use challenge, `ssh-keygen -Y sign` signs it, and
+`ssh-keygen -Y verify -f allowed_signers` is what decides. No pip dependency and
+no crypto of ours. One limit, stated: `-Y sign` wants the private key FILE, so a
+key that lives only inside a running ssh-agent cannot sign yet — taskops says so
+in a sentence rather than failing obscurely.
 
 Either way you get the same two files: `.taskops/board.json` (the address —
 committed, it travels with the code) and, for `join`, `.taskops/remote.json`
@@ -292,6 +381,53 @@ It binds loopback on purpose; TLS and the public name are a reverse proxy's
 job, and the proxy must pass `Upgrade`/`Connection` through or the dashboard's
 live feed silently degrades.
 
+**That is the last ssh.** The two commands above — install and `server init` —
+are where trust enters, because authorising a remote bootstrap would need a
+credential the host does not have yet. Every operation after them is a `taskops`
+command run from wherever you are, signed by the key `server init` registered —
+**the first board included**, which is the one case that used to send you back
+to the box: a laptop with no session signs in with the key ssh itself would use:
+
+```sh
+# a laptop that never joined records the host once, then everything goes bare
+taskops remote add https://<host>             # git's `remote add origin`, per checkout
+taskops board create <name>                   # and now a board exists (key: discovered)
+taskops board ls https://<host>               # every board here, with size and last activity
+taskops invite <who> --board <name>           # the join line, minted by the host that honours it
+taskops revoke --invite <id> | --key SHA256:… # take one back (--sign-key signs YOU in)
+taskops board visibility <host>/<name> public|private   # owner only — public means
+                                              # anonymous read, never anonymous write
+```
+
+**A local board becomes a hosted one with one command**, and it is the same
+four above plus a fifth — never a file copy:
+
+```sh
+taskops remote add https://<host>   # once, if this checkout has no remote yet
+taskops board create               # an empty board, on the host — its name is remembered
+taskops board push                 # the history crosses, verified, and the config flips
+```
+
+Run from the repo whose `.taskops/board/` holds the history. The order is the
+safety and the config flips LAST: the target must be empty, nobody may be
+holding a lease, the whole log is streamed through the server's `board.ingest`,
+the counts are compared per event kind — and only then does `board.json` point
+at the host, with the local board renamed to `.taskops/board.local-<date>/`
+rather than deleted. A failure anywhere above leaves the repo exactly as it
+was, and the command is simply run again: event ids are `sha256` of their own
+content, so an interrupted push re-runs to a no-op and continues. There is no
+`--force`, deliberately — a non-empty target means two histories, and putting
+them in an order they never had would be fabricating a timeline.
+
+Add `--invite <token>` the first time, so the host registers the key in the same
+call. And `taskops join` REFUSES onto a repo whose local board has events,
+naming both ways out (`board push`, or `--discard-local` to archive it and join
+anyway) — before this, the join silently made that history invisible forever.
+
+There is no `scp` of an `events.jsonl` in this file and there must not be one:
+storage is an implementation detail, and a file name in an instruction is that
+detail leaking into the interface.
+
 **A host serves no dashboard.** `/rpc`, `/feed` and `/healthz` are the whole
 public surface; `https://<host>/<board>/ui/` answers `410` and one sentence.
 Everybody on the team opens the board the same way, and it is not a URL you
@@ -342,7 +478,11 @@ Three things that are not optional, in this order:
    a stale render. **And prove it is the pre-upgrade one**, because a leftover
    `/tmp` wheel is a guess: compare every `taskops/*.py` inside it against
    site-packages by md5, and check it still carries whatever the upgrade
-   withdraws (for the 410 upgrade: `taskops/http/static.py`).
+   withdraws (for the 410 upgrade: `taskops/http/static.py`). An upgrade that
+   withdraws nothing — most of them — proves the same thing from the other
+   side: the rollback wheel must NOT carry what the new one ADDS (for the
+   owner upgrade: `taskops/http/login.py`). Either way the claim is that the
+   wheel you kept is the one from *before*, not merely a wheel.
 2. **The wheel must carry the built dashboard** — the check above, on the
    artefact, before it goes anywhere. Not for the host, which serves no
    dashboard and never reads those bytes: it is the SAME wheel a teammate
@@ -365,9 +505,12 @@ Two things a host must have that no exit code will tell you:
   touch each board first, then read it. **`/rpc` is what mounts a board**, and
   even a refused one does: `/<board>/ui/` is answered by `http/static.py` before
   any store is opened, so hitting all four `/ui/` leaves the count at 1.
-* A credential per board. `taskops invite <who> --board <name> --root <dir>`
-  prints a one-time link; `taskops join` on the other end burns it and mints
-  that machine's standing token into `.taskops/remote.json` (0600, gitignored).
+* A credential per board. `taskops invite <who> --board <name>` prints a
+  one-time link — over the API, from anywhere, no shell on the box (`--root
+  <dir>` is the break-glass path, run ON the host, for when the API is what
+  broke); `taskops join` on the other end burns it and mints that machine's
+  token into `.taskops/remote.json` (0600, gitignored), a SESSION when the join
+  carried `--key`.
   Verify a fresh host by **counts through the real domain**, never by the
   deploy's exit status:
 
@@ -377,10 +520,12 @@ curl -s -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
      https://<host>/<board>/rpc
 ```
 
-Migrating a v1 board is `scripts/migrate_v1.py <v1 events.jsonl> <v2 board dir>`
-— `--dry-run` first, and reconcile its counts against the v1 `db.sqlite` before
-anything is switched. `ARCHITECTURE.md` §17 is the record of doing exactly that
-against production, and the order it was done in.
+Migrating a **v1** board is `scripts/migrate_v1.py <v1 events.jsonl> <v2 board
+dir>` — `--dry-run` first, and reconcile its counts against the v1 `db.sqlite`
+before anything is switched. That script is for v1 boards and nothing else: a v2
+board that is local and should be hosted is `taskops board push`, above.
+`ARCHITECTURE.md` §17 is the record of doing exactly that against production,
+and the order it was done in.
 
 ## The shape
 

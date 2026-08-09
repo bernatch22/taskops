@@ -37,6 +37,11 @@ CREATE INDEX IF NOT EXISTS credentials_hash ON credentials(hash);
 
 WEEK = 7 * 24 * 3600.0
 
+EXPIRED = "that credential expired"
+"""The refusal a run-out session wears, named so the CLIENT can recognise its own
+case (`board.py`) instead of matching a sentence that would drift the first time
+somebody reworded it. The words after it stay a human's instruction."""
+
 
 class Credential(NamedTuple):
     id: str
@@ -98,7 +103,7 @@ class Credentials:
             if revoked:
                 raise Refused("that credential was revoked — ask for a new invite")
             if expires and float(expires) < now:
-                raise Refused("that credential expired — ask for a new invite")
+                raise Refused(f"{EXPIRED} — ask for a new invite")
             if str(scope) not in ("*", board):
                 raise Refused(f"that credential is not for board {board!r}")
             grants = frozenset(str(caps).split(","))
@@ -118,6 +123,25 @@ class Credentials:
 
     def revoke(self, ident: str) -> None:
         self._write("UPDATE credentials SET revoked = 1 WHERE id = ?", (ident,))
+
+    def subject_of(self, ident: str) -> str:
+        """Who a credential id belongs to — `""` when this host never minted it.
+
+        `revoke` is an UPDATE and an UPDATE that matches nothing is a silent
+        success, so a mistyped id would report "revoked" and leave the real
+        credential live. The caller checks here first and refuses by name."""
+        rows = self._query("SELECT subject FROM credentials WHERE id = ?", (ident,))
+        return str(rows[0][0]) if rows else ""
+
+    def boards(self, subject: str) -> set[str]:
+        """The boards this subject holds a live credential for — which is what
+        "a member sees their own boards" MEANS here, derived and never stored.
+        `'*'` (a session, which is every board or none) is not a board."""
+        rows = self._query(
+            "SELECT DISTINCT board FROM credentials WHERE subject = ? AND revoked = 0",
+            (subject,),
+        )
+        return {str(board) for board, in rows if str(board) != "*"}
 
     def close(self) -> None:
         self.db.close()

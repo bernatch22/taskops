@@ -1,4 +1,4 @@
-"""The commands that RUN something: `serve`, `invite`, `ui`.
+"""The commands that RUN something: `serve` and `ui`.
 
 Split off `commands.py` — which is now only the two that CONNECT a repo to a
 board (`init`, `join`) and the git hooks — when that module reached its 200-line
@@ -6,6 +6,11 @@ budget. The seam is not arbitrary: nothing here touches a repo, a hook or a
 worktree, and nothing in `commands.py` starts a server. The HTTP server is
 still imported inside each function, never at module scope: the CLI must start
 without one.
+
+`invite` used to live here and now lives in `operate.py` beside `board` and
+`revoke` — the four acts that operate a HOST, which reach it over its API and
+keep the on-box path as `--root`. Minting a credential is not "running
+something": it was here because it opened the same sqlite file `serve` does.
 """
 
 from __future__ import annotations
@@ -48,24 +53,6 @@ def serve(args: argparse.Namespace) -> int:
         print("\nstopping")
     finally:
         httpd.server_close()
-    return 0
-
-
-def invite(args: argparse.Namespace) -> int:
-    from ..store.creds import Credentials
-
-    root = Path(str(args.root)).expanduser()
-    creds = Credentials(root / "live.sqlite")
-    if args.revoke:
-        creds.revoke(str(args.revoke))
-        print(f"revoked {args.revoke}")
-        return 0
-    board = str(args.board) or Path.cwd().name
-    token, credential = creds.mint(
-        f"invite:{args.who}", board, _clock.now(), ttl=7 * 24 * 3600, once=True
-    )
-    print(f"one-time invite for {args.who} (id {credential.id}, 7 days):")
-    print(f"  taskops join https://<host>/{board}?invite={token}")
     return 0
 
 
@@ -142,6 +129,12 @@ def _upstream(root: Path) -> Upstream | None:
     if not url:
         return None
     token = str(config.get("token", ""))
+    if not token and config.get("readonly"):
+        # A viewer's window (`commands.py::_watch`): an Upstream with no bearer.
+        # `Mounts.public` reads exactly this — no token means this window is
+        # itself anonymous, so it lets its own browser read and forwards; the
+        # REMOTE decides everything, including refusing the first write.
+        return Remote(url, "")
     if not token:
         raise TaskopsError(
             f"{root / DIR}/board.json points at {url} but there is no credential in "

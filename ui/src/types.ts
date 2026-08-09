@@ -265,6 +265,12 @@ export interface TeamMember {
  *
  *  @source `verbs/_context.py::pulse` */
 export interface Pulse {
+  /** Who the SERVER resolved this caller as — `anon` on a public board read
+   *  with no credential. OPTIONAL for the usual reason (this file's header): a
+   *  board one version behind never sends it, and absent must not read as
+   *  anonymous — a viewer's window would then be claimed for every board.
+   *  @source `verbs/_context.py::pulse` */
+  actor?: string;
   milestone: string; // the TITLE, "" when no milestone is in scope
   goal: string;
   counts: { doing: number; ready: number; blocked: number; stalled: number; done: number };
@@ -320,6 +326,14 @@ export interface BoardPayload {
    *
    *  @source `verbs/project.py::_value`, via `verbs/pulse.py::run` */
   repo?: { host: string; slug: string; url: string } | null;
+  /** GitHub's flag: `public` means ANONYMOUS READ, and a write always needs a
+   *  registered key — there is no third state. OPTIONAL because a board one
+   *  version behind sends nothing, and absent means `private`, which is what
+   *  every board was before the flag existed. Nothing on this screen is hidden
+   *  by it: it says what KIND of board you are looking at, and the reader's own
+   *  standing is `pulse.actor`.
+   *  @source `verbs/project.py::visibility`, via `verbs/pulse.py::run` */
+  visibility?: "public" | "private";
   seq: number;
   pulse: Pulse;
 }

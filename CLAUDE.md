@@ -2,8 +2,8 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **80 Python files / ~8.500 lines under `src/taskops`**, plus the
-dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
+~340 files) as **98 Python files / ~11.200 lines under `src/taskops`**, plus the
+dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -37,12 +37,27 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**321 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 320+1; see below), ruff +
+**403 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 402+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
 boards and the boards' `events.jsonl` are md5-identical across the upgrade.
+**The server-has-an-owner chapter IS on production since 2026-08-09**
+(tk-c37061, README's *Upgrading a host*, FOURTH run — ARCHITECTURE.md §17):
+the host has an OWNER (`berna`, the laptop's `~/.ssh/id_ed25519.pub`),
+`/login` answers a challenge, and the whole admin surface runs from the
+laptop over the API with the DISCOVERED key — `board create`, `board ls`,
+`board visibility` all bare. `server init` was the last ssh this host will
+need. The four legacy boards are untouched and their bearer tokens still
+answer (`board ls` reads agenda 35 · axion 847 · notas 48 · probe 17 — the
+same counts as before the upgrade, and the four `events.jsonl` are
+md5-identical across it). A fifth board, **`taskops-v2`, is PUBLIC**: anyone
+may read it with no credential and every write is refused naming the way in.
+**This repo's own history is not on it yet** — `taskops board push` refuses
+while a lease is live and the closing card held one, by construction; the
+push, and committing the `.taskops/board.json` that gives a cloner the URL
+for free, are the one step left of the promotion.
 
 ## The four ideas everything rests on
 
@@ -154,17 +169,23 @@ presence.
 ## The layers — imports only point DOWN
 
 ```
-0  _errors _ids _clock _json _locate _version      stdlib only
+0  _errors _ids _clock _json _locate _version _wire   stdlib only
 1  core/    types actors event replay machine graph    PURE: no I/O at all
-            hours mentions review
+            hours mentions review scope challenge
 2  store/   log cache live reviews creds stores       the ONLY SQL
+            server pubkeys  (the HOST's own identity)
 3  verbs/   plan take update card pulse assign         + the REGISTRY
             record report review _mentions _waiting project events   no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
-   gitwork/ run trees remote trailer bind install diff   the ONLY git (client-side)
+   gitwork/ run trees remote trailer bind install diff sig  the ONLY subprocess
+   session.py  the CLIENT half of the ssh login: sign in, cache, refresh
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread boards fields
-   http/    server mounts rpc auth feed static gitdoor upstream
-6  cli/     commands (init join hook) · serving (serve invite ui) · claude wording
+   http/    server mounts watcher rpc admin scoped grants ingest auth login
+            feed static gitdoor upstream
+6  cli/     commands (init join hook) · watch (the viewer's join) · serving
+            (serve ui) · remote (remote add: which host, which board) · operate
+            (board invite revoke) · push (board push) · admin (server init +
+            break-glass) · claude wording
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
@@ -180,7 +201,16 @@ the budget, split it where it is cohesive, never relax the rule.
 <board>/cache.sqlite   derived, disposable (delete it, it rebuilds)
 <board>/live.sqlite    leases + presence — separate file ON PURPOSE:
                        clearing the cache must never drop a live claim
+
+<root>/server.sqlite   the HOST itself: principals (owner | member) + pubkeys
+<root>/allowed_signers DERIVED from it, whole, on every change — the exact
+                       file `ssh-keygen -Y verify` consumes. Never hand-edited,
+                       never read back into the store (`store/server.py`).
 ```
+
+A board is created by an explicit act and never by being asked for: an unknown
+name is 404 with NO directory left behind (`http/mounts.py::stores` carries the
+post-mortem; `Mounts.create` is the only door that makes one).
 
 Event ids are `sha256(canonical)[:32]`, so the log is idempotent and a repeated
 write is a no-op. Replay sorts by `ts` with a STABLE sort — ties keep arrival
@@ -196,8 +226,40 @@ uv run python -m taskops.cli serve --root <dir>
 uv run python -m taskops.cli join "http://host/<board>?token=…"
 ```
 
-The CLI is like git: `init join serve invite tidy ui` + `hook` (the two git
-hooks, `trailer` and `commit`, plus the delivery hook `claude`).
+The CLI is like git — and since 2026-08-09 that is literal: `taskops remote add
+<url>` records the host once per checkout (`cli/remote.py`, git's origin in
+`.taskops/remote.json`), `board create` records the name it chose, and the key
+is DISCOVERED as ssh discovers one (`session.py::discover_key`: id_ed25519,
+id_ecdsa, id_rsa), so `board create` / `board push` / `board visibility` / `ls`
+/ `invite` all run BARE — no URL, no `--key`, no repeated name. `--key` is the
+override (`ssh -i`) and `<host>/<name>` the explicit URL form. `init join serve
+tidy ui` + the six that OPERATE a host over its own API, keyed (`board create` · `board ls` · `board push` ·
+`board visibility` · `invite` · `revoke` — `http/admin.py` and
+`http/grants.py`, and `--root <dir>` is the break-glass path that still runs
+them against the files ON the box, now in `cli/admin.py`; `--key`, plus `--as`
+for the principal, signs you in on ANY of them — `session.py::establish`, which
+is what makes the owner's FIRST command runnable from the laptop, and on
+`revoke` it is `--sign-key` because there `--key` is the fingerprint) + `server init` (bootstrap
+a HOST's owner from an ssh pubkey — the one command meant to run over ssh) +
+`join --key ~/.ssh/id_ed25519` (the invite AND the pubkey in one call: the key is
+registered, it signs in on the spot, and `remote.json` becomes a session cache
+that refreshes itself — ARCHITECTURE.md §5) +
+`hook` (the two git hooks, `trailer` and `commit`, plus the delivery hook
+`claude`). **`taskops board push <host>/<name>` is how a LOCAL board becomes a
+hosted one** — the scp is dead: empty target, no live lease, the log streamed
+through `board.ingest`, counts compared per kind, and only THEN the config flip
+with `.taskops/board/` renamed rather than deleted (`cli/push.py`,
+`http/ingest.py`). No force flag, ever. And `join` refuses onto a repo whose
+local board has events, naming `board push` and `--discard-local`.
+**`taskops board visibility <host>/<name> public|private`** is GitHub's flag,
+owner only, and public means exactly what it means there: ANONYMOUS READ, a
+write that always needs a registered key, and no third state. `taskops join
+<url>` with no invite against a public board is then a READ-ONLY join —
+config written, nothing minted, no key registered, and no `project` event
+recorded either, because that would be the anonymous write the rule forbids
+(`cli/watch.py`). Reads by `anon` renew no lease and record no presence:
+`store/live.py::renew` is the ONE place that decides it, and a full anonymous
+crawl leaves `events.jsonl` and `live.sqlite` byte-identical.
 Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 ## Working here
@@ -248,8 +310,24 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   replication between clones, Claude hooks **that decide or store** (the one
   delivery-only hook is sanctioned — MENTIONS.md §9; anything beyond delivery
   is not), a stored `doing`, a slug in a branch name, a `recover`, or a
-  mark-as-read/ack verb for mentions. Each one has its line in
+  mark-as-read/ack verb for mentions; and, from the server-has-an-owner
+  chapter, per-request SIGNING (sessions won: a signature envelope would have
+  to be taught to the stdlib server, the `/feed` handshake and the MCP layer
+  three separate times, for what a bearer already does — and it is a new wire
+  format, so the fleet would have to re-join), hand-rolled crypto or a pip
+  crypto dependency (it is `ssh-keygen -Y sign`/`-Y verify`, and
+  `pyproject.toml` still has no runtime dependency at all), a `--force` on
+  `board push`, and ANONYMOUS WRITES in any form — including the invisible one,
+  a `presence` row on a public read. Each one has its line in
   `ARCHITECTURE.md` §11 saying what it cost and where it is enforced.
+- **Legacy bearer tokens are a fleet, not a detail.** Production's four boards
+  were joined before keys existed: no principal, no pubkey, an empty
+  `allowed_signers`, a `remote.json` one key long. Anything touching auth,
+  `/feed`, the MCP handshake or the `taskops ui` forward is checked against
+  that state and not against a fresh keyed board — the four
+  `test_a_legacy_*`/`test_the_ui_window_forwards_with_a_legacy_token` tests in
+  `tests/test_topology.py` are the door-by-door proof and were each
+  mutation-checked.
 
 ## What is left
 

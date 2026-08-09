@@ -143,6 +143,7 @@ export function WorktreeDiff({
   team = [],
   now = Date.now() / 1000,
   onComment,
+  readOnly,
 }: WorktreeDiffProps & ThreadProps): React.JSX.Element {
   /* The one piece of state this page owns. `split` by default — side by side is
    * the reason the page is not the drawer's pane. It is passed DOWN into
@@ -309,7 +310,7 @@ export function WorktreeDiff({
           {/* No box without a door to send through: the write is `App`'s
               `comment`, and a caller that did not hand one over gets the thread
               read-only rather than a button that fails. */}
-          {onComment ? <CommentBox team={team} onSend={onComment} /> : null}
+          {onComment ? <CommentBox team={team} onSend={onComment} readOnly={readOnly} /> : null}
         </div>
       </div>
     </div>

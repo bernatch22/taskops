@@ -19,8 +19,10 @@ from __future__ import annotations
 from typing import Any, TypedDict, NamedTuple, NotRequired
 
 from .actors import (
+    ANON,
     SYSTEM,
     ROLE_DEV,
+    ROLE_ANON,
     ROLE_AGENT,
     ROLE_SYSTEM,
     role_of,
@@ -30,8 +32,8 @@ from .actors import (
 __all__ = [
     "Card", "Milestone", "Event", "Lease", "Kind", "KINDS",
     "CARD_STATUSES", "DERIVED_STATES", "MILESTONE_STATUSES", "CLOSED",
-    "LEASE_TTL", "PROJECT", "SYSTEM", "EDITABLE", "LIST_FIELDS",
-    "ROLE_DEV", "ROLE_AGENT", "ROLE_SYSTEM", "role_of", "slugify",
+    "LEASE_TTL", "PROJECT", "SYSTEM", "ANON", "EDITABLE", "LIST_FIELDS",
+    "ROLE_DEV", "ROLE_AGENT", "ROLE_SYSTEM", "ROLE_ANON", "role_of", "slugify",
 ]
 
 

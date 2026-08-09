@@ -8,6 +8,15 @@ Two rules, both learned the hard way in v1:
   dropped or duplicated message can never leave it showing something the board
   never said. The connection is recycled by wall-clock seconds, not by "ticks
   without data".
+* **And that is exactly why a PUBLIC board's feed opens with no credential**
+  (`server.py::_feed`). It is not a relaxation of "anonymous reads, keyed
+  writes": a message here is `{"type": "change", "verb", "seq"}` and nothing
+  else, so a watcher learns only THAT the board moved — and answers by
+  re-reading through /rpc, where the anonymous gate applies again in full. It
+  learns nothing it could not already fetch. The day a message carries a card,
+  that door has to close with it. Attaching also writes nothing: the
+  subscription is a queue in memory and the watcher it starts polls `head()`,
+  one SELECT — no path from here touches live.sqlite.
 
 Agents do not use this: their live channel is the pulse line that rides along
 with every tool result.

@@ -8,11 +8,14 @@ do I talk to its board* needs the stores, the verbs and the network.
 Two files make a project, and only `init`/`join` ever write them:
 
     .taskops/board.json    {"url": …}   committed — the address travels with the code
-    .taskops/remote.json   {"token": …} 0600, gitignored — the secret never does
+    .taskops/remote.json   {"token", "token_expires", "login"}   0600, gitignored —
+                           the secret never travels, and with a `login` block the
+                           token is a SESSION this machine re-mints (`session.py`)
 """
 
 from __future__ import annotations
 
+import os
 import json
 from typing import Any
 from pathlib import Path
@@ -73,3 +76,31 @@ def read_config(root: Path) -> dict[str, Any]:
             continue  # a broken config means "not configured", never a crash on read
         out.update(as_object(data))
     return out
+
+
+def write_remote(root: Path, fields: dict[str, Any]) -> None:
+    """Merge `fields` into remote.json, keeping every other key it holds, 0600.
+
+    The WRITER of the secret half, beside its reader, because the shape of that
+    file is one fact: a session refresh (`session.remember`), the key that minted
+    it (`session.cache_login`) and the host and board this checkout operates
+    (`cli/remote.py`) each write ONE block and must not eat the others'.
+
+    `login` is therefore MERGED FIELD BY FIELD and never replaced whole. Three
+    writers own three fields of it — `remote add` the host, a sign-in the
+    principal and the key, `board create` the board's name — and a plain
+    top-level update would have the sign-in silently drop the recorded name, so
+    the bare `board push` after it would go back to guessing the directory."""
+    path = root / DIR / "remote.json"
+    body: dict[str, Any] = {}
+    if path.exists():
+        try:
+            body = as_object(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            body = {}
+    if "login" in fields:
+        fields = {**fields, "login": {**as_object(body.get("login")), **as_object(fields["login"])}}
+    body.update(fields)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+    os.chmod(path, 0o600)

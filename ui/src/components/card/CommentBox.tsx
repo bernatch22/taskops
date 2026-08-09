@@ -47,6 +47,22 @@ export type Send = (text: string, mentions: string[]) => Promise<void>;
 export interface CommentBoxProps {
   team: TeamMember[];
   onSend: Send;
+  /** This window is WATCHING a public board with no credential (`watching()`).
+   *  The box then renders its refusal INSTEAD of the form, and that is the
+   *  whole change: a textarea and a Send button that can only ever come back
+   *  409 is a promise the page cannot keep — somebody types a paragraph to a
+   *  working agent and loses it to a wall that was knowable before the first
+   *  keystroke. `submit()` is untouched, because the case it defends (a refusal
+   *  a WRITER can act on) is a different one and still real. */
+  readOnly?: boolean | undefined;
+}
+
+/** Is this reader anonymous? The board's own answer, never a guess: `anon` is
+ *  what the SERVER resolved the caller as (`verbs/_context.py::pulse`), so a
+ *  payload one version behind — no `actor` at all — is NOT read as anonymous.
+ *  Exported and pure, so the rule is testable with nothing rendered. */
+export function watching(pulse: { actor?: string } | undefined): boolean {
+  return pulse?.actor === "anon";
 }
 
 /** What the box looks like after a send attempt. The whole rule, in one pure
@@ -92,7 +108,7 @@ const chip: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-export function CommentBox({ team, onSend }: CommentBoxProps): React.JSX.Element {
+export function CommentBox({ team, onSend, readOnly }: CommentBoxProps): React.JSX.Element {
   const [draft, setDraft] = useState("");
   const [picked, setPicked] = useState<readonly string[]>([]);
   const [failed, setFailed] = useState<string>("");
@@ -112,6 +128,21 @@ export function CommentBox({ team, onSend }: CommentBoxProps): React.JSX.Element
     setPicked(next.picked);
     setFailed(next.failed);
     setSending(false);
+  }
+
+  if (readOnly) {
+    return (
+      <div
+        data-testid="comment-box"
+        style={{ padding: "16px 28px 20px", borderTop: "1px solid var(--hair)", background: "var(--pane-2)" }}
+      >
+        <div data-testid="read-only" style={{ fontSize: "12.5px", color: "var(--text-3)", lineHeight: 1.55 }}>
+          You are reading this board as <span className="mono">anon</span> — anyone may watch it,
+          and writing needs a registered key. Ask its owner for an invite, then{" "}
+          <span className="mono">taskops join &lt;url&gt;?invite=… --key ~/.ssh/id_ed25519</span>.
+        </div>
+      </div>
+    );
   }
 
   return (

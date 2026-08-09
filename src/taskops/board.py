@@ -12,16 +12,13 @@ local store, which is how v1 got two machines each owning the same card.
 
 from __future__ import annotations
 
-import json
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from pathlib import Path
-from urllib.error import URLError, HTTPError
-from urllib.request import Request, urlopen
 
-from . import verbs
-from ._json import as_object
-from ._errors import NotFound, Unreachable, from_code
+from . import _wire, verbs, _clock, session
+from ._errors import Refused, NotFound, Unreachable
 from ._locate import DIR, ADDRESS, find_root, is_project, read_config
+from .store.creds import EXPIRED
 from .store.stores import Stores
 
 __all__ = [
@@ -78,7 +75,14 @@ class LocalBoard:
 class RemoteBoard:
     """A board on a server. Writes never degrade; reads never lie about being fresh."""
 
-    def __init__(self, url: str, token: str, actor: str, timeout: float = TIMEOUT) -> None:
+    def __init__(
+        self,
+        url: str,
+        token: str,
+        actor: str,
+        timeout: float = TIMEOUT,
+        refresh: Callable[[], str] | None = None,
+    ) -> None:
         self.url = url.rstrip("/")
         self.token = token
         self.actor = actor
@@ -86,31 +90,46 @@ class RemoteBoard:
         # once, at open(). The delivery hook opens with 2s (MENTIONS.md §9a) —
         # a hook that can hang a turn is worse than no hook.
         self.timeout = timeout
+        # How to get another session when this one runs out, or None when the
+        # token is a standing one nobody may replace (`session.py`).
+        self.refresh = refresh
 
     def call(self, verb: str, args: dict[str, Any]) -> dict[str, Any]:
+        """One retry, and only for the one case a retry can fix.
+
+        `open_board` refreshes an expired session before the first call, which is
+        every CLI invocation. It is NOT every caller: the MCP server opens a board
+        once and keeps it for the session, so a process alive longer than the token
+        would go from working to refused with a human in no loop at all. The retry
+        is narrow on purpose — the server said EXPIRED, this client knows how to
+        sign in, so it signs in once and repeats the call. Anything else is raised.
+
+        `_who` is resolved HERE and not in `_post`: it POPS `actor` out of the
+        args, so a second attempt would find it gone and silently send the call
+        as this board's own identity instead of the sub-agent's.
+        """
         who = _who(args, self.actor)
-        payload = json.dumps({"verb": verb, "args": args, "actor": who}).encode()
-        request = Request(  # noqa: S310 — the scheme comes from the board's own config
-            f"{self.url}/rpc",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.token}",
-                "X-Taskops-Actor": who,
-            },
-            method="POST",
-        )
         try:
-            with urlopen(request, timeout=self.timeout) as response:  # noqa: S310
-                body: dict[str, Any] = json.loads(response.read().decode())
-        except HTTPError as err:
-            raise _error(err) from err
-        except (URLError, TimeoutError, ValueError) as err:
-            raise Unreachable(
-                f"{self.url} did not answer ({err}). The board is the server's, so nothing "
-                "was written. Check the server, or your .taskops/remote.json credential."
-            ) from err
-        return _unwrap(body, self.url)
+            return self._post(verb, args, who)
+        except Refused as err:
+            if self.refresh is None or EXPIRED not in str(err):
+                raise
+            self.token = self.refresh()
+            return self._post(verb, args, who)
+
+    def _post(self, verb: str, args: dict[str, Any], who: str) -> dict[str, Any]:
+        body: dict[str, Any] = {"verb": verb, "args": args, "actor": who}
+        headers = {"Authorization": f"Bearer {self.token}", "X-Taskops-Actor": who}
+        if not self.token:
+            # A viewer's window onto a PUBLIC board (`open_board`): no credential
+            # to send, and — the part that matters — no ACTOR either. Claiming
+            # `dev:berna` while proving nothing is exactly what the server refuses
+            # (`http/auth.py::authorize`), so a read-only clone that kept sending
+            # its local identity could not read the board it just joined. With
+            # neither, the server resolves the caller as `anon`, which is true.
+            body.pop("actor")
+            headers = {}
+        return _wire.post(f"{self.url}/rpc", body, headers, self.timeout)
 
     def close(self) -> None:
         return None
@@ -145,43 +164,33 @@ def open_board(start: Path, actor: str, timeout: float = TIMEOUT) -> Board:
     """Walk up for `.taskops/`, then decide once: remote if configured, else local.
 
     A directory that is not a project gets an `Absent` board, never a real one.
+
+    A configured `login` block is where the session comes from: an absent or
+    expiring token is minted here, by signing this host's challenge with the key
+    named in the config, and nobody is asked for anything (`session.py`). With no
+    such block — every board joined before this chapter — the token in the file is
+    used exactly as it always was.
     """
     root = find_root(start)
     config = read_config(root)
     url = str(config.get("url", ""))
-    token = str(config.get("token", ""))
     if url:
+        token = session.fresh(root, config, _clock.now())
+        if not token and config.get("readonly"):
+            # The VIEWER's window: `taskops join <url>` with no invite against a
+            # PUBLIC board. There is no credential because none was ever minted,
+            # which is a state and not a failure — reads answer as `anon` and the
+            # first write comes back in the SERVER's words, naming how a key gets
+            # registered. No `refresh`: there is no session to renew.
+            return RemoteBoard(url, "", actor, timeout)
         if not token:
             raise Unreachable(
                 f"{root / DIR}/board.json points at {url} but there is no credential in "
                 "remote.json — run: taskops join <url with ?token= or ?invite=>"
             )
-        return RemoteBoard(url, token, actor, timeout)
+        return RemoteBoard(url, token, actor, timeout, session.refresher(root, config))
     if not is_project(root):
         return Absent(root)
     return LocalBoard(root / DIR / "board", actor)
 
 
-def _unwrap(body: dict[str, Any], url: str) -> dict[str, Any]:
-    """The envelope is always an object: {"ok", "seq", "data"} or {"ok", "error"}.
-    v1 let three verbs answer with a bare array, which the decoder turned into
-    `{}` with no error anywhere. Here a missing envelope is loud."""
-    if not body.get("ok", False):
-        error = as_object(body.get("error"))
-        raise from_code(str(error.get("code", "error")), str(error.get("message", body)))
-    if not isinstance(body.get("data"), dict):
-        raise Unreachable(f"{url} answered without a data object — is that a taskops server?")
-    result = as_object(body.get("data"))
-    result.setdefault("seq", body.get("seq", 0))
-    return result
-
-
-def _error(err: HTTPError) -> Exception:
-    """An HTTP error still carries the board's own refusal — keep its message."""
-    try:
-        error = as_object(as_object(json.loads(err.read().decode())).get("error"))
-    except (ValueError, OSError):
-        error = {}
-    if error.get("message"):
-        return from_code(str(error.get("code", "error")), str(error["message"]))
-    return Unreachable(f"the board answered HTTP {err.code} ({err.reason})")

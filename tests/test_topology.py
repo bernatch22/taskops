@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import socket
+import argparse
 import threading
 from base64 import b64encode
 from typing import Any, BinaryIO, Iterator
+from hashlib import sha256
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -23,7 +25,8 @@ from taskops import _clock
 from taskops.http import feed
 from taskops.board import RemoteBoard
 from tests.conftest import T0
-from taskops._errors import Refused, BadRequest, Unreachable, TaskopsError
+from taskops._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
+from taskops._locate import read_config
 from taskops.http.server import BoardServer, serve
 
 BOARD = "facturador"
@@ -38,6 +41,7 @@ pytestmark = pytest.mark.usefixtures("clock")
 @pytest.fixture()
 def server(tmp_path: Path) -> Iterator[BoardServer]:
     httpd = serve(tmp_path / "boards", "127.0.0.1", 0)
+    httpd.mounts.create(BOARD)  # a board exists because somebody made it, never by asking
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield httpd
@@ -188,9 +192,1116 @@ def test_a_board_name_outside_the_pattern_never_touches_disk(server: BoardServer
     base = f"http://127.0.0.1:{server.server_address[1]}/.."
     with pytest.raises(BadRequest, match="names are"):
         RemoteBoard(base, token, BERNA).call("board", {})
-    # And it was refused BEFORE any path was joined: the root has only the
-    # server's own credential store in it.
-    assert [p.name for p in server.mounts.root.iterdir()] == ["live.sqlite"]
+    # And it was refused BEFORE any path was joined: the root holds the server's
+    # own credential store and the ONE board the fixture created, nothing else.
+    assert sorted(p.name for p in server.mounts.root.iterdir()) == [BOARD, "live.sqlite"]
+
+
+# ── no board comes into existence by accident ───────────────────────────────
+
+
+def test_an_unknown_board_is_404_and_leaves_nothing_on_disk(server: BoardServer) -> None:
+    """The hole this card closed, found 2026-08-08 and left unprobed because
+    probing it meant writing to production.
+
+    `mounts.stores()` did `Stores(self.root / name)` for ANY name matching the
+    pattern, and `Stores` makes its own directory. The router calls
+    `mounts.check(board)` BEFORE `self._credential(...)`, so the request below —
+    no token at all, a name nobody has ever used — used to leave
+    `<root>/ghostboard/` with a cache and a lease file in it. A stranger's
+    question caused a write, which is precisely what this chapter's rules forbid.
+    """
+    before = sorted(p.name for p in server.mounts.root.iterdir())
+    ghost = "ghostboard"
+    status, body = _get_post(
+        f"http://127.0.0.1:{server.server_address[1]}/{ghost}",
+        "",  # anonymous ON PURPOSE: the mount used to happen before auth
+        {"verb": "board", "actor": BERNA},
+    )
+
+    assert status == 404 and body["error"]["code"] == "not_found"
+    assert "never by a request for one" in body["error"]["message"]
+    # THE assertion of this test: no side effect, at all.
+    assert not (server.mounts.root / ghost).exists()
+    assert sorted(p.name for p in server.mounts.root.iterdir()) == before
+
+
+def test_a_board_only_exists_because_somebody_created_it(server: BoardServer) -> None:
+    """The other half: creation is a door, and it is not the reading path.
+
+    `create()` is what a server-scope `board.create` (owner only) will call; a
+    board it made is then readable through the ordinary mount, exactly as the
+    fixture's own board is."""
+    fresh = "segundo"
+    assert not (server.mounts.root / fresh).exists()
+    server.mounts.create(fresh)
+    assert (server.mounts.root / fresh).is_dir()
+    token, _ = server.mounts.credentials.mint(BERNA, "*", _clock.now())
+    base = f"http://127.0.0.1:{server.server_address[1]}/{fresh}"
+    status, body = _get_post(base, token, {"verb": "board", "actor": BERNA})
+    assert status == 200 and body["data"]["groups"]["take"] == []
+
+
+def test_a_feed_for_an_unknown_board_creates_nothing_either(server: BoardServer) -> None:
+    """/feed and /git take the same `check` door as /rpc. One wall, not three —
+    a second copy of the existence test is how one of them would drift open."""
+    for tail in ("feed", "git/commit/HEAD"):
+        status, body = _get(
+            f"http://127.0.0.1:{server.server_address[1]}/nadie/{tail}", _token(server, BERNA)
+        )
+        assert status == 404, tail
+        assert "no board named" in body["error"]["message"], tail
+    assert not (server.mounts.root / "nadie").exists()
+
+
+# ── the server knows who owns it ────────────────────────────────────────────
+
+
+PUBKEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ3Fm5NcJ5PRD2G0oO7CjGPXk1kYaU2SQlHkzZ9pQ1aB berna@air"
+)
+PUBKEY2 = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB8sQ0mgLZ3nS4z0nCq0oV5tXHhYw2mBQ9nTgqJ7cKdE laptop"
+)
+
+
+def test_server_init_records_the_owner_and_writes_allowed_signers(tmp_path: Path) -> None:
+    """Criterion 2. The bootstrap, run as the CLI runs it — the one act over ssh."""
+    from taskops.cli import admin
+    from taskops.store.server import SIGNERS, ServerStore
+
+    root = tmp_path / "boards"
+    (tmp_path / "id.pub").write_text(PUBKEY, encoding="utf-8")
+    assert admin.init(root, str(tmp_path / "id.pub"), "berna") == 0
+
+    store = ServerStore(root)
+    try:
+        owner = store.owner()
+        assert owner is not None and owner == ("berna", "owner")
+        assert store.role_of("berna") == "owner"
+        assert store.role_of("nobody") == "anon"  # unregistered is an ANSWER, not an error
+        signers = (root / SIGNERS).read_text(encoding="utf-8")
+        # The exact format `ssh-keygen -Y verify` consumes: principal, type, key.
+        assert signers == "berna ssh-ed25519 " + PUBKEY.split()[1] + "\n"
+        assert "berna@air" not in signers  # the comment is a label, not identity
+        assert store.keys()[0].fingerprint.startswith("SHA256:")
+    finally:
+        store.close()
+
+
+def test_allowed_signers_is_regenerated_from_the_store_on_every_change(tmp_path: Path) -> None:
+    """Criterion 3. The file is `cache.sqlite` to the store's `events.jsonl`:
+    derived, never appended to, and a hand edit does not survive the next write."""
+    from taskops.store.server import SIGNERS, ServerStore
+
+    root = tmp_path / "boards"
+    store = ServerStore(root)
+    try:
+        first = store.enroll("berna", "owner", PUBKEY, _clock.now())
+        store.enroll("ana", "member", PUBKEY2, _clock.now())
+        assert (root / SIGNERS).read_text().splitlines() == [
+            "ana ssh-ed25519 " + PUBKEY2.split()[1],
+            "berna ssh-ed25519 " + PUBKEY.split()[1],
+        ]
+
+        (root / SIGNERS).write_text("mallory ssh-ed25519 AAAA\n", encoding="utf-8")
+        store.revoke_key(first.fingerprint)
+        # Regenerated WHOLE: the revoked key is gone AND so is the hand edit.
+        assert (root / SIGNERS).read_text().splitlines() == [
+            "ana ssh-ed25519 " + PUBKEY2.split()[1]
+        ]
+        assert [k.principal for k in store.keys()] == ["ana"]
+        # ...and re-opening the store rebuilds the file from the same truth.
+        (root / SIGNERS).unlink()
+    finally:
+        store.close()
+    again = ServerStore(root)
+    try:
+        assert (root / SIGNERS).read_text().splitlines() == [
+            "ana ssh-ed25519 " + PUBKEY2.split()[1]
+        ]
+    finally:
+        again.close()
+
+
+def test_the_store_refuses_a_second_owner_and_a_key_with_no_principal(tmp_path: Path) -> None:
+    from taskops.store.server import ServerStore
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        store.enroll("berna", "owner", PUBKEY, _clock.now())
+        with pytest.raises(Refused, match="already owned by 'berna'"):
+            store.enroll("mallory", "owner", PUBKEY2, _clock.now())
+        with pytest.raises(Refused, match="the owner registers one"):
+            store.add_key("ghost", PUBKEY2, _clock.now())
+        with pytest.raises(BadRequest, match="not an ssh public key"):
+            store.add_key("berna", "-----BEGIN OPENSSH PRIVATE KEY-----", _clock.now())
+    finally:
+        store.close()
+
+
+def test_a_server_scope_refusal_names_the_role_that_may(tmp_path: Path) -> None:
+    """Criterion 4, and the milestone's house rule: the refusal to an unkeyed
+    writer says how a key gets registered."""
+    from taskops.core import scope
+
+    scope.permit("board.read", scope.ROLE_ANON)  # anonymous read is a read
+    scope.permit("board.create", scope.ROLE_OWNER)
+    with pytest.raises(Refused, match="owner may"):
+        scope.permit("board.create", scope.ROLE_MEMBER)
+    with pytest.raises(Refused) as caught:
+        scope.permit("board.write", scope.ROLE_ANON)
+    assert "member or owner may" in str(caught.value)
+    assert "taskops server key add" in str(caught.value)  # the way IN, not just the no
+    with pytest.raises(Refused, match="unknown server operation"):
+        scope.permit("board.destroy", scope.ROLE_OWNER)
+
+
+# ── a key signs you in: the login that mints the session ────────────────────
+#
+# Nothing here is a fake: a REAL keypair is generated by ssh-keygen into the
+# test's tmp_path, a REAL signature crosses a REAL socket, and the server
+# verifies it by running `ssh-keygen -Y verify` against the `allowed_signers`
+# its own store regenerated. A stub of the signature would test the plumbing
+# and nothing that matters — the whole claim of this chapter is that OpenSSH,
+# not taskops, decides whether a signature is good.
+
+
+def keygen(path: Path) -> Path:
+    """A throwaway ed25519 keypair, made the way a human makes one."""
+    from taskops.gitwork.run import tool
+
+    made = tool("ssh-keygen", "-t", "ed25519", "-N", "", "-C", "probe", "-q", "-f", str(path))
+    if not made.ok:  # pragma: no cover — a machine without OpenSSH
+        raise AssertionError(f"ssh-keygen could not make a key: {made.err or made.out}")
+    return path
+
+
+@pytest.fixture()
+def keyed(server: BoardServer, tmp_path: Path) -> Path:
+    """The server above, bootstrapped with berna as OWNER of a real key."""
+    from taskops.cli import admin
+
+    key = keygen(tmp_path / "id_ed25519")
+    admin.init(tmp_path / "boards", f"{key}.pub", "berna")
+    return key
+
+
+def sign_in(httpd: BoardServer, principal: str, key: Path) -> dict[str, Any]:
+    """The client's two round trips: ask for a challenge, sign it, hand it back."""
+    opened = challenge(httpd, principal)
+    return answer_with(httpd, principal, opened["nonce"], signed(principal, opened["nonce"], key))
+
+
+def host_of(httpd: BoardServer) -> str:
+    """The SERVER, not a board: /login is server scope and takes no board name."""
+    return f"http://127.0.0.1:{httpd.server_address[1]}"
+
+
+def challenge(httpd: BoardServer, principal: str) -> dict[str, Any]:
+    from taskops import _wire
+
+    return _wire.post(f"{host_of(httpd)}/login", {"principal": principal}, {}, 5.0)
+
+
+def answer_with(httpd: BoardServer, principal: str, nonce: str, signature: str) -> dict[str, Any]:
+    from taskops import _wire
+
+    return _wire.post(
+        f"{host_of(httpd)}/login",
+        {"principal": principal, "nonce": nonce, "signature": signature},
+        {},
+        5.0,
+    )
+
+
+def signed(principal: str, nonce: str, key: Path) -> str:
+    from taskops.gitwork.sig import sign
+    from taskops.core.challenge import payload
+
+    return sign(payload(principal, nonce), key)
+
+
+def test_a_registered_key_signs_in_and_the_minted_token_works_on_rpc(
+    server: BoardServer, keyed: Path, clock: Any
+) -> None:
+    """Criterion 1, end to end and over a socket: challenge → ssh-keygen -Y sign →
+    verify against allowed_signers → a bearer token that /rpc already understood."""
+    opened = challenge(server, "berna")
+    assert opened["namespace"] == "taskops"
+    assert opened["expires"] == _clock.now() + 120.0
+    assert "token" not in opened  # a challenge is not a credential
+
+    minted = answer_with(server, "berna", opened["nonce"], signed("berna", opened["nonce"], keyed))
+    assert minted["actor"] == "dev:berna"
+    assert minted["role"] == "owner"
+    assert minted["expires"] == _clock.now() + 12 * 3600.0
+
+    # The whole point: NOTHING downstream changed. The token is an ordinary
+    # bearer on the ordinary door, for a board it was never told the name of.
+    board = RemoteBoard(url_of(server), minted["token"], BERNA)
+    assert board.call("board", {})["seq"] >= 0
+
+    # And it is SHORT-lived for real, not just in the number it reported: the
+    # credential itself carries the TTL, so a day later this token is nobody's.
+    clock(12 * 3600.0 + 1.0)
+    with pytest.raises(Refused, match="that credential expired"):
+        board.call("board", {})
+
+
+def test_a_challenge_is_single_use_and_dies_of_old_age(
+    server: BoardServer, keyed: Path, clock: Any
+) -> None:
+    """Criterion 2, both halves. There is no replay window to reason about
+    because the nonce is gone the instant it is claimed."""
+    opened = challenge(server, "berna")
+    signature = signed("berna", opened["nonce"], keyed)
+    answer_with(server, "berna", opened["nonce"], signature)  # the first one works
+    with pytest.raises(Refused, match="unknown or already used"):
+        answer_with(server, "berna", opened["nonce"], signature)
+
+    stale = challenge(server, "berna")
+    signature = signed("berna", stale["nonce"], keyed)
+    clock(121.0)
+    with pytest.raises(Refused, match="expired"):
+        answer_with(server, "berna", stale["nonce"], signature)
+
+
+def test_a_signature_by_a_key_this_host_never_registered_is_refused(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """The signature is checked by ssh-keygen against allowed_signers, so a
+    well-formed signature by a stranger's key is exactly as good as no key."""
+    mallory = keygen(tmp_path / "mallory")
+    opened = challenge(server, "berna")
+    with pytest.raises(Refused, match="not berna's"):
+        answer_with(server, "berna", opened["nonce"], signed("berna", opened["nonce"], mallory))
+
+    # ...and neither is a signature over somebody ELSE's challenge.
+    hers = challenge(server, "berna")
+    with pytest.raises(Refused, match="not berna's"):
+        answer_with(server, "berna", hers["nonce"], signed("berna", "a-different-nonce", keyed))
+
+
+def test_a_nonce_issued_to_somebody_else_is_refused_by_NAME(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """A challenge belongs to the principal it was issued to, and the refusal says
+    WHOSE it was. ssh-keygen would refuse this too — its `-I` check does not care
+    what the payload says — but it would refuse it as 'that signature is not
+    berna's', which sends a confused client looking at its key instead of at the
+    nonce it mixed up. The invariant is checked where it can be named.
+    """
+    from taskops.store.server import ServerStore
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        pub = Path(f"{keygen(tmp_path / 'ana')}.pub").read_text(encoding="utf-8")
+        store.enroll("ana", "member", pub, _clock.now())
+    finally:
+        store.close()
+
+    hers = challenge(server, "ana")
+    with pytest.raises(Refused, match="issued to 'ana'"):
+        answer_with(server, "berna", hers["nonce"], signed("berna", hers["nonce"], keyed))
+
+
+def test_an_unregistered_principal_never_even_gets_a_challenge(
+    server: BoardServer, keyed: Path
+) -> None:
+    """Criterion 4's other half and the milestone's house rule: the refusal to an
+    unkeyed caller says how a key gets registered."""
+    with pytest.raises(Refused) as caught:
+        challenge(server, "mallory")
+    assert "anon may not session.mint" in str(caught.value)
+    assert "taskops server key add" in str(caught.value)
+
+
+def test_a_host_nobody_bootstrapped_refuses_a_login_and_writes_nothing(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The milestone's second rule at the newest door: an anonymous caller may
+    not cause a write, and `ServerStore` writes on CONSTRUCTION — so the login
+    must refuse BEFORE one is built."""
+    root = tmp_path / "boards"
+    with pytest.raises(TaskopsError, match="taskops server init"):
+        challenge(server, "berna")
+    assert not (root / "server.sqlite").exists()
+    assert not (root / "allowed_signers").exists()
+
+
+def test_the_agent_only_limit_is_one_sentence_and_not_a_traceback(tmp_path: Path) -> None:
+    """Criterion 4. `ssh-keygen -Y sign` wants the key FILE; a key that lives only
+    in a running ssh-agent cannot sign yet, and saying so is the whole fix."""
+    from taskops.gitwork.sig import sign
+
+    with pytest.raises(Refused) as caught:
+        sign("anything", tmp_path / "not-on-disk")
+    assert "needs the key ON DISK" in str(caught.value)
+    assert "agent-only setup" in str(caught.value)
+
+
+def test_an_expired_session_signs_itself_in_again_with_no_human(
+    server: BoardServer, keyed: Path, tmp_path: Path, clock: Any
+) -> None:
+    """Criterion 3, through `open_board` — which is every CLI invocation."""
+    from typing import cast
+
+    from taskops import session
+    from taskops.board import RemoteBoard as Remote, open_board
+    from taskops.gitwork import install
+
+    project = tmp_path / "clone"
+    door = {"host": host_of(server), "principal": "berna", "key": str(keyed)}
+    install.write_config(project, url_of(server), "", door, 0.0)
+
+    first = cast("Remote", open_board(project, BERNA))  # no token at all: it mints one
+    assert first.token
+    assert first.call("board", {})["seq"] >= 0
+    cached = json.loads((project / ".taskops" / "remote.json").read_text())
+    assert cached["token"] == first.token
+    assert cached["token_expires"] == _clock.now() + 12 * 3600.0
+    assert cached["login"] == door  # the refresh survives its own rewrite
+
+    clock(12 * 3600.0)  # a day later, the session is spent
+    again = cast("Remote", open_board(project, BERNA))
+    assert again.token != first.token
+    assert again.call("board", {})["seq"] >= 0
+
+    # A session about to run out is replaced BEFORE it can die mid-call: a token
+    # that expires between the check and the call it authorises would be a bug
+    # reproducing once a day, which is the worst reproduction rate there is.
+    nearly = {"token": "old", "token_expires": _clock.now() + 60.0, "login": door}
+    assert session.fresh(project, nearly, _clock.now()) != "old"
+
+    # And the case `open_board` cannot cover: a process that outlives its own
+    # token. The MCP server opens a board once and keeps it for the session.
+    live = session.fresh(project, {"token": "", "login": door}, _clock.now())
+    stale, _ = server.mounts.credentials.mint(BERNA, "*", _clock.now() - 10.0, ttl=1.0)
+    board = Remote(url_of(server), stale, BERNA, refresh=session.refresher(project, {"login": door}))
+    assert board.call("board", {})["seq"] >= 0  # refused, refreshed, retried
+    assert board.token not in ("", stale, live)
+
+
+def test_a_standing_bearer_token_is_never_replaced_behind_its_owners_back(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 5. Production has four boards joined the old way; a config with
+    no `login` block is one of them, and this file is what it looks like."""
+    from typing import cast
+
+    from taskops.board import RemoteBoard as Remote, open_board
+    from taskops.gitwork import install
+
+    project = tmp_path / "legacy"
+    token = _token(server, BERNA)
+    install.write_config(project, url_of(server), token)
+    assert json.loads((project / ".taskops" / "remote.json").read_text()) == {"token": token}
+
+    board = cast("Remote", open_board(project, BERNA))
+    assert board.token == token
+    assert board.refresh is None  # nothing to refresh WITH, so nothing is attempted
+    assert board.call("board", {})["seq"] >= 0
+
+
+def test_a_login_block_still_never_touches_a_STANDING_token(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """The other side of the same rule, and the one a hand-written config can hit:
+    a token with no expiry is somebody's decision, not a stale session, and a key
+    sitting next to it in the file is not permission to replace it."""
+    from taskops import session
+
+    door = {"host": host_of(server), "principal": "berna", "key": str(keyed)}
+    kept = session.fresh(tmp_path / "clone", {"token": "standing", "login": door}, _clock.now())
+    assert kept == "standing"
+
+
+def test_join_with_a_key_leaves_a_SESSION_behind_and_not_the_invites_token(
+    server: BoardServer, keyed: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`taskops join --key`, the whole command. The invite's token is a STANDING
+    one; a clone that kept it would never take the refresh path again, so the key
+    signs in during the join and what lands in remote.json is a session."""
+    from taskops.cli import commands
+
+    invite, _ = server.mounts.credentials.mint(
+        "invite:ana", BOARD, _clock.now(), caps="read,write", once=True
+    )
+    hers = keygen(tmp_path / "ana_id")
+    project = tmp_path / "hers"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:ana")
+    commands.join(project, f"{url_of(server)}?invite={invite}", "dev:ana", str(hers))
+
+    saved = json.loads((project / ".taskops" / "remote.json").read_text())
+    assert saved["login"] == {"host": host_of(server), "principal": "ana", "key": str(hers)}
+    assert saved["token_expires"] == _clock.now() + 12 * 3600.0  # a session, not the invite's
+    assert RemoteBoard(url_of(server), saved["token"], ANA).call("board", {})["seq"] >= 0
+
+
+def test_an_invite_registers_the_joiners_key_and_still_answers_a_token(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """Criterion 5's other half: the legacy answer is UNCHANGED and the pubkey is
+    the new half of the same call — one act, so a joiner never copies a token."""
+    from taskops.store.server import ServerStore
+
+    invite, _ = server.mounts.credentials.mint(
+        "invite:ana", BOARD, _clock.now(), caps="read,write", once=True
+    )
+    hers = keygen(tmp_path / "ana_key")
+    got = _redeem(url_of(server), invite, "ana", f"{hers}.pub")
+    assert got["actor"] == "dev:ana"  # the shape the old flow answered, untouched
+    RemoteBoard(url_of(server), got["token"], ANA).call("board", {})
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        assert store.role_of("ana") == "member"
+        assert store.role_of("berna") == "owner"  # the owner did not become a member
+    finally:
+        store.close()
+    minted = sign_in(server, "ana", hers)  # and her key signs her in from now on
+    assert RemoteBoard(url_of(server), minted["token"], ANA).call("board", {})["seq"] >= 0
+
+
+def test_a_re_join_never_demotes_the_owner_it_only_adds_a_key(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """`ServerStore.enroll` is an INSERT OR REPLACE on principals, so calling it
+    for a name this host already knows would rewrite that principal's ROLE — the
+    owner re-joining with an invite would silently demote itself to member."""
+    from taskops.store.server import ServerStore
+
+    invite, _ = server.mounts.credentials.mint(
+        "invite:berna", BOARD, _clock.now(), caps="read,write", once=True
+    )
+    second = keygen(tmp_path / "berna_laptop")
+    _redeem(url_of(server), invite, "berna", f"{second}.pub")
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        assert store.role_of("berna") == "owner"
+        assert len(store.keys("berna")) == 2  # both keys, one principal
+    finally:
+        store.close()
+    assert sign_in(server, "berna", second)["token"]  # the new key signs in too
+
+
+# ── the host is operated from taskops, over its own API ─────────────────────
+#
+# The anomaly the whole chapter exists to kill: every admin act used to be an
+# ssh session. These run against the SAME real server and the SAME real keypair
+# as the login tests above — an owner, a member, and a socket between them.
+
+
+def admin(httpd: BoardServer, token: str, verb: str, args: dict[str, Any]) -> dict[str, Any]:
+    """The root /rpc — the server's OWN door, one segment, no board name."""
+    from taskops import _wire
+
+    return _wire.post(
+        f"{host_of(httpd)}/rpc",
+        {"verb": verb, "args": args},
+        {"Authorization": f"Bearer {token}"},
+        5.0,
+    )
+
+
+@pytest.fixture()
+def owner(server: BoardServer, keyed: Path) -> str:
+    """berna's SESSION token, minted by his key exactly as the CLI mints it."""
+    return str(sign_in(server, "berna", keyed)["token"])
+
+
+def member(server: BoardServer, tmp_path: Path, name: str = "ana") -> tuple[str, Path]:
+    """A second principal, enrolled the way a real join enrols one: an invite
+    redeemed with a pubkey. No fixture writes to the store behind the server."""
+    invite, _ = server.mounts.credentials.mint(f"invite:{name}", BOARD, _clock.now(), once=True)
+    hers = keygen(tmp_path / f"{name}_key")
+    _redeem(url_of(server), invite, name, f"{hers}.pub")
+    return str(sign_in(server, name, hers)["token"]), hers
+
+
+def test_the_owner_creates_a_board_from_the_laptop_and_the_creator_is_recorded(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 1, over a socket with a real signature behind the token: the board
+    exists on the server, it answers /rpc, and it carries WHO made it — the one
+    fact about a board no later event could reconstruct."""
+    made = admin(server, owner, "board.create", {"name": "nuevo"})
+    assert made["board"] == "nuevo" and made["created_by"] == BERNA
+    assert (server.mounts.root / "nuevo").is_dir()
+
+    token, _ = server.mounts.credentials.mint(BERNA, "nuevo", _clock.now())
+    fresh = RemoteBoard(f"http://127.0.0.1:{server.server_address[1]}/nuevo", token, BERNA)
+    assert fresh.call("board", {})["seq"] >= 1
+    assert server.mounts.stores("nuevo").state()["project"]["created"] == {"by": BERNA}
+
+
+def test_creating_a_board_that_exists_is_refused_and_never_answers_ok(
+    server: BoardServer, owner: str
+) -> None:
+    """`Mounts.create` is mkdir(exist_ok=True), so without the refusal "creating"
+    a live board would answer ok and hand its history back as if it were new."""
+    with pytest.raises(Refused, match="already has a board"):
+        admin(server, owner, "board.create", {"name": BOARD})
+    # The name wall runs BEFORE the existence check, and that order is the test:
+    # `../boards` IS a directory, so with the two swapped the answer would be
+    # "this host already has a board named '../boards'" — a refusal that is
+    # wrong AND leaks that something outside the root exists.
+    for escape in ("../escape", f"../{server.mounts.root.name}"):
+        with pytest.raises(BadRequest, match="names are"):
+            admin(server, owner, "board.create", {"name": escape})
+    assert not (server.mounts.root.parent / "escape").exists()
+
+
+def test_a_member_calling_an_owner_verb_is_refused_BY_ROLE(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 2. The refusal names the role that may — and it comes from
+    `core/scope.py::permit`, the same gate `session.mint` goes through, so the
+    rule cannot be re-taken differently at a second call site."""
+    hers, _ = member(server, tmp_path)
+    with pytest.raises(Refused) as refused:
+        admin(server, hers, "board.create", {"name": "suyo"})
+    assert "member may not board.create" in str(refused.value)
+    assert "owner may" in str(refused.value)
+    assert not (server.mounts.root / "suyo").exists()
+
+    for verb, args in (("invite.mint", {"who": "x", "board": BOARD}), ("key.revoke", {"key": "k"})):
+        with pytest.raises(Refused, match="member may not"):
+            admin(server, hers, verb, args)
+
+
+def test_the_owner_lists_every_board_and_a_member_only_their_own(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """"Their own" is DERIVED from the credentials they hold, not a membership
+    table that would have to be kept in step with them."""
+    hers, _ = member(server, tmp_path)
+    admin(server, owner, "board.create", {"name": "otro"})
+
+    seen = admin(server, owner, "board.list", {})
+    assert seen["role"] == "owner"
+    assert [row["name"] for row in seen["boards"]] == [BOARD, "otro"]
+    assert seen["boards"][0]["cards"] == 0 and seen["boards"][0]["seq"] >= 0
+
+    theirs = admin(server, hers, "board.list", {})
+    assert theirs["role"] == "member"
+    assert [row["name"] for row in theirs["boards"]] == [BOARD]  # not `otro`
+
+
+def test_a_revoked_credential_stops_showing_its_board_to_the_member(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The other half of deriving membership from credentials: it has to derive
+    the ABSENCE too. `boards()` counts live rows only — otherwise revoking
+    somebody's access would leave the board on their list forever, which is the
+    stored-status bug this project refuses everywhere else."""
+    hers, _ = member(server, tmp_path)
+    assert server.mounts.credentials.boards(ANA) == {BOARD}  # and never the `*` session
+    assert [row["name"] for row in admin(server, hers, "board.list", {})["boards"]] == [BOARD]
+
+    for row in server.mounts.credentials._query(  # noqa: SLF001
+        "SELECT id FROM credentials WHERE subject = ? AND board = ?", (ANA, BOARD)
+    ):
+        admin(server, owner, "invite.revoke", {"invite": str(row[0])})
+    assert server.mounts.credentials.boards(ANA) == set()
+    assert admin(server, hers, "board.list", {})["boards"] == []
+
+
+def test_an_invite_minted_over_the_api_joins_end_to_end(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 3: the line printed on the laptop works on another machine. The
+    mint is the board's OWN Credentials — the same machinery the on-box command
+    runs, reached through the API instead of a shell."""
+    made = admin(server, owner, "invite.mint", {"who": "ana", "board": BOARD})
+    assert made["board"] == BOARD and made["id"]
+
+    hers = keygen(tmp_path / "ana_key")
+    got = _redeem(url_of(server), str(made["token"]), "ana", f"{hers}.pub")
+    assert RemoteBoard(url_of(server), got["token"], ANA).call("board", {})["seq"] >= 0
+    assert sign_in(server, "ana", hers)["role"] == "member"
+
+
+def test_an_invite_for_a_board_this_host_does_not_serve_is_refused_at_the_MINT(
+    server: BoardServer, owner: str
+) -> None:
+    """Not at the join, a day later and a machine away from the typo."""
+    with pytest.raises(NotFound, match="no board named"):
+        admin(server, owner, "invite.mint", {"who": "ana", "board": "inventado"})
+    assert not (server.mounts.root / "inventado").exists()
+
+
+def test_revoking_an_invite_takes_it_back_and_a_typo_is_refused_not_swallowed(
+    server: BoardServer, owner: str
+) -> None:
+    """`revoke` is an UPDATE, and an UPDATE that matches nothing succeeds — so a
+    mistyped id used to print "revoked" while the real credential stayed live."""
+    made = admin(server, owner, "invite.mint", {"who": "ana", "board": BOARD})
+    assert admin(server, owner, "invite.revoke", {"invite": made["id"]})["revoked"] is True
+    with pytest.raises(Refused, match="was revoked"):
+        _redeem(url_of(server), str(made["token"]), "ana")
+
+    with pytest.raises(Refused, match="minted no credential"):
+        admin(server, owner, "invite.revoke", {"invite": "notanid"})
+
+
+def test_revoking_a_key_stops_it_signing_anybody_in(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The store rewrites `allowed_signers` whole, so one revoked row is enough:
+    the next `ssh-keygen -Y verify` runs against a file that no longer names it."""
+    hers, key = member(server, tmp_path)
+    fingerprint = [k.fingerprint for k in server.mounts.host.store().keys("ana")][0]
+
+    gone = admin(server, owner, "key.revoke", {"key": fingerprint})
+    assert gone["principal"] == "ana" and gone["revoked"] is True
+    with pytest.raises(TaskopsError):
+        sign_in(server, "ana", key)
+
+    with pytest.raises(Refused, match="no key"):
+        admin(server, owner, "key.revoke", {"key": "SHA256:nothing"})
+
+
+def test_a_board_credential_cannot_operate_the_host_and_the_refusal_names_the_key(
+    server: BoardServer, keyed: Path
+) -> None:
+    """The session is board `*` scoped, so a board token cannot reach this door —
+    and the sentence it gets back is how a key gets registered, not a code."""
+    board_token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    for token in (board_token, ""):
+        with pytest.raises(Refused) as refused:
+            admin(server, token, "board.list", {})
+        assert "--key ~/.ssh/id_ed25519" in str(refused.value)
+
+
+def test_an_unknown_server_verb_names_the_ones_this_host_has(
+    server: BoardServer, owner: str
+) -> None:
+    """Every verb this host has, not a hand-copied prefix of them: the registry is
+    what the refusal must stay in step with, and a list written out here goes
+    stale the first time a verb is added (it did, at `board.ingest`)."""
+    from taskops.http.admin import REGISTRY
+
+    with pytest.raises(BadRequest) as refused:
+        admin(server, owner, "board.destroy", {})
+    assert str(refused.value).endswith(", ".join(sorted(REGISTRY)))
+
+
+def test_the_root_rpc_is_the_server_and_a_board_named_rpc_is_still_reachable(
+    server: BoardServer, owner: str
+) -> None:
+    """Why the door is `/rpc` and not `/admin/rpc`: `admin` is a legal board name,
+    so a two-segment door would collide with a real board's own. One segment
+    cannot — and this proves the pair stays apart even for the worst name."""
+    admin(server, owner, "board.create", {"name": "admin"})
+    token, _ = server.mounts.credentials.mint(BERNA, "admin", _clock.now())
+    base = f"http://127.0.0.1:{server.server_address[1]}/admin"
+    status, body = _get_post(base, token, {"verb": "board", "actor": BERNA})
+    assert status == 200 and body["data"]["groups"]["take"] == []
+
+
+@pytest.fixture()
+def joined(
+    server: BoardServer, keyed: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A checkout joined to this host WITH the owner's key, and cwd inside it —
+    which is the whole setup the four commands assume: the host comes from the
+    join, so nothing repeats an address and no alias registry has to exist."""
+    from taskops.cli import commands
+
+    invite, _ = server.mounts.credentials.mint("invite:berna", BOARD, _clock.now(), once=True)
+    project = tmp_path / "mine"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", BERNA)
+    commands.join(project, f"{url_of(server)}?invite={invite}", BERNA, str(keyed))
+    monkeypatch.chdir(project)
+    return project
+
+
+def test_the_four_commands_run_from_a_joined_checkout_with_no_address_repeated(
+    server: BoardServer, joined: Path, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Criterion 3 end to end, through `main()` and the real argv: create a board
+    from the laptop, list it, invite somebody, and JOIN with the line that was
+    printed — on another machine, against the server that minted it."""
+    from taskops.cli import main
+    from taskops.cli.commands import join
+
+    assert main(["board", "create", "nuevo"]) == 0
+    assert main(["board", "ls"]) == 0
+    assert main(["invite", "ana", "--board", "nuevo"]) == 0
+    printed = capsys.readouterr().out
+    assert "nuevo created on" in printed and "nuevo" in printed
+
+    line = [row.strip() for row in printed.splitlines() if row.strip().startswith("taskops join")]
+    assert "--key" in line[0]  # the line it prints is the KEYED join, not the legacy one
+    assert len(line) == 1, printed
+    url = line[0].split('"')[1]  # the join line, verbatim, as a human would paste it
+    hers = keygen(tmp_path / "ana_id")
+    theirs = tmp_path / "hers"
+    (theirs / ".git").mkdir(parents=True)
+    join(theirs, url, "dev:ana", str(hers))
+    token = json.loads((theirs / ".taskops" / "remote.json").read_text())["token"]
+    fresh = f"http://127.0.0.1:{server.server_address[1]}/nuevo"
+    assert RemoteBoard(fresh, token, ANA).call("board", {})["seq"] >= 0
+
+
+def test_an_admin_command_re_mints_its_own_session_and_asks_nobody(
+    server: BoardServer, joined: Path, clock: Any
+) -> None:
+    """These commands take `session.fresh`, not the token lying in the file — so
+    a laptop that ran one yesterday runs one today with nobody asked for
+    anything. Without it the four verbs would be the only thing in taskops that
+    still needs a human to notice a credential ran out."""
+    from taskops.cli import main
+
+    spent = json.loads((joined / ".taskops" / "remote.json").read_text())["token"]
+    clock(12 * 3600.0 + 60.0)  # a day later, that session is dead
+    assert main(["board", "ls"]) == 0
+    minted = json.loads((joined / ".taskops" / "remote.json").read_text())["token"]
+    assert minted != spent
+    with pytest.raises(Refused, match="expired"):
+        admin(server, spent, "board.list", {})
+
+
+def test_the_address_may_be_a_whole_url_and_a_url_is_never_split_by_slashes(
+    server: BoardServer, joined: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`<host>/<name>` as ONE argument is the documented form, and it has to
+    survive the case that breaks the naive parse: `https://h:1/b` has three
+    slashes and `h/b` has one. The scheme decides, never the count — otherwise
+    `taskops board ls https://host` creates a board called `host`."""
+    from taskops.cli import main
+
+    assert main(["board", "create", f"{host_of(server)}/desdeurl"]) == 0
+    assert (server.mounts.root / "desdeurl").is_dir()
+
+    assert main(["board", "ls", host_of(server)]) == 0  # a bare host names no board
+    listed = capsys.readouterr().out
+    assert "desdeurl" in listed and BOARD in listed
+    assert not (server.mounts.root / host_of(server).rpartition("/")[2]).exists()
+
+
+def test_revoke_takes_exactly_one_of_key_and_invite(server: BoardServer, joined: Path) -> None:
+    """Neither is a command with no object; both is two acts wearing one word."""
+    from taskops.cli import main
+    from taskops.cli.operate import revoke
+
+    for argv in (["revoke"], ["revoke", "--key", "SHA256:x", "--invite", "id"]):
+        assert main(argv) == 1  # `main` prints the refusal and never raises
+    with pytest.raises(TaskopsError, match="exactly one"):
+        revoke(_argv("revoke", key="", invite="", host="", root=""))
+
+
+def test_a_command_outside_any_joined_checkout_says_which_host_it_wants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No alias registry means the address has to come from somewhere, and the
+    refusal names both places it can: --host, or the join that records one."""
+    from taskops.cli.operate import board
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(TaskopsError, match="--host https://<host>"):
+        board(_argv("board", action="ls", target=""))
+
+
+def _argv(command: str, **fields: str) -> Any:
+    from argparse import Namespace
+
+    return Namespace(command=command, **fields)
+
+
+# ── the FIRST command: --key, on a checkout that never joined ───────────────
+#
+# Everything above this line is run from `joined`, and that is exactly why the
+# deadlock below survived 391 tests: the owner of a brand-new host has nothing
+# to join. `taskops invite` mints the invite `join` wants, and it wanted a
+# session of its own, for a board nobody had created yet. The only exit was ssh
+# onto the box — the anomaly the chapter exists to kill. Found by running the
+# chapter end to end on a clean host (2026-08-09), so these go through `main()`
+# and the real argv: the WIRING was what was broken, and calling the functions
+# is what hid it (the same lesson `upstream=` taught this chapter once already).
+
+
+@pytest.fixture()
+def virgin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A checkout that has never joined anything, and cwd inside it.
+
+    HOME is a fixture directory with an EMPTY `.ssh`, and that is not tidiness:
+    since key discovery exists, a bare verb reads `~/.ssh/id_ed25519`, so a test
+    left on the real HOME would sign the runner's own key against a throwaway
+    server and pass or fail by whose laptop it ran on."""
+    project = tmp_path / "laptop"
+    (project / ".git").mkdir(parents=True)
+    (tmp_path / "home" / ".ssh").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("TASKOPS_ACTOR", BERNA)
+    monkeypatch.chdir(project)
+    return project
+
+
+def test_the_owner_creates_the_first_board_from_the_laptop_with_only_a_key(
+    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criteria 1 and 2. `server init` happened on the box (the `keyed` fixture);
+    everything after it is this laptop, and the SECOND command carries no flags
+    at all — not even the host, because the login it cached records one."""
+    from taskops.cli import main
+
+    assert main(["board", "create", f"{host_of(server)}/e2e", "--key", str(keyed)]) == 0
+    assert (server.mounts.root / "e2e").is_dir()
+
+    saved = json.loads((virgin / ".taskops" / "remote.json").read_text())
+    # `board` joins the block with the name this very command chose: the address
+    # is one fact, and the bare `board push` after it must not re-guess it.
+    assert saved["login"] == {
+        "host": host_of(server),
+        "principal": "berna",
+        "key": str(keyed),
+        "board": "e2e",
+    }
+    assert saved["token"]
+
+    capsys.readouterr()
+    assert main(["board", "ls"]) == 0  # no --key, no --host: the session is cached
+    assert "e2e" in capsys.readouterr().out
+    assert main(["board", "visibility", "e2e", "public"]) == 0  # and so is every other verb
+
+
+def test_invite_and_revoke_are_runnable_as_the_first_command_too(
+    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other end of the deadlock: the invite that `join` needs is minted by a
+    laptop that never joined. And `revoke` signs in with `--sign-key`, because on
+    that verb `--key` is already the fingerprint being revoked."""
+    from taskops.cli import main
+
+    argv = ["invite", "ana", "--board", BOARD, "--host", host_of(server), "--key", str(keyed)]
+    assert main(argv) == 0
+    assert "taskops join" in capsys.readouterr().out
+
+    _, made = server.mounts.credentials.mint("invite:ana", BOARD, _clock.now(), once=True)
+    (virgin / ".taskops" / "remote.json").unlink()  # never joined, and no session cached either
+    kill = ["revoke", "--invite", made.id, "--host", host_of(server), "--sign-key", str(keyed)]
+    assert main(kill) == 0
+    assert json.loads((virgin / ".taskops" / "remote.json").read_text())["login"]["principal"]
+
+
+def test_as_names_the_principal_when_the_unix_user_is_not_it(
+    server: BoardServer, keyed: Path, virgin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Criterion 3. The $USER guess is wrong on any machine whose login name is
+    not the principal's, and before `--as` such a machine could not sign in at
+    all. The refused attempt also leaves NOTHING cached: a login block written
+    before the host accepted the signature would be a config that lies."""
+    from taskops.cli import main
+
+    monkeypatch.delenv("TASKOPS_ACTOR", raising=False)
+    monkeypatch.setenv("USER", "berna-laptop")
+    assert main(["board", "create", f"{host_of(server)}/wrong", "--key", str(keyed)]) == 1
+    assert not (server.mounts.root / "wrong").exists()
+    assert "login" not in read_config(virgin)
+
+    right = ["board", "create", f"{host_of(server)}/right", "--key", str(keyed), "--as", "berna"]
+    assert main(right) == 0
+    assert (server.mounts.root / "right").is_dir()
+    assert read_config(virgin)["login"]["principal"] == "berna"
+
+
+def test_with_no_session_and_no_key_the_refusal_names_both_doors(
+    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 4. It used to name only `join`, which is the one instruction the
+    owner on day one cannot follow — so the sentence sent them to ssh."""
+    from taskops.cli import main
+
+    assert main(["board", "ls", host_of(server)]) == 1
+    refusal = capsys.readouterr().err
+    assert "--key ~/.ssh/id_ed25519" in refusal and "--as <principal>" in refusal
+    assert "taskops join" in refusal
+    # …and, since discovery, WHAT it tried: an empty `~/.ssh` is the other reason
+    # this refusal appears, and a refusal that hides its search is unactionable.
+    for name in ("id_ed25519", "id_ecdsa", "id_rsa"):
+        assert f"~/.ssh/{name}" in refusal, name
+
+
+# ── the git ergonomics: host once, key discovered, verbs bare ───────────────
+#
+# «esto debería ser como git — taskops remote add / board create / board push,
+# pero sin --key». Git asks for neither a URL nor an identity file on every
+# push, and both reasons are copied: the address is recorded per checkout, the
+# key is discovered the way ssh discovers one. These go through `main()` and the
+# real argv for the same reason the block above does — the WIRING is what three
+# cards of this chapter got caught on.
+
+
+@pytest.fixture()
+def discoverable(server: BoardServer, tmp_path: Path, virgin: Path) -> Path:
+    """The owner's key where SSH ITSELF would look, under the fixture HOME that
+    `virgin` installed — the runner's real ~/.ssh is never read or written."""
+    from taskops.cli import admin
+
+    key = keygen(tmp_path / "home" / ".ssh" / "id_ed25519")
+    admin.init(tmp_path / "boards", f"{key}.pub", "berna")
+    return key
+
+
+def test_remote_add_then_the_verbs_go_bare(
+    server: BoardServer, discoverable: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criteria 1 and 3. Two commands, and the second carries a name only because
+    this test wants a name it did not pick: no URL and no --key on either."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create", "bare"]) == 0
+    assert (server.mounts.root / "bare").is_dir()
+
+    login = json.loads((virgin / ".taskops" / "remote.json").read_text())["login"]
+    assert login == {
+        "host": host_of(server),
+        "principal": "berna",
+        "key": str(discoverable),  # DISCOVERED, and recorded as if it had been --key
+        "board": "bare",
+    }
+    capsys.readouterr()
+    assert main(["board", "ls"]) == 0 and "bare" in capsys.readouterr().out
+    assert main(["board", "visibility", "public"]) == 0  # bare: the recorded name
+
+
+def test_a_board_nobody_named_takes_the_directory_name(
+    server: BoardServer, discoverable: Path, virgin: Path
+) -> None:
+    """Criterion 3, `gh repo create`'s convention: the checkout is `laptop/`."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create"]) == 0
+    assert (server.mounts.root / virgin.name).is_dir()
+
+
+def test_the_name_board_create_chose_is_the_one_bare_push_uses(
+    server: BoardServer, discoverable: Path, virgin: Path
+) -> None:
+    """The amendment's own scenario. A custom name followed by a bare `push` used
+    to re-derive the DIRECTORY name, find no such board and refuse — making the
+    human repeat a name they had already chosen. The recorded name beats it."""
+    from taskops.cli import main
+    from taskops.cli.remote import default_board
+
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create", "minombre"]) == 0
+    assert default_board(virgin) == "minombre" != virgin.name
+
+    seed_local_board(virgin)
+    assert main(["board", "push"]) == 0
+    assert json.loads((virgin / ".taskops" / "board.json").read_text())["url"].endswith("/minombre")
+
+
+def test_discovery_tries_sshs_identity_files_in_sshs_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Criterion 2. `ssh_config(5)`'s order, and `--key` is the override (`ssh -i`).
+    Files, not keys: what exists is what is tried, so this needs no crypto."""
+    from taskops import session
+
+    home = tmp_path / "elsewhere"
+    (home / ".ssh").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    assert session.discover_key() is None
+
+    (home / ".ssh" / "id_rsa").write_text("x")
+    assert session.discover_key() == home / ".ssh" / "id_rsa"
+    (home / ".ssh" / "id_ecdsa").write_text("x")
+    assert session.discover_key() == home / ".ssh" / "id_ecdsa"
+    (home / ".ssh" / "id_ed25519").write_text("x")
+    assert session.discover_key() == home / ".ssh" / "id_ed25519"
+
+
+def test_remote_add_refuses_a_second_different_host_without_replace(
+    server: BoardServer, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 5. Where a board lives is a decision, not a typo — and every bare
+    verb afterwards points at whatever is recorded, so a silent overwrite is how
+    a push lands on the wrong server. `taskops remote` prints what is recorded."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", host_of(server) + "/"]) == 0  # a trailing slash is not a host
+    capsys.readouterr()
+    assert main(["remote"]) == 0 and host_of(server) in capsys.readouterr().out
+
+    assert main(["remote", "add", "https://otro.example.com"]) == 1
+    assert "--replace" in capsys.readouterr().err
+    assert main(["remote", "add", host_of(server)]) == 0  # the SAME host is not a conflict
+    assert main(["remote", "add", "https://otro.example.com", "--replace"]) == 0
+    assert main(["remote", "add", "no-scheme.example.com", "--replace"]) == 1
+    assert "not a host URL" in capsys.readouterr().err
+
+
+def test_the_explicit_host_slash_name_form_is_unchanged_by_any_of_it(
+    server: BoardServer, discoverable: Path, virgin: Path
+) -> None:
+    """Criterion 4. The URL form is git's other spelling and it wins over both the
+    recorded host and the recorded name — that is what makes it explicit."""
+    from taskops.cli import main
+
+    assert main(["remote", "add", "https://otro.example.com"]) == 0
+    assert main(["board", "create", f"{host_of(server)}/explicito", "--key", str(discoverable)]) == 0
+    assert (server.mounts.root / "explicito").is_dir()
+    # and the checkout still operates the host IT recorded: an explicit call is
+    # one call, never a re-pointing of the clone (`session.is_own_host`).
+    login = json.loads((virgin / ".taskops" / "remote.json").read_text())["login"]
+    assert login == {"host": "https://otro.example.com"}
+
+
+def test_operating_another_host_leaves_this_checkouts_own_session_alone(
+    server: BoardServer, keyed: Path, joined: Path
+) -> None:
+    """`remote.json` holds ONE session, for the board this repo reads. Signing in
+    to a DIFFERENT server from inside a joined checkout is a legitimate thing to
+    do, and it must not leave this repo renewing itself somewhere else."""
+    from taskops.cli import main
+
+    before = json.loads((joined / ".taskops" / "remote.json").read_text())
+    other = f"http://localhost:{server.server_address[1]}"  # the same process, another address
+    assert main(["board", "create", f"{other}/otro", "--key", str(keyed)]) == 0
+    assert (server.mounts.root / "otro").is_dir()
+    assert json.loads((joined / ".taskops" / "remote.json").read_text()) == before
+
+
+def test_the_on_box_commands_survive_as_the_break_glass_path(tmp_path: Path) -> None:
+    """The server being down is exactly when its API cannot be the only door.
+    `--root` runs the same acts against the files, and it is NOT deprecated."""
+    from taskops.cli import main
+    from taskops.store.creds import Credentials
+
+    root = tmp_path / "boards"
+    (root / BOARD).mkdir(parents=True)
+    assert main(["invite", "ana", "--board", BOARD, "--root", str(root)]) == 0
+    creds = Credentials(root / "live.sqlite")
+    try:
+        ident = creds._query("SELECT id FROM credentials", ())[0][0]  # noqa: SLF001
+        assert main(["revoke", "--invite", str(ident), "--root", str(root)]) == 0
+        assert creds._query("SELECT revoked FROM credentials", ())[0][0] == 1  # noqa: SLF001
+    finally:
+        creds.close()
+
+
+def test_readme_operations_use_ssh_only_to_install_and_bootstrap(tmp_path: Path) -> None:
+    """Criterion 4, held by a test because prose rots silently. Every `ssh <host>`
+    left in the README is an install or `server init`; the four admin acts are
+    taskops commands, run from anywhere."""
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    lines = [line.strip() for line in readme.splitlines() if "ssh <host>" in line]
+    allowed = ("venv", "pip install", "rollback", "mkdir -p /tmp", "pm2", "taskops server init")
+    assert lines, "the README still has to say how a host is installed"
+    for line in lines:
+        assert any(word in line for word in allowed), line
+    for command in ("taskops board create", "taskops board ls", "taskops revoke --"):
+        assert command in readme, command
 
 
 # ── the live feed ───────────────────────────────────────────────────────────
@@ -366,6 +1477,7 @@ def repo_server(tmp_path: Path) -> Iterator[BoardServer]:
 
     root = repo(tmp_path, "checkout")
     httpd = serve(tmp_path / "boards", "127.0.0.1", 0, repo=root)
+    httpd.mounts.create(BOARD)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield httpd
@@ -742,6 +1854,363 @@ def test_a_directory_with_no_board_is_refused_exactly_as_before(tmp_path: Path) 
         serving.ui(tmp_path)
 
 
+# ── public boards: anyone may watch, nobody writes without a key ────────────
+#
+# GitHub's model, deliberately: PRIVATE by default, the owner may publish,
+# public means ANONYMOUS READ, and a write always needs a registered key. The
+# harshest of these is `test_an_anonymous_crawl_moves_not_one_byte` — not "no
+# new events" but byte-identical files, because the bug this chapter's second
+# rule exists to prevent is a PRESENCE row, which no card and no event would
+# ever show.
+
+READS = ("board", "card", "report", "events", "mentions")
+WRITES = ("plan", "take", "update", "bind", "project", "assign", "merged", "review")
+
+
+def publish(httpd: BoardServer, owner: str, wanted: str = "public") -> dict[str, Any]:
+    return admin(httpd, owner, "board.visibility", {"board": BOARD, "visibility": wanted})
+
+
+def anon(httpd: BoardServer, verb: str, args: dict[str, Any] | None = None) -> tuple[int, Any]:
+    """A call with NO Authorization header at all — a stranger with a browser."""
+    request = Request(
+        f"{url_of(httpd)}/rpc",
+        data=json.dumps({"verb": verb, "args": args or {}}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            return int(response.status), json.loads(response.read().decode())
+    except HTTPError as err:
+        with err:  # an HTTPError IS a response: unclosed, it leaks the socket
+            return int(err.code), json.loads(err.read().decode())
+
+
+def _prints(body: Any) -> str:
+    return str(body["error"]["message"])
+
+
+def _fingerprint(httpd: BoardServer) -> dict[str, str]:
+    """Every stored byte of the board EXCEPT the cache, which is derived and
+    disposable by design (delete it and it rebuilds). live.sqlite is in WAL
+    mode, so its -wal and -shm companions are hashed too: a presence INSERT
+    lands in the write-ahead log first, and hashing the main file alone would
+    call that write invisible — which is the whole failure being pinned."""
+    board = httpd.mounts.root / BOARD
+    return {
+        path.name: sha256(path.read_bytes()).hexdigest()
+        for path in sorted(board.iterdir())
+        if path.is_file() and not path.name.startswith("cache.sqlite")
+    }
+
+
+def test_the_owner_publishes_a_board_and_a_member_may_not(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion: the flag is an owner-only server-scope verb, and the refusal
+    names the role that may. A member holds a key to the board — that is not the
+    right to decide who else may read it."""
+    made = publish(server, owner)
+    assert made["board"] == BOARD and made["visibility"] == "public" and made["recorded"]
+
+    again = publish(server, owner)  # an unchanged fact writes NO event
+    assert again["visibility"] == "public" and not again["recorded"]
+
+    hers, _ = member(server, tmp_path)
+    with pytest.raises(Refused, match="OWNER's move"):
+        admin(server, hers, "board.visibility", {"board": BOARD, "visibility": "public"})
+
+
+def test_a_board_is_private_until_somebody_publishes_it(
+    server: BoardServer, owner: str
+) -> None:
+    """The DEFAULT is the whole model: a board that never heard of this feature —
+    every board on the production host — behaves exactly as it always did."""
+    assert client(server, BERNA).call("board", {})["visibility"] == "private"
+    status, body = anon(server, "board")
+    assert status == 409 and "taskops join <url with ?token=" in _prints(body)
+
+    publish(server, owner)
+    assert anon(server, "board")[0] == 200
+    publish(server, owner, "private")
+    assert anon(server, "board")[0] == 409  # and it goes back, the same way
+
+
+def test_a_visibility_outside_the_pair_is_refused_by_name(
+    server: BoardServer, owner: str
+) -> None:
+    """There is no third state. A typo must never be defaulted — defaulting it
+    would leave a board somebody meant to publish quietly private, or worse."""
+    with pytest.raises(BadRequest, match="'private' or 'public'"):
+        admin(server, owner, "board.visibility", {"board": BOARD, "visibility": "unlisted"})
+    assert client(server, BERNA).call("board", {})["visibility"] == "private"
+
+
+def test_a_public_board_answers_every_read_verb_with_no_credential(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 1: anonymous sees what a member sees. The board is planned by a
+    dev FIRST, so what comes back is real content and not an empty payload that
+    would pass whether the gate opened or not."""
+    plan(client(server, BERNA))
+    publish(server, owner)
+
+    status, body = anon(server, "board")
+    assert status == 200
+    assert [row["title"] for row in body["data"]["groups"]["take"]] == ["invoice model", "CSV parser"]
+    card_id = body["data"]["groups"]["take"][0]["id"]
+
+    assert anon(server, "card", {"task": card_id})[1]["data"]["card"]["spec"] == "the Invoice dataclass"
+    assert anon(server, "events", {})[1]["data"]["events"]
+    assert anon(server, "report", {})[0] == 200
+    # Empty BY CONSTRUCTION: a comment can only name an actor somebody registered,
+    # and `anon` is outside the actor grammar, so nothing can ever address it.
+    assert anon(server, "mentions", {})[1]["data"]["mentions"] == []
+
+
+def test_the_orchestrators_read_is_not_widened_to_a_stranger(
+    server: BoardServer, owner: str
+) -> None:
+    """`waiting` is the dev's three groups and stays DEV. "Public read" is the
+    set of reads the registry marks, not "every verb whose kind is read"."""
+    publish(server, owner)
+    status, body = anon(server, "waiting")
+    assert status == 409 and "orchestrator's moves" in _prints(body)
+
+
+def test_an_anonymous_write_is_refused_naming_how_a_key_gets_registered(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 3, on every write verb there is — and on a PUBLIC board, which
+    is the case somebody could think opens a little further. It does not."""
+    publish(server, owner)
+    for verb in WRITES:
+        status, body = anon(server, verb, {"task": "tk-000000"})
+        assert status == 409, verb
+        message = _prints(body)
+        assert "needs a registered key" in message, (verb, message)
+        assert "taskops join" in message and "invite" in message, (verb, message)
+
+
+def test_each_of_the_two_write_walls_stands_on_its_own() -> None:
+    """A MUTATION FINDING, and the reason this test exists at all.
+
+    Anonymous is refused a write TWICE: `http/auth.py::anonymous` never hands
+    out a credential for a write, and `verbs/__init__.py::call` refuses the role
+    at the registry. Over a socket that is defence in depth — and it made both
+    guards look pinned while neither was. Deleting the capability check left the
+    suite green (the registry caught it); declaring a write verb with WATCHERS
+    left it green too (the HTTP door caught it). So each is asserted HERE,
+    against its own function, where the other cannot answer for it.
+    """
+    from taskops import verbs
+    from taskops.http import auth
+    from taskops.core.types import ANON
+
+    # Wall one: the capability. A public board, a write, no credential.
+    with pytest.raises(Refused, match="needs a registered key"):
+        auth.anonymous(public=True, need="write")
+    assert auth.anonymous(public=True, need="read").subject == ANON
+    assert auth.ANONYMOUS.caps == frozenset({"read"})  # it could not carry a write
+
+    # Wall two: the role, with no HTTP anywhere near it. `Stores` is never even
+    # opened — `call` refuses on the registry before it touches one.
+    stores: Any = None
+    for verb, spec in verbs.REGISTRY.items():
+        if spec.kind != "write":
+            continue
+        with pytest.raises(Refused, match="needs a registered key") as refused:
+            verbs.call(stores, verb, ANON, {})
+        assert "taskops join" in str(refused.value), verb
+
+
+def test_an_anonymous_write_is_refused_on_a_private_board_too(server: BoardServer) -> None:
+    """No credential is no credential: the private board says what it has always
+    said, and the sentence a reader learned to recognise does not move."""
+    status, body = anon(server, "update", {"task": "tk-000000", "status": "done"})
+    assert status == 409 and "taskops join <url with ?token=" in _prints(body)
+
+
+def test_anonymous_may_not_claim_to_be_somebody(server: BoardServer, owner: str) -> None:
+    """The hole this closes: `actor` travels IN the call, so a stranger could
+    name `dev:berna` in the body and be judged as him. Anonymous may only ever
+    act as anonymous, and the refusal still names the way in."""
+    publish(server, owner)
+    request = Request(
+        f"{url_of(server)}/rpc",
+        data=json.dumps({"verb": "board", "actor": BERNA, "args": {}}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with pytest.raises(HTTPError) as caught:
+        urlopen(request, timeout=5)
+    with caught.value as answer:
+        assert "may not act as dev:berna" in answer.read().decode()
+
+
+def test_the_feed_of_a_public_board_opens_with_no_token(
+    server: BoardServer, owner: str
+) -> None:
+    """A message here is a POKE and carries no data (`feed.py`), so a watcher
+    learns only that the board moved — and answers by re-reading through /rpc,
+    where the anonymous gate applies again in full."""
+    with pytest.raises(HTTPError) as refused:
+        urlopen(f"{url_of(server)}/feed", timeout=5)
+    with refused.value as answer:
+        assert answer.code == 409
+
+    publish(server, owner)
+    with urlopen(f"{url_of(server)}/feed", timeout=5) as stream:
+        assert b"hello" in stream.readline() + stream.readline()
+
+
+def test_an_anonymous_crawl_of_a_public_board_moves_not_one_byte(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 4, and the reason this card exists.
+
+    Every read verb opens with `stores.live.renew(actor, now)` — an INSERT into
+    `presence`. A public board without the anon guard would have every visitor
+    writing to live.sqlite on every page load: no event, no card, nothing any
+    other test would notice. So the assertion is not "no new events" but the
+    files themselves, hash for hash, after a crawl that touches every read door
+    there is INCLUDING the feed."""
+    dev = client(server, BERNA)
+    cards = plan(dev)
+    worker = client(server, W1, subject=BERNA)
+    worker.call("take", {"task": cards[0]["id"]})  # a live lease, to be renewed or not
+    publish(server, owner)
+
+    before = _fingerprint(server)
+    seen = dict(_presence(server))
+
+    for verb in READS:
+        args = {"task": cards[0]["id"]} if verb == "card" else {}
+        assert anon(server, verb, args)[0] == 200, verb
+    for verb in READS:  # twice: a second crawl is a second chance to write
+        assert anon(server, verb, {"task": cards[0]["id"]} if verb == "card" else {})[0] == 200
+    with urlopen(f"{url_of(server)}/feed", timeout=5) as stream:
+        assert b"hello" in stream.readline() + stream.readline()
+
+    assert _fingerprint(server) == before
+    assert dict(_presence(server)) == seen
+    assert "anon" not in dict(_presence(server))
+
+
+def test_the_lease_of_a_live_worker_is_not_renewed_by_a_stranger(
+    server: BoardServer, owner: str, clock: Any
+) -> None:
+    """The subtler half of the same rule, and the one a byte comparison could
+    miss if the write ever became an idempotent UPDATE: a visitor reading the
+    board must not keep a dead worker's card looking alive. `renew` updates
+    every lease held by `actor` — for anon there are none, and it never runs."""
+    dev = client(server, BERNA)
+    cards = plan(dev)
+    worker = client(server, W1, subject=BERNA)
+    worker.call("take", {"task": cards[0]["id"]})
+    publish(server, owner)
+    held = server.mounts.stores(BOARD).live.lease(cards[0]["id"], _clock.now())
+    assert held is not None
+
+    clock(60.0)
+    for _ in range(5):
+        assert anon(server, "board")[0] == 200
+    after = server.mounts.stores(BOARD).live.lease(cards[0]["id"], _clock.now())
+    assert after is not None and after["expires"] == held["expires"]
+
+
+def _presence(httpd: BoardServer) -> list[tuple[str, float]]:
+    return httpd.mounts.stores(BOARD).live.present(0.0)
+
+
+# ── the viewer's window: join with nothing, read as nobody ──────────────────
+
+
+def test_join_with_no_invite_against_a_public_board_is_a_read_only_window(
+    server: BoardServer, owner: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Criterion 5, end to end. Nothing is minted, no key is registered, and —
+    the part that is easy to miss — the join writes NOTHING on the board either:
+    a normal join records this repo's origin as a project event, which for a
+    viewer would be the milestone's rule broken by the act of becoming a reader."""
+    from taskops.cli import commands
+
+    plan(client(server, BERNA))
+    publish(server, owner)
+    project = tmp_path / "viewer"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:ana")
+
+    before = _fingerprint(server)
+    assert commands.join(project, url_of(server), "dev:ana") == 0
+    assert _fingerprint(server) == before  # the join itself wrote not one byte
+
+    config = json.loads((project / ".taskops" / "board.json").read_text())
+    assert config["url"] == url_of(server) and config["readonly"] is True
+    assert json.loads((project / ".taskops" / "remote.json").read_text())["token"] == ""
+    assert server.mounts.host.store().principal("ana") is None  # no key registered
+
+    watching = taskops.board.open_board(project, "dev:ana")
+    assert [row["title"] for row in watching.call("board", {})["groups"]["take"]][0] == "invoice model"
+    with pytest.raises(Refused, match="needs a registered key"):
+        watching.call("update", {"task": "tk-000000", "status": "done"})
+
+
+def test_taskops_ui_serves_a_watchers_window_with_no_credential_anywhere(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 5's second half — and a MUTATION FINDING: making `Mounts.public`
+    answer False for a bearer-less window left the suite green, because nothing
+    exercised the door `taskops ui` actually opens for a viewer.
+
+    Built through `serve()` exactly as `cli/serving.py::ui` builds it for a
+    read-only join: an `Upstream` with NO token. The window lets its own browser
+    read and forwards the call bare; the REMOTE is what decides, which is why the
+    write comes back in the server's own words and not this process's."""
+    from tests.test_git import repo
+    from taskops.http.upstream import Upstream
+
+    plan(client(server, BERNA))
+    publish(server, owner)
+    httpd = serve(
+        tmp_path / "watcher", "127.0.0.1", 0,
+        repo=repo(tmp_path, "watcher-clone"),
+        upstream=Upstream(url_of(server), ""),  # the viewer's join: no bearer at all
+    )
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_address[1]}/board"
+        before = _fingerprint(server)
+        status, body = _get_post(base, "", {"verb": "board"})
+        assert status == 200, body
+        assert [c["title"] for c in body["data"]["groups"]["take"]] == ["invoice model", "CSV parser"]
+
+        status, body = _get_post(base, "", {"verb": "update", "args": {"task": "tk-000000"}})
+        assert status == 409 and "needs a registered key" in body["error"]["message"]
+        assert _fingerprint(server) == before  # the whole window session, zero bytes
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_a_private_board_refuses_a_join_with_no_invite_exactly_as_today(
+    server: BoardServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """And it still names the link it wanted — the refusal a broken paste gets
+    has not become "this board is private", which would be a different bug."""
+    from taskops.cli import commands
+
+    project = tmp_path / "nope"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:ana")
+    with pytest.raises(TaskopsError, match="carries no .token= or .invite="):
+        commands.join(project, url_of(server), "dev:ana")
+    assert not (project / ".taskops" / "board.json").exists()
+
+
+
 def _get_post(url: str, token: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     """`_post` raises on a non-200; a refusal is exactly what several of the
     tests above are reading, status and all."""
@@ -777,13 +2246,16 @@ def _post(url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def _redeem(url: str, invite: str, who: str) -> dict[str, Any]:
+def _redeem(url: str, invite: str, who: str, pubkey: str = "") -> dict[str, Any]:
     from urllib.error import HTTPError
     from urllib.request import Request
 
+    body = {"invite": invite, "who": who}
+    if pubkey:
+        body["pubkey"] = Path(pubkey).read_text(encoding="utf-8")
     request = Request(
         f"{url}/invite/redeem",
-        data=json.dumps({"invite": invite, "who": who}).encode(),
+        data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
@@ -880,3 +2352,475 @@ def test_two_conflicting_verdicts_leave_the_board_coherent(server: BoardServer) 
     # as everybody else, with the whole thread in front of it.
     with pytest.raises(Refused, match="held by agent:berna/w1"):
         dev.call("update", {"task": card, "status": "done", "comment": "call it"})
+
+
+# ── the scp dies: a LOCAL board is promoted to a hosted one ─────────────────
+#
+# The same real server and the same real keypair as everything above, plus a
+# real repo with a real local board on disk. Nothing here stubs the transfer:
+# the events cross the socket, the server writes them into its own
+# `events.jsonl`, and the assertions are the ones the command itself makes.
+
+
+def local_repo(tmp_path: Path, name: str = "clone") -> Path:
+    """A repo with a LOCAL board in it — what `taskops init` leaves behind."""
+    repo = tmp_path / name
+    (repo / ".taskops").mkdir(parents=True)
+    (repo / ".taskops" / "board.json").write_text("{}\n", encoding="utf-8")
+    return seed_local_board(repo)
+
+
+def seed_local_board(repo: Path) -> Path:
+    """The events part of it, alone — a checkout that already exists (the bare
+    `board push` test) needs a history in it without a second `.taskops`."""
+    from taskops.board import LocalBoard
+
+    board = LocalBoard(repo / ".taskops" / "board", BERNA)
+    try:
+        cards = plan(board)  # type: ignore[arg-type]  # a LocalBoard is a Board
+        board.call("update", {"task": cards[0]["id"], "comment": "before the move"})
+    finally:
+        board.close()
+    return repo
+
+
+def local_log(repo: Path) -> Path:
+    return repo / ".taskops" / "board" / "events.jsonl"
+
+
+def pushed(target: str, key: Path, invite: str = "") -> int:
+    from taskops.cli import push
+
+    return push.run(argparse.Namespace(action="push", target=target, key=str(key), invite=invite))
+
+
+def test_a_local_board_becomes_the_hosted_one_and_the_config_flips_last(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criteria 1 and 5, end to end and over a socket: an empty board is created
+    on the host, the whole local history is streamed into it, the counts are
+    compared — and only then does this repo start reading the remote one, with
+    its local board renamed beside itself rather than removed."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    monkeypatch.chdir(repo)
+
+    assert pushed(f"{host_of(server)}/promoted", keyed) == 0
+
+    # The history is THERE, event for event, and the ids are the same ids. Line
+    # one is the board's own birth certificate — `board.create` records WHO made
+    # it, so the target of a correct push is never literally empty, and the whole
+    # local log lands AFTER it (`http/ingest.py::_birth`).
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    lines = theirs.strip().splitlines()
+    assert json.loads(lines[0])["body"]["op"] == "created"
+    assert [json.loads(line)["id"] for line in lines[1:]] == [
+        json.loads(line)["id"] for line in mine
+    ]
+    assert server.mounts.stores("promoted").head() == len(mine) + 1
+
+    # ONLY NOW the config: the repo reads the server, and it can sign itself in
+    # again afterwards, because the `login` block travelled with the flip.
+    config = read_config(repo)
+    assert config["url"] == f"{host_of(server)}/promoted"
+    assert config["login"]["principal"] == "berna" and config["login"]["key"] == str(keyed)
+    board = taskops.board.open_board(repo, BERNA)
+    assert isinstance(board, RemoteBoard)
+    assert [c["title"] for c in board.call("board", {})["groups"]["take"]] == [
+        "invoice model",
+        "CSV parser",
+    ]
+
+    # ARCHIVED, not deleted — the directory it came from still proves what was sent.
+    assert not (repo / ".taskops" / "board").exists()
+    kept = list((repo / ".taskops").glob("board.local-*"))
+    assert len(kept) == 1
+    assert (kept[0] / "events.jsonl").read_text(encoding="utf-8").strip().splitlines() == mine
+
+
+def test_an_interrupted_push_re_runs_to_a_no_op_and_finishes_the_job(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criterion 2. The interruption is real: half the log is ingested and the
+    call never comes back. Re-running sends the WHOLE log again — the ids are
+    `sha256` of the content, so the half that landed is recognised, written
+    once, and the log on the server has no duplicate line in it."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    half = len(mine) // 2
+    stopped = admin(server, owner, "board.ingest", {"board": "promoted", "events": mine[:half]})
+    assert stopped["written"] == half and stopped["already_held"] == 0
+
+    monkeypatch.chdir(repo)
+    assert pushed(f"{host_of(server)}/promoted", keyed) == 0
+
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    assert theirs.strip().splitlines()[1:] == mine  # no duplicate, no reordering
+    assert server.mounts.stores("promoted").head() == len(mine) + 1
+
+    # And a THIRD run, with nothing left to do, is a pure no-op.
+    again = admin(server, owner, "board.ingest", {"board": "promoted", "events": mine})
+    assert again["written"] == 0 and again["already_held"] == len(mine)
+    assert (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8") == theirs
+
+
+def test_a_payload_that_names_one_event_twice_writes_it_once(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """`Stores.write` appends everything it is handed to `events.jsonl` — the
+    CACHE ignores a repeated id, the log does not. So the door deduplicates
+    against ITSELF as well as against the board, or a payload that named one
+    line twice would put two identical lines in the truth and one row in the
+    index, and only the log's own reader would ever disagree."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+
+    answer = admin(server, owner, "board.ingest", {"board": "promoted", "events": [*mine, mine[0]]})
+    assert answer["received"] == len(mine) + 1
+    assert answer["written"] == len(mine)
+    assert answer["landed"] == len(mine)  # DISTINCT, read back from the store
+
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    assert theirs.strip().splitlines()[1:] == mine
+
+
+def test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criterion 3, and the repo is untouched by the refusal. There is no force
+    flag deliberately: two histories would have to be given an order they never
+    had, so the refusal says that instead of offering a way to fabricate one."""
+    repo = local_repo(tmp_path)
+    plan(client(server, BERNA))  # BOARD now has a history of its own
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(TaskopsError) as refused:
+        pushed(f"{host_of(server)}/{BOARD}", keyed)
+    assert "not empty" in str(refused.value)
+    assert "no force flag" in str(refused.value)
+    assert "board create" in str(refused.value)
+
+    # Step 5 never ran: this is still a local board and still the only copy.
+    assert "url" not in read_config(repo)
+    assert local_log(repo).exists()
+    assert not list((repo / ".taskops").glob("board.local-*"))
+
+
+def test_a_board_somebody_is_working_on_is_not_pushed(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Step 2. Leases do not travel — `live.sqlite` is a fact about processes
+    that are running, and none of them will be running against the new host. So
+    the check is not "copy them", it is "there must be none to lose"."""
+    from taskops.board import LocalBoard
+
+    repo = local_repo(tmp_path)
+    admin(server, owner, "board.create", {"name": "promoted"})
+    board = LocalBoard(repo / ".taskops" / "board", W1)
+    try:
+        card = [c for c in board.call("board", {})["groups"]["take"]][0]
+        board.call("take", {"task": card["id"]})
+    finally:
+        board.close()
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(TaskopsError, match="holding a lease"):
+        pushed(f"{host_of(server)}/promoted", keyed)
+    assert server.mounts.stores("promoted").head() == 1  # its birth event, and nothing else
+    assert "url" not in read_config(repo)
+
+
+def test_ingest_is_owner_or_member_only_and_says_how_a_key_gets_registered(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The door is server scope like every other admin verb — an unkeyed caller
+    is refused naming the way in, which is this milestone's house rule."""
+    admin(server, owner, "board.create", {"name": "promoted"})
+    stray, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())  # a BOARD token
+    with pytest.raises(Refused) as refused:
+        admin(server, stray, "board.ingest", {"board": "promoted", "events": ["{}"]})
+    assert "taskops join" in str(refused.value)
+    assert server.mounts.stores("promoted").head() == 1  # only the board's own birth
+
+
+def test_ingest_is_refused_to_a_principal_whose_key_this_host_never_registered(
+    server: BoardServer, keyed: Path, owner: str
+) -> None:
+    """The ROLE gate, and it is a different wall from the one above: this
+    credential IS server-scoped, so it reaches `core/scope.py::permit` — which
+    finds no key for the principal, calls it `anon`, and refuses naming how a key
+    gets registered. Without the gate, a `*` token would be enough to move a
+    history onto somebody else's host."""
+    admin(server, owner, "board.create", {"name": "promoted"})
+    stray, _ = server.mounts.credentials.mint("dev:mallory", "*", _clock.now())
+    with pytest.raises(Refused) as refused:
+        admin(server, stray, "board.ingest", {"board": "promoted", "events": ["{}"]})
+    assert "anon may not board.ingest" in str(refused.value)
+    assert "taskops server key add" in str(refused.value)
+    assert server.mounts.stores("promoted").head() == 1
+
+
+def test_a_short_push_stops_before_the_config_flips(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Step 4, against a push that really is short — one event is dropped on the
+    way out, exactly as a truncated scp used to drop them. The counts disagree,
+    the command STOPS, and this repo is still the local board it was: without
+    the comparison the promotion would have reported success and lost an event."""
+    from taskops.cli import push as promote
+
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    monkeypatch.chdir(repo)
+
+    honest = promote.operate.call
+
+    def short(host: str, verb: str, args: dict[str, Any], token: str = "") -> dict[str, Any]:
+        args = {**args, "events": list(args["events"])[:-1]} if verb == "board.ingest" else args
+        return honest(host, verb, args, token)
+
+    monkeypatch.setattr(promote.operate, "call", short)
+    with pytest.raises(TaskopsError) as stopped:
+        pushed(f"{host_of(server)}/promoted", keyed)
+    assert "did not come back with what was sent" in str(stopped.value)
+    assert f"local {len(mine):>6}   remote {len(mine) - 1:>6}" in str(stopped.value)
+
+    assert "url" not in read_config(repo)
+    assert local_log(repo).exists()
+    assert not list((repo / ".taskops").glob("board.local-*"))
+
+
+def test_ingest_refuses_a_line_that_does_not_match_its_own_content(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The door verifies the HASH and nothing else — it does not re-judge events
+    the verbs already validated. A tampered line lands nowhere, and the ones
+    beside it do not land either: the whole call is refused."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    forged = json.loads(mine[0])
+    forged["actor"] = "dev:mallory"
+    with pytest.raises(BadRequest, match="does not match its own content"):
+        admin(
+            server,
+            owner,
+            "board.ingest",
+            {"board": "promoted", "events": [json.dumps(forged), *mine[1:]]},
+        )
+    assert server.mounts.stores("promoted").head() == 1  # only the board's own birth
+
+
+def test_a_push_into_a_board_nobody_created_says_which_command_makes_one(
+    server: BoardServer, keyed: Path, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """`Mounts.stores` never creates — so the refusal has to name the door that
+    does, or the only way to learn it is to read the source."""
+    repo = local_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    with pytest.raises(NotFound, match="taskops board create"):
+        pushed(f"{host_of(server)}/nobodys", keyed)
+    assert "url" not in read_config(repo)
+
+
+# ── and join stops orphaning the board that is already here ────────────────
+
+
+def test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 4. Before this, joining simply started reading the remote board:
+    the local history stayed on disk, byte for byte, and nothing ever looked at
+    it again or said so. The command that made it invisible was a command about
+    connecting, and nobody was told."""
+    from taskops.cli import commands
+
+    repo = local_repo(tmp_path)
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    url = f"{url_of(server)}?token={token}"
+
+    with pytest.raises(TaskopsError) as refused:
+        commands.join(repo, url, BERNA)
+    assert "board push" in str(refused.value)
+    assert "--discard-local" in str(refused.value)
+    assert "url" not in read_config(repo)  # nothing was written by the refusal
+    assert local_log(repo).exists()
+
+
+def test_discard_local_archives_the_board_it_replaces_and_deletes_nothing(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 4's other half — and the archive is the same rename `push`
+    does, because it is the same moment seen from the other side."""
+    from taskops.cli import commands
+
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8")
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+
+    assert commands.join(repo, f"{url_of(server)}?token={token}", BERNA, discard=True) == 0
+
+    assert read_config(repo)["url"] == url_of(server)
+    assert not (repo / ".taskops" / "board").exists()
+    kept = list((repo / ".taskops").glob("board.local-*"))
+    assert len(kept) == 1 and (kept[0] / "events.jsonl").read_text(encoding="utf-8") == mine
+
+
+def test_an_empty_local_board_is_not_something_to_orphan(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """`taskops init` then `taskops join` is an ordinary sequence, and the
+    guardrail counts EVENTS, not the directory: an empty history has nothing to
+    lose, so refusing on it would cost a real workflow and buy nothing."""
+    from taskops.cli import commands
+
+    repo = tmp_path / "fresh"
+    (repo / ".taskops" / "board").mkdir(parents=True)
+    (repo / ".taskops" / "board.json").write_text("{}\n", encoding="utf-8")
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+
+    assert commands.join(repo, f"{url_of(server)}?token={token}", BERNA) == 0
+    assert read_config(repo)["url"] == url_of(server)
+    assert not list((repo / ".taskops").glob("board.local-*"))
+
+
+# ── COMPAT: production's exact state, proven and not assumed ────────────────
+#
+# The chapter's third rule — EXISTING BEARER TOKENS KEEP WORKING — protects four
+# real boards on `taskops.bernardocastro.dev`. Their shape is not merely "a board
+# with a token"; it is a host that knows NOTHING this chapter added: no
+# principal, no pubkey, no `allowed_signers` file, and a `remote.json` exactly
+# one key long. Every test above this line arrives at that state incidentally
+# (`client()` mints a bearer). These arrive at it ON PURPOSE — through the real
+# on-box `taskops invite --root <dir>`, redeemed with no key, which is literally
+# how production's credentials came to exist — then ASSERT it is that state, and
+# only then drive the four doors a production board is actually used through:
+# /rpc, /feed, the MCP handshake, and the `taskops ui` window's forwarded /rpc.
+
+
+@pytest.fixture()
+def legacy(server: BoardServer, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> str:
+    """A standing bearer, minted by the ON-BOX command and read off its own
+    output — not from the store behind it. If `taskops invite --root` ever
+    stopped printing a redeemable URL, this fixture would fail rather than
+    quietly test a token no human could have obtained."""
+    from taskops.cli import admin
+
+    admin.on_box_invite(tmp_path / "boards", "berna", BOARD)
+    printed = capsys.readouterr().out
+    invite = printed.partition("?invite=")[2].strip()
+    assert invite, printed
+    return str(_redeem(url_of(server), invite, "berna")["token"])
+
+
+def _untouched_host(server: BoardServer, tmp_path: Path) -> None:
+    """The precondition, spelled out: this host has learned nothing new. A
+    keyless join enrols nobody, so there is no principal and no key — and
+    `allowed_signers`, the file `ssh-keygen -Y verify` consumes, is EMPTY.
+
+    Empty and not absent, which is the honest statement and was found by this
+    test failing on the stricter one: `ServerStore.__init__` regenerates the
+    file whenever the store is opened, so merely starting a server creates it.
+    That is not a hole — the file is derived WHOLE from the principals table, so
+    zero principals means zero signers, and `-Y verify` against it refuses
+    everybody. Asserting its emptiness pins the property that matters; asserting
+    its absence would have pinned a startup detail instead."""
+    from taskops.store.server import ServerStore
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        assert store.principals() == [] and store.keys() == []
+    finally:
+        store.close()
+    assert (tmp_path / "boards" / "allowed_signers").read_text(encoding="utf-8") == ""
+
+
+def test_a_legacy_only_board_still_works_on_rpc(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 1. The whole cycle — plan, assign, take, bind, done, merged — on a
+    credential with no principal behind it, exactly as production's four run."""
+    _untouched_host(server, tmp_path)
+
+    dev = RemoteBoard(url_of(server), legacy, BERNA)
+    cards = plan(dev)
+    dev.call("assign", {"tasks": [cards[0]["id"]]})
+    worker = RemoteBoard(url_of(server), legacy, W1)  # dev credential, its own agent
+    worker.call("take", {"task": cards[0]["id"]})
+    worker.call("bind", {"task": cards[0]["id"], "sha": "a1b2", "subject": "feat: model"})
+    worker.call("update", {"task": cards[0]["id"], "status": "done", "comment": "done"})
+    assert dev.call("merged", {"task": cards[0]["id"], "sha": "9c2f"})["into"] == "ms/mvp-facturador"
+
+    _untouched_host(server, tmp_path)  # and a full cycle enrolled nobody
+
+
+def test_a_legacy_token_still_opens_the_feed(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 2. `?token=` on /feed is how every joined clone watches, and the
+    anonymous gate added this chapter sits in front of it — a private board with
+    a standing bearer must pass it untouched."""
+    _untouched_host(server, tmp_path)
+    with urlopen(f"{url_of(server)}/feed?token={legacy}", timeout=5) as stream:
+        assert b"hello" in stream.readline() + stream.readline()
+
+
+def test_a_legacy_config_opens_the_MCP_board_and_its_handshake(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 3, and the one with the most moving parts under it. The MCP server
+    opens a board from `remote.json` and renders the panorama INTO the handshake
+    (`mcp/hello.py`). A config with no `login` block must reach that far with no
+    refresh attempted — `hello` swallows every TaskopsError, so a broken legacy
+    path would not raise here, it would silently hand back an EMPTY panorama."""
+    from taskops.mcp import hello
+    from taskops.board import open_board
+    from taskops.gitwork import install
+    from taskops.mcp.server import INSTRUCTIONS
+
+    plan(RemoteBoard(url_of(server), legacy, BERNA))
+    project = tmp_path / "clone"
+    install.write_config(project, url_of(server), legacy)
+    assert json.loads((project / ".taskops" / "remote.json").read_text()) == {"token": legacy}
+
+    handshake = hello.hello(open_board(project, BERNA), INSTRUCTIONS)
+    assert "invoice model" in handshake["instructions"]  # the panorama, not silence
+    _untouched_host(server, tmp_path)
+
+
+def test_the_ui_window_forwards_with_a_legacy_token(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 4. `taskops ui` against a remote board forwards /board/rpc upstream
+    with the bearer out of `remote.json` (`http/upstream.py`). That bearer is a
+    standing legacy one on all four production boards, so the window is built
+    here exactly as `cli/serving.py` builds it — around `legacy` and nothing
+    else — and asked for the cards the SERVER holds."""
+    from tests.test_git import repo
+    from taskops.http.upstream import Upstream
+
+    plan(RemoteBoard(url_of(server), legacy, BERNA))
+    httpd = serve(
+        tmp_path / "window",
+        "127.0.0.1",
+        0,
+        repo=repo(tmp_path, "viewer"),
+        upstream=Upstream(url_of(server), legacy),
+    )
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/board"
+        token, _ = httpd.mounts.credentials.mint(BERNA, "board", _clock.now())
+        body = _post(url, token, {"verb": "board", "actor": BERNA})
+        assert body["ok"] is True
+        titles = [c["title"] for c in body["data"]["groups"]["take"]]
+        assert titles == ["invoice model", "CSV parser"]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    _untouched_host(server, tmp_path)

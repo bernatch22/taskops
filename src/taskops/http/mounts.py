@@ -8,12 +8,13 @@ directory outside the root.
 from __future__ import annotations
 
 import re
-from time import sleep
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Lock
 
-from . import feed
-from .._errors import NotFound, BadRequest, TaskopsError
+from . import feed, watcher
+from .login import Host
+from ..verbs import project
+from .._errors import NotFound, BadRequest
 from .upstream import Upstream, seq_of
 from ..store.creds import Credentials
 from ..store.stores import Stores
@@ -21,20 +22,6 @@ from ..store.stores import Stores
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
 _PACKAGED_UI = Path(__file__).resolve().parent.parent / "ui"
-
-WATCH_SECONDS = 1.0
-"""How often a watched LOCAL board is asked whether it moved. `head()` is one
-`SELECT MAX(seq)` against a rowid — O(1) — so this is cheap enough to run while
-anybody is looking, and it runs for nobody otherwise."""
-
-REMOTE_WATCH_SECONDS = 3.0
-"""The same question asked of a REMOTE board, and slower on purpose: that
-`head()` is a `board` call over the network, not a rowid lookup, so once a
-second would be a request per second per open tab against somebody else's
-server. Three seconds is under the time it takes a reader to look away and back,
-and the cost of being late is exactly one tick — the message is a SIGNAL and the
-page refetches (`feed.py`). It still runs only while somebody is connected."""
-
 
 class Mounts:
     """The boards this process serves, opened once and kept.
@@ -58,73 +45,42 @@ class Mounts:
         self.root = root
         self.upstream = upstream
         # The ONE place that decides whether this process can read a repo, and
-        # it is decided by the CALLER at construction — never sniffed per
-        # request. `taskops ui` sits inside a checkout and hands its root;
-        # `taskops serve` sits in a boards directory and hands nothing, so its
-        # /git door refuses with a message that says exactly that (gitdoor.py).
+        # it is decided by the CALLER at construction, never sniffed per
+        # request (`gitdoor.py` carries the rest).
         self.repo = repo
-        # ONE switch, not two: the same `repo` that mounts /git mounts the
-        # bundle. A dashboard needs the viewer's CLONE to draw a diff, so a
-        # process with no clone has no business serving one — see `static.py`
-        # for the whole post-mortem. The bundle still ships inside the wheel;
-        # what went away is the server-side mount and the `--ui` flag that
-        # configured it.
+        # ONE switch, not two: the same `repo` that mounts /git mounts the bundle. A
+        # dashboard needs the viewer's CLONE to draw a diff, so a process with no clone
+        # has no business serving one — see `static.py` for the whole post-mortem. The
+        # bundle still ships inside the wheel; what went away is the server-side mount
+        # and the `--ui` flag that configured it.
         self.ui = _PACKAGED_UI if repo is not None else None
         self.credentials = Credentials(root / "live.sqlite")
+        # The HOST's own identity, and it opens NOTHING until a login asks
+        # (`login.py::Host` says why lazily is a rule here, not a taste).
+        self.host = Host(root)
         self.hub = feed.Hub()
         self._lock = Lock()
         self._boards: dict[str, Stores] = {}
         self._watched: set[str] = set()
 
     def watch(self, name: str) -> None:
-        """Publish when the board moves, whoever moved it.
+        """Poke every listener when this board moves — `watcher.py` owns the how."""
+        watcher.start(self, name)
 
-        The RPC handler publishes its own writes the instant they are durable,
-        which covers a board everybody reaches over HTTP. It does NOT cover the
-        normal LOCAL setup: there, each agent's MCP server writes through a
-        `LocalBoard` straight to the same files, in its own process, and this
-        one is never told. The socket connected, said "live", and stayed silent
-        for the rest of the session — which is how a live board came to need a
-        manual reload.
-
-        So the truth is polled from where the truth actually is: the board's own
-        sequence. One thread per watched board, started when somebody is
-        listening and gone once nobody is. A duplicated signal costs nothing —
-        a message is a poke, and the page refetches.
-        """
+    def claim_watch(self, name: str) -> bool:
+        """True to the FIRST caller only: one polling thread per board, ever.
+        The set lives here and not in `watcher.py` because it is per-process
+        state of THESE mounts — a test that runs two servers must not have them
+        share it."""
         with self._lock:
             if name in self._watched:
-                return
+                return False
             self._watched.add(name)
-        Thread(target=self._pump, args=(name,), daemon=True).start()
+            return True
 
-    def _pump(self, name: str) -> None:
-        try:
-            seen = self._head(name)
-            while True:
-                # Sleep BEFORE asking whether anybody is listening: `watch` is
-                # called on the way into `attach`, which is what subscribes, so
-                # checking first would race it and the watcher would exit having
-                # watched nothing.
-                sleep(WATCH_SECONDS if self.upstream is None else REMOTE_WATCH_SECONDS)
-                if not self.hub.count(name):
-                    return
-                head = self._head(name)
-                # `head or …`: a remote that could not be asked answers 0, and 0
-                # is not news — it is silence. Poking on it would tell the page
-                # the board rewound every time the network hiccuped.
-                if head and head != seen:
-                    seen = head
-                    self.hub.publish(name, {"type": "change", "verb": "", "seq": head})
-        except (TaskopsError, OSError):
-            return  # a board that went away is not worth a traceback per second
-        finally:
-            with self._lock:
-                self._watched.discard(name)
-
-    def _head(self, name: str) -> int:
-        """Where the truth is: this process's own file, or the server's counter."""
-        return self.upstream.head() if self.upstream else self.stores(name).head()
+    def drop_watch(self, name: str) -> None:
+        with self._lock:
+            self._watched.discard(name)
 
     def forward(self, board: str, verb: str, raw: bytes) -> tuple[int, bytes]:
         """Relay one /rpc body to the remote board and poke the page if it wrote.
@@ -148,16 +104,52 @@ class Mounts:
         A window onto a remote board opens NOTHING here: the stores belong to the
         server, and building one would be a second, empty board on this disk with
         the same name as the real one."""
-        _named(name)
+        named(name)
         if self.upstream is None:
             self.stores(name)
 
     def stores(self, name: str) -> Stores:
-        _named(name)
+        """OPEN a board. Never create one — that is the whole of this method.
+
+        Until 2026-08-08 this said `Stores(self.root / name)` unconditionally, and
+        `Stores` makes its own directory. So a GET for a name nobody had heard of —
+        arriving BEFORE any credential was checked, since the router calls `check`
+        first and `_credential` second — left a board directory with a cache and a
+        lease file on disk: anonymous, unauthorised, permanent, a write caused by a
+        stranger's question. Creation is now a server-scope OPERATION
+        (`core/scope.py`: `board.create`), via `create()`."""
+        named(name)
         with self._lock:
             if name not in self._boards:
+                if not (self.root / name).is_dir():
+                    raise NotFound(
+                        f"no board named {name!r} on this server — a board is created by "
+                        "its owner, never by a request for one"
+                    )
                 self._boards[name] = Stores(self.root / name)
             return self._boards[name]
+
+    def public(self, name: str) -> bool:
+        """May a caller with NO credential read this board? GitHub's flag.
+
+        On a host: the board's own recorded fact (`verbs/project.py::is_public`),
+        defaulting to private, so every board older than the flag is unchanged.
+        On a WINDOW onto somebody else's board there are no stores to ask — an
+        `Upstream` with no bearer IS a read-only join, so the window lets its own
+        browser in and the REMOTE decides. A window WITH a credential answers
+        False and its local door stays exactly as tight as it was.
+        """
+        if self.upstream is not None:
+            return not self.upstream.token
+        return project.is_public(self.stores(name))
+
+    def create(self, name: str) -> Stores:
+        """The one door that MAY make a board directory, and it is never on the
+        anonymous path: callers gate it with `scope.permit("board.create", …)`.
+        Creating one that exists is a no-op, so it is safe to run twice."""
+        named(name)
+        (self.root / name).mkdir(parents=True, exist_ok=True)
+        return self.stores(name)
 
     def count(self) -> int:
         with self._lock:
@@ -167,9 +159,10 @@ class Mounts:
         for board in self._boards.values():
             board.close()
         self.credentials.close()
+        self.host.close()
 
 
-def _named(name: str) -> str:
+def named(name: str) -> str:
     """The name wall, in one place: `check` and `stores` are two doors onto it
     and a second copy of the message would drift from the first."""
     if not NAME.match(name):
