@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Callable, NamedTuple
 from pathlib import Path
 
-from . import render, dossier, gitmoves
+from . import render, dossier, gitmoves, boardview
 from ..board import Board
 from .schema import SCHEMAS
 from .._errors import BadRequest
@@ -32,7 +32,7 @@ class Tool(NamedTuple):
 def _board(board: Board, repo: Path, args: Args, now: float) -> str:
     """A pure read. There is nothing to repair: a card whose worker stopped
     renewing is STALLED by derivation, and the move is to hand it to somebody."""
-    return render.board(board.call("board", args), now)
+    return boardview.board(board.call("board", args), now)
 
 
 def _card(board: Board, repo: Path, args: Args, now: float) -> str:
@@ -119,8 +119,10 @@ TOOLS: list[Tool] = [
     ),
     _tool(
         "taskops_merge",
-        "Integrate a DONE card into its milestone branch (--no-ff, in the integration "
-        "worktree). A conflict aborts clean. main is never touched. Orchestrator only.",
+        "Integrate DONE cards into their milestone branch (--no-ff, in the integration "
+        "worktree): task= one, tasks=[…] those in order, done=true every card waiting under "
+        "MERGE. A batch stops at the first failure, reports per card, and continues on a "
+        "re-run. A conflict aborts clean. main is never touched. Orchestrator only.",
         gitmoves.merge,
     ),
     _tool(

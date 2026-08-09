@@ -20,6 +20,7 @@ def briefs(data: dict[str, Any]) -> str:
     for brief in as_rows(data.get("briefs")):
         out += [
             f"## {brief['task']} — {brief['title']}  →  spawn one sub-agent with this:",
+            *_apart(brief),
             "```",
             f'You are {brief["actor"]}. Card {brief["task"]}: "{brief["title"]}".',
             f"Pass actor={brief['actor']} on EVERY taskops call — you share the session's",
@@ -56,6 +57,27 @@ def briefs(data: dict[str, Any]) -> str:
         out.append("")
     out.append(render.pulse(data))
     return "\n".join(out)
+
+
+def _apart(brief: dict[str, Any]) -> list[str]:
+    """The wave held these two apart and the orchestrator dispatched them anyway.
+
+    A SENTENCE, in the header, above the fold — not a refusal: the whole chapter
+    rests on "a warning is never a lock" (`core/seams.py`), and the assign has
+    already been written by the time this renders. It is here rather than only in
+    the board's TAKE listing because the duplicated-helper failures it names were
+    all discovered inside a worker, and this is the one text a worker reads first.
+    """
+    why = as_object(brief.get("apart"))
+    if not why:
+        return []
+    shared = as_strings(why.get("files")) or as_strings(why.get("terms"))
+    verb = "the same files" if why.get("files") else "the same concept"
+    return [
+        f"> ⚠ the wave holds this apart from {why.get('with')}: {verb} — "
+        f"{', '.join(shared)}. Land the seam serialized first, or expect two of it "
+        "(docs/fan-out.md). Dispatching anyway is your call; nothing is blocked."
+    ]
 
 
 def _rules(brief: dict[str, Any]) -> list[str]:

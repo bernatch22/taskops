@@ -28,7 +28,7 @@ from typing import Any
 
 from . import _args, _facts, report, project, _context, _mentions
 from .. import _clock
-from ..core import graph
+from ..core import graph, seams
 from ..core.types import Card
 from ..store.stores import Stores
 
@@ -38,15 +38,14 @@ whole reason `done` can be in this payload at all: every other group is bounded
 by how much work is in flight, and closed work only ever grows."""
 
 DONE_FOCUSED = 200
-"""And how many when a chapter IS in scope. Different because the thing being
-bounded is different: with no chapter, `done` is the board's entire history and
-grows forever; with one, it is that chapter's closed cards, and a chapter is a
-finite planned unit that somebody sat down and wrote. Reviewing a landed chapter
-is exactly when a reader wants ALL of them — this project's own chapters closed
-14 and 22 cards, and `20 of 22` is a screen that cannot answer "what shipped".
-It is still a ceiling and not `None`: a pathological chapter must not be able to
-make this read unbounded, and `done_total` stays the honest count behind either
-cap."""
+"""And how many when a chapter IS in scope. Different because the thing bounded
+is different: with no chapter, `done` is the board's entire history and grows
+forever; with one, it is that chapter's closed cards, and a chapter is a finite
+planned unit somebody sat down and wrote. Reviewing a landed chapter is exactly
+when a reader wants ALL of them — this project's own chapters closed 14 and 22
+cards, and `20 of 22` is a screen that cannot answer "what shipped". Still a
+ceiling and not `None`: a pathological chapter must not make this read
+unbounded, and `done_total` stays the honest count behind either cap."""
 
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
@@ -77,12 +76,11 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         "doing": [],
         "reviewing": [],
         "blocked": [],
-        # LAST, and it is not a move the board is waiting for: it is the only
-        # place finished work is visible at all. A merged card used to be
-        # dropped from this payload entirely, so a chapter's whole history
-        # existed in the log and on no screen. Capped and newest-first: a
-        # chapter is bounded, a board is not, and an uncapped tail would grow
-        # this read forever.
+        # LAST, and not a move the board waits for: it is the only place
+        # finished work is visible at all. A merged card used to be dropped from
+        # this payload, so a chapter's whole history existed in the log and on
+        # no screen. Capped and newest-first: a board is not bounded, and an
+        # uncapped tail would grow this read forever.
         "done": [],
     }
     for card in sorted(mine, key=lambda c: (c["priority"], c["created"])):
@@ -132,9 +130,8 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
             groups[shown].append(row)
 
     # Newest first, and only the tail: the other groups are sorted by what to do
-    # next, but nobody acts on a closed card — what a reader wants is what just
-    # landed. `done_total` is the honest count behind the cap, so a screen can
-    # say "20 of 63" instead of implying the chapter closed twenty cards.
+    # next, but nobody acts on a closed card. `done_total` is the honest count
+    # behind the cap, so a screen says "20 of 63" and not "twenty closed".
     done_total = len(groups["done"])
     cap = DONE_FOCUSED if stone else DONE_SHOWN
     groups["done"] = sorted(groups["done"], key=lambda r: r["since"], reverse=True)[:cap]
@@ -159,6 +156,9 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         "milestones": chapters,
         "landed_total": landed_total,
         "groups": groups,
+        # Which of the READY cards are safe to fan out together — derived, never
+        # stored, and ADVICE (`core/seams.py`). Computed over `groups.take` only.
+        "wave": seams.wave(cards, [row["id"] for row in groups["take"]]),
         "team": _team(stores, now),
         "hours": _hours(stores, args, now, window) if window else None,
         "seq": stores.head(),

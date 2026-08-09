@@ -68,6 +68,14 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "taskops_merge": _object(
         {
             "task": _text("a DONE card → into its milestone branch"),
+            "tasks": _list(
+                "integrate exactly these DONE cards, in the order given — each through the "
+                "same single-card path. Stops at the first failure and reports per card."
+            ),
+            "done": _flag(
+                "integrate every card the board groups under MERGE (done, not integrated), "
+                "in that group's order. Re-run it after a stop: it continues where it left off."
+            ),
             "milestone": _text(
                 "ms-… → land the WHOLE milestone into the trunk. Refused while any card "
                 "of it is open or unintegrated. The human's call — never do this with "

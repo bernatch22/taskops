@@ -466,7 +466,7 @@ def a_closed_pair(root: Path) -> list[dict[str, Any]]:
 
     Its OWN board, and that is the point of the function rather than two more
     rows in `a_board`: nothing on the fixture board is done or integrated, and
-    several assertions in `ui/smoke/main.tsx` are about exactly that shape (a
+    several assertions in `ui/smoke/sections/worktrees-index.tsx` are about exactly that shape (a
     Merged column with no rows is not drawn at all). A closed card there would
     have quietly changed what those assertions are looking at.
 
@@ -712,6 +712,146 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
     assert "The log is empty." in app
     # The anchor host, verbatim in the bytes — without it no link renders at all.
     assert "github.com" in app
+
+
+SECTIONS = UI / "smoke" / "sections"
+GENERATOR = UI / "smoke" / "sections.mjs"
+
+#: A section, as a card in a wave writes one: a file of its own, named after what
+#: it pins. The BODY is irrelevant to the property under test — what is tested is
+#: that two cards adding one each never touch a shared line.
+A_SECTION = """import type {{ Check, Fixture, Harness }} from "./section";
+
+export async function run(_fixture: Fixture, check: Check, _h: Harness): Promise<void> {{
+  check("{slug}", true);
+}}
+"""
+
+needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, text=True, check=False
+    )
+
+
+@needs_node
+@needs_git
+def test_two_cards_adding_a_smoke_section_in_parallel_do_not_conflict(tmp_path: Path) -> None:
+    """The property the whole `sections/` shape was bought for.
+
+    The appendix it replaced (`ui/smoke/main.tsx`, ~2.300 lines, appended to by
+    every UI card) made this case conflict BY CONSTRUCTION: tk-a1b7f2 × tk-63f919
+    produced a 293-line conflict block, and the same merge auto-STACKED two
+    `const reviewed` declarations in one scope — a "clean" merge that only tsc
+    caught. Both are impossible here, and if a future refactor quietly brings the
+    appendix back this is the test that says so.
+    """
+    repo = tmp_path / "repo"
+    (repo / "sections").mkdir(parents=True)
+    for real in sorted(SECTIONS.glob("*.ts*")):
+        if real.name != "index.generated.ts":
+            shutil.copy(real, repo / "sections" / real.name)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "the sections as they stand")
+    trunk = _git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+
+    for card in ("tk-aaa111-pane", "tk-bbb222-rail"):
+        _git(repo, "checkout", "-q", "-b", card, trunk)
+        (repo / "sections" / f"{card}.tsx").write_text(
+            A_SECTION.format(slug=card), encoding="utf-8"
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", f"{card}: one section file, nothing else")
+
+    _git(repo, "checkout", "-q", trunk)
+    for card in ("tk-aaa111-pane", "tk-bbb222-rail"):
+        merged = _git(repo, "merge", "--no-edit", card)
+        assert merged.returncode == 0, merged.stdout + merged.stderr
+    # git's own word for "a path is conflicted", not a guess from the exit code.
+    assert _git(repo, "ls-files", "-u").stdout == ""
+
+    generated = subprocess.run(
+        ["node", str(GENERATOR), str(repo / "sections")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert generated.returncode == 0, generated.stderr
+    index = (repo / "sections" / "index.generated.ts").read_text(encoding="utf-8")
+    for card in ("tk-aaa111-pane", "tk-bbb222-rail"):
+        assert f'"{card}"' in index, index
+    # Deterministic: filename order, so no section "goes first" by merge accident.
+    slugs = [line.split('"')[1] for line in index.splitlines() if line.startswith('  [')]
+    assert slugs == sorted(slugs), slugs
+    assert len(slugs) == len(list(SECTIONS.glob("*.tsx"))) + 2
+
+
+@needs_node
+def test_the_run_order_is_the_filename_order_whatever_the_filesystem_says() -> None:
+    """`order()` is pure and separate from the `readdir` for this reason: APFS
+    hands names back sorted and ext4 hands them back in hash order, so a test
+    that reads a real directory pins the filesystem, not the rule. Mutation-checked:
+    dropping `.sort()` is invisible against a directory here and red against this."""
+    said = subprocess.run(
+        [
+            "node",
+            "--input-type=module",
+            "-e",
+            f"const m = await import({str(GENERATOR)!r});"
+            ' console.log(JSON.stringify(m.order(["z.tsx", "a.tsx", "index.generated.ts",'
+            ' "section.ts", "m.ts", "notes.md"])));',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert said.returncode == 0, said.stderr
+    assert json.loads(said.stdout) == ["a.tsx", "m.ts", "z.tsx"], said.stdout
+
+
+@needs_node
+def test_two_section_files_claiming_one_slug_are_refused_loudly(tmp_path: Path) -> None:
+    """One name, one section — the §9 bug (two workers, one number) reborn as an
+    extension collision, which is the case the filesystem does NOT catch."""
+    where = tmp_path / "sections"
+    where.mkdir()
+    shutil.copy(SECTIONS / "section.ts", where / "section.ts")
+    (where / "swarm.tsx").write_text(A_SECTION.format(slug="swarm"), encoding="utf-8")
+    (where / "swarm.ts").write_text(A_SECTION.format(slug="swarm"), encoding="utf-8")
+
+    refused = subprocess.run(
+        ["node", str(GENERATOR), str(where)], capture_output=True, text=True, check=False
+    )
+    assert refused.returncode != 0
+    assert 'two files claim the slug "swarm"' in refused.stderr, refused.stderr
+    assert not (where / "index.generated.ts").exists()
+
+
+@needs_git
+def test_the_generated_section_index_is_never_committed() -> None:
+    """It is written by `sections.mjs` on every build and gitignored: a generated
+    list cannot conflict, and a hand-edited one IS the appendix."""
+    ignored = subprocess.run(
+        ["git", "check-ignore", "ui/smoke/sections/index.generated.ts"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ignored.returncode == 0, "the generated index must be gitignored"
+    tracked = subprocess.run(
+        ["git", "ls-files", "ui/smoke/sections/index.generated.ts"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert tracked.stdout == "", "the generated index is committed — it must not be"
 
 
 _ = T0, _clock

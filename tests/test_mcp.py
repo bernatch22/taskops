@@ -271,6 +271,62 @@ def test_with_two_chapters_open_the_board_names_both(repo: Path, boards: Any) ->
     assert "pass milestone=<id> to focus one" in text
 
 
+def waving(dev: Any) -> list[dict[str, Any]]:
+    """Two ready cards that name the same concept with disjoint declared files —
+    the two `gitwork/remote.py` cards of ARCHITECTURE.md §16, reproduced."""
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "the forge",
+            "goal": "link out to github",
+            "tasks": [
+                {"title": "links", "spec": "check `git remote get-url origin`", "files": ["a.py"]},
+                {"title": "pushes", "spec": "we check `git remote get-url origin`", "files": ["b.py"]},
+            ],
+        },
+    )
+    return list(out["cards"])
+
+
+def test_the_board_names_the_wave_under_take(repo: Path, boards: Any) -> None:
+    """Advice where the fan-out is decided, not per-take after the dispatch."""
+    dev = boards(BERNA)
+    first, second = waving(dev)
+    text = call(dev, repo, "taskops_board", milestone="the forge")
+    listed = text[text.index("TAKE —") : text.index("─ ◆")]
+    assert f"▸ safe to dispatch together: {first['id']}" in listed
+    assert f"held: {second['id']} (names git remote get-url origin with {first['id']})" in listed
+
+
+def test_one_ready_card_draws_no_wave_line(repo: Path, boards: Any) -> None:
+    dev, cards = seeded(boards)
+    dev.call("assign", {"tasks": [cards[0]["id"]]})  # leaves exactly one ready card
+    assert "safe to dispatch together" not in call(dev, repo, "taskops_board")
+
+
+def test_an_assign_the_wave_holds_apart_warns_and_proceeds(repo: Path, boards: Any) -> None:
+    """Rule 1 of the chapter: a warning is never a lock. The briefs carry the
+    sentence, and both cards are assigned all the same."""
+    dev = boards(BERNA)
+    first, second = waving(dev)
+    text = call(
+        dev, repo, "taskops_assign", tasks=[first["id"], second["id"]], worktrees=False
+    )
+    assert f"⚠ the wave holds this apart from {first['id']}" in text
+    assert "the same concept — git remote get-url origin" in text
+    assert "nothing is blocked" in text
+    # …and it went through: two briefs, two owners on the board.
+    assert text.count("spawn one sub-agent with this") == 2
+    cards = dev.call("board", {"milestone": "the forge"})["groups"]
+    assert [row["assignee"] for row in cards["stalled"]] == ["agent:berna/w1", "agent:berna/w2"]
+
+
+def test_an_assign_the_wave_leaves_alone_carries_no_warning(repo: Path, boards: Any) -> None:
+    dev, cards = seeded(boards)
+    text = call(dev, repo, "taskops_assign", tasks=[cards[0]["id"]], worktrees=False)
+    assert "the wave holds this apart" not in text
+
+
 def test_dispatch_returns_a_self_contained_brief(repo: Path, boards: Any) -> None:
     dev, cards = seeded(boards)
     text = call(dev, repo, "taskops_assign", tasks=[cards[0]["id"]], worktrees=False)
@@ -393,16 +449,15 @@ def test_merge_refuses_before_git_ever_runs_when_the_card_is_not_done(
     assert not (repo / ".taskops" / "trees").exists()  # git never even started
 
 
-def test_merge_names_a_stale_branch_instead_of_reporting_its_conflict(
-    repo: Path, boards: Any
-) -> None:
-    """A card that never pulled its chapter in came back as a CONFLICT about a
-    file, and "you are behind" was nowhere in it — one session paid six round
-    trips to that, four workers each told by hand what `merge-base
-    --is-ancestor` says. The refusal names the branch, the distance, and the two
-    commands; it does not merge or rebase on the worker's behalf."""
-    from taskops.gitwork import run, trees
+def behind_by_one(
+    repo: Path, boards: Any, *, card_file: str = "card.py"
+) -> tuple[LocalBoard, str, str, str, Path]:
+    """A done card with a commit of its own, one commit behind its chapter.
 
+    The chapter adds `shared.py`; the card writes `card_file` — its own file in
+    the clean case, `shared.py` in the conflicting one. That name is the ONLY
+    difference between the two.
+    """
     dev, cards = seeded(boards)
     card = cards[0]["id"]
     dev.call("assign", {"tasks": [card], "workers": ["w1"]})
@@ -424,25 +479,117 @@ def test_merge_names_a_stale_branch_instead_of_reporting_its_conflict(
 
     # the chapter moves on; the card's branch is cut from where main was
     tree = trees.ensure_card(repo, card, card_branch, stone_branch)
+    if card_file:
+        (tree / card_file).write_text("VAT = 10\n", encoding="utf-8")
+        run.must("add", "-A", cwd=tree)
+        run.must("commit", "-q", "-m", "the card's own line", cwd=tree)
     integration = trees.integration_tree(repo, stone_branch)
     (integration / "shared.py").write_text("VAT = 21\n", encoding="utf-8")
     run.must("add", "-A", cwd=integration)
     run.must("commit", "-q", "-m", "chapter moves", cwd=integration)
+    assert trees.behind(repo, stone_branch, card_branch) == 1
+    return dev, card, stone_branch, card_branch, tree
+
+
+def test_a_behind_but_clean_card_integrates_itself_in_one_call(
+    repo: Path, boards: Any
+) -> None:
+    """The board used to DIAGNOSE this and refuse, printing two commands the
+    human then executed unchanged — ~9 times in two days. When the diagnosis and
+    the remedy are both the board's, refusing is toil, so the catch-up runs
+    here: one taskops_merge call, no human git, and the chapter branch ends up
+    carrying both the catch-up and the --no-ff integration merge."""
+    dev, card, stone_branch, card_branch, tree = behind_by_one(repo, boards)
+
+    out = call(dev, repo, "taskops_merge", task=card)
+
+    assert stone_branch in out
+    # the catch-up happened in the CARD's own worktree, unasked
+    assert (tree / "shared.py").exists()
+    card_log = run.must("log", "--format=%s", card_branch, cwd=repo).splitlines()
+    assert any(line.startswith(f"Merge branch '{stone_branch}'") for line in card_log)
+    # ...and the chapter carries the integration merge on top of it
+    integration = trees.integration_tree(repo, stone_branch)
+    assert (integration / "card.py").exists()
+    assert f"merge {card}" in run.must("log", "--format=%s", cwd=integration).splitlines()
+    assert any(  # the board recorded the integration, not just git
+        e.get("kind") == "merged" for e in dev.call("events", {"task": card}).get("events", [])
+    )
+
+
+def test_a_catch_up_that_conflicts_names_both_the_distance_and_gits_own_words(
+    repo: Path, boards: Any
+) -> None:
+    """Merged blind, a stale branch comes back as a conflict about a FILE with
+    the real cause nowhere in it — that is why the refusal existed and why it
+    still carries the behind-count. What it adds is git's own conflict list, and
+    what it guarantees is that the worktree is left aborted-clean: no MERGE_HEAD
+    for the worker to walk into."""
+    dev, card, stone_branch, _branch, tree = behind_by_one(repo, boards, card_file="shared.py")
 
     with pytest.raises(Refused) as refusal:
         call(dev, repo, "taskops_merge", task=card)
+
     said = str(refusal.value)
     assert f"{card} is 1 commit behind {stone_branch}" in said  # counted, not just "behind"
+    assert "shared.py" in said  # git's own conflict file
     assert f"cd {trees.card_tree(repo, card)} && git merge {stone_branch}" in said
     assert f"taskops_merge task={card} again" in said
-    # refused, never repaired: the card's branch is still the worker's, untouched
-    assert trees.behind(repo, stone_branch, card_branch) == 1
+    assert not _merging(tree)  # aborted clean
+    assert run.git("status", "--porcelain", cwd=tree).out == ""
 
-    # ...and once the worker does exactly that, the merge proceeds as before
+
+def _merging(tree: Path) -> bool:
+    return run.git("rev-parse", "--verify", "--quiet", "MERGE_HEAD", cwd=tree).ok
+
+
+def test_a_dirty_worktree_is_never_touched_and_gets_todays_refusal_verbatim(
+    repo: Path, boards: Any
+) -> None:
+    """The card is done, but somebody may be mid-thought in its directory. Nothing
+    is attempted, so the message is exactly the one from before the catch-up."""
+    dev, card, stone_branch, card_branch, tree = behind_by_one(repo, boards)
+    (tree / "scratch.py").write_text("half a thought\n", encoding="utf-8")
+    before = run.git("status", "--porcelain", cwd=tree).out
+
+    with pytest.raises(Refused) as refusal:
+        call(dev, repo, "taskops_merge", task=card)
+
+    assert str(refusal.value) == (
+        f"{card} is 1 commit behind {stone_branch} — merge it in your own worktree first:\n"
+        f"  cd {trees.card_tree(repo, card)} && git merge {stone_branch}\n"
+        f"then taskops_merge task={card} again"
+    )
+    assert run.git("status", "--porcelain", cwd=tree).out == before  # untouched
+    assert trees.behind(repo, stone_branch, card_branch) == 1  # not caught up either
+
+
+def test_a_missing_worktree_is_refused_and_never_conjured(repo: Path, boards: Any) -> None:
+    """A worktree is cut by assign, not by an integration. If it is gone, the
+    board says what it said before and creates nothing."""
+    dev, card, stone_branch, _branch, tree = behind_by_one(repo, boards)
+    run.must("worktree", "remove", "--force", str(tree), cwd=repo)
+    assert not tree.exists()
+
+    with pytest.raises(Refused, match="behind"):
+        call(dev, repo, "taskops_merge", task=card)
+
+    assert not tree.exists()  # nothing conjured
+
+
+def test_a_card_that_is_not_behind_takes_exactly_the_path_it_always_did(
+    repo: Path, boards: Any
+) -> None:
+    """The catch-up is reachable only through `behind` — 0 commits behind and
+    nothing new runs at all."""
+    dev, card, stone_branch, card_branch, tree = behind_by_one(repo, boards)
     run.must("merge", "-q", "--no-edit", stone_branch, cwd=tree)
+    head = run.must("rev-parse", "HEAD", cwd=tree)
+
     out = call(dev, repo, "taskops_merge", task=card)
+
     assert stone_branch in out
-    assert (integration / "shared.py").exists()
+    assert run.must("rev-parse", "HEAD", cwd=tree) == head  # no second merge commit
 
 
 def test_a_milestones_criteria_travel_into_every_take_the_way_rules_do(
@@ -918,3 +1065,313 @@ def test_a_chapter_whose_cards_are_all_integrated_can_land(
     monkeypatch.setattr(trees, "land_milestone", lambda *_: ("master", "abc123"))
     text = call(dev, repo, "taskops_merge", milestone=stone)
     assert "master" in text  # it landed; the settled card was not read as open work
+
+
+# ── one call integrates the chapter ─────────────────────────────────────────
+
+
+def three_done(repo: Path, boards: Any, *, clash: bool = False) -> tuple[
+    LocalBoard, list[str], str, dict[str, Path]
+]:
+    """Three done cards, each one commit behind its chapter.
+
+    `behind_by_one` one card wider, and deliberately not folded into it: that
+    helper is the single-card catch-up's own fixture and its shape (one card,
+    one file name knob) is what those tests read. With `clash`, the SECOND card
+    writes the same file the chapter did, so its catch-up conflicts — the batch
+    stops in the middle rather than at either end.
+    """
+    dev, cards = seeded(boards)
+    ids = [str(c["id"]) for c in cards]
+    dev.call("assign", {"tasks": ids, "workers": ["w1", "w2", "w3"]})
+    for n, card in enumerate(ids, 1):
+        worker = boards(f"agent:berna/w{n}")
+        worker.call("take", {"task": card})
+        dev.call("bind", {"task": card, "sha": f"a1b2c{n}", "subject": f"feat: {n}"})
+        worker.call("update", {"task": card, "status": "done", "comment": "done"})
+
+    run.must("init", "-q", "-b", "main", str(repo))
+    run.must("config", "user.email", "test@example.com", cwd=repo)
+    run.must("config", "user.name", "Test", cwd=repo)
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    run.must("add", "README.md", cwd=repo)
+    run.must("commit", "-q", "-m", "first", cwd=repo)
+
+    stone_branch = str(dev.call("card", {"task": ids[0]})["milestone"]["branch"])
+    cut: dict[str, Path] = {}
+    for n, card in enumerate(ids, 1):
+        branch = str(dev.call("card", {"task": card})["branch"])
+        tree = trees.ensure_card(repo, card, branch, stone_branch)
+        name = "shared.py" if clash and n == 2 else f"card{n}.py"
+        (tree / name).write_text(f"X = {n}\n", encoding="utf-8")
+        run.must("add", "-A", cwd=tree)
+        run.must("commit", "-q", "-m", f"card {n}", cwd=tree)
+        cut[card] = tree
+
+    integration = trees.integration_tree(repo, stone_branch)
+    (integration / "shared.py").write_text("VAT = 21\n", encoding="utf-8")
+    run.must("add", "-A", cwd=integration)
+    run.must("commit", "-q", "-m", "chapter moves", cwd=integration)
+    return dev, ids, stone_branch, cut
+
+
+class TestOneCallIntegratesTheChapter:
+    """`taskops_merge tasks=[…]` and `done=true` — the batch. It adds no second
+    merge implementation: every card goes through the single-card path, catch-up
+    included, so a batch of one is byte-for-byte a `task=` call."""
+
+    def test_tasks_integrate_in_order_through_the_single_card_path(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, ids, stone_branch, _cut = three_done(repo, boards)
+
+        out = call(dev, repo, "taskops_merge", tasks=ids)
+
+        assert "3 of 3 integrated" in out
+        for card in ids:  # per card, and a sha, not just a count
+            assert f"{card}  merged " in out
+        integration = trees.integration_tree(repo, stone_branch)
+        subjects = run.must("log", "--format=%s", cwd=integration).splitlines()
+        # the chapter carries one --no-ff merge per card, newest first: the ORDER given
+        assert [s for s in subjects if s.startswith("merge tk-")] == [
+            f"merge {card}" for card in reversed(ids)
+        ]
+        for n in (1, 2, 3):  # each card's own file arrived
+            assert (integration / f"card{n}.py").exists()
+        for card in ids:  # ...and the board recorded every one of them
+            events = dev.call("events", {"task": card})["events"]
+            assert any(e.get("kind") == "merged" for e in events)
+
+    def test_done_true_resolves_the_merge_group_itself(self, repo: Path, boards: Any) -> None:
+        """The orchestrator names nothing: the cards are the ones the board
+        already groups under MERGE, in that group's own order."""
+        dev, ids, stone_branch, _cut = three_done(repo, boards)
+        assert [r["id"] for r in dev.call("board", {})["groups"]["merge"]] == ids
+
+        out = call(dev, repo, "taskops_merge", done=True)
+
+        assert "3 of 3 integrated" in out
+        integration = trees.integration_tree(repo, stone_branch)
+        subjects = run.must("log", "--format=%s", cwd=integration).splitlines()
+        assert [s for s in subjects if s.startswith("merge tk-")] == [  # the GROUP's order
+            f"merge {card}" for card in reversed(ids)
+        ]
+        assert not dev.call("board", {})["groups"]["merge"]  # the group emptied itself
+
+    def test_a_failure_stops_the_batch_there_and_a_re_run_continues(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """Partial completion is real and not rollback-able — each merge that went
+        through is a --no-ff commit and a `merged` event. So the answer says which
+        of the three happened, and the re-run picks up exactly where it stopped."""
+        dev, ids, stone_branch, cut = three_done(repo, boards, clash=True)
+
+        out = call(dev, repo, "taskops_merge", done=True)
+
+        assert f"{ids[0]}  merged " in out
+        # the refusal VERBATIM inside the report — head, git's own conflict file
+        # and the tail that names the only person who can resolve it
+        assert f"{ids[1]}  stopped: {ids[1]} is " in out
+        assert f"behind {stone_branch}, and catching it up conflicts in:" in out
+        assert "shared.py" in out
+        assert "only the worker can resolve this" in out
+        assert f"{ids[2]}  not reached" in out
+        assert "1 of 3 integrated" in out
+        integration = trees.integration_tree(repo, stone_branch)
+        assert (integration / "card1.py").exists()
+        assert not (integration / "card3.py").exists()  # nothing past the stop
+
+        # the worker resolves its own conflict, exactly as the refusal says
+        tree = cut[ids[1]]
+        run.git("merge", "--no-edit", stone_branch, cwd=tree)
+        run.must("checkout", "--ours", "shared.py", cwd=tree)
+        run.must("add", "shared.py", cwd=tree)
+        run.must("commit", "-q", "--no-edit", cwd=tree)
+
+        again = call(dev, repo, "taskops_merge", done=True)
+
+        assert "2 of 2 integrated" in again  # the first card is no longer in the group
+        assert f"{ids[1]}  merged " in again and f"{ids[2]}  merged " in again
+        assert (integration / "card3.py").exists()
+
+    def test_an_empty_merge_group_answers_honestly_and_errors_on_nothing(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, _cards = seeded(boards)
+        assert "Nothing to integrate" in call(dev, repo, "taskops_merge", done=True)
+
+    def test_tasks_with_no_card_in_it_names_both_spellings(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, _cards = seeded(boards)
+        with pytest.raises(BadRequest) as refusal:
+            call(dev, repo, "taskops_merge", tasks=[])
+        assert "tasks=[tk-a, tk-b]" in str(refusal.value)
+        assert "done=true" in str(refusal.value)
+
+    def test_both_spellings_are_declared_where_a_caller_discovers_them(self) -> None:
+        props = SCHEMAS["taskops_merge"]["properties"]
+        assert {"task", "tasks", "done"} <= set(props)
+        assert "tasks" in tools.BY_NAME["taskops_merge"].description
+
+
+# ── a chapter lands over a moved trunk ──────────────────────────────────────
+
+DOCS = ("ARCHITECTURE.md", "CLAUDE.md")
+
+
+def chapter_ready_to_land(
+    repo: Path, boards: Any, *, clash: bool = False, criteria: list[str] | None = None
+) -> tuple[LocalBoard, str, str, Path]:
+    """A FINISHED chapter — one card, done and already integrated — over a real
+    repo whose trunk (`master`) has MOVED since the chapter was cut.
+
+    `clash` reproduces the two-sided docs edit verbatim: the chapter and the
+    trunk both rewrite ARCHITECTURE.md and CLAUDE.md, which is what conflicted
+    twice in two days. Without it the trunk's commit is pure drift and the
+    catch-up is clean. Returns (dev, milestone id, milestone branch, integration
+    worktree).
+    """
+    run.must("init", "-q", "-b", "master", str(repo))
+    run.must("config", "user.email", "test@example.com", cwd=repo)
+    run.must("config", "user.name", "Test", cwd=repo)
+    for name in DOCS:
+        (repo / name).write_text(f"{name}: cut here\n", encoding="utf-8")
+    run.must("add", "-A", cwd=repo)
+    run.must("commit", "-q", "-m", "first", cwd=repo)
+
+    dev = boards(BERNA)
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "MVP",
+            "goal": "invoice a bank CSV",
+            "criteria": criteria or [],
+            "tasks": [{"title": "VAT", "spec": "the whole tax"}],
+        },
+    )
+    stone, card = str(out["milestone"]["id"]), str(out["cards"][0]["id"])
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+
+    dossier = dev.call("card", {"task": card})
+    stone_branch = str(dossier["milestone"]["branch"])
+    tree = trees.ensure_card(repo, card, str(dossier["branch"]), stone_branch)
+    (tree / "card.py").write_text("VAT = 21\n", encoding="utf-8")
+    if clash:  # the chapter legitimately rewrites the same two docs
+        for name in DOCS:
+            (tree / name).write_text(f"{name}: the chapter's line\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "-m", "card", cwd=tree)
+    dev.call("bind", {"task": card, "sha": "a1b2c3", "subject": "feat: VAT"})
+    w1.call("update", {"task": card, "status": "done", "comment": "done"})
+    sha = trees.merge_card(repo, stone_branch, str(dossier["branch"]), card)
+    dev.call("merged", {"task": card, "into": stone_branch, "sha": sha})
+
+    # ...and NOW the trunk moves under it: another chapter landed.
+    for name in DOCS:
+        (repo / name).write_text(f"{name}: the trunk moved on\n", encoding="utf-8")
+    run.must("add", "-A", cwd=repo)
+    run.must("commit", "-q", "-m", "another chapter landed", cwd=repo)
+    return dev, stone, stone_branch, trees.integration_tree(repo, stone_branch)
+
+
+class TestAChapterLandsOverAMovedTrunk:
+    """`gitmoves._land` — the landing gate catches the chapter up to a trunk that
+    moved while it was in flight, on the same `catchup.catch_up` the single-card
+    path uses. Gate first, catch-up second, land third."""
+
+    def test_a_chapter_behind_a_clean_trunk_catches_up_and_lands_in_one_call(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """No human runs git: one call, and master carries both the trunk's own
+        commit and the chapter."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards)
+        assert trees.behind_trunk(repo, stone_branch) == ("master", 1)
+
+        text = call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert "master" in text
+        subjects = run.must("log", "--format=%s", cwd=repo).splitlines()
+        assert f"land {stone_branch}" == subjects[0]
+        assert "another chapter landed" in subjects  # the trunk's commit survived
+        assert (repo / "card.py").exists()  # ...and so did the chapter's work
+        # the catch-up happened in the integration worktree, not the checkout
+        assert f"Merge branch 'master' into {stone_branch}" in run.must(
+            "log", "--format=%s", cwd=tree
+        ).splitlines()
+
+    def test_the_two_sided_docs_conflict_refuses_and_master_is_untouched(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """The reproduction, verbatim: ARCHITECTURE.md and CLAUDE.md written by
+        both sides. It still aborts and still refuses — what is new is only the
+        behind-count, so the cause is in the sentence."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards, clash=True)
+        before = run.must("rev-parse", "master", cwd=repo)
+
+        with pytest.raises(Refused) as refusal:
+            call(dev, repo, "taskops_merge", milestone=stone)
+
+        said = str(refusal.value)
+        assert f"{stone_branch} is 1 commit behind master" in said
+        for name in DOCS:
+            assert f"  {name}" in said
+        assert "master is untouched" in said
+        assert f"taskops_merge milestone={stone} again" in said
+        assert run.must("rev-parse", "master", cwd=repo) == before  # byte for byte
+        assert not run.dirty(tree)  # aborted, never left mid-merge for somebody to find
+        assert not (tree / ".git").exists() or not (tree / "MERGE_HEAD").exists()
+
+    def test_the_criteria_refusal_comes_before_any_git_runs(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """The chapter's criteria are the human's question and the catch-up is
+        git: unanswered and behind, the criteria refusal wins and the integration
+        worktree's HEAD has not moved."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(
+            repo, boards, criteria=["all three tabs render"]
+        )
+        before = run.must("rev-parse", "HEAD", cwd=tree)
+
+        with pytest.raises(Refused, match="criteria_met=true") as refusal:
+            call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert "all three tabs render" in str(refusal.value)
+        assert run.must("rev-parse", "HEAD", cwd=tree) == before  # no merge ran
+
+        call(dev, repo, "taskops_merge", milestone=stone, criteria_met=True)
+        assert run.must("rev-parse", "HEAD", cwd=tree) != before  # answered: now it caught up
+
+    def test_a_chapter_level_with_the_trunk_takes_todays_path_byte_for_byte(
+        self, repo: Path, boards: Any
+    ) -> None:
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards)
+        run.must("merge", "--no-edit", "master", cwd=tree)  # already caught up by hand
+        before = run.must("rev-parse", "HEAD", cwd=tree)
+        assert trees.behind_trunk(repo, stone_branch) == ("master", 0)
+
+        call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert run.must("rev-parse", "HEAD", cwd=tree) == before  # nothing was merged into it
+        assert f"land {stone_branch}" == run.must("log", "--format=%s", cwd=repo).splitlines()[0]
+
+    def test_a_dirty_integration_worktree_is_never_touched(
+        self, repo: Path, boards: Any
+    ) -> None:
+        """Somebody may be mid-thought in there even though every card is done.
+        Blocked is not a refusal of its own: the landing falls through to exactly
+        today's behaviour and `land_milestone`'s own conflict message speaks."""
+        dev, stone, stone_branch, tree = chapter_ready_to_land(repo, boards, clash=True)
+        (tree / "scratch.txt").write_text("mid-thought\n", encoding="utf-8")
+        run.must("add", "-A", cwd=tree)
+        before = run.must("rev-parse", "HEAD", cwd=tree)
+
+        with pytest.raises(Refused) as refusal:
+            call(dev, repo, "taskops_merge", milestone=stone)
+
+        assert f"{stone_branch} conflicts with master in:" in str(refusal.value)  # today's words
+        assert "behind master" not in str(refusal.value)  # nothing was attempted
+        assert run.must("rev-parse", "HEAD", cwd=tree) == before
+        assert (tree / "scratch.txt").read_text(encoding="utf-8") == "mid-thought\n"

@@ -108,7 +108,7 @@ const MODES: readonly { id: PatchMode; name: string }[] = [
 /** What this page asks `FilesChanged` for. A function, exported, because it is
  *  the one place the PAGE's measurements are chosen — and no handler fires under
  *  `react-dom/server`, so left inline it would be a decision with no test
- *  (`ui/smoke/main.tsx` §9, and `submit()`'s reasoning in CLAUDE.md). `size` is
+ *  (`ui/smoke/sections/diff-page.tsx`, and `submit()`'s reasoning in CLAUDE.md). `size` is
  *  fixed: this surface is the page, always. Only the mode is the reader's. */
 export function pageView(mode: PatchMode): PatchView {
   return { size: "page", mode };
