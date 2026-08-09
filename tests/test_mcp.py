@@ -765,6 +765,7 @@ def test_repo_path_never_reaches_a_verb(repo: Path, boards: Any) -> None:
 def remote_pair(tmp_path: Path) -> Iterator[tuple[BoardServer, Path, Path]]:
     """A real HTTP board on a real port, a real work repo, a real bare origin."""
     httpd = http_serve(tmp_path / "boards", "127.0.0.1", 0)
+    httpd.mounts.create(REMOTE_BOARD)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     root = git_repo(tmp_path)
@@ -859,6 +860,7 @@ def test_with_no_origin_the_card_still_closes_and_nothing_is_pushed(
     the board move is untouched and git is never even asked to push — a push is
     never a gate, so its absence can never be one either."""
     httpd = http_serve(tmp_path / "boards", "127.0.0.1", 0)
+    httpd.mounts.create(REMOTE_BOARD)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:

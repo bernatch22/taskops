@@ -39,6 +39,9 @@ taskops init                # .taskops/board/ (log + 2 sqlite files), 2 git hook
 **Remote — a team, one shared board.**
 
 ```sh
+# once, ON THE HOST — the only ssh in this design: it is where trust enters
+taskops server init --root ~/taskops-boards --key ~/.ssh/id_ed25519.pub
+
 taskops serve --root ~/taskops-boards &              # host: /rpc, /feed, /healthz — no dashboard
 taskops invite ana --board my-project                # one-time link, 7 days (--revoke <id>)
 ```
