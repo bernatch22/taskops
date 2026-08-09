@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **80 Python files / ~8.500 lines under `src/taskops`**, plus the
+~340 files) as **84 Python files / ~9.000 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**321 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 320+1; see below), ruff +
+**328 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 327+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -156,15 +156,17 @@ presence.
 ```
 0  _errors _ids _clock _json _locate _version      stdlib only
 1  core/    types actors event replay machine graph    PURE: no I/O at all
-            hours mentions review
+            hours mentions review scope
 2  store/   log cache live reviews creds stores       the ONLY SQL
+            server pubkeys  (the HOST's own identity)
 3  verbs/   plan take update card pulse assign         + the REGISTRY
             record report review _mentions _waiting project events   no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees remote trailer bind install diff   the ONLY git (client-side)
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread boards fields
    http/    server mounts rpc auth feed static gitdoor upstream
-6  cli/     commands (init join hook) · serving (serve invite ui) · claude wording
+6  cli/     commands (init join hook) · serving (serve invite ui) · admin (server init)
+            · claude wording
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
@@ -180,7 +182,16 @@ the budget, split it where it is cohesive, never relax the rule.
 <board>/cache.sqlite   derived, disposable (delete it, it rebuilds)
 <board>/live.sqlite    leases + presence — separate file ON PURPOSE:
                        clearing the cache must never drop a live claim
+
+<root>/server.sqlite   the HOST itself: principals (owner | member) + pubkeys
+<root>/allowed_signers DERIVED from it, whole, on every change — the exact
+                       file `ssh-keygen -Y verify` consumes. Never hand-edited,
+                       never read back into the store (`store/server.py`).
 ```
+
+A board is created by an explicit act and never by being asked for: an unknown
+name is 404 with NO directory left behind (`http/mounts.py::stores` carries the
+post-mortem; `Mounts.create` is the only door that makes one).
 
 Event ids are `sha256(canonical)[:32]`, so the log is idempotent and a repeated
 write is a no-op. Replay sorts by `ts` with a STABLE sort — ties keep arrival
@@ -196,8 +207,10 @@ uv run python -m taskops.cli serve --root <dir>
 uv run python -m taskops.cli join "http://host/<board>?token=…"
 ```
 
-The CLI is like git: `init join serve invite tidy ui` + `hook` (the two git
-hooks, `trailer` and `commit`, plus the delivery hook `claude`).
+The CLI is like git: `init join serve invite tidy ui` + `server init` (bootstrap
+a HOST's owner from an ssh pubkey — the one command meant to run over ssh) +
+`hook` (the two git hooks, `trailer` and `commit`, plus the delivery hook
+`claude`).
 Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 ## Working here

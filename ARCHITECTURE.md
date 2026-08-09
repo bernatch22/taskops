@@ -201,6 +201,7 @@ flowchart TB
         replay["replay — fold(events) → State"]
         machine["machine — transition guards"]
         graph["graph — ready/blocked/doing/stalled"]
+        scope["scope — the SERVER-scope roles: owner | member | anon"]
         mentionsm["mentions — who was named and has not answered"]
         reviewm["review — submitted/reviewed folded into a Standing"]
         hours["hours — working-time math"]
@@ -210,7 +211,9 @@ flowchart TB
         cache["cache.sqlite — derived, disposable"]
         live["live.sqlite — leases + presence, NEVER disposable"]
         reviewsdb["reviews — the REVIEW lease, a second mutex in live.sqlite"]
-        creds["creds — invite tokens"]
+        creds["creds — invite tokens, per board"]
+        serverdb["server.sqlite — the HOST's principals + pubkeys, and allowed_signers derived from them"]
+        pubkeysm["pubkeys — the ssh key grammar: parse, fingerprint, name"]
         stores["stores.py — journal → index → fold, in that order"]
     end
     subgraph L3["3 · verbs (+ the REGISTRY)"]
@@ -233,7 +236,7 @@ flowchart TB
         httpsrv["http/server, mounts, rpc, auth, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join · hook   ·   serving: serve · invite · ui"]
+        cli["commands: init · join · hook   ·   serving: serve · invite · ui   ·   admin: server init"]
     end
 
     L1 --> L0
@@ -295,6 +298,38 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 | `review` | write | both | — (optional review: claim a submitted card, or record the verdict. A verifier is an ordinary agent — there is no reviewer role) |
 | `bind` | write | both | (internal — the git hooks call it) |
 | `project` | write | both | (internal — `taskops init` / `taskops join` record where the repo lives on the web; a board-level fact, `op=remote`) |
+
+**Server scope is a SECOND registry, in the same shape** (`core/scope.py`,
+added 2026-08-09). `verbs/__init__.py` answers *what may you do on a board*;
+`scope.py` answers *what may you do to the HOST* — create a board, list them,
+register a key, mint an invite. Three roles and no fourth: `owner` (the
+principal that bootstrapped this host), `member` (a registered key that is not
+the owner), `anon` (no credential — reads a public board, writes nothing).
+GitHub's model, deliberately. `scope.permit(operation, role)` is the one gate
+and its refusal names the role that may **and how a key gets registered**.
+
+**No board comes into existence by accident** (the hole closed on 2026-08-09,
+found the day before). `http/mounts.py::stores()` used to do
+`Stores(self.root / name)` for any name matching the pattern, and `Stores`
+makes its own directory — while `http/server.py` calls `mounts.check(board)`
+BEFORE `self._credential(...)`. So an anonymous request for a name nobody had
+ever used left a board directory with a cache and a lease file on the server's
+disk: a write caused by a stranger's question. `stores()` now only OPENS; an
+unknown board is 404 with no side effect
+(`tests/test_topology.py::test_an_unknown_board_is_404_and_leaves_nothing_on_disk`),
+and creation is `Mounts.create()`, reached only through the owner-only
+`board.create` operation.
+
+**The one ssh in the design.** `taskops server init --root <dir> --key
+<path.pub>` (`cli/admin.py`) writes the first principal as owner and is meant
+to be run on the host itself. Trust has to enter through a channel that
+predates the system, and the machine's own shell is that channel: a remote
+bootstrap would need a credential this host does not have yet. Every admin act
+after it is a signed call over the API. The `allowed_signers` file beside
+`server.sqlite` is DERIVED — regenerated whole from the store on every change,
+never hand-edited, never read back into the store — the same relationship
+`cache.sqlite` has to `events.jsonl`. Bearer tokens (`store/creds.py`, per
+board) are untouched: keys are how tokens come to be MINTED.
 
 Every refusal names the call that works. `core/actors.py::role_of` (re-exported
 by `core/types.py`, so `types` stays the one name a caller imports) is the
