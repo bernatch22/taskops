@@ -23,7 +23,7 @@ from taskops import _clock
 from taskops.http import feed
 from taskops.board import RemoteBoard
 from tests.conftest import T0
-from taskops._errors import Refused, BadRequest, Unreachable, TaskopsError
+from taskops._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
 from taskops.http.server import BoardServer, serve
 
 BOARD = "facturador"
@@ -683,6 +683,223 @@ def test_a_re_join_never_demotes_the_owner_it_only_adds_a_key(
     finally:
         store.close()
     assert sign_in(server, "berna", second)["token"]  # the new key signs in too
+
+
+# ── the host is operated from taskops, over its own API ─────────────────────
+#
+# The anomaly the whole chapter exists to kill: every admin act used to be an
+# ssh session. These run against the SAME real server and the SAME real keypair
+# as the login tests above — an owner, a member, and a socket between them.
+
+
+def admin(httpd: BoardServer, token: str, verb: str, args: dict[str, Any]) -> dict[str, Any]:
+    """The root /rpc — the server's OWN door, one segment, no board name."""
+    from taskops import _wire
+
+    return _wire.post(
+        f"{host_of(httpd)}/rpc",
+        {"verb": verb, "args": args},
+        {"Authorization": f"Bearer {token}"},
+        5.0,
+    )
+
+
+@pytest.fixture()
+def owner(server: BoardServer, keyed: Path) -> str:
+    """berna's SESSION token, minted by his key exactly as the CLI mints it."""
+    return str(sign_in(server, "berna", keyed)["token"])
+
+
+def member(server: BoardServer, tmp_path: Path, name: str = "ana") -> tuple[str, Path]:
+    """A second principal, enrolled the way a real join enrols one: an invite
+    redeemed with a pubkey. No fixture writes to the store behind the server."""
+    invite, _ = server.mounts.credentials.mint(f"invite:{name}", BOARD, _clock.now(), once=True)
+    hers = keygen(tmp_path / f"{name}_key")
+    _redeem(url_of(server), invite, name, f"{hers}.pub")
+    return str(sign_in(server, name, hers)["token"]), hers
+
+
+def test_the_owner_creates_a_board_from_the_laptop_and_the_creator_is_recorded(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 1, over a socket with a real signature behind the token: the board
+    exists on the server, it answers /rpc, and it carries WHO made it — the one
+    fact about a board no later event could reconstruct."""
+    made = admin(server, owner, "board.create", {"name": "nuevo"})
+    assert made["board"] == "nuevo" and made["created_by"] == BERNA
+    assert (server.mounts.root / "nuevo").is_dir()
+
+    token, _ = server.mounts.credentials.mint(BERNA, "nuevo", _clock.now())
+    fresh = RemoteBoard(f"http://127.0.0.1:{server.server_address[1]}/nuevo", token, BERNA)
+    assert fresh.call("board", {})["seq"] >= 1
+    assert server.mounts.stores("nuevo").state()["project"]["created"] == {"by": BERNA}
+
+
+def test_creating_a_board_that_exists_is_refused_and_never_answers_ok(
+    server: BoardServer, owner: str
+) -> None:
+    """`Mounts.create` is mkdir(exist_ok=True), so without the refusal "creating"
+    a live board would answer ok and hand its history back as if it were new."""
+    with pytest.raises(Refused, match="already has a board"):
+        admin(server, owner, "board.create", {"name": BOARD})
+    with pytest.raises(BadRequest, match="names are"):
+        admin(server, owner, "board.create", {"name": "../escape"})
+    assert not (server.mounts.root.parent / "escape").exists()
+
+
+def test_a_member_calling_an_owner_verb_is_refused_BY_ROLE(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 2. The refusal names the role that may — and it comes from
+    `core/scope.py::permit`, the same gate `session.mint` goes through, so the
+    rule cannot be re-taken differently at a second call site."""
+    hers, _ = member(server, tmp_path)
+    with pytest.raises(Refused) as refused:
+        admin(server, hers, "board.create", {"name": "suyo"})
+    assert "member may not board.create" in str(refused.value)
+    assert "owner may" in str(refused.value)
+    assert not (server.mounts.root / "suyo").exists()
+
+    for verb, args in (("invite.mint", {"who": "x", "board": BOARD}), ("key.revoke", {"key": "k"})):
+        with pytest.raises(Refused, match="member may not"):
+            admin(server, hers, verb, args)
+
+
+def test_the_owner_lists_every_board_and_a_member_only_their_own(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """"Their own" is DERIVED from the credentials they hold, not a membership
+    table that would have to be kept in step with them."""
+    hers, _ = member(server, tmp_path)
+    admin(server, owner, "board.create", {"name": "otro"})
+
+    seen = admin(server, owner, "board.list", {})
+    assert seen["role"] == "owner"
+    assert [row["name"] for row in seen["boards"]] == [BOARD, "otro"]
+    assert seen["boards"][0]["cards"] == 0 and seen["boards"][0]["seq"] >= 0
+
+    theirs = admin(server, hers, "board.list", {})
+    assert theirs["role"] == "member"
+    assert [row["name"] for row in theirs["boards"]] == [BOARD]  # not `otro`
+
+
+def test_an_invite_minted_over_the_api_joins_end_to_end(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 3: the line printed on the laptop works on another machine. The
+    mint is the board's OWN Credentials — the same machinery the on-box command
+    runs, reached through the API instead of a shell."""
+    made = admin(server, owner, "invite.mint", {"who": "ana", "board": BOARD})
+    assert made["board"] == BOARD and made["id"]
+
+    hers = keygen(tmp_path / "ana_key")
+    got = _redeem(url_of(server), str(made["token"]), "ana", f"{hers}.pub")
+    assert RemoteBoard(url_of(server), got["token"], ANA).call("board", {})["seq"] >= 0
+    assert sign_in(server, "ana", hers)["role"] == "member"
+
+
+def test_an_invite_for_a_board_this_host_does_not_serve_is_refused_at_the_MINT(
+    server: BoardServer, owner: str
+) -> None:
+    """Not at the join, a day later and a machine away from the typo."""
+    with pytest.raises(NotFound, match="no board named"):
+        admin(server, owner, "invite.mint", {"who": "ana", "board": "inventado"})
+    assert not (server.mounts.root / "inventado").exists()
+
+
+def test_revoking_an_invite_takes_it_back_and_a_typo_is_refused_not_swallowed(
+    server: BoardServer, owner: str
+) -> None:
+    """`revoke` is an UPDATE, and an UPDATE that matches nothing succeeds — so a
+    mistyped id used to print "revoked" while the real credential stayed live."""
+    made = admin(server, owner, "invite.mint", {"who": "ana", "board": BOARD})
+    assert admin(server, owner, "invite.revoke", {"invite": made["id"]})["revoked"] is True
+    with pytest.raises(Refused, match="was revoked"):
+        _redeem(url_of(server), str(made["token"]), "ana")
+
+    with pytest.raises(Refused, match="minted no credential"):
+        admin(server, owner, "invite.revoke", {"invite": "notanid"})
+
+
+def test_revoking_a_key_stops_it_signing_anybody_in(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The store rewrites `allowed_signers` whole, so one revoked row is enough:
+    the next `ssh-keygen -Y verify` runs against a file that no longer names it."""
+    hers, key = member(server, tmp_path)
+    fingerprint = [k.fingerprint for k in server.mounts.host.store().keys("ana")][0]
+
+    gone = admin(server, owner, "key.revoke", {"key": fingerprint})
+    assert gone["principal"] == "ana" and gone["revoked"] is True
+    with pytest.raises(TaskopsError):
+        sign_in(server, "ana", key)
+
+    with pytest.raises(Refused, match="no key"):
+        admin(server, owner, "key.revoke", {"key": "SHA256:nothing"})
+
+
+def test_a_board_credential_cannot_operate_the_host_and_the_refusal_names_the_key(
+    server: BoardServer, keyed: Path
+) -> None:
+    """The session is board `*` scoped, so a board token cannot reach this door —
+    and the sentence it gets back is how a key gets registered, not a code."""
+    board_token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    for token in (board_token, ""):
+        with pytest.raises(Refused) as refused:
+            admin(server, token, "board.list", {})
+        assert "--key ~/.ssh/id_ed25519" in str(refused.value)
+
+
+def test_an_unknown_server_verb_names_the_ones_this_host_has(
+    server: BoardServer, owner: str
+) -> None:
+    with pytest.raises(BadRequest, match="board.create, board.list"):
+        admin(server, owner, "board.destroy", {})
+
+
+def test_the_root_rpc_is_the_server_and_a_board_named_rpc_is_still_reachable(
+    server: BoardServer, owner: str
+) -> None:
+    """Why the door is `/rpc` and not `/admin/rpc`: `admin` is a legal board name,
+    so a two-segment door would collide with a real board's own. One segment
+    cannot — and this proves the pair stays apart even for the worst name."""
+    admin(server, owner, "board.create", {"name": "admin"})
+    token, _ = server.mounts.credentials.mint(BERNA, "admin", _clock.now())
+    base = f"http://127.0.0.1:{server.server_address[1]}/admin"
+    status, body = _get_post(base, token, {"verb": "board", "actor": BERNA})
+    assert status == 200 and body["data"]["groups"]["take"] == []
+
+
+def test_the_on_box_commands_survive_as_the_break_glass_path(tmp_path: Path) -> None:
+    """The server being down is exactly when its API cannot be the only door.
+    `--root` runs the same acts against the files, and it is NOT deprecated."""
+    from taskops.cli import main
+    from taskops.store.creds import Credentials
+
+    root = tmp_path / "boards"
+    (root / BOARD).mkdir(parents=True)
+    assert main(["invite", "ana", "--board", BOARD, "--root", str(root)]) == 0
+    creds = Credentials(root / "live.sqlite")
+    try:
+        ident = creds._query("SELECT id FROM credentials", ())[0][0]  # noqa: SLF001
+        assert main(["revoke", "--invite", str(ident), "--root", str(root)]) == 0
+        assert creds._query("SELECT revoked FROM credentials", ())[0][0] == 1  # noqa: SLF001
+    finally:
+        creds.close()
+
+
+def test_readme_operations_use_ssh_only_to_install_and_bootstrap(tmp_path: Path) -> None:
+    """Criterion 4, held by a test because prose rots silently. Every `ssh <host>`
+    left in the README is an install or `server init`; the four admin acts are
+    taskops commands, run from anywhere."""
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    lines = [line.strip() for line in readme.splitlines() if "ssh <host>" in line]
+    allowed = ("venv", "pip install", "rollback", "mkdir -p /tmp", "pm2", "taskops server init")
+    assert lines, "the README still has to say how a host is installed"
+    for line in lines:
+        assert any(word in line for word in allowed), line
+    for command in ("taskops board create", "taskops board ls", "taskops revoke --"):
+        assert command in readme, command
 
 
 # ── the live feed ───────────────────────────────────────────────────────────

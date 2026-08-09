@@ -41,9 +41,17 @@ taskops init                # .taskops/board/ (log + 2 sqlite files), 2 git hook
 ```sh
 # once, ON THE HOST — the only ssh in this design: it is where trust enters
 taskops server init --root ~/taskops-boards --key ~/.ssh/id_ed25519.pub
-
 taskops serve --root ~/taskops-boards &              # host: /rpc, /feed, /healthz — no dashboard
-taskops invite ana --board my-project                # one-time link, 7 days (--revoke <id>)
+```
+
+That is the last shell on the box. Everything after it runs **from your laptop**,
+signed by the key `server init` registered — creating the board included:
+
+```sh
+taskops board create https://host:8787/my-project    # owner only: THE way a board exists
+taskops board ls                                     # what is on that host, and how big
+taskops invite ana --board my-project                # one-time link, 7 days
+taskops revoke --invite <id>                         # or --key SHA256:… to retire a key
 ```
 
 Ana, in **her own** checkout of the same repo:
@@ -60,6 +68,20 @@ hours), the next call signs in again by itself, with nobody asked for anything.
 Delete the file and it comes back. Without `--key` the join is the one it always
 was and the token is a standing one, which is why every board joined before this
 keeps working untouched.
+
+That same session is what `board create`, `board ls`, `invite` and `revoke`
+travel on: they are **server-scope** calls to the host's own `/rpc`
+(`src/taskops/http/admin.py`), authorized by the principal's role — owner,
+member, anon — and not by a board credential, which says nothing about the host.
+A member calling an owner verb is refused naming the role that may. The host is
+taken from `remote.json` when you are in a joined checkout, so no address is
+repeated and there is deliberately **no host-alias registry**: an alias table
+would be a third place a server's address lives, and the first to drift.
+
+**Break-glass, and it is not deprecated.** `--root <dir>` runs `invite` and
+`revoke` against the files, on the machine that holds them — for the day the
+server is down or the owner's key is lost. A system whose only door is its own
+API cannot be repaired when that API is what broke.
 
 The login is OpenSSH's own mechanism, the same one signed commits use: the
 server answers a random single-use challenge, `ssh-keygen -Y sign` signs it, and
@@ -311,6 +333,22 @@ It binds loopback on purpose; TLS and the public name are a reverse proxy's
 job, and the proxy must pass `Upgrade`/`Connection` through or the dashboard's
 live feed silently degrades.
 
+**That is the last ssh.** The two commands above — install and `server init` —
+are where trust enters, because authorising a remote bootstrap would need a
+credential the host does not have yet. Every operation after them is a `taskops`
+command run from wherever you are, signed by the key `server init` registered:
+
+```sh
+taskops board create https://<host>/<name>    # a board exists because the owner made one
+taskops board ls https://<host>               # every board here, with size and last activity
+taskops invite <who> --board <name>           # the join line, minted by the host that honours it
+taskops revoke --invite <id> | --key SHA256:… # take one back
+```
+
+There is no `scp` of an `events.jsonl` in this file and there must not be one:
+storage is an implementation detail, and a file name in an instruction is that
+detail leaking into the interface.
+
 **A host serves no dashboard.** `/rpc`, `/feed` and `/healthz` are the whole
 public surface; `https://<host>/<board>/ui/` answers `410` and one sentence.
 Everybody on the team opens the board the same way, and it is not a URL you
@@ -384,9 +422,12 @@ Two things a host must have that no exit code will tell you:
   touch each board first, then read it. **`/rpc` is what mounts a board**, and
   even a refused one does: `/<board>/ui/` is answered by `http/static.py` before
   any store is opened, so hitting all four `/ui/` leaves the count at 1.
-* A credential per board. `taskops invite <who> --board <name> --root <dir>`
-  prints a one-time link; `taskops join` on the other end burns it and mints
-  that machine's standing token into `.taskops/remote.json` (0600, gitignored).
+* A credential per board. `taskops invite <who> --board <name>` prints a
+  one-time link — over the API, from anywhere, no shell on the box (`--root
+  <dir>` is the break-glass path, run ON the host, for when the API is what
+  broke); `taskops join` on the other end burns it and mints that machine's
+  token into `.taskops/remote.json` (0600, gitignored), a SESSION when the join
+  carried `--key`.
   Verify a fresh host by **counts through the real domain**, never by the
   deploy's exit status:
 

@@ -148,7 +148,7 @@ class Mounts:
         A window onto a remote board opens NOTHING here: the stores belong to the
         server, and building one would be a second, empty board on this disk with
         the same name as the real one."""
-        _named(name)
+        named(name)
         if self.upstream is None:
             self.stores(name)
 
@@ -162,7 +162,7 @@ class Mounts:
         lease file on disk: anonymous, unauthorised, permanent, a write caused by a
         stranger's question. Creation is now a server-scope OPERATION
         (`core/scope.py`: `board.create`), via `create()`."""
-        _named(name)
+        named(name)
         with self._lock:
             if name not in self._boards:
                 if not (self.root / name).is_dir():
@@ -177,7 +177,7 @@ class Mounts:
         """The one door that MAY make a board directory, and it is never on the
         anonymous path: callers gate it with `scope.permit("board.create", …)`.
         Creating one that exists is a no-op, so it is safe to run twice."""
-        _named(name)
+        named(name)
         (self.root / name).mkdir(parents=True, exist_ok=True)
         return self.stores(name)
 
@@ -192,7 +192,7 @@ class Mounts:
         self.host.close()
 
 
-def _named(name: str) -> str:
+def named(name: str) -> str:
     """The name wall, in one place: `check` and `stores` are two doors onto it
     and a second copy of the message would drift from the first."""
     if not NAME.match(name):

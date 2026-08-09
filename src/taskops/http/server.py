@@ -1,30 +1,29 @@
 """The taskops server: boards mounted by name, one door each.
 
     POST /login                  an ssh key signs a challenge, gets a session token
+    POST /rpc                    the HOST's own verbs: create a board, list, invite, revoke
     POST /<board>/rpc            every verb, read and write
     GET  /<board>/feed           WebSocket (SSE fallback) — the UI's live wire
     POST /<board>/invite/redeem  burn an invite, get a personal credential
-    GET  /<board>/git/*          read-only diffs, ONLY on a host inside a repo
-    GET  /<board>/ui/*           the bundle, ONLY on a host inside a repo
+    GET  /<board>/git/* · /ui/*  diffs and the bundle, ONLY on a host inside a repo
     GET  /healthz
 
 The boards themselves live in `mounts.py`; this file is only the router.
 
 The SAME routes serve a window onto a remote board (`taskops ui` in a joined checkout): only
-`/rpc` changes hands, forwarded to the server that owns the board (`upstream.py`), while /ui
-and /git stay local. The page cannot tell, and that is why the committed bundle is untouched
-by any of it. A BOARD HOST opens neither door that needs a clone, and each says so in its own
-words: `gitdoor.py::NO_REPO` and `static.py::NO_UI`, which carries the reasoning.
+`/<board>/rpc` changes hands, forwarded to the server that owns it (`upstream.py`), while /ui
+and /git stay local — the page cannot tell, so the committed bundle is untouched by it. A
+BOARD HOST opens neither door that needs a clone (`gitdoor.py::NO_REPO`, `static.py::NO_UI`).
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import Any, Callable, cast
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-from . import rpc, feed, login, static, gitdoor
+from . import rpc, feed, admin, login, static, gitdoor
 from .. import _clock
 from .auth import Credential, token_in
 from .mounts import Mounts
@@ -53,6 +52,8 @@ class Handler(BaseHTTPRequestHandler):
             self._mint("redeem", board)
         elif board == "login" and not tail:
             self._mint("login", "")  # server scope: a key, not a board credential
+        elif board == "rpc" and not tail:
+            self._admin()  # the HOST's own verbs — one segment, so no board shadows it
         else:
             self._fail(404, BadRequest(f"nothing at {self.path}"))
 
@@ -69,10 +70,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._fail(404, BadRequest(f"nothing at {self.path}"))
 
-    # BaseHTTPRequestHandler already logs one line per request to stderr, and
-    # that is what we want: a broken server is seen, never swallowed. (Do not
-    # "improve" it by overriding log_message to call log_error — that pair
-    # calls back into each other and recurses until the stack ends.)
+    # BaseHTTPRequestHandler already logs one line per request to stderr, and that is what
+    # we want: a broken server is seen, never swallowed. (Do not "improve" it by overriding
+    # log_message to call log_error — that pair recurses until the stack ends.)
 
     # ── the verbs ───────────────────────────────────────────────────────────
 
@@ -92,15 +92,14 @@ class Handler(BaseHTTPRequestHandler):
     def _mint(self, door: str, board: str) -> None:
         """The two doors that hand out a CREDENTIAL — `login.py` owns both, so
         the router never learns what an invite or a signature is."""
-        try:
-            body = rpc.decode(self._raw())
-            data = login.answer(
-                self.mounts.host, self.mounts.credentials, door, board, body, _clock.now()
-            )
-        except TaskopsError as err:
-            self._fail(rpc.status_for(rpc.failure(err)), err)
-            return
-        self._json(200, {"ok": True, "seq": 0, "data": data})
+        host, creds = self.mounts.host, self.mounts.credentials
+        self._answer(lambda body: login.answer(host, creds, door, board, body, _clock.now()))
+
+    def _admin(self) -> None:
+        """The HOST's own verbs — `admin.py` owns the registry, the role gate, the
+        session check, and the argument for why this door is the ROOT `/rpc`."""
+        token = token_in(self.headers.get("Authorization", ""), self.path)
+        self._answer(lambda body: admin.answer(self.mounts, token, body, _clock.now()))
 
     def _feed(self, board: str) -> None:
         try:
@@ -110,29 +109,35 @@ class Handler(BaseHTTPRequestHandler):
             self._fail(rpc.status_for(rpc.failure(err)), err)
             return
         wanted = self.headers.get("Upgrade", ""), self.headers.get("Sec-WebSocket-Key", "")
-        # Somebody is looking now: watch the board for writes this process did
-        # not make (every agent on a LOCAL board writes in its own process).
+        # Somebody is looking now: watch the board for writes this process did not
+        # make (every agent on a LOCAL board writes in its own process).
         self.mounts.watch(board)
         feed.attach(self, self.mounts.hub, board, *wanted)
 
     def _git(self, board: str, rest: str) -> None:  # same token door as /rpc
-        # Mounted from the LOCAL clone whether the board is local or remote: that is
-        # the whole point of serving the window here (§16).
+        self._answer(lambda _: self._diff(board, rest))
+
+    def _diff(self, board: str, rest: str) -> dict[str, Any]:
+        """Mounted from the LOCAL clone whether the board is local or remote —
+        that is the whole point of serving the window here (§16)."""
+        self.mounts.check(board)
+        self._credential(board, "read")
+        return gitdoor.answer(self.mounts.repo, rest, self.path.partition("?")[2])
+
+    def _static(self, rest: str) -> None:  # `static.py` owns what it answers, and why
+        self._send(*static.answer(self.mounts.ui, rest))
+
+    # ── plumbing ────────────────────────────────────────────────────────────
+
+    def _answer(self, run: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+        """Decode, run, envelope — every door but `/<board>/rpc`, which relays bytes.
+        One copy, so a door added later cannot answer a shape of its own."""
         try:
-            self.mounts.check(board)
-            self._credential(board, "read")
-            data = gitdoor.answer(self.mounts.repo, rest, self.path.partition("?")[2])
+            data = run(rpc.decode(self._raw()))
         except TaskopsError as err:
             self._fail(rpc.status_for(rpc.failure(err)), err)
             return
         self._json(200, {"ok": True, "seq": 0, "data": data})
-
-    def _static(self, rest: str) -> None:
-        """`static.py` owns what this door answers and why — including the sentence a
-        board host (`mounts.ui is None`) gets instead of a page."""
-        self._send(*static.answer(self.mounts.ui, rest))
-
-    # ── plumbing ────────────────────────────────────────────────────────────
 
     def _credential(self, board: str, need: str) -> Credential:
         token = token_in(self.headers.get("Authorization", ""), self.path)
@@ -141,8 +146,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.mounts.credentials.check(token, board, need, _clock.now())
 
     def _raw(self) -> bytes:
-        """The body as BYTES. `/rpc` needs them unparsed: a forwarded call is
-        relayed exactly as the page wrote it, never re-serialised from a dict."""
+        """BYTES: a forwarded `/rpc` is relayed as the page wrote it, never re-serialised."""
         length = int(self.headers.get("Content-Length", "0") or 0)
         if length > rpc.MAX_BODY:
             raise BadRequest("that request is too large for a board call")
@@ -152,8 +156,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(body).encode(), "application/json")
 
     def _send(self, status: int, data: bytes, kind: str) -> None:
-        """Content-Length on every answer, always: this is HTTP/1.1 with
-        keep-alive, and a body without one leaves the next request unparseable."""
+        """Content-Length on EVERY answer: this is HTTP/1.1 with keep-alive, and a body
+        without one leaves the next request on the socket unparseable."""
         self.send_response(status)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(data)))
@@ -172,7 +176,7 @@ def _split(path: str) -> tuple[str, str]:
 
 class BoardServer(ThreadingHTTPServer):
     """A threading server that owns its mounts — no module-level state anywhere, so one
-    process can run three independent boards without them seeing each other."""
+    process runs three independent boards without them seeing each other."""
 
     daemon_threads = True
     allow_reuse_address = True
@@ -186,15 +190,9 @@ class BoardServer(ThreadingHTTPServer):
         self.mounts.close()
 
 
-def serve(
-    root: Path,
-    host: str = "127.0.0.1",
-    port: int = 8787,
-    repo: Path | None = None,
-    upstream: Upstream | None = None,
-) -> BoardServer:
+def serve(root: Path, host: str = "127.0.0.1", port: int = 8787, repo: Path | None = None,
+          upstream: Upstream | None = None) -> BoardServer:
     """A server, not yet running. The caller decides the thread and the lifetime,
-    whether it sits in a repo (`repo`), which is what mounts /git AND the bundle
-    (§16, `static.py`), and whether it OWNS the board or is a window onto
-    somebody else's (`upstream`)."""
+    whether it sits in a repo (`repo` — what mounts /git AND the bundle, §16), and
+    whether it OWNS the board or is a window onto somebody else's (`upstream`)."""
     return BoardServer((host, port), Mounts(root, repo, upstream))

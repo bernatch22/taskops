@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **89 Python files / ~9.600 lines under `src/taskops`**, plus the
+~340 files) as **91 Python files / ~10.000 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**341 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 340+1; see below), ruff +
+**353 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 352+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -165,9 +165,9 @@ presence.
    gitwork/ run trees remote trailer bind install diff sig  the ONLY subprocess
    session.py  the CLIENT half of the ssh login: sign in, cache, refresh
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread boards fields
-   http/    server mounts rpc auth login feed static gitdoor upstream
-6  cli/     commands (init join hook) · serving (serve invite ui) · admin (server init)
-            · claude wording
+   http/    server mounts rpc admin auth login feed static gitdoor upstream
+6  cli/     commands (init join hook) · serving (serve ui) · operate (board invite
+            revoke) · admin (server init) · claude wording
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
@@ -208,7 +208,10 @@ uv run python -m taskops.cli serve --root <dir>
 uv run python -m taskops.cli join "http://host/<board>?token=…"
 ```
 
-The CLI is like git: `init join serve invite tidy ui` + `server init` (bootstrap
+The CLI is like git: `init join serve tidy ui` + the four that OPERATE a host
+over its own API, keyed (`board create` · `board ls` · `invite` · `revoke` —
+`http/admin.py`, and `--root <dir>` is the break-glass path that still runs them
+against the files ON the box) + `server init` (bootstrap
 a HOST's owner from an ssh pubkey — the one command meant to run over ssh) +
 `join --key ~/.ssh/id_ed25519` (the invite AND the pubkey in one call: the key is
 registered, it signs in on the spot, and `remote.json` becomes a session cache
