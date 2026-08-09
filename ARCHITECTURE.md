@@ -237,7 +237,7 @@ flowchart TB
         sessionm["session.py — the client half of the login: sign in, cache, refresh"]
     end
     subgraph L5["5 · transports"]
-        mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread, boards, fields"]
+        mcpsrv["mcp/server, hello, tools, gitmoves, integrate, dossier, before, render, brief, schema, thread, boards, fields"]
         httpsrv["http/server, mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
@@ -662,7 +662,7 @@ sequenceDiagram
 
     Dev->>Board: taskops_board
     Board-->>Dev: group MERGE: [tk-a1]
-    Dev->>Board: taskops_merge task=tk-a1
+    Dev->>Board: taskops_merge task=tk-a1  (or tasks=[tk-a1, tk-b2] / done=true — the same path per card, in order, stopping at the first failure)
     Board->>Git: trees.behind() — if tk-a1 lacks the ms/* head, catchup.catch_up() merges ms/* IN tk-a1's own worktree (dirty or missing: refused, untouched; conflict: aborted clean, git's files + the count)
     Board->>Git: merge_card() --no-ff into ms/<milestone>, in the integration worktree
     Git-->>Board: sha (or refused, conflict files named, ms/* untouched)

@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **99 Python files / ~11.300 lines under `src/taskops`**, plus the
+~340 files) as **100 Python files / ~11.400 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**411 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 410+1; see below), ruff +
+**417 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 413+4; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -119,7 +119,13 @@ main ─────────────────────────
 
 Each branch is pinned to a directory for life; "changing branch" is `cd`. Git
 itself refuses the same branch in two worktrees — a third lock nobody has to
-remember. `taskops_merge task=` takes no target: merging a CARD to `main`
+remember. One call integrates a whole chapter — `taskops_merge tasks=[…]` in the
+order given, or `done=true` for the MERGE group the board resolves itself — and
+it is a LOOP over the single-card path, never a second merge implementation
+(`mcp/integrate.py` is the post-mortem): it stops at the first failure of any
+kind, reports `merged <sha>` · `stopped: <the refusal, verbatim>` · `not
+reached` per card, and a re-run continues where it stopped. `taskops_merge
+task=` takes no target: merging a CARD to `main`
 cannot be expressed. A FINISHED milestone lands with `taskops_merge
 milestone=` — the human's explicit call, refused while any card is open or
 unintegrated, recorded on the board. Raw `git merge` in the shared checkout is
@@ -179,7 +185,8 @@ presence.
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
    gitwork/ run trees catchup remote trailer bind install diff sig  the ONLY subprocess
    session.py  the CLIENT half of the ssh login: sign in, cache, refresh
-5  mcp/     server hello tools gitmoves schema render dossier before brief thread boards fields
+5  mcp/     server hello tools gitmoves integrate schema render dossier
+            before brief thread boards fields
    http/    server mounts watcher rpc admin scoped grants ingest auth login
             feed static gitdoor upstream
 6  cli/     commands (init join hook) · watch (the viewer's join) · serving

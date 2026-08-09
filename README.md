@@ -563,7 +563,7 @@ dies stops renewing its lease, and its card leaves `doing` on its own.
 | `taskops_board` — what the board waits for, grouped by the next move | `taskops_take` — claim a card, get its whole world back |
 | `taskops_plan` — the whole tree in one call, dependencies included | `taskops_update` — change the card: close, hand in for review, hand back, drop, rewrite |
 | `taskops_assign` — assign, cut worktrees, return a paste-ready brief | `taskops_card` — one card in full, or search |
-| `taskops_merge` — integrate a done card into its milestone branch | `taskops_review` — the verdict on a submitted card: `pass` or `changes` with a note |
+| `taskops_merge` — integrate a done card into its milestone branch; `tasks=[…]` or `done=true` integrates the whole chapter in one call, stopping at the first failure | `taskops_review` — the verdict on a submitted card: `pass` or `changes` with a note |
 | | `taskops_comment` — say something on ANY open card (`mentions=[…]`) |
 
 `taskops_review` is neither role's alone: a verifier is an ordinary agent
