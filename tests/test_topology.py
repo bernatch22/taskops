@@ -742,8 +742,13 @@ def test_creating_a_board_that_exists_is_refused_and_never_answers_ok(
     a live board would answer ok and hand its history back as if it were new."""
     with pytest.raises(Refused, match="already has a board"):
         admin(server, owner, "board.create", {"name": BOARD})
-    with pytest.raises(BadRequest, match="names are"):
-        admin(server, owner, "board.create", {"name": "../escape"})
+    # The name wall runs BEFORE the existence check, and that order is the test:
+    # `../boards` IS a directory, so with the two swapped the answer would be
+    # "this host already has a board named '../boards'" — a refusal that is
+    # wrong AND leaks that something outside the root exists.
+    for escape in ("../escape", f"../{server.mounts.root.name}"):
+        with pytest.raises(BadRequest, match="names are"):
+            admin(server, owner, "board.create", {"name": escape})
     assert not (server.mounts.root.parent / "escape").exists()
 
 
@@ -781,6 +786,25 @@ def test_the_owner_lists_every_board_and_a_member_only_their_own(
     theirs = admin(server, hers, "board.list", {})
     assert theirs["role"] == "member"
     assert [row["name"] for row in theirs["boards"]] == [BOARD]  # not `otro`
+
+
+def test_a_revoked_credential_stops_showing_its_board_to_the_member(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The other half of deriving membership from credentials: it has to derive
+    the ABSENCE too. `boards()` counts live rows only — otherwise revoking
+    somebody's access would leave the board on their list forever, which is the
+    stored-status bug this project refuses everywhere else."""
+    hers, _ = member(server, tmp_path)
+    assert server.mounts.credentials.boards(ANA) == {BOARD}  # and never the `*` session
+    assert [row["name"] for row in admin(server, hers, "board.list", {})["boards"]] == [BOARD]
+
+    for row in server.mounts.credentials._query(  # noqa: SLF001
+        "SELECT id FROM credentials WHERE subject = ? AND board = ?", (ANA, BOARD)
+    ):
+        admin(server, owner, "invite.revoke", {"invite": str(row[0])})
+    assert server.mounts.credentials.boards(ANA) == set()
+    assert admin(server, hers, "board.list", {})["boards"] == []
 
 
 def test_an_invite_minted_over_the_api_joins_end_to_end(
@@ -868,6 +892,117 @@ def test_the_root_rpc_is_the_server_and_a_board_named_rpc_is_still_reachable(
     base = f"http://127.0.0.1:{server.server_address[1]}/admin"
     status, body = _get_post(base, token, {"verb": "board", "actor": BERNA})
     assert status == 200 and body["data"]["groups"]["take"] == []
+
+
+@pytest.fixture()
+def joined(
+    server: BoardServer, keyed: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A checkout joined to this host WITH the owner's key, and cwd inside it —
+    which is the whole setup the four commands assume: the host comes from the
+    join, so nothing repeats an address and no alias registry has to exist."""
+    from taskops.cli import commands
+
+    invite, _ = server.mounts.credentials.mint("invite:berna", BOARD, _clock.now(), once=True)
+    project = tmp_path / "mine"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", BERNA)
+    commands.join(project, f"{url_of(server)}?invite={invite}", BERNA, str(keyed))
+    monkeypatch.chdir(project)
+    return project
+
+
+def test_the_four_commands_run_from_a_joined_checkout_with_no_address_repeated(
+    server: BoardServer, joined: Path, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Criterion 3 end to end, through `main()` and the real argv: create a board
+    from the laptop, list it, invite somebody, and JOIN with the line that was
+    printed — on another machine, against the server that minted it."""
+    from taskops.cli import main
+    from taskops.cli.commands import join
+
+    assert main(["board", "create", "nuevo"]) == 0
+    assert main(["board", "ls"]) == 0
+    assert main(["invite", "ana", "--board", "nuevo"]) == 0
+    printed = capsys.readouterr().out
+    assert "nuevo created on" in printed and "nuevo" in printed
+
+    line = [row.strip() for row in printed.splitlines() if row.strip().startswith("taskops join")]
+    assert "--key" in line[0]  # the line it prints is the KEYED join, not the legacy one
+    assert len(line) == 1, printed
+    url = line[0].split('"')[1]  # the join line, verbatim, as a human would paste it
+    hers = keygen(tmp_path / "ana_id")
+    theirs = tmp_path / "hers"
+    (theirs / ".git").mkdir(parents=True)
+    join(theirs, url, "dev:ana", str(hers))
+    token = json.loads((theirs / ".taskops" / "remote.json").read_text())["token"]
+    fresh = f"http://127.0.0.1:{server.server_address[1]}/nuevo"
+    assert RemoteBoard(fresh, token, ANA).call("board", {})["seq"] >= 0
+
+
+def test_an_admin_command_re_mints_its_own_session_and_asks_nobody(
+    server: BoardServer, joined: Path, clock: Any
+) -> None:
+    """These commands take `session.fresh`, not the token lying in the file — so
+    a laptop that ran one yesterday runs one today with nobody asked for
+    anything. Without it the four verbs would be the only thing in taskops that
+    still needs a human to notice a credential ran out."""
+    from taskops.cli import main
+
+    spent = json.loads((joined / ".taskops" / "remote.json").read_text())["token"]
+    clock(12 * 3600.0 + 60.0)  # a day later, that session is dead
+    assert main(["board", "ls"]) == 0
+    minted = json.loads((joined / ".taskops" / "remote.json").read_text())["token"]
+    assert minted != spent
+    with pytest.raises(Refused, match="expired"):
+        admin(server, spent, "board.list", {})
+
+
+def test_the_address_may_be_a_whole_url_and_a_url_is_never_split_by_slashes(
+    server: BoardServer, joined: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`<host>/<name>` as ONE argument is the documented form, and it has to
+    survive the case that breaks the naive parse: `https://h:1/b` has three
+    slashes and `h/b` has one. The scheme decides, never the count — otherwise
+    `taskops board ls https://host` creates a board called `host`."""
+    from taskops.cli import main
+
+    assert main(["board", "create", f"{host_of(server)}/desdeurl"]) == 0
+    assert (server.mounts.root / "desdeurl").is_dir()
+
+    assert main(["board", "ls", host_of(server)]) == 0  # a bare host names no board
+    listed = capsys.readouterr().out
+    assert "desdeurl" in listed and BOARD in listed
+    assert not (server.mounts.root / host_of(server).rpartition("/")[2]).exists()
+
+
+def test_revoke_takes_exactly_one_of_key_and_invite(server: BoardServer, joined: Path) -> None:
+    """Neither is a command with no object; both is two acts wearing one word."""
+    from taskops.cli import main
+    from taskops.cli.operate import revoke
+
+    for argv in (["revoke"], ["revoke", "--key", "SHA256:x", "--invite", "id"]):
+        assert main(argv) == 1  # `main` prints the refusal and never raises
+    with pytest.raises(TaskopsError, match="exactly one"):
+        revoke(_argv("revoke", key="", invite="", host="", root=""))
+
+
+def test_a_command_outside_any_joined_checkout_says_which_host_it_wants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No alias registry means the address has to come from somewhere, and the
+    refusal names both places it can: --host, or the join that records one."""
+    from taskops.cli.operate import board
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(TaskopsError, match="--host https://<host>"):
+        board(_argv("board", action="ls", target=""))
+
+
+def _argv(command: str, **fields: str) -> Any:
+    from argparse import Namespace
+
+    return Namespace(command=command, **fields)
 
 
 def test_the_on_box_commands_survive_as_the_break_glass_path(tmp_path: Path) -> None:
