@@ -160,10 +160,10 @@ presence.
             hours mentions review
 2  store/   log cache live reviews creds stores       the ONLY SQL
 3  verbs/   plan take update card pulse assign         + the REGISTRY
-            record report review waiting project events    no git, no render, no net
+            record report review _mentions _waiting project events   no git, no render, no net
 4  board.py LocalBoard | RemoteBoard   routing decided ONCE, at open()
-   gitwork/ run trees remote trailer bind install      the ONLY git (client-side)
-5  mcp/     server hello tools gitmoves schema render dossier before brief thread
+   gitwork/ run trees remote trailer bind install diff   the ONLY git (client-side)
+5  mcp/     server hello tools gitmoves schema render dossier before brief thread boards fields
    http/    server mounts rpc auth feed static gitdoor upstream
 6  cli/     commands (init join hook) · serving (serve invite ui) · claude wording
 ```
@@ -197,7 +197,8 @@ uv run python -m taskops.cli serve --root <dir>
 uv run python -m taskops.cli join "http://host/<board>?token=…"
 ```
 
-The CLI is like git: `init join serve invite tidy ui` + the two git hooks.
+The CLI is like git: `init join serve invite tidy ui` + `hook` (the two git
+hooks, `trailer` and `commit`, plus the delivery hook `claude`).
 Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 ## Working here
@@ -325,8 +326,8 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    and the door derives on demand. One cascade decides what a reader gets —
    `ui/src/links.tsx::cascade`: numstat → the patch → the forge link → one
    honest sentence — and `components/card/Patch.tsx` only draws the step it is
-   handed. All four steps are pinned headlessly (`ui/smoke/main.tsx` §8, from
-   the door's OWN payload); `useGitDiff`'s effect firing is not reachable under
+   handed. All four steps are pinned headlessly (`ui/smoke/main.tsx`, the `cascade`
+   assertions, from the door's OWN payload); `useGitDiff`'s effect firing is not reachable under
    `react-dom/server` and is covered against a real server in
    `tests/test_topology.py` instead.
 

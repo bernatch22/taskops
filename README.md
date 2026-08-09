@@ -344,7 +344,7 @@ Three things that are not optional, in this order:
 
 Two things a host must have that no exit code will tell you:
 
-* `GET /healthz` answers `{"ok": true, …, "boards": N}` — **N is the number of
+* `GET /healthz` answers `{"ok": true, "seq": 0, "data": {"boards": N}}` — **N is the number of
   boards this process has opened SO FAR**, not how many exist: a board is
   mounted the first time somebody addresses it, so a freshly restarted process
   honestly says `1` after one request and `4` once all four have been asked
@@ -471,7 +471,7 @@ the page refetches, so it can never show something the board never said.
 
 `tests/test_ui.py` runs the dashboard headlessly, from both ends: it hands a
 real `LocalBoard` payload to `ui/smoke/run.mjs`, which renders the very modules
-`src/main.tsx` bundles through `react-dom/server` — the eight Monitor panes, a
+`src/main.tsx` bundles through `react-dom/server` — the nine Monitor panes, a
 pane with no verb showing its empty state instead of a zero, the Board's
 columns, the acceptance criteria in the dossier, the comment box posting
 `update` and nothing else, the draft surviving a refusal, Escape closing the
