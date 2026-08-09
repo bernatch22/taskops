@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**403 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 402+1; see below), ruff +
+**407 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 406+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -54,10 +54,21 @@ answer (`board ls` reads agenda 35 · axion 847 · notas 48 · probe 17 — the
 same counts as before the upgrade, and the four `events.jsonl` are
 md5-identical across it). A fifth board, **`taskops-v2`, is PUBLIC**: anyone
 may read it with no credential and every write is refused naming the way in.
-**This repo's own history is not on it yet** — `taskops board push` refuses
-while a lease is live and the closing card held one, by construction; the
-push, and committing the `.taskops/board.json` that gives a cloner the URL
-for free, are the one step left of the promotion.
+**This repo's own history is on it** — this board IS `taskops-v2` on that
+host, and every MCP call in this checkout goes there.
+
+**Emptiness is "no history but its own configuration" since 2026-08-09**
+(tk-bffa26, README's *Upgrading a host*, FIFTH run — ARCHITECTURE.md §17).
+That promotion is what found it: `board create` + `board visibility public`
+before the push made the target non-empty by one configuration event, and
+`board.ingest`'s two-histories wall — correctly, by its old rule — refused a
+push with nothing to merge. `http/ingest.py::_configuration` (was `_birth`)
+exempts project events whose `op` is in the CLOSED list
+`{created, visibility, remote}`, and ONLY while the board holds zero card
+events; one card event and it narrows back to the birth certificate, so the
+wall against two real histories does not move an inch. Verified in production
+on a disposable board, both halves: the refused sequence lands, and a second
+history at that same board is still refused.
 
 ## The four ideas everything rests on
 

@@ -492,8 +492,15 @@ Three decisions inside it, each pinned in `tests/test_topology.py`:
   the refusal says exactly that instead of offering a way.
 * **The ingest verb is not a sync channel and cannot become one.** Its
   precondition is true exactly once in a board's life. "Empty" is not `seq == 0`
-  — `board.create` writes WHO made the board as its first event, so the door
-  allows that birth certificate and nothing else (`ingest.py::_birth`). It
+  but **"no history but its own configuration"** — `board.create` writes WHO
+  made the board as its first event, and setting the visibility or recording a
+  remote before the board is filled is a fact about the CONTAINER, not about the
+  work. So the door exempts project events whose `op` is in the CLOSED list
+  `{created, visibility, remote}` — and only while the board holds ZERO card
+  events; one event about work and the exemption narrows back to the birth
+  certificate (`ingest.py::_configuration`, whose docstring is the 2026-08-09
+  reproduction: this repo's own board was created and made public before it was
+  pushed, and the wall refused a push with nothing to merge). It
   appends through the store path replay already trusts and does NOT re-judge:
   events were validated by the verbs that made them, so the door checks the
   HASH and moves them. Retry is free by construction — ids are `sha256` of the
@@ -1467,3 +1474,42 @@ closes, run by the orchestrator, and step 5 of `cli/push.py` (`board.json` +
 `remote.json`, `.taskops/board/` archived) is what commits the URL a cloner
 then gets for free. Nothing was forced and no config was flipped: `board.json`
 was still `{}` after the refusal.
+
+**Emptiness became "no history but its own configuration" — the FIFTH run of
+README's *Upgrading a host*, 2026-08-09** (tk-bffa26). Promoting this repo's own
+board is what found it: `board create` then `board visibility public` and only
+LATER `board push` left the target holding a project event the push never
+observed, and the two-histories wall refused a push that had nothing to merge.
+`ingest.py::_birth` is now `_configuration`: project events whose `op` is in the
+CLOSED list `{created, visibility, remote}` are exempt while the board holds
+ZERO card events; one card event and the exemption narrows straight back to the
+birth certificate, so the wall against two real histories does not move. Four
+tests in `tests/test_topology.py` pin it against the real server, and each was
+mutation-checked one site at a time — widening the list to any project op,
+dropping the zero-cards narrowing, and reverting the list to `{created}` each
+fail exactly the test that owns them.
+
+The ship was the same three steps, in the same order: the wheel installed by
+tk-c37061 was copied to
+`~/taskops-v2-app/rollback/taskops-2.0.0a0-20260809-preupgrade-bffa26.whl` and
+PROVEN pre-upgrade by content — all **98** `taskops/*.py` in it md5-identical to
+site-packages, carrying `_birth` and NOT carrying `_configuration`; the new
+wheel was checked for `_configuration` in `taskops/http/ingest.py` and for
+`chapter-goal`/`markdown-inline` in `taskops/ui/app.js` before it left the
+laptop; `pip install --force-reinstall` out of `/tmp/tk-bffa26/`, `pm2 restart
+taskops-v2`. Verified by CONTENT at the real domain, on a DISPOSABLE board
+(`scratch-tk-bffa26`) and never on a real one: `board create` + `board
+visibility public` + `board push` — the exact sequence that was refused hours
+earlier — landed 3 events at seq 5, and the board is still `public` with its 2
+cards over an anonymous read. Then the wall, live: a SECOND local history
+pushed at that now-worked-on board is refused, and it counts **4** events it
+never observed — the visibility event has stopped being exempt and only the
+birth certificate still is, which is the narrowing itself, observed in
+production. The four legacy boards are untouched: `board ls` reads agenda 35 ·
+axion 847 · notas 48 · probe 17, and their four `events.jsonl` are md5-identical
+before and after.
+
+One thing the same incident exposed and this card did NOT fix: `Mounts` caches
+`Stores` handles, so a board directory removed under a live server stays mounted
+until the process restarts. It is noted in `_configuration`'s docstring so the
+next reader of that module knows it, and nowhere else.

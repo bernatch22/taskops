@@ -71,7 +71,7 @@ def run(mounts: Mounts, args: dict[str, Any]) -> dict[str, Any]:
         raise NotFound(NO_BOARD.format(name=name)) from err
 
     held = stores.ids()
-    foreign = held - {event["id"] for event in incoming} - _birth(stores)
+    foreign = held - {event["id"] for event in incoming} - _configuration(stores)
     if foreign:
         raise Refused(TWO_HISTORIES.format(name=name, held=len(foreign)))
 
@@ -111,21 +111,46 @@ def _distinct(events: list[Event]) -> list[Event]:
     return out
 
 
-def _birth(stores: Stores) -> set[str]:
-    """A board's own birth certificate — and the reason "empty" is not `seq == 0`.
+CONFIGURATION = frozenset({"created", "visibility", "remote"})
+
+
+def _configuration(stores: Stores) -> set[str]:
+    """A board's own configuration — and the reason "empty" is not `seq == 0`.
 
     `board.create` records WHO made the board as the board's FIRST event
     (`http/admin.py::_create`), because a creator is not derivable from a log
     that starts after the creation. So the board a push is aimed at — created
     minutes earlier by the same person, for this — already holds exactly one
     event, and a literal emptiness check refuses every correct push there is.
-    The precondition is therefore "no history but its own beginning", and it is
-    still true exactly once: after this call the board has a past.
+    The precondition is therefore "no history but its own configuration", and it
+    is still true exactly once: after this call the board has a past.
+
+    THE REPRODUCTION that widened it from the birth certificate alone, promoting
+    THIS repo's board on 2026-08-09: `taskops board create` then `taskops board
+    visibility public` and only LATER `taskops board push` — the target held two
+    project events, one of which was not `created`, and the two-histories wall
+    refused a push that had nothing to merge. Configuring a container before
+    filling it is a legitimate ORDER, not a second history: a visibility flag
+    has no order to invent against the work, which is the only thing the wall
+    exists to protect.
+
+    So the exemption is the CLOSED list `CONFIGURATION` — `created`,
+    `visibility`, `remote` — and closed on purpose: a project op added later
+    must argue its way in here, not fall in because it happens to be
+    board-level. And it applies ONLY while the board holds zero CARD events. One
+    event about work and the exemption narrows back to the birth certificate, so
+    the wall against two real histories does not move an inch.
+
+    (Known from the same incident, and not fixed here: `Mounts` caches `Stores`
+    handles, so a board directory removed under a live server stays mounted
+    until the process restarts.)
     """
+    worked = any(task != PROJECT for task in stores.threads())
+    allowed = {"created"} if worked else CONFIGURATION
     return {
         event["id"]
         for event in stores.events(PROJECT)
-        if event["kind"] == "project" and str(event["body"].get("op", "")) == "created"
+        if event["kind"] == "project" and str(event["body"].get("op", "")) in allowed
     }
 
 
