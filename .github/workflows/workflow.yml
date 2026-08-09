@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # rehearse without burning a version: publish stays skipped
+
+jobs:
+  guard:
+    # PyPI versions are permanent — an artifact whose name lies cannot be undone.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: the tag must be the version the source declares
+        if: github.ref_type == 'tag'
+        run: |
+          declared=$(grep -o '__version__ = "[^"]*"' src/taskops/_version.py | cut -d'"' -f2)
+          test "${GITHUB_REF_NAME#v}" = "$declared" || {
+            echo "tag $GITHUB_REF_NAME != declared $declared"; exit 1; }
+
+  gates:
+    # A tag push does not match ci.yml's `push: branches` — without this call
+    # the release path would have no gate at all.
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [guard]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    # Trusted Publishing (OIDC, no token) — must live top-level, never in a
+    # reusable workflow. Publisher registered on pypi.org for `taskops-cli`.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    needs: [guard, gates, build]
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
