@@ -1152,8 +1152,11 @@ nothing degrades — a board without a remote behaves byte-for-byte like the
 taskops that predates this chapter, with no dead anchors and no column reserved
 for one. That case is pinned headlessly (`ui/smoke/sections/forge-links.tsx`, the `no slug` assertions: *not one anchor
 is rendered*, and the Worktrees index still draws both its columns and every row
-in them) because it is the default, not the exception: this repo's own board
-records no origin.
+in them) — and it is pinned there precisely because it stopped being this repo's
+own case. Until 2026-08-09 this checkout had no `origin` and the degraded path
+was exercised on every run by accident; it now pushes to
+`github.com/bernatch22/taskops`, so the harness is the ONLY thing standing
+between that path and a silent rot. Do not weaken those assertions.
 
 The rules this chapter was held to are the milestone's own: LOCAL == REMOTE BY
 CONSTRUCTION (a git fact enters the board only as an EVENT written by the side

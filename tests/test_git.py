@@ -391,6 +391,27 @@ def test_install_writes_two_hooks_and_ignores_the_secret(tmp_path: Path) -> None
         assert hook.stat().st_mode & 0o100  # executable
 
 
+def test_everything_a_checkout_makes_for_itself_is_ignored(tmp_path: Path) -> None:
+    """The two that were missing cost nothing until they were noticed as untracked
+    forever: `taskops ui` mints a credential into `.taskops/live.sqlite`, and
+    `board push` archives the local history as `.taskops/board.local-<date>/`.
+    Committing that archive would put a SECOND history of the same board in the
+    repo, which is exactly what `board.ingest` refuses on the wire."""
+    root = repo(tmp_path)
+    install.write_gitignore(root)
+    ignored = (root / ".gitignore").read_text(encoding="utf-8")
+    assert ".taskops/live.sqlite*" in ignored
+    assert ".taskops/board.local-*/" in ignored
+
+    (root / ".taskops").mkdir(exist_ok=True)
+    (root / ".taskops" / "live.sqlite").write_text("x", encoding="utf-8")
+    (root / ".taskops" / "board.local-2026-08-09").mkdir()
+    (root / ".taskops" / "board.local-2026-08-09" / "events.jsonl").write_text("{}", encoding="utf-8")
+    untracked = run.git("status", "--porcelain", "--untracked-files=all", cwd=root).out
+    assert "live.sqlite" not in untracked, untracked
+    assert "board.local" not in untracked, untracked
+
+
 def test_a_foreign_hook_is_never_overwritten(tmp_path: Path) -> None:
     root = repo(tmp_path)
     mine = root / ".git" / "hooks" / "post-commit"

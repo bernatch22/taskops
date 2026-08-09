@@ -33,7 +33,14 @@ IGNORED = (
     ".taskops/pending.jsonl",
     ".taskops/trees/",
     ".taskops/hook-seen.json",  # the delivery hook's per-actor throttle stamps
+    ".taskops/live.sqlite*",  # and the credential it mints (`cli/serving.py`)
     ".taskops/ui.json",  # the local dashboard's port and token — this machine's
+    # What `board push` and `join --discard-local` leave behind (`cli/push.py::archive`):
+    # a dead local history, kept so the pushed bytes stay findable the day after. It is
+    # this machine's archive of a board that now lives on a host — committing it would
+    # put a SECOND history of the same board in the repo, which is the one thing
+    # `board.ingest` exists to refuse.
+    ".taskops/board.local-*/",
 )
 
 SCRIPTS = {

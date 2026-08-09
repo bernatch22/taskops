@@ -18,3 +18,6 @@ ui/smoke/sections/index.generated.ts
 .taskops/trees/
 .taskops/hook-seen.json
 .taskops/ui.json
+
+.taskops/live.sqlite*
+.taskops/board.local-*/
