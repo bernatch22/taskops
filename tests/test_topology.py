@@ -474,6 +474,29 @@ def test_a_signature_by_a_key_this_host_never_registered_is_refused(
         answer_with(server, "berna", hers["nonce"], signed("berna", "a-different-nonce", keyed))
 
 
+def test_a_nonce_issued_to_somebody_else_is_refused_by_NAME(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """A challenge belongs to the principal it was issued to, and the refusal says
+    WHOSE it was. ssh-keygen would refuse this too — its `-I` check does not care
+    what the payload says — but it would refuse it as 'that signature is not
+    berna's', which sends a confused client looking at its key instead of at the
+    nonce it mixed up. The invariant is checked where it can be named.
+    """
+    from taskops.store.server import ServerStore
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        pub = Path(f"{keygen(tmp_path / 'ana')}.pub").read_text(encoding="utf-8")
+        store.enroll("ana", "member", pub, _clock.now())
+    finally:
+        store.close()
+
+    hers = challenge(server, "ana")
+    with pytest.raises(Refused, match="issued to 'ana'"):
+        answer_with(server, "berna", hers["nonce"], signed("berna", hers["nonce"], keyed))
+
+
 def test_an_unregistered_principal_never_even_gets_a_challenge(
     server: BoardServer, keyed: Path
 ) -> None:
@@ -564,6 +587,42 @@ def test_a_standing_bearer_token_is_never_replaced_behind_its_owners_back(
     assert board.token == token
     assert board.refresh is None  # nothing to refresh WITH, so nothing is attempted
     assert board.call("board", {})["seq"] >= 0
+
+
+def test_a_login_block_still_never_touches_a_STANDING_token(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """The other side of the same rule, and the one a hand-written config can hit:
+    a token with no expiry is somebody's decision, not a stale session, and a key
+    sitting next to it in the file is not permission to replace it."""
+    from taskops import session
+
+    door = {"host": host_of(server), "principal": "berna", "key": str(keyed)}
+    kept = session.fresh(tmp_path / "clone", {"token": "standing", "login": door}, _clock.now())
+    assert kept == "standing"
+
+
+def test_join_with_a_key_leaves_a_SESSION_behind_and_not_the_invites_token(
+    server: BoardServer, keyed: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`taskops join --key`, the whole command. The invite's token is a STANDING
+    one; a clone that kept it would never take the refresh path again, so the key
+    signs in during the join and what lands in remote.json is a session."""
+    from taskops.cli import commands
+
+    invite, _ = server.mounts.credentials.mint(
+        "invite:ana", BOARD, _clock.now(), caps="read,write", once=True
+    )
+    hers = keygen(tmp_path / "ana_id")
+    project = tmp_path / "hers"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:ana")
+    commands.join(project, f"{url_of(server)}?invite={invite}", "dev:ana", str(hers))
+
+    saved = json.loads((project / ".taskops" / "remote.json").read_text())
+    assert saved["login"] == {"host": host_of(server), "principal": "ana", "key": str(hers)}
+    assert saved["token_expires"] == _clock.now() + 12 * 3600.0  # a session, not the invite's
+    assert RemoteBoard(url_of(server), saved["token"], ANA).call("board", {})["seq"] >= 0
 
 
 def test_an_invite_registers_the_joiners_key_and_still_answers_a_token(

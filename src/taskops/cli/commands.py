@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 
+from .. import session
 from .._json import query
 from .._wire import post as post_json
 from ..board import DIR, find_root, open_board
@@ -33,10 +34,14 @@ def join(here: Path, url: str, given: str, key: str = "") -> int:
     will mint every session from here on.
 
     The invite and the PUBKEY travel in the same call: the server burns the invite
-    and enrols the key in one act, so the token that comes back is the last one
-    anybody ever handles. Without `--key` this is the join it always was, and the
-    board keeps its standing bearer token (milestone rule 3, and the reason the
-    old shape is still the default rather than a deprecation).
+    and enrols the key in one act. Then the key signs in ON THE SPOT, which is not
+    ceremony — the token an invite mints is a STANDING one, and a clone that kept
+    it would never take the refresh path again. What is left in remote.json is a
+    SESSION with an expiry, and `session.py` owns it from there.
+
+    Without `--key` this is the join it always was, and the board keeps its
+    standing bearer token (milestone rule 3, and the reason the old shape is still
+    the default rather than a deprecation).
     """
     root = find_root(here)
     base = url.partition("?")[0]
@@ -51,6 +56,8 @@ def join(here: Path, url: str, given: str, key: str = "") -> int:
     if not token:
         raise TaskopsError("that URL carries no ?token= or ?invite= — ask for a fresh link")
     install.write_config(root, base.rstrip("/"), token, door or None)
+    if door:
+        session.sign_in(root, door["host"], door["principal"], Path(door["key"]))
     _wire(root, who)
     print(f"joined {base} as {who}. Hooks installed; the board is in MCP.")
     if door:
