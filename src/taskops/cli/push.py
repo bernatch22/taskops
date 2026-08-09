@@ -35,7 +35,7 @@ from typing import Any
 from pathlib import Path
 from collections import Counter
 
-from . import remote, operate
+from . import enrol, remote, operate
 from .. import _clock, identity
 from .._json import as_object
 from ..board import DIR, find_root, read_config
@@ -130,7 +130,7 @@ def _session(
     A repo with a LOCAL board has never joined anything, so there is usually
     nothing in `remote.json` to sign with — `--key` is how the push says who it
     is, and `--invite` registers that key first, through the SAME redemption
-    `taskops join --key` runs (`commands.redeem`).
+    `taskops join --key` runs (`enrol.redeem`).
 
     Signing in caches the token in `remote.json`, and that is NOT the config flip:
     `board.json` still names no url, so `open_board` still opens the local board
@@ -146,7 +146,7 @@ def _session(
         raise TaskopsError("--invite registers a KEY — pass --key ~/.ssh/id_ed25519 with it")
     who = identity.principal_for(config, "", commands.principal())
     if key and invite:
-        commands.redeem(target, invite, who, commands.pubkey(key))
+        enrol.redeem(target, invite, who, enrol.pubkey(key))
     return identity.establish(root, host, config, key, who, refusal=NO_KEY)
 
 

@@ -1,4 +1,4 @@
-# taskops v2 — how to work in this repo
+# taskops — how to work in this repo
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Zero runtime dependencies.

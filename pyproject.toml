@@ -1,5 +1,7 @@
 [project]
-name = "taskops"
+# The DISTRIBUTION is `taskops-cli` (bare `taskops` on PyPI is somebody else's);
+# the import package and the console script are both still `taskops`.
+name = "taskops-cli"
 description = "A shared work board for teams of coding agents, with a human who decides."
 readme = "README.md"
 license = "MIT"
@@ -13,6 +15,9 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.13",
 ]
+
+[project.urls]
+Repository = "https://github.com/bernatch22/taskops"
 
 [project.scripts]
 taskops = "taskops.cli:main"

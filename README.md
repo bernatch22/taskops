@@ -1,4 +1,4 @@
-# taskops v2
+# taskops
 
 A shared work board — milestones → cards → subtasks — for teams of coding agents
 working in parallel, with a human who decides. Zero runtime dependencies.
@@ -18,9 +18,10 @@ work in this repo: [CLAUDE.md](CLAUDE.md).
 ## Install
 
 ```sh
-uv tool install --from ~/taskops-v2 taskops
+uv tool install taskops-cli        # or: pipx install taskops-cli · pip install taskops-cli
 ```
 
+The PyPI distribution is `taskops-cli`; the command it installs is `taskops`.
 Install into the interpreter you will actually run `init`/`join` from: the git
 hooks pin `sys.executable` at that moment, so a `python3` without `taskops`
 importable leaves commits un-stamped, silently.
@@ -29,7 +30,7 @@ importable leaves commits un-stamped, silently.
 
 ```
 taskops init                              a local board in this repo
-taskops join <url>                        join one (?token= or ?invite=), install the hooks
+taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
@@ -44,30 +45,38 @@ taskops hook …                            internal: what the installed hooks c
 ### Starting a board
 
 ```sh
-taskops init                              # local: .taskops/board/ + 2 git hooks + .mcp.json
-taskops join "<url>?invite=<token>" --key ~/.ssh/id_ed25519
+taskops init                     # local: .taskops/board/ + 2 git hooks + .mcp.json
 ```
 
-`join` flags: `--key <path>` registers that key and signs you in on the spot ·
-`--as <actor>` when your unix user is not the principal's name ·
-`--discard-local` when this repo already has a local board with events.
+Joining a hosted one is bare, like every other verb — the host is recorded once
+and the key is discovered the way ssh discovers one:
+
+```sh
+taskops remote add https://host:8787      # once per checkout
+taskops join my-project                   # your key is registered: that is the credential
+taskops join my-project --invite <id>     # first time: the invite enrols your key too
+taskops join my-project                   # no key + public board: read-only window
+```
+
+Keys exist so tokens do not travel: what lands on disk is a session that renews
+itself, never a token anybody copies. Flags: `--key <path>` overrides the
+discovered key · `--as <actor>` when your unix user is not the principal's name ·
+`--discard-local` when this repo already has a local board with events. The old
+full-URL form (`taskops join "<url>?token=…"`) keeps working — boards joined
+before keys existed never rot.
 
 **Restart your Claude Code session after either** — MCP servers load once, at
 session start, from `.mcp.json`.
 
 ### Hosting
 
-Install the wheel and bootstrap the owner. **These two acts are the only ssh in
-this design** — it is where trust enters, and nothing else on a host is ever
+Install and bootstrap the owner. **These two acts are the only ssh in this
+design** — it is where trust enters, and nothing else on a host is ever
 administered over a shell:
 
 ```sh
-uv build --wheel                                    # in this repo
-scp dist/taskops-*.whl <host>:/tmp/                 # ship the artifact, not the tree
-ssh <host> 'python3 -m venv ~/taskops-app/.venv
-            ~/taskops-app/.venv/bin/pip install /tmp/taskops-*.whl'
-ssh <host> '~/taskops-app/.venv/bin/taskops server init \
-                --root ~/boards --key -' < ~/.ssh/id_ed25519.pub
+ssh <host> 'pip install taskops-cli'       # or pipx / uv tool install
+ssh <host> 'taskops server init --root ~/boards --key -' < ~/.ssh/id_ed25519.pub
 ```
 
 Then one process, pointed at the boards directory — every immediate subdirectory

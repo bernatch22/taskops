@@ -111,7 +111,7 @@ wheels = [
 ]
 
 [[package]]
-name = "taskops"
+name = "taskops-cli"
 source = { editable = "." }
 
 [package.dev-dependencies]

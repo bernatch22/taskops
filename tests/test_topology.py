@@ -1172,6 +1172,74 @@ def test_remote_add_then_the_verbs_go_bare(
     assert main(["board", "visibility", "public"]) == 0  # bare: the recorded name
 
 
+def test_join_goes_bare_too_and_the_key_is_the_whole_credential(
+    server: BoardServer, discoverable: Path, virgin: Path
+) -> None:
+    """`remote add` once, then `taskops join <name>` — no URL, no token, no
+    --key. The discovered key signs in, exactly as every board verb does, and
+    what lands in remote.json is a SESSION plus the login block that renews it.
+    Keys exist so tokens do not travel."""
+    from taskops.cli import main
+    from taskops.board import open_board
+
+    dev = client(server, BERNA)
+    plan(dev)  # the board has content, so the joined checkout can prove it reads
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["join", BOARD]) == 0
+
+    config = json.loads((virgin / ".taskops" / "remote.json").read_text())
+    assert config["login"]["key"] == str(discoverable)  # DISCOVERED, recorded
+    assert config["token"]  # a session, minted by the key
+    assert config["token_expires"] > 0  # with an expiry — never a standing token
+    board = json.loads((virgin / ".taskops" / "board.json").read_text())
+    assert board["url"] == f"{host_of(server)}/{BOARD}"
+    assert open_board(virgin, BERNA).call("board", {})["groups"]["take"]
+
+
+def test_a_bare_join_with_an_unregistered_key_leaves_nothing_behind(
+    server: BoardServer, virgin: Path, tmp_path: Path
+) -> None:
+    """The sign-in is proved BEFORE anything is written: a refused key must not
+    leave a half-joined checkout that every later command trips over."""
+    from taskops.cli import main, admin
+
+    admin.init(tmp_path / "boards", f'{keygen(tmp_path / "owner_key")}.pub', "berna")
+    keygen(tmp_path / "home" / ".ssh" / "id_ed25519")  # discoverable, NOT enrolled
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["join", BOARD]) == 1
+    assert not (virgin / ".taskops" / "board.json").exists()
+    # remote.json holds exactly what `remote add` wrote — the refused join
+    # added nothing: no token, no principal, no key.
+    config = json.loads((virgin / ".taskops" / "remote.json").read_text())
+    assert config == {"login": {"host": host_of(server)}}
+
+
+def test_join_takes_the_invite_as_a_flag_not_a_query_string(
+    server: BoardServer, virgin: Path, tmp_path: Path
+) -> None:
+    """The first join of a NEW teammate: `taskops join <name> --invite <id>`.
+    The invite authorises the enrolment, the discovered key is what gets
+    registered, and from then on the key is the credential — same end state as
+    the URL form, without a token ever appearing on a command line."""
+    from taskops.cli import main, admin
+
+    admin.init(tmp_path / "boards", f'{keygen(tmp_path / "owner_key")}.pub', "berna")
+    hers = keygen(tmp_path / "home" / ".ssh" / "id_ed25519")
+    invite, _ = server.mounts.credentials.mint("invite:ana", BOARD, _clock.now(), once=True)
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["join", BOARD, "--invite", invite, "--as", "dev:ana"]) == 0
+
+    config = json.loads((virgin / ".taskops" / "remote.json").read_text())
+    assert config["login"] == {
+        "host": host_of(server),
+        "principal": "ana",
+        "key": str(hers),
+    }
+    # Enrolled AND signed in by the one command: the session in the file was
+    # minted by ana's key against /login, which only a registered key passes.
+    assert config["token"] and config["token_expires"] > 0
+
+
 def test_a_board_nobody_named_takes_the_directory_name(
     server: BoardServer, discoverable: Path, virgin: Path
 ) -> None:

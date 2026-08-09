@@ -10,10 +10,9 @@ import os
 import sys
 from pathlib import Path
 
-from . import watch
-from .. import session
+from . import enrol, watch
+from .. import session, identity
 from .._json import query
-from .._wire import post as post_json
 from ..board import DIR, find_root, open_board
 from ..store import log
 from .._errors import TaskopsError
@@ -41,40 +40,61 @@ ORPHAN = (
 )
 
 
-def join(here: Path, url: str, given: str, key: str = "", discard: bool = False) -> int:
-    """Connect this repo to a board — and, with `--key`, register the ssh key that
-    will mint every session from here on.
+def join(
+    here: Path, target: str, given: str, key: str = "", discard: bool = False, invite: str = ""
+) -> int:
+    """Connect this repo to a board. Bare like every other verb since the host is
+    recorded and the key is discovered:
+
+        taskops remote add https://host:8787        once per checkout
+        taskops join my-project                     registered key: signs in, done
+        taskops join my-project --invite <id>       first time: enrols the key too
+        taskops join my-project                     no key anywhere + public board: read-only
+
+    The name defaults exactly as `board create`'s does (recorded name, else the
+    directory), `<host>/<name>` is the explicit form, and the full URL — with
+    `?token=` or `?invite=` — keeps working unchanged, because production's four
+    boards were joined that way and their links must not rot (milestone rule 3).
 
     **It refuses to orphan a local board.** Until this guardrail, joining a repo
     that already had `.taskops/board/` with events in it simply started reading
     the remote one: the local history was still on disk, byte for byte, and
-    nothing in taskops would ever look at it again or say so. Nobody was told,
-    and the thing that made it invisible was a command about connecting. So a
-    local board with events is now a STOP that names both ways out, and
-    `--discard-local` archives (never deletes) before proceeding.
+    nothing in taskops would ever look at it again or say so. So a local board
+    with events is a STOP that names both ways out, and `--discard-local`
+    archives (never deletes) before proceeding.
 
-    The invite and the PUBKEY travel in the same call: the server burns the invite
-    and enrols the key in one act. Then the key signs in ON THE SPOT, which is not
-    ceremony — the token an invite mints is a STANDING one, and a clone that kept
-    it would never take the refresh path again. What is left in remote.json is a
-    SESSION with an expiry, and `session.py` owns it from there.
-
-    Without `--key` this is the join it always was, and the board keeps its
-    standing bearer token (milestone rule 3, and the reason the old shape is still
-    the default rather than a deprecation).
+    With an invite, the invite and the PUBKEY travel in the same call: the server
+    burns the invite and enrols the key in one act. Either way the key then signs
+    in ON THE SPOT and what lands in remote.json is a SESSION with an expiry —
+    never a standing token to copy around. Keys exist so tokens do not travel.
     """
+    from . import remote as remote_cli
+
     root = find_root(here)
-    base = url.partition("?")[0]
+    bare = "://" not in target
+    if bare:
+        host, name = remote_cli.named(target)
+        target = f"{host}/{name}"
+    base = target.partition("?")[0]
     _keep_or_archive(root, base, discard)
-    params = query(url)
+    params = query(target)
+    invite = invite or params.get("invite", "")
     who = given or actor()
+    name = who.partition(":")[2] or "me"
+    found = Path(key).expanduser() if key else identity.discover_key()
     token, door = params.get("token", ""), {}
-    if params.get("invite", ""):
-        name = who.partition(":")[2] or "me"
-        token, who = redeem(base, params["invite"], name, pubkey(key))
-        if key:
-            door = {"host": _host_of(base), "principal": name, "key": str(Path(key).expanduser())}
-    if not token:
+    if invite:
+        token, who = enrol.redeem(base, invite, name, enrol.pubkey(str(found) if found else ""))
+        if found:
+            door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
+    elif bare and found:
+        # No invite and no token: the KEY is the whole credential. Proved against
+        # the host BEFORE anything is written — a refused sign-in must not leave
+        # a half-joined checkout behind (`cache=False`: nothing lands on disk).
+        door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
+        session.sign_in(root, door["host"], door["principal"], found, cache=False)
+        who = f"dev:{name}"
+    if not token and not door:
         # No credential at all — a PUBLIC board is joined read-only (`watch.py`).
         return watch.watch(root, base.rstrip("/"))
     install.write_config(root, base.rstrip("/"), token, door or None)
@@ -151,35 +171,3 @@ def _wire(root: Path, who: str) -> None:
     remote.remember(open_board(root, who), root)
 
 
-def redeem(base: str, invite: str, who: str, public: str = "") -> tuple[str, str]:
-    """Burn an invite, and enrol the key travelling with it. Public because
-    `push.py` needs exactly this and only this: a repo with a local board has
-    never joined anything, so its first push may also be its first introduction
-    to the host — and there must not be two redemptions to keep in step."""
-    body: dict[str, str] = {"invite": invite, "who": who}
-    if public:
-        body["pubkey"] = public
-    data = post_json(f"{base.rstrip('/')}/invite/redeem", body, {}, 20.0)
-    return str(data.get("token", "")), str(data.get("actor", f"dev:{who}"))
-
-
-def pubkey(key: str) -> str:
-    """The PUBLIC half of `--key`, read from `<key>.pub` — never the private key,
-    which never leaves this machine and which `store/pubkeys.py` refuses by name
-    if it is ever sent by mistake."""
-    if not key:
-        return ""
-    private = Path(key).expanduser()
-    public = private if private.suffix == ".pub" else Path(f"{private}.pub")
-    try:
-        return public.read_text(encoding="utf-8").strip()
-    except OSError as err:
-        raise TaskopsError(
-            f"cannot read {public} — --key takes the PRIVATE key (the one ssh-keygen signs "
-            f"with); its .pub next to it is what gets registered: {err}"
-        ) from err
-
-
-def _host_of(base: str) -> str:
-    """The SERVER, out of a board address: `/login` is server scope, not a board's."""
-    return base.rstrip("/").rpartition("/")[0]

@@ -40,8 +40,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="a local board in this repo")
     join = sub.add_parser("join", help="join a board and install the hooks")
-    join.add_argument("url", help="https://host/<board>?token=… or ?invite=…")
+    join.add_argument(
+        "url",
+        nargs="?",
+        default="",
+        help="<name>, <host>/<name>, or nothing (the recorded/directory name) — "
+        "a full https:// URL with ?token= or ?invite= keeps working",
+    )
     join.add_argument("--as", dest="actor", default="", help="dev:<name> (default: $USER)")
+    join.add_argument(
+        "--invite",
+        default="",
+        help="first join: the single-use id from `taskops invite` — your key is enrolled with it",
+    )
     join.add_argument(
         "--discard-local",
         action="store_true",
@@ -50,7 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     join.add_argument(
         "--key",
         default="",
-        help="the ssh key that signs you in (its .pub is registered): ~/.ssh/id_ed25519",
+        help="overrides the discovered ssh key (its .pub is what gets registered)",
     )
     origin = sub.add_parser("remote", help="the host this checkout operates (git's origin)")
     origin.add_argument("action", nargs="?", default="", choices=["", "add"])
@@ -118,7 +129,12 @@ def _run(args: argparse.Namespace) -> int:
         return commands.init(here)
     if args.command == "join":
         return commands.join(
-            here, str(args.url), str(args.actor), str(args.key), bool(args.discard_local)
+            here,
+            str(args.url),
+            str(args.actor),
+            str(args.key),
+            bool(args.discard_local),
+            str(args.invite),
         )
     if args.command == "remote":
         return remote.remote(args)
