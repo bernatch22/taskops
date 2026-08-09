@@ -1054,6 +1054,7 @@ def test_the_owner_creates_the_first_board_from_the_laptop_with_only_a_key(
     capsys.readouterr()
     assert main(["board", "ls"]) == 0  # no --key, no --host: the session is cached
     assert "e2e" in capsys.readouterr().out
+    assert main(["board", "visibility", "e2e", "public"]) == 0  # and so is every other verb
 
 
 def test_invite_and_revoke_are_runnable_as_the_first_command_too(
