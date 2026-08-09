@@ -48,15 +48,15 @@ def board(args: argparse.Namespace) -> int:
     it, so the whole address is one argument and nothing has to be repeated."""
     action, target = str(args.action), str(args.target)
     if action == "create":
-        host, name = _address(target)
+        host, name = address(target)
         if not name:
             raise TaskopsError("taskops board create <host>/<name> — which board?")
-        made = _call(host, "board.create", {"name": name})
+        made = call(host, "board.create", {"name": name})
         print(f"{made['board']} created on {host} by {made['created_by']}")
         print(f"  invite somebody: taskops invite <who> --board {made['board']}")
         return 0
-    host, _ = _address(target)
-    answer = _call(host, "board.list", {})
+    host, _ = address(target)
+    answer = call(host, "board.list", {})
     rows: list[dict[str, Any]] = [as_object(row) for row in answer.get("boards", [])]
     print(f"{host} — {len(rows)} board(s), as {answer.get('role', '?')}")
     for row in rows:
@@ -73,8 +73,8 @@ def invite(args: argparse.Namespace) -> int:
         return _on_box_invite(Path(str(args.root)).expanduser(), who, name)
     if not name:
         raise TaskopsError("which board? taskops invite <who> --board <name>")
-    host, _ = _address(str(args.host))
-    made = _call(host, "invite.mint", {"who": who, "board": name})
+    host, _ = address(str(args.host))
+    made = call(host, "invite.mint", {"who": who, "board": name})
     print(f"one-time invite for {who} (id {made['id']}, 7 days):")
     print(f"  taskops join \"{host}/{made['board']}?invite={made['token']}\" --key ~/.ssh/id_ed25519")
     return 0
@@ -87,9 +87,9 @@ def revoke(args: argparse.Namespace) -> int:
         raise TaskopsError("taskops revoke --key <SHA256:…> | --invite <id> — exactly one")
     if args.root:  # break-glass: the files, on the box
         return _on_box_revoke(Path(str(args.root)).expanduser(), key, ident)
-    host, _ = _address(str(args.host))
+    host, _ = address(str(args.host))
     verb = "key.revoke" if key else "invite.revoke"
-    gone = _call(host, verb, {"key": key} if key else {"invite": ident})
+    gone = call(host, verb, {"key": key} if key else {"invite": ident})
     print(f"revoked {key or ident} ({gone.get('principal') or gone.get('subject')}) on {host}")
     return 0
 
@@ -97,15 +97,21 @@ def revoke(args: argparse.Namespace) -> int:
 # ── the transport ───────────────────────────────────────────────────────────
 
 
-def _call(host: str, verb: str, args: dict[str, Any]) -> dict[str, Any]:
+def call(host: str, verb: str, args: dict[str, Any], token: str = "") -> dict[str, Any]:
     """One server-scope call, through the same decoder every other client uses.
 
     `session.fresh` is what makes this keyed rather than a token somebody pasted:
     an expired session is re-minted here by signing the host's challenge, and
     nobody is asked for anything (`session.py`). The envelope and the refusal
-    come back through `_wire.post`, so the server's own sentence survives."""
-    root = find_root(Path.cwd())
-    token = session.fresh(root, read_config(root), _clock.now())
+    come back through `_wire.post`, so the server's own sentence survives.
+
+    `token=` is for the ONE caller that already has one and must not look for a
+    second: `push.py` signs in with the key it was handed, in a repo whose
+    config still points at nothing, so asking the config here would find the
+    empty local board and refuse a push that is perfectly authorised."""
+    if not token:
+        root = find_root(Path.cwd())
+        token = session.fresh(root, read_config(root), _clock.now())
     if not token:
         raise TaskopsError(
             f"no session for {host} — join it with a key first: "
@@ -119,7 +125,7 @@ def _call(host: str, verb: str, args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _address(target: str) -> tuple[str, str]:
+def address(target: str) -> tuple[str, str]:
     """`<host>/<name>`, `<host>`, `<name>` or nothing — into (host, name).
 
     A URL is recognised by its scheme and never by counting slashes: `https://h/b`

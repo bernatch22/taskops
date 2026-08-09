@@ -50,6 +50,7 @@ signed by the key `server init` registered — creating the board included:
 ```sh
 taskops board create https://host:8787/my-project    # owner only: THE way a board exists
 taskops board ls                                     # what is on that host, and how big
+taskops board push https://host:8787/my-project      # a LOCAL board becomes this one
 taskops invite ana --board my-project                # one-time link, 7 days
 taskops revoke --invite <id>                         # or --key SHA256:… to retire a key
 ```
@@ -345,6 +346,30 @@ taskops invite <who> --board <name>           # the join line, minted by the hos
 taskops revoke --invite <id> | --key SHA256:… # take one back
 ```
 
+**A local board becomes a hosted one with one command**, and it is the same
+four above plus a fifth — never a file copy:
+
+```sh
+taskops board create https://<host>/<name>              # an empty board, on the host
+taskops board push https://<host>/<name> --key ~/.ssh/id_ed25519
+```
+
+Run from the repo whose `.taskops/board/` holds the history. The order is the
+safety and the config flips LAST: the target must be empty, nobody may be
+holding a lease, the whole log is streamed through the server's `board.ingest`,
+the counts are compared per event kind — and only then does `board.json` point
+at the host, with the local board renamed to `.taskops/board.local-<date>/`
+rather than deleted. A failure anywhere above leaves the repo exactly as it
+was, and the command is simply run again: event ids are `sha256` of their own
+content, so an interrupted push re-runs to a no-op and continues. There is no
+`--force`, deliberately — a non-empty target means two histories, and putting
+them in an order they never had would be fabricating a timeline.
+
+Add `--invite <token>` the first time, so the host registers the key in the same
+call. And `taskops join` REFUSES onto a repo whose local board has events,
+naming both ways out (`board push`, or `--discard-local` to archive it and join
+anyway) — before this, the join silently made that history invisible forever.
+
 There is no `scp` of an `events.jsonl` in this file and there must not be one:
 storage is an implementation detail, and a file name in an instruction is that
 detail leaking into the interface.
@@ -437,10 +462,12 @@ curl -s -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' \
      https://<host>/<board>/rpc
 ```
 
-Migrating a v1 board is `scripts/migrate_v1.py <v1 events.jsonl> <v2 board dir>`
-— `--dry-run` first, and reconcile its counts against the v1 `db.sqlite` before
-anything is switched. `ARCHITECTURE.md` §17 is the record of doing exactly that
-against production, and the order it was done in.
+Migrating a **v1** board is `scripts/migrate_v1.py <v1 events.jsonl> <v2 board
+dir>` — `--dry-run` first, and reconcile its counts against the v1 `db.sqlite`
+before anything is switched. That script is for v1 boards and nothing else: a v2
+board that is local and should be hosted is `taskops board push`, above.
+`ARCHITECTURE.md` §17 is the record of doing exactly that against production,
+and the order it was done in.
 
 ## The shape
 

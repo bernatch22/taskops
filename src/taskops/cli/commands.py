@@ -14,6 +14,7 @@ from .. import session
 from .._json import query
 from .._wire import post as post_json
 from ..board import DIR, find_root, open_board
+from ..store import log
 from .._errors import TaskopsError
 from ..gitwork import run, bind, remote, install, trailer
 
@@ -29,9 +30,27 @@ def init(here: Path) -> int:
     return 0
 
 
-def join(here: Path, url: str, given: str, key: str = "") -> int:
+ORPHAN = (
+    "there is a LOCAL board in {path} with {n} event(s) in it, and joining {url} would "
+    "make it invisible from this repo forever — every card, comment and commit in it. "
+    "Two ways forward, and both are explicit:\n"
+    "  taskops board push {url}   take the history along — it becomes the hosted board\n"
+    "  taskops join … --discard-local   archive it beside itself and join anyway\n"
+    "(--discard-local renames the directory; nothing is ever deleted.)"
+)
+
+
+def join(here: Path, url: str, given: str, key: str = "", discard: bool = False) -> int:
     """Connect this repo to a board — and, with `--key`, register the ssh key that
     will mint every session from here on.
+
+    **It refuses to orphan a local board.** Until this guardrail, joining a repo
+    that already had `.taskops/board/` with events in it simply started reading
+    the remote one: the local history was still on disk, byte for byte, and
+    nothing in taskops would ever look at it again or say so. Nobody was told,
+    and the thing that made it invisible was a command about connecting. So a
+    local board with events is now a STOP that names both ways out, and
+    `--discard-local` archives (never deletes) before proceeding.
 
     The invite and the PUBKEY travel in the same call: the server burns the invite
     and enrols the key in one act. Then the key signs in ON THE SPOT, which is not
@@ -45,12 +64,13 @@ def join(here: Path, url: str, given: str, key: str = "") -> int:
     """
     root = find_root(here)
     base = url.partition("?")[0]
+    _keep_or_archive(root, base, discard)
     params = query(url)
     who = given or actor()
     token, door = params.get("token", ""), {}
     if params.get("invite", ""):
         name = who.partition(":")[2] or "me"
-        token, who = _redeem(base, params["invite"], name, _pubkey(key))
+        token, who = redeem(base, params["invite"], name, pubkey(key))
         if key:
             door = {"host": _host_of(base), "principal": name, "key": str(Path(key).expanduser())}
     if not token:
@@ -63,6 +83,22 @@ def join(here: Path, url: str, given: str, key: str = "") -> int:
     if door:
         print(f"  and {door['key']} signs you in from now on — no token to copy again")
     return 0
+
+
+def _keep_or_archive(root: Path, url: str, discard: bool) -> None:
+    """The guardrail, before anything is written. The count comes from the LOG
+    and not from the directory's existence: `taskops init` leaves an empty board
+    behind, and refusing on that would make the ordinary init-then-join sequence
+    impossible for no gain — an empty history has nothing to orphan."""
+    from .push import archive  # the same rename `board push` does at its step 5
+
+    local = root / DIR / "board"
+    events, _ = log.read(local / "events.jsonl")
+    if not events:
+        return
+    if not discard:
+        raise TaskopsError(ORPHAN.format(path=local, n=len(events), url=url))
+    print(f"  the local board ({len(events)} events) is archived at {archive(local)}")
 
 
 def hook(here: Path, which: str, rest: list[str]) -> int:
@@ -106,15 +142,19 @@ def _wire(root: Path, who: str) -> None:
     remote.remember(open_board(root, who), root)
 
 
-def _redeem(base: str, invite: str, who: str, pubkey: str = "") -> tuple[str, str]:
+def redeem(base: str, invite: str, who: str, public: str = "") -> tuple[str, str]:
+    """Burn an invite, and enrol the key travelling with it. Public because
+    `push.py` needs exactly this and only this: a repo with a local board has
+    never joined anything, so its first push may also be its first introduction
+    to the host — and there must not be two redemptions to keep in step."""
     body: dict[str, str] = {"invite": invite, "who": who}
-    if pubkey:
-        body["pubkey"] = pubkey
+    if public:
+        body["pubkey"] = public
     data = post_json(f"{base.rstrip('/')}/invite/redeem", body, {}, 20.0)
     return str(data.get("token", "")), str(data.get("actor", f"dev:{who}"))
 
 
-def _pubkey(key: str) -> str:
+def pubkey(key: str) -> str:
     """The PUBLIC half of `--key`, read from `<key>.pub` — never the private key,
     which never leaves this machine and which `store/pubkeys.py` refuses by name
     if it is ever sent by mistake."""

@@ -5,6 +5,7 @@
     taskops serve           host boards — an events API, no dashboard
     taskops server init     bootstrap THIS host: its owner and their ssh key
     taskops board create    make a board on a host  ·  board ls, from anywhere
+    taskops board push      THIS repo's local board becomes the hosted one
     taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
     taskops tidy            remove worktrees whose work is already in the trunk
     taskops ui              the dashboard — serves it if nothing is, opens the browser
@@ -22,7 +23,7 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import admin, claude, operate, serving, commands
+from . import push as promote, admin, claude, operate, serving, commands
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -35,6 +36,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     join = sub.add_parser("join", help="join a board and install the hooks")
     join.add_argument("url", help="https://host/<board>?token=… or ?invite=…")
     join.add_argument("--as", dest="actor", default="", help="dev:<name> (default: $USER)")
+    join.add_argument(
+        "--discard-local",
+        action="store_true",
+        help="a local board here is archived instead of orphaned by the join",
+    )
     join.add_argument(
         "--key",
         default="",
@@ -50,8 +56,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     host.add_argument("--key", default="", help="the owner's pubkey: a path, or - for stdin")
     host.add_argument("--owner", default="", help="the owner's name (default: $USER)")
     boards = sub.add_parser("board", help="create or list the boards on a host")
-    boards.add_argument("action", choices=["create", "ls"])
+    boards.add_argument("action", choices=["create", "ls", "push"])
     boards.add_argument("target", nargs="?", default="", help="<host>/<name>, or just <name>")
+    boards.add_argument("--key", default="", help="push: the ssh key that signs you in")
+    boards.add_argument("--invite", default="", help="push: register that key first")
     invite = sub.add_parser("invite", help="a single-use link for a teammate")
     invite.add_argument("who", nargs="?", default="")
     invite.add_argument("--board", default="")
@@ -84,13 +92,18 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "init":
         return commands.init(here)
     if args.command == "join":
-        return commands.join(here, str(args.url), str(args.actor), str(args.key))
+        return commands.join(
+            here, str(args.url), str(args.actor), str(args.key), bool(args.discard_local)
+        )
     if args.command == "serve":
         return serving.serve(args)
     if args.command == "server":
         return admin.server(args)
     if args.command == "board":
-        return operate.board(args)
+        # `push` is its own module — five ordered steps and a config flip, against
+        # `board`'s two one-shot calls — so `main` routes it, and neither imports
+        # the other (`push.py` needs `operate`'s transport and its address parser).
+        return promote.run(args) if str(args.action) == "push" else operate.board(args)
     if args.command == "invite":
         return operate.invite(args)
     if args.command == "revoke":

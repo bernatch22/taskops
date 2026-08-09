@@ -7,30 +7,30 @@ The anomaly this file closes: until it existed, every admin act escaped the CLI
 into an ssh session. The machinery was already right (`store/creds.py` mints,
 `Mounts.create` makes a board); what was missing was a DOOR onto it that a key
 could open from a laptop. The on-box commands survive as break-glass (README).
+`board.ingest` — a whole local history, once — lives in `ingest.py`, because
+its preconditions are longer than the verb.
 
 **Why the root `/rpc` and not `/admin/rpc`.** A board name is `[a-z0-9-]`
 (`mounts.py::NAME`), so `admin` is a legal board and `/admin/rpc` would be that
-board's own door, character for character — the router cannot tell them apart,
-and the day somebody creates a board called `admin` the server scope would
-quietly shadow it. A board call has TWO segments; this door has one, and no
-board name can collide with it.
+board's own door, character for character — and the day somebody created one
+called `admin` the server scope would quietly shadow it. A board call has TWO
+segments; this door has one, so no board name can collide with it.
 
 **Two registries, on purpose, and this one is not `verbs/__init__.py`.** A board
-verb answers "what may this ACTOR do to a card" (`core/actors.py`). These answer
+verb answers "what may this ACTOR do to a card" (`core/actors.py`); these answer
 "what may this PRINCIPAL do to the HOST" — `core/scope.py`'s question, owner /
-member / anon — and a board credential says nothing about it. One table would
-mean one refusal sentence trying to name two different walls.
+member / anon. One table would mean one refusal naming two different walls.
 
 Authentication is the session token alone: `/login` mints it against an ssh key
-(`login.py`) scoped to board `*`, so a board-scoped invite token cannot open this
-door — `check(token, "*", …)` can never match one.
+(`login.py`) scoped to board `*`, so a board-scoped invite token cannot open
+this door — `check(token, "*", …)` can never match one.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
-from . import mounts as _mounts
+from . import ingest, mounts as _mounts
 from .auth import Credential
 from ..core import scope
 from .._json import as_object
@@ -121,6 +121,11 @@ def _invite(call: Call) -> dict[str, Any]:
     }
 
 
+def _ingest(call: Call) -> dict[str, Any]:
+    """A whole local history, moved onto an EMPTY board. `ingest.py` is the wall."""
+    return ingest.run(call.mounts, call.args)
+
+
 def _revoke_key(call: Call) -> dict[str, Any]:
     """A key stops signing anybody in, and `allowed_signers` is rewritten whole
     by the store — so revoking is one row and the file follows."""
@@ -153,6 +158,7 @@ def _revoke_invite(call: Call) -> dict[str, Any]:
 REGISTRY: dict[str, Verb] = {
     "board.create": Verb("board.create", "write", _create),
     "board.list": Verb("board.list", "read", _list),
+    "board.ingest": Verb("board.ingest", "write", _ingest),
     "invite.mint": Verb("invite.mint", "write", _invite),
     "key.revoke": Verb("key.revoke", "write", _revoke_key),
     "invite.revoke": Verb("invite.revoke", "write", _revoke_invite),
@@ -169,8 +175,7 @@ def _verb_of(body: dict[str, Any]) -> Verb:
 
 def _session(mounts: Mounts, token: str, need: str, now: float) -> Credential:
     """A `*`-scoped session and nothing else. `Credentials.check` answers in a
-    BOARD's words ("not for board '*'"), so the way in is APPENDED rather than
-    the reason replaced — the caller still learns which half failed."""
+    BOARD's words, so the way in is APPENDED rather than the reason replaced."""
     if not token:
         raise Refused(f"no credential — {NO_SESSION}")
     try:
@@ -180,16 +185,12 @@ def _session(mounts: Mounts, token: str, need: str, now: float) -> Credential:
 
 
 def _summary(mounts: Mounts, name: str) -> dict[str, Any]:
-    """Enough to choose one from a list: how big it is and when it last moved.
-    `active` is the log's mtime — one stat, and the log is append-only."""
+    """Enough to choose one from a list. `active` is the log's mtime — one stat,
+    and the log is append-only."""
     stores = mounts.stores(name)
     active = stores.log_path.stat().st_mtime if stores.log_path.exists() else 0.0
-    return {
-        "name": name,
-        "cards": len(stores.state()["cards"]),
-        "seq": stores.head(),
-        "active": active,
-    }
+    cards = len(stores.state()["cards"])
+    return {"name": name, "cards": cards, "seq": stores.head(), "active": active}
 
 
 def _text(args: dict[str, Any], key: str) -> str:

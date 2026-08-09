@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import socket
+import argparse
 import threading
 from base64 import b64encode
 from typing import Any, BinaryIO, Iterator
@@ -24,6 +25,7 @@ from taskops.http import feed
 from taskops.board import RemoteBoard
 from tests.conftest import T0
 from taskops._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
+from taskops._locate import read_config
 from taskops.http.server import BoardServer, serve
 
 BOARD = "facturador"
@@ -877,8 +879,14 @@ def test_a_board_credential_cannot_operate_the_host_and_the_refusal_names_the_ke
 def test_an_unknown_server_verb_names_the_ones_this_host_has(
     server: BoardServer, owner: str
 ) -> None:
-    with pytest.raises(BadRequest, match="board.create, board.list"):
+    """Every verb this host has, not a hand-copied prefix of them: the registry is
+    what the refusal must stay in step with, and a list written out here goes
+    stale the first time a verb is added (it did, at `board.ingest`)."""
+    from taskops.http.admin import REGISTRY
+
+    with pytest.raises(BadRequest) as refused:
         admin(server, owner, "board.destroy", {})
+    assert str(refused.value).endswith(", ".join(sorted(REGISTRY)))
 
 
 def test_the_root_rpc_is_the_server_and_a_board_named_rpc_is_still_reachable(
@@ -1728,3 +1736,331 @@ def test_two_conflicting_verdicts_leave_the_board_coherent(server: BoardServer) 
     # as everybody else, with the whole thread in front of it.
     with pytest.raises(Refused, match="held by agent:berna/w1"):
         dev.call("update", {"task": card, "status": "done", "comment": "call it"})
+
+
+# ── the scp dies: a LOCAL board is promoted to a hosted one ─────────────────
+#
+# The same real server and the same real keypair as everything above, plus a
+# real repo with a real local board on disk. Nothing here stubs the transfer:
+# the events cross the socket, the server writes them into its own
+# `events.jsonl`, and the assertions are the ones the command itself makes.
+
+
+def local_repo(tmp_path: Path, name: str = "clone") -> Path:
+    """A repo with a LOCAL board in it — what `taskops init` leaves behind."""
+    from taskops.board import LocalBoard
+
+    repo = tmp_path / name
+    (repo / ".taskops").mkdir(parents=True)
+    (repo / ".taskops" / "board.json").write_text("{}\n", encoding="utf-8")
+    board = LocalBoard(repo / ".taskops" / "board", BERNA)
+    try:
+        cards = plan(board)  # type: ignore[arg-type]  # a LocalBoard is a Board
+        board.call("update", {"task": cards[0]["id"], "comment": "before the move"})
+    finally:
+        board.close()
+    return repo
+
+
+def local_log(repo: Path) -> Path:
+    return repo / ".taskops" / "board" / "events.jsonl"
+
+
+def pushed(target: str, key: Path, invite: str = "") -> int:
+    from taskops.cli import push
+
+    return push.run(argparse.Namespace(action="push", target=target, key=str(key), invite=invite))
+
+
+def test_a_local_board_becomes_the_hosted_one_and_the_config_flips_last(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criteria 1 and 5, end to end and over a socket: an empty board is created
+    on the host, the whole local history is streamed into it, the counts are
+    compared — and only then does this repo start reading the remote one, with
+    its local board renamed beside itself rather than removed."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    monkeypatch.chdir(repo)
+
+    assert pushed(f"{host_of(server)}/promoted", keyed) == 0
+
+    # The history is THERE, event for event, and the ids are the same ids. Line
+    # one is the board's own birth certificate — `board.create` records WHO made
+    # it, so the target of a correct push is never literally empty, and the whole
+    # local log lands AFTER it (`http/ingest.py::_birth`).
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    lines = theirs.strip().splitlines()
+    assert json.loads(lines[0])["body"]["op"] == "created"
+    assert [json.loads(line)["id"] for line in lines[1:]] == [
+        json.loads(line)["id"] for line in mine
+    ]
+    assert server.mounts.stores("promoted").head() == len(mine) + 1
+
+    # ONLY NOW the config: the repo reads the server, and it can sign itself in
+    # again afterwards, because the `login` block travelled with the flip.
+    config = read_config(repo)
+    assert config["url"] == f"{host_of(server)}/promoted"
+    assert config["login"]["principal"] == "berna" and config["login"]["key"] == str(keyed)
+    board = taskops.board.open_board(repo, BERNA)
+    assert isinstance(board, RemoteBoard)
+    assert [c["title"] for c in board.call("board", {})["groups"]["take"]] == [
+        "invoice model",
+        "CSV parser",
+    ]
+
+    # ARCHIVED, not deleted — the directory it came from still proves what was sent.
+    assert not (repo / ".taskops" / "board").exists()
+    kept = list((repo / ".taskops").glob("board.local-*"))
+    assert len(kept) == 1
+    assert (kept[0] / "events.jsonl").read_text(encoding="utf-8").strip().splitlines() == mine
+
+
+def test_an_interrupted_push_re_runs_to_a_no_op_and_finishes_the_job(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criterion 2. The interruption is real: half the log is ingested and the
+    call never comes back. Re-running sends the WHOLE log again — the ids are
+    `sha256` of the content, so the half that landed is recognised, written
+    once, and the log on the server has no duplicate line in it."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    half = len(mine) // 2
+    stopped = admin(server, owner, "board.ingest", {"board": "promoted", "events": mine[:half]})
+    assert stopped["written"] == half and stopped["already_held"] == 0
+
+    monkeypatch.chdir(repo)
+    assert pushed(f"{host_of(server)}/promoted", keyed) == 0
+
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    assert theirs.strip().splitlines()[1:] == mine  # no duplicate, no reordering
+    assert server.mounts.stores("promoted").head() == len(mine) + 1
+
+    # And a THIRD run, with nothing left to do, is a pure no-op.
+    again = admin(server, owner, "board.ingest", {"board": "promoted", "events": mine})
+    assert again["written"] == 0 and again["already_held"] == len(mine)
+    assert (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8") == theirs
+
+
+def test_a_payload_that_names_one_event_twice_writes_it_once(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """`Stores.write` appends everything it is handed to `events.jsonl` — the
+    CACHE ignores a repeated id, the log does not. So the door deduplicates
+    against ITSELF as well as against the board, or a payload that named one
+    line twice would put two identical lines in the truth and one row in the
+    index, and only the log's own reader would ever disagree."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+
+    answer = admin(server, owner, "board.ingest", {"board": "promoted", "events": [*mine, mine[0]]})
+    assert answer["received"] == len(mine) + 1
+    assert answer["written"] == len(mine)
+    assert answer["landed"] == len(mine)  # DISTINCT, read back from the store
+
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    assert theirs.strip().splitlines()[1:] == mine
+
+
+def test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criterion 3, and the repo is untouched by the refusal. There is no force
+    flag deliberately: two histories would have to be given an order they never
+    had, so the refusal says that instead of offering a way to fabricate one."""
+    repo = local_repo(tmp_path)
+    plan(client(server, BERNA))  # BOARD now has a history of its own
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(TaskopsError) as refused:
+        pushed(f"{host_of(server)}/{BOARD}", keyed)
+    assert "not empty" in str(refused.value)
+    assert "no force flag" in str(refused.value)
+    assert "board create" in str(refused.value)
+
+    # Step 5 never ran: this is still a local board and still the only copy.
+    assert "url" not in read_config(repo)
+    assert local_log(repo).exists()
+    assert not list((repo / ".taskops").glob("board.local-*"))
+
+
+def test_a_board_somebody_is_working_on_is_not_pushed(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Step 2. Leases do not travel — `live.sqlite` is a fact about processes
+    that are running, and none of them will be running against the new host. So
+    the check is not "copy them", it is "there must be none to lose"."""
+    from taskops.board import LocalBoard
+
+    repo = local_repo(tmp_path)
+    admin(server, owner, "board.create", {"name": "promoted"})
+    board = LocalBoard(repo / ".taskops" / "board", W1)
+    try:
+        card = [c for c in board.call("board", {})["groups"]["take"]][0]
+        board.call("take", {"task": card["id"]})
+    finally:
+        board.close()
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(TaskopsError, match="holding a lease"):
+        pushed(f"{host_of(server)}/promoted", keyed)
+    assert server.mounts.stores("promoted").head() == 1  # its birth event, and nothing else
+    assert "url" not in read_config(repo)
+
+
+def test_ingest_is_owner_or_member_only_and_says_how_a_key_gets_registered(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The door is server scope like every other admin verb — an unkeyed caller
+    is refused naming the way in, which is this milestone's house rule."""
+    admin(server, owner, "board.create", {"name": "promoted"})
+    stray, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())  # a BOARD token
+    with pytest.raises(Refused) as refused:
+        admin(server, stray, "board.ingest", {"board": "promoted", "events": ["{}"]})
+    assert "taskops join" in str(refused.value)
+    assert server.mounts.stores("promoted").head() == 1  # only the board's own birth
+
+
+def test_ingest_is_refused_to_a_principal_whose_key_this_host_never_registered(
+    server: BoardServer, keyed: Path, owner: str
+) -> None:
+    """The ROLE gate, and it is a different wall from the one above: this
+    credential IS server-scoped, so it reaches `core/scope.py::permit` — which
+    finds no key for the principal, calls it `anon`, and refuses naming how a key
+    gets registered. Without the gate, a `*` token would be enough to move a
+    history onto somebody else's host."""
+    admin(server, owner, "board.create", {"name": "promoted"})
+    stray, _ = server.mounts.credentials.mint("dev:mallory", "*", _clock.now())
+    with pytest.raises(Refused) as refused:
+        admin(server, stray, "board.ingest", {"board": "promoted", "events": ["{}"]})
+    assert "anon may not board.ingest" in str(refused.value)
+    assert "taskops server key add" in str(refused.value)
+    assert server.mounts.stores("promoted").head() == 1
+
+
+def test_a_short_push_stops_before_the_config_flips(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Step 4, against a push that really is short — one event is dropped on the
+    way out, exactly as a truncated scp used to drop them. The counts disagree,
+    the command STOPS, and this repo is still the local board it was: without
+    the comparison the promotion would have reported success and lost an event."""
+    from taskops.cli import push as promote
+
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    monkeypatch.chdir(repo)
+
+    honest = promote.operate.call
+
+    def short(host: str, verb: str, args: dict[str, Any], token: str = "") -> dict[str, Any]:
+        args = {**args, "events": list(args["events"])[:-1]} if verb == "board.ingest" else args
+        return honest(host, verb, args, token)
+
+    monkeypatch.setattr(promote.operate, "call", short)
+    with pytest.raises(TaskopsError) as stopped:
+        pushed(f"{host_of(server)}/promoted", keyed)
+    assert "did not come back with what was sent" in str(stopped.value)
+    assert f"local {len(mine):>6}   remote {len(mine) - 1:>6}" in str(stopped.value)
+
+    assert "url" not in read_config(repo)
+    assert local_log(repo).exists()
+    assert not list((repo / ".taskops").glob("board.local-*"))
+
+
+def test_ingest_refuses_a_line_that_does_not_match_its_own_content(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The door verifies the HASH and nothing else — it does not re-judge events
+    the verbs already validated. A tampered line lands nowhere, and the ones
+    beside it do not land either: the whole call is refused."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    forged = json.loads(mine[0])
+    forged["actor"] = "dev:mallory"
+    with pytest.raises(BadRequest, match="does not match its own content"):
+        admin(
+            server,
+            owner,
+            "board.ingest",
+            {"board": "promoted", "events": [json.dumps(forged), *mine[1:]]},
+        )
+    assert server.mounts.stores("promoted").head() == 1  # only the board's own birth
+
+
+def test_a_push_into_a_board_nobody_created_says_which_command_makes_one(
+    server: BoardServer, keyed: Path, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """`Mounts.stores` never creates — so the refusal has to name the door that
+    does, or the only way to learn it is to read the source."""
+    repo = local_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    with pytest.raises(NotFound, match="taskops board create"):
+        pushed(f"{host_of(server)}/nobodys", keyed)
+    assert "url" not in read_config(repo)
+
+
+# ── and join stops orphaning the board that is already here ────────────────
+
+
+def test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 4. Before this, joining simply started reading the remote board:
+    the local history stayed on disk, byte for byte, and nothing ever looked at
+    it again or said so. The command that made it invisible was a command about
+    connecting, and nobody was told."""
+    from taskops.cli import commands
+
+    repo = local_repo(tmp_path)
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    url = f"{url_of(server)}?token={token}"
+
+    with pytest.raises(TaskopsError) as refused:
+        commands.join(repo, url, BERNA)
+    assert "board push" in str(refused.value)
+    assert "--discard-local" in str(refused.value)
+    assert "url" not in read_config(repo)  # nothing was written by the refusal
+    assert local_log(repo).exists()
+
+
+def test_discard_local_archives_the_board_it_replaces_and_deletes_nothing(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 4's other half — and the archive is the same rename `push`
+    does, because it is the same moment seen from the other side."""
+    from taskops.cli import commands
+
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8")
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+
+    assert commands.join(repo, f"{url_of(server)}?token={token}", BERNA, discard=True) == 0
+
+    assert read_config(repo)["url"] == url_of(server)
+    assert not (repo / ".taskops" / "board").exists()
+    kept = list((repo / ".taskops").glob("board.local-*"))
+    assert len(kept) == 1 and (kept[0] / "events.jsonl").read_text(encoding="utf-8") == mine
+
+
+def test_an_empty_local_board_is_not_something_to_orphan(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """`taskops init` then `taskops join` is an ordinary sequence, and the
+    guardrail counts EVENTS, not the directory: an empty history has nothing to
+    lose, so refusing on it would cost a real workflow and buy nothing."""
+    from taskops.cli import commands
+
+    repo = tmp_path / "fresh"
+    (repo / ".taskops" / "board").mkdir(parents=True)
+    (repo / ".taskops" / "board.json").write_text("{}\n", encoding="utf-8")
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+
+    assert commands.join(repo, f"{url_of(server)}?token={token}", BERNA) == 0
+    assert read_config(repo)["url"] == url_of(server)
+    assert not list((repo / ".taskops").glob("board.local-*"))

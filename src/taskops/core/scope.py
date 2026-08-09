@@ -53,6 +53,11 @@ OPERATIONS: dict[str, Operation] = {
         KEYED,
         f"listing this host's boards needs a registered key (owner or member) — {ENROL}",
     ),
+    "board.ingest": Operation(
+        KEYED,
+        "moving a board's history onto this host needs a registered key "
+        f"(owner or member) — {ENROL}",
+    ),
     "board.read": Operation(ANYONE, ""),
     "board.write": Operation(
         KEYED,

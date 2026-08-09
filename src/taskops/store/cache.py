@@ -79,6 +79,20 @@ class Cache:
     def count(self) -> int:
         return int(self._query("SELECT COUNT(*) FROM events")[0][0])
 
+    def ids(self) -> set[str]:
+        """Every event id this board holds. The ids are `sha256(canonical)`, so a
+        SET of them is a set of FACTS: comparing one board's against another's is
+        how `http/ingest.py` tells a retry (a prefix of the same history) from a
+        second history (facts this one never observed)."""
+        return {str(row[0]) for row in self._query("SELECT id FROM events")}
+
+    def kinds(self) -> dict[str, int]:
+        """How many of each kind — the comparison `taskops board push` prints.
+        A total that matches while the mix does not is the interesting failure,
+        and a single count cannot show it."""
+        rows = self._query("SELECT kind, COUNT(*) FROM events GROUP BY kind")
+        return {str(kind): int(n) for kind, n in rows}
+
     def since(self, seq: int) -> list[tuple[int, Event]]:
         return self._events("WHERE seq > ? ORDER BY seq", (seq,))
 
