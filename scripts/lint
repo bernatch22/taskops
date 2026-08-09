@@ -1,6 +1,0 @@
-#!/bin/sh
-# No arguments, works on a fresh clone. CI runs THIS, not inline commands.
-set -e
-cd "$(dirname "$0")/.."
-uv run ruff check src tests
-uv run pyright

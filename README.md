@@ -15,6 +15,31 @@ second way to do something the tools already did, and the two ways drifted.)
 **Why any of it is shaped this way: [ARCHITECTURE.md](ARCHITECTURE.md).** How to
 work in this repo: [CLAUDE.md](CLAUDE.md).
 
+## How it fits together
+
+One server, many boards, one board per repo. Read this once and nothing below
+can be misread:
+
+```
+        ONE host, set up ONCE in its life            YOUR LAPTOP, per repo
+   ┌──────────────────────────────────────┐
+   │  taskops serve --root ~/boards       │      ~/code/tienda   ──┐
+   │                                      │      ~/code/api      ──┼─ each joined
+   │    ~/boards/tienda/   ← a board      │◀─────~/code/landing  ──┘   to one board
+   │    ~/boards/api/      ← a board      │       (no ssh, ever)
+   │    ~/boards/landing/  ← a board      │
+   └──────────────────────────────────────┘
+```
+
+* **The host**: one process, one port, every board you will ever make. You ssh
+  into it exactly once, to install it and register your key.
+* **A board**: one directory on that host. Created from your laptop with
+  `taskops board create`.
+* **A repo**: joined to one board. `taskops remote add` once per checkout, then
+  every command runs bare.
+* **Your agents**: they never touch any of this — they talk to the board through
+  the nine MCP tools.
+
 ## Install
 
 ```sh
@@ -68,32 +93,61 @@ before keys existed never rot.
 **Restart your Claude Code session after either** — MCP servers load once, at
 session start, from `.mcp.json`.
 
-### Hosting
+### Hosting — ONE server for ALL your projects
 
-Install and bootstrap the owner. **These two acts are the only ssh in this
-design** — it is where trust enters, and nothing else on a host is ever
-administered over a shell:
+Set a host up once, ever. **One process serves every board you will ever make**
+— there is no server per project and no server per board. The author's host
+runs six boards on one port.
+
+`--root` is the only thing to decide, and it is just **a directory you pick on
+the server where the boards get stored**. `~/boards` below is an example, not a
+convention: any path works. Every immediate subdirectory of it IS a board,
+served at `/<its name>`:
+
+```
+~/boards/                     ← --root: you chose this path
+├── server.sqlite             the host itself: who may sign in, and their ssh keys
+├── allowed_signers           derived from it, whole, on every change
+├── live.sqlite               the sessions this host has handed out
+├── mi-proyecto/              ← a board, served at https://host:8787/mi-proyecto
+│   ├── events.jsonl              THE TRUTH: append-only, this is the board
+│   ├── cache.sqlite              derived — delete it and it rebuilds
+│   └── live.sqlite               who holds which card right now
+└── otro-proyecto/            ← another board, same process, same port
+    └── …
+```
+
+Nothing else is in there, and nothing outside it is touched. To move the host
+to another machine you copy that one directory.
+
+Three commands on the box, one time in its life. **This is the only ssh in the
+design** — after it, nothing on a host is ever administered over a shell:
 
 ```sh
-ssh <host> 'pip install taskops-cli'       # or pipx / uv tool install
+ssh <host> 'pip install taskops-cli'
 ssh <host> 'taskops server init --root ~/boards --key -' < ~/.ssh/id_ed25519.pub
+ssh <host> 'taskops serve --root ~/boards --host 127.0.0.1 --port 8787'   # under pm2/systemd
 ```
 
-Then one process, pointed at the boards directory — every immediate subdirectory
-of `--root` is a board, reachable as `/<name>`. It binds loopback on purpose; TLS
-and the public name are a reverse proxy's job:
+`server init` writes `server.sqlite` + `allowed_signers` and makes YOU its
+owner; `serve` is the long-running process. It binds loopback on purpose — TLS
+and the public name are a reverse proxy's job.
 
-```sh
-taskops serve --root ~/boards [--host 127.0.0.1] [--port 8787]
-```
+### Per project — no ssh, ever again
 
-Everything after that runs **from your laptop**, signed by the key `server init`
-registered:
+From your laptop, signed by the key `server init` registered. This is the part
+you repeat per repo; the host above is never touched again:
 
 ```sh
 taskops remote add https://host:8787 [--replace]   # once per checkout
 taskops board create [<name>]                      # defaults to the directory's name
 taskops board push                                 # this repo's LOCAL board becomes that one
+taskops join <name>                                # or: a teammate connects to an existing one
+```
+
+And the admin surface for any board on that host, from anywhere:
+
+```sh
 taskops board ls
 taskops board visibility <name> public|private     # owner only
 taskops invite <who> [--board <name>]
@@ -155,8 +209,9 @@ which is why there is no `recover` verb and no mark-as-read.
 ## Developing
 
 ```sh
-./scripts/lint                    # ruff + pyright strict
-./scripts/test                    # the whole suite
+uv run ruff check src tests       # lint
+uv run pyright                    # types, strict
+uv run pytest                     # the whole suite
 cd ui && npm ci                   # once
 cd ui && npm run check            # typecheck + build + smoke + committed-bundle diff
 uv run python -m taskops.cli ui   # the dashboard, token included

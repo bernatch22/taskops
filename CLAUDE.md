@@ -13,8 +13,9 @@ it: **read the module before changing its decision, not after.**
 ## Commands
 
 ```sh
-./scripts/lint                          # ruff + pyright strict
-./scripts/test                          # the whole suite
+uv run ruff check src tests             # lint
+uv run pyright                          # types, strict
+uv run pytest                           # the whole suite
 cd ui && npm run check                  # typecheck + build + smoke + bundle diff
 cd ui && node build.mjs                 # rebuild the committed bundle only
 uv run python -m taskops.cli ui         # the dashboard, token included
