@@ -237,10 +237,10 @@ flowchart TB
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread, boards, fields"]
-        httpsrv["http/server, mounts, rpc, admin, auth, login, feed, static, gitdoor, upstream"]
+        httpsrv["http/server, mounts, rpc, admin, ingest, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key · hook   ·   serving: serve · ui   ·   operate: board · invite · revoke   ·   admin: server init"]
+        cli["commands: init · join --key · hook   ·   serving: serve · ui   ·   operate: board · invite · revoke   ·   push: board push   ·   admin: server init"]
     end
 
     L1 --> L0
@@ -357,13 +357,14 @@ start a process, and `tests/test_architecture.py` still enforces exactly that.
 ZERO pip dependencies, no hand-rolled crypto.
 
 **The host is OPERATED from `taskops`, over its own API** (`http/admin.py`,
-`cli/operate.py` — 2026-08-09, the anomaly this chapter exists to kill). Four
+`cli/operate.py` — 2026-08-09, the anomaly this chapter exists to kill). Five
 acts that used to be an ssh session on the box are now signed calls from the
 laptop:
 
 ```sh
 taskops board create <host>/<name>      owner only — THE way a board comes to exist
 taskops board ls [<host>]               owner: all of them; member: their own
+taskops board push <host>/<name>        a LOCAL board becomes the hosted one
 taskops invite <who> --board <name>     owner only — prints the join line
 taskops revoke --key SHA256:… | --invite <id>
 ```
@@ -378,6 +379,50 @@ envelope is the board rpc's, so `_wire.py` is the client for both.
 history back as new) and writes WHO made it as the board's first project-level
 event — the one fact no later event could reconstruct. A member's "their own
 boards" is DERIVED from the credentials they hold, never a membership table.
+
+**The scp dies: `taskops board push` promotes a local board** (`cli/push.py`,
+`http/ingest.py` — 2026-08-09). Moving a board used to be a README paragraph
+naming `events.jsonl` and a shell on the box — storage leaking into UX, with no
+count and no verification. It is now one command, and **the ORDER is the
+safety, with the config flipping LAST**: (1) the target must exist and hold no
+history but its own beginning, (2) no live lease here, (3) the whole log is
+streamed through the server-scope `board.ingest`, (4) the counts are compared,
+per event KIND and not just a total, and a mismatch is a STOP, (5) only then
+`board.json`/`remote.json`, with `.taskops/board/` renamed to
+`board.local-<date>/` rather than deleted. A failure at any point above leaves
+the repo exactly as it was.
+
+Three decisions inside it, each pinned in `tests/test_topology.py`:
+
+* **No force flag, and there must never be one.** A non-empty target means two
+  histories, and giving them an order they never had is fabricating a timeline;
+  the refusal says exactly that instead of offering a way.
+* **The ingest verb is not a sync channel and cannot become one.** Its
+  precondition is true exactly once in a board's life. "Empty" is not `seq == 0`
+  — `board.create` writes WHO made the board as its first event, so the door
+  allows that birth certificate and nothing else (`ingest.py::_birth`). It
+  appends through the store path replay already trusts and does NOT re-judge:
+  events were validated by the verbs that made them, so the door checks the
+  HASH and moves them. Retry is free by construction — ids are `sha256` of the
+  content, so an interrupted push re-runs to a no-op and continues, which is
+  why the whole history travels in ONE call (the set comparison that separates
+  a retry from a stranger's board is only decidable with all of it in hand).
+  The payload is deduplicated against ITSELF as well: `Stores.write` appends
+  everything it is handed to the log while the cache ignores a repeated id, so
+  a payload naming one line twice would put two lines in the truth and one row
+  in the index.
+* **Leases and presence do not travel.** `live.sqlite` is a fact about running
+  processes, none of which will run against the new host; the board starts with
+  nobody working, which is true. A held lease refuses the push rather than being
+  copied.
+
+And **`taskops join` refuses to orphan a local board** (`cli/commands.py`, the
+same day). Joining a repo whose `.taskops/board/` held events simply started
+reading the remote one: the history stayed on disk, byte for byte, and nothing
+ever looked at it again or said so. It is now a STOP naming both ways out —
+`taskops board push` to take it along, or `--discard-local` to archive (never
+delete) and join anyway. It counts EVENTS, not the directory, so the ordinary
+`init` → `join` sequence is untouched.
 
 **The on-box commands survive as break-glass**: `taskops invite/revoke --root
 <dir>` still work against the files, on the machine that holds them, for the day
@@ -589,6 +634,8 @@ nobody has touched yet.
 | git replication between clones | split-brain, two machines "owning" the same card | `RemoteBoard` never falls back to a local store on write failure (`Unreachable` instead) |
 | Claude hooks **that decide or store** | latency, another thing to install and drift; v1's held state and gated actions | context travels in `initialize.instructions` + tool responses. The ONE exception, sanctioned 2026-08-06: `taskops hook claude`, delivery-only (`MENTIONS.md` §9) — it reads, injects a ✉ or ◆ line, and can be deleted with no loss but immediacy. `tests/test_claude.py` pins its safety properties, one test each — the module docstring lists them and `grep -c '^def test_' tests/test_claude.py` counts them |
 | a mark-as-read / ack verb for mentions | a stored `read` flag is `recover` again: a write whose only job is to contradict an earlier one | `core/mentions.py::pending()` derives it from the thread; `tests/test_verbs.py::test_a_mention_clears_itself_the_moment_the_actor_touches_the_card` |
+| a `--force` on `taskops board push`, and a SYNC channel behind `board.ingest` | a non-empty target means two histories, and giving them an order they never had fabricates a timeline the board never observed. The precondition ("no history but its own beginning") is true exactly once in a board's life, which is what keeps the door a promotion and not replication between clones — the thing banned two rows up | `http/ingest.py` refuses and says so; `tests/test_topology.py::test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered`, and the argument is the module's own docstring |
+| a SILENT `taskops join` over a local board | the local history stayed on disk byte for byte and nothing ever looked at it again or said so — a command about connecting is what made it invisible | `cli/commands.py::_keep_or_archive` refuses naming `taskops board push` and `--discard-local` (which archives, never deletes); `tests/test_topology.py::test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out` |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
 | a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/main.tsx` asserts the words `free`, `slot` and `capacity` appear nowhere in that markup ("actors: NO WORKER SLOTS, under that name or any other") |
@@ -636,7 +683,7 @@ adoption to its test.
 ## 13. Verified state at time of writing
 
 ```
-321 passed             ./scripts/test
+372 passed             ./scripts/test
 ruff clean            } ./scripts/lint
 pyright --strict clean
 ```
