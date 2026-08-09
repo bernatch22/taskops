@@ -37,12 +37,17 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**388 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 387+1; see below), ruff +
+**392 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 391+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
 boards and the boards' `events.jsonl` are md5-identical across the upgrade.
+**The server-has-an-owner chapter is NOT on production yet**: it is green in
+the trunk and the human's go was never written, so the box still runs the
+tree tk-df8e64 shipped. Upgrading it is README's *Upgrading a host*, third
+run, plus this chapter's own proof — sign in with the owner key from the
+laptop, one admin verb end to end, legacy tokens still answering.
 
 ## The four ideas everything rests on
 
@@ -285,8 +290,24 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   replication between clones, Claude hooks **that decide or store** (the one
   delivery-only hook is sanctioned — MENTIONS.md §9; anything beyond delivery
   is not), a stored `doing`, a slug in a branch name, a `recover`, or a
-  mark-as-read/ack verb for mentions. Each one has its line in
+  mark-as-read/ack verb for mentions; and, from the server-has-an-owner
+  chapter, per-request SIGNING (sessions won: a signature envelope would have
+  to be taught to the stdlib server, the `/feed` handshake and the MCP layer
+  three separate times, for what a bearer already does — and it is a new wire
+  format, so the fleet would have to re-join), hand-rolled crypto or a pip
+  crypto dependency (it is `ssh-keygen -Y sign`/`-Y verify`, and
+  `pyproject.toml` still has no runtime dependency at all), a `--force` on
+  `board push`, and ANONYMOUS WRITES in any form — including the invisible one,
+  a `presence` row on a public read. Each one has its line in
   `ARCHITECTURE.md` §11 saying what it cost and where it is enforced.
+- **Legacy bearer tokens are a fleet, not a detail.** Production's four boards
+  were joined before keys existed: no principal, no pubkey, an empty
+  `allowed_signers`, a `remote.json` one key long. Anything touching auth,
+  `/feed`, the MCP handshake or the `taskops ui` forward is checked against
+  that state and not against a fresh keyed board — the four
+  `test_a_legacy_*`/`test_the_ui_window_forwards_with_a_legacy_token` tests in
+  `tests/test_topology.py` are the door-by-door proof and were each
+  mutation-checked.
 
 ## What is left
 
