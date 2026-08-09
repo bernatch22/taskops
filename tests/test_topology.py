@@ -2422,3 +2422,141 @@ def test_an_empty_local_board_is_not_something_to_orphan(
     assert commands.join(repo, f"{url_of(server)}?token={token}", BERNA) == 0
     assert read_config(repo)["url"] == url_of(server)
     assert not list((repo / ".taskops").glob("board.local-*"))
+
+
+# ── COMPAT: production's exact state, proven and not assumed ────────────────
+#
+# The chapter's third rule — EXISTING BEARER TOKENS KEEP WORKING — protects four
+# real boards on `taskops.bernardocastro.dev`. Their shape is not merely "a board
+# with a token"; it is a host that knows NOTHING this chapter added: no
+# principal, no pubkey, no `allowed_signers` file, and a `remote.json` exactly
+# one key long. Every test above this line arrives at that state incidentally
+# (`client()` mints a bearer). These arrive at it ON PURPOSE — through the real
+# on-box `taskops invite --root <dir>`, redeemed with no key, which is literally
+# how production's credentials came to exist — then ASSERT it is that state, and
+# only then drive the four doors a production board is actually used through:
+# /rpc, /feed, the MCP handshake, and the `taskops ui` window's forwarded /rpc.
+
+
+@pytest.fixture()
+def legacy(server: BoardServer, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> str:
+    """A standing bearer, minted by the ON-BOX command and read off its own
+    output — not from the store behind it. If `taskops invite --root` ever
+    stopped printing a redeemable URL, this fixture would fail rather than
+    quietly test a token no human could have obtained."""
+    from taskops.cli import admin
+
+    admin.on_box_invite(tmp_path / "boards", "berna", BOARD)
+    printed = capsys.readouterr().out
+    invite = printed.partition("?invite=")[2].strip()
+    assert invite, printed
+    return str(_redeem(url_of(server), invite, "berna")["token"])
+
+
+def _untouched_host(server: BoardServer, tmp_path: Path) -> None:
+    """The precondition, spelled out: this host has learned nothing new. A
+    keyless join enrols nobody, so there is no principal and no key — and
+    `allowed_signers`, the file `ssh-keygen -Y verify` consumes, is EMPTY.
+
+    Empty and not absent, which is the honest statement and was found by this
+    test failing on the stricter one: `ServerStore.__init__` regenerates the
+    file whenever the store is opened, so merely starting a server creates it.
+    That is not a hole — the file is derived WHOLE from the principals table, so
+    zero principals means zero signers, and `-Y verify` against it refuses
+    everybody. Asserting its emptiness pins the property that matters; asserting
+    its absence would have pinned a startup detail instead."""
+    from taskops.store.server import ServerStore
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        assert store.principals() == [] and store.keys() == []
+    finally:
+        store.close()
+    assert (tmp_path / "boards" / "allowed_signers").read_text(encoding="utf-8") == ""
+
+
+def test_a_legacy_only_board_still_works_on_rpc(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 1. The whole cycle — plan, assign, take, bind, done, merged — on a
+    credential with no principal behind it, exactly as production's four run."""
+    _untouched_host(server, tmp_path)
+
+    dev = RemoteBoard(url_of(server), legacy, BERNA)
+    cards = plan(dev)
+    dev.call("assign", {"tasks": [cards[0]["id"]]})
+    worker = RemoteBoard(url_of(server), legacy, W1)  # dev credential, its own agent
+    worker.call("take", {"task": cards[0]["id"]})
+    worker.call("bind", {"task": cards[0]["id"], "sha": "a1b2", "subject": "feat: model"})
+    worker.call("update", {"task": cards[0]["id"], "status": "done", "comment": "done"})
+    assert dev.call("merged", {"task": cards[0]["id"], "sha": "9c2f"})["into"] == "ms/mvp-facturador"
+
+    _untouched_host(server, tmp_path)  # and a full cycle enrolled nobody
+
+
+def test_a_legacy_token_still_opens_the_feed(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 2. `?token=` on /feed is how every joined clone watches, and the
+    anonymous gate added this chapter sits in front of it — a private board with
+    a standing bearer must pass it untouched."""
+    _untouched_host(server, tmp_path)
+    with urlopen(f"{url_of(server)}/feed?token={legacy}", timeout=5) as stream:
+        assert b"hello" in stream.readline() + stream.readline()
+
+
+def test_a_legacy_config_opens_the_MCP_board_and_its_handshake(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 3, and the one with the most moving parts under it. The MCP server
+    opens a board from `remote.json` and renders the panorama INTO the handshake
+    (`mcp/hello.py`). A config with no `login` block must reach that far with no
+    refresh attempted — `hello` swallows every TaskopsError, so a broken legacy
+    path would not raise here, it would silently hand back an EMPTY panorama."""
+    from taskops.mcp import hello
+    from taskops.board import open_board
+    from taskops.gitwork import install
+    from taskops.mcp.server import INSTRUCTIONS
+
+    plan(RemoteBoard(url_of(server), legacy, BERNA))
+    project = tmp_path / "clone"
+    install.write_config(project, url_of(server), legacy)
+    assert json.loads((project / ".taskops" / "remote.json").read_text()) == {"token": legacy}
+
+    handshake = hello.hello(open_board(project, BERNA), INSTRUCTIONS)
+    assert "invoice model" in handshake["instructions"]  # the panorama, not silence
+    _untouched_host(server, tmp_path)
+
+
+def test_the_ui_window_forwards_with_a_legacy_token(
+    server: BoardServer, tmp_path: Path, legacy: str
+) -> None:
+    """Door 4. `taskops ui` against a remote board forwards /board/rpc upstream
+    with the bearer out of `remote.json` (`http/upstream.py`). That bearer is a
+    standing legacy one on all four production boards, so the window is built
+    here exactly as `cli/serving.py` builds it — around `legacy` and nothing
+    else — and asked for the cards the SERVER holds."""
+    from tests.test_git import repo
+    from taskops.http.upstream import Upstream
+
+    plan(RemoteBoard(url_of(server), legacy, BERNA))
+    httpd = serve(
+        tmp_path / "window",
+        "127.0.0.1",
+        0,
+        repo=repo(tmp_path, "viewer"),
+        upstream=Upstream(url_of(server), legacy),
+    )
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/board"
+        token, _ = httpd.mounts.credentials.mint(BERNA, "board", _clock.now())
+        body = _post(url, token, {"verb": "board", "actor": BERNA})
+        assert body["ok"] is True
+        titles = [c["title"] for c in body["data"]["groups"]["take"]]
+        assert titles == ["invoice model", "CSV parser"]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    _untouched_host(server, tmp_path)
