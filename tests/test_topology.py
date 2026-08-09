@@ -38,6 +38,7 @@ pytestmark = pytest.mark.usefixtures("clock")
 @pytest.fixture()
 def server(tmp_path: Path) -> Iterator[BoardServer]:
     httpd = serve(tmp_path / "boards", "127.0.0.1", 0)
+    httpd.mounts.create(BOARD)  # a board exists because somebody made it, never by asking
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield httpd
@@ -188,9 +189,169 @@ def test_a_board_name_outside_the_pattern_never_touches_disk(server: BoardServer
     base = f"http://127.0.0.1:{server.server_address[1]}/.."
     with pytest.raises(BadRequest, match="names are"):
         RemoteBoard(base, token, BERNA).call("board", {})
-    # And it was refused BEFORE any path was joined: the root has only the
-    # server's own credential store in it.
-    assert [p.name for p in server.mounts.root.iterdir()] == ["live.sqlite"]
+    # And it was refused BEFORE any path was joined: the root holds the server's
+    # own credential store and the ONE board the fixture created, nothing else.
+    assert sorted(p.name for p in server.mounts.root.iterdir()) == [BOARD, "live.sqlite"]
+
+
+# ── no board comes into existence by accident ───────────────────────────────
+
+
+def test_an_unknown_board_is_404_and_leaves_nothing_on_disk(server: BoardServer) -> None:
+    """The hole this card closed, found 2026-08-08 and left unprobed because
+    probing it meant writing to production.
+
+    `mounts.stores()` did `Stores(self.root / name)` for ANY name matching the
+    pattern, and `Stores` makes its own directory. The router calls
+    `mounts.check(board)` BEFORE `self._credential(...)`, so the request below —
+    no token at all, a name nobody has ever used — used to leave
+    `<root>/ghostboard/` with a cache and a lease file in it. A stranger's
+    question caused a write, which is precisely what this chapter's rules forbid.
+    """
+    before = sorted(p.name for p in server.mounts.root.iterdir())
+    ghost = "ghostboard"
+    status, body = _get_post(
+        f"http://127.0.0.1:{server.server_address[1]}/{ghost}",
+        "",  # anonymous ON PURPOSE: the mount used to happen before auth
+        {"verb": "board", "actor": BERNA},
+    )
+
+    assert status == 404 and body["error"]["code"] == "not_found"
+    assert "never by a request for one" in body["error"]["message"]
+    # THE assertion of this test: no side effect, at all.
+    assert not (server.mounts.root / ghost).exists()
+    assert sorted(p.name for p in server.mounts.root.iterdir()) == before
+
+
+def test_a_board_only_exists_because_somebody_created_it(server: BoardServer) -> None:
+    """The other half: creation is a door, and it is not the reading path.
+
+    `create()` is what a server-scope `board.create` (owner only) will call; a
+    board it made is then readable through the ordinary mount, exactly as the
+    fixture's own board is."""
+    fresh = "segundo"
+    assert not (server.mounts.root / fresh).exists()
+    server.mounts.create(fresh)
+    assert (server.mounts.root / fresh).is_dir()
+    token, _ = server.mounts.credentials.mint(BERNA, "*", _clock.now())
+    base = f"http://127.0.0.1:{server.server_address[1]}/{fresh}"
+    status, body = _get_post(base, token, {"verb": "board", "actor": BERNA})
+    assert status == 200 and body["data"]["groups"]["take"] == []
+
+
+def test_a_feed_for_an_unknown_board_creates_nothing_either(server: BoardServer) -> None:
+    """/feed and /git take the same `check` door as /rpc. One wall, not three —
+    a second copy of the existence test is how one of them would drift open."""
+    for tail in ("feed", "git/commit/HEAD"):
+        status, body = _get(
+            f"http://127.0.0.1:{server.server_address[1]}/nadie/{tail}", _token(server, BERNA)
+        )
+        assert status == 404, tail
+        assert "no board named" in body["error"]["message"], tail
+    assert not (server.mounts.root / "nadie").exists()
+
+
+# ── the server knows who owns it ────────────────────────────────────────────
+
+
+PUBKEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ3Fm5NcJ5PRD2G0oO7CjGPXk1kYaU2SQlHkzZ9pQ1aB berna@air"
+)
+PUBKEY2 = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB8sQ0mgLZ3nS4z0nCq0oV5tXHhYw2mBQ9nTgqJ7cKdE laptop"
+)
+
+
+def test_server_init_records_the_owner_and_writes_allowed_signers(tmp_path: Path) -> None:
+    """Criterion 2. The bootstrap, run as the CLI runs it — the one act over ssh."""
+    from taskops.cli import admin
+    from taskops.store.server import SIGNERS, ServerStore
+
+    root = tmp_path / "boards"
+    (tmp_path / "id.pub").write_text(PUBKEY, encoding="utf-8")
+    assert admin.init(root, str(tmp_path / "id.pub"), "berna") == 0
+
+    store = ServerStore(root)
+    try:
+        owner = store.owner()
+        assert owner is not None and owner == ("berna", "owner")
+        assert store.role_of("berna") == "owner"
+        assert store.role_of("nobody") == "anon"  # unregistered is an ANSWER, not an error
+        signers = (root / SIGNERS).read_text(encoding="utf-8")
+        # The exact format `ssh-keygen -Y verify` consumes: principal, type, key.
+        assert signers == "berna ssh-ed25519 " + PUBKEY.split()[1] + "\n"
+        assert "berna@air" not in signers  # the comment is a label, not identity
+        assert store.keys()[0].fingerprint.startswith("SHA256:")
+    finally:
+        store.close()
+
+
+def test_allowed_signers_is_regenerated_from_the_store_on_every_change(tmp_path: Path) -> None:
+    """Criterion 3. The file is `cache.sqlite` to the store's `events.jsonl`:
+    derived, never appended to, and a hand edit does not survive the next write."""
+    from taskops.store.server import SIGNERS, ServerStore
+
+    root = tmp_path / "boards"
+    store = ServerStore(root)
+    try:
+        first = store.enroll("berna", "owner", PUBKEY, _clock.now())
+        store.enroll("ana", "member", PUBKEY2, _clock.now())
+        assert (root / SIGNERS).read_text().splitlines() == [
+            "ana ssh-ed25519 " + PUBKEY2.split()[1],
+            "berna ssh-ed25519 " + PUBKEY.split()[1],
+        ]
+
+        (root / SIGNERS).write_text("mallory ssh-ed25519 AAAA\n", encoding="utf-8")
+        store.revoke_key(first.fingerprint)
+        # Regenerated WHOLE: the revoked key is gone AND so is the hand edit.
+        assert (root / SIGNERS).read_text().splitlines() == [
+            "ana ssh-ed25519 " + PUBKEY2.split()[1]
+        ]
+        assert [k.principal for k in store.keys()] == ["ana"]
+        # ...and re-opening the store rebuilds the file from the same truth.
+        (root / SIGNERS).unlink()
+    finally:
+        store.close()
+    again = ServerStore(root)
+    try:
+        assert (root / SIGNERS).read_text().splitlines() == [
+            "ana ssh-ed25519 " + PUBKEY2.split()[1]
+        ]
+    finally:
+        again.close()
+
+
+def test_the_store_refuses_a_second_owner_and_a_key_with_no_principal(tmp_path: Path) -> None:
+    from taskops.store.server import ServerStore
+
+    store = ServerStore(tmp_path / "boards")
+    try:
+        store.enroll("berna", "owner", PUBKEY, _clock.now())
+        with pytest.raises(Refused, match="already owned by 'berna'"):
+            store.enroll("mallory", "owner", PUBKEY2, _clock.now())
+        with pytest.raises(Refused, match="the owner registers one"):
+            store.add_key("ghost", PUBKEY2, _clock.now())
+        with pytest.raises(BadRequest, match="not an ssh public key"):
+            store.add_key("berna", "-----BEGIN OPENSSH PRIVATE KEY-----", _clock.now())
+    finally:
+        store.close()
+
+
+def test_a_server_scope_refusal_names_the_role_that_may(tmp_path: Path) -> None:
+    """Criterion 4, and the milestone's house rule: the refusal to an unkeyed
+    writer says how a key gets registered."""
+    from taskops.core import scope
+
+    scope.permit("board.read", scope.ROLE_ANON)  # anonymous read is a read
+    scope.permit("board.create", scope.ROLE_OWNER)
+    with pytest.raises(Refused, match="owner may"):
+        scope.permit("board.create", scope.ROLE_MEMBER)
+    with pytest.raises(Refused) as caught:
+        scope.permit("board.write", scope.ROLE_ANON)
+    assert "member or owner may" in str(caught.value)
+    assert "taskops server key add" in str(caught.value)  # the way IN, not just the no
+    with pytest.raises(Refused, match="unknown server operation"):
+        scope.permit("board.destroy", scope.ROLE_OWNER)
 
 
 # ── the live feed ───────────────────────────────────────────────────────────
@@ -366,6 +527,7 @@ def repo_server(tmp_path: Path) -> Iterator[BoardServer]:
 
     root = repo(tmp_path, "checkout")
     httpd = serve(tmp_path / "boards", "127.0.0.1", 0, repo=root)
+    httpd.mounts.create(BOARD)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield httpd

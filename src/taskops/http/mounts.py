@@ -153,11 +153,34 @@ class Mounts:
             self.stores(name)
 
     def stores(self, name: str) -> Stores:
+        """OPEN a board. Never create one — that is the whole of this method.
+
+        Until 2026-08-08 this said `Stores(self.root / name)` unconditionally,
+        and `Stores` makes its own directory. So a GET for a name nobody had
+        heard of — arriving BEFORE any credential was checked, since the router
+        calls `check` first and `_credential` second — left a board directory
+        with a cache and a lease file on disk: anonymous, unauthorised,
+        permanent, a write caused by a stranger's question. Creation is now a
+        server-scope OPERATION (`core/scope.py`: `board.create`), via `create()`.
+        """
         _named(name)
         with self._lock:
             if name not in self._boards:
+                if not (self.root / name).is_dir():
+                    raise NotFound(
+                        f"no board named {name!r} on this server — a board is created by "
+                        "its owner, never by a request for one"
+                    )
                 self._boards[name] = Stores(self.root / name)
             return self._boards[name]
+
+    def create(self, name: str) -> Stores:
+        """The one door that MAY make a board directory, and it is never on the
+        anonymous path: callers gate it with `scope.permit("board.create", …)`.
+        Creating one that exists is a no-op, so it is safe to run twice."""
+        _named(name)
+        (self.root / name).mkdir(parents=True, exist_ok=True)
+        return self.stores(name)
 
     def count(self) -> int:
         with self._lock:
