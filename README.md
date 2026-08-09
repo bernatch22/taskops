@@ -49,8 +49,24 @@ taskops invite ana --board my-project                # one-time link, 7 days (--
 Ana, in **her own** checkout of the same repo:
 
 ```sh
-taskops join "https://host:8787/my-project?invite=<token>"
+taskops join "https://host:8787/my-project?invite=<token>" --key ~/.ssh/id_ed25519
 ```
+
+`--key` is what turns the credential into something nobody has to look after:
+the invite and the PUBLIC half of that key travel in the same call, the server
+burns the invite and registers the key, and the key signs Ana in on the spot.
+From then on `remote.json` is a SESSION cache — when the token runs out (12
+hours), the next call signs in again by itself, with nobody asked for anything.
+Delete the file and it comes back. Without `--key` the join is the one it always
+was and the token is a standing one, which is why every board joined before this
+keeps working untouched.
+
+The login is OpenSSH's own mechanism, the same one signed commits use: the
+server answers a random single-use challenge, `ssh-keygen -Y sign` signs it, and
+`ssh-keygen -Y verify -f allowed_signers` is what decides. No pip dependency and
+no crypto of ours. One limit, stated: `-Y sign` wants the private key FILE, so a
+key that lives only inside a running ssh-agent cannot sign yet — taskops says so
+in a sentence rather than failing obscurely.
 
 Either way you get the same two files: `.taskops/board.json` (the address —
 committed, it travels with the code) and, for `join`, `.taskops/remote.json`

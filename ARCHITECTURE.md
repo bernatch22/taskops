@@ -193,6 +193,7 @@ an earlier one.
 flowchart TB
     subgraph L0["0 · foundation (stdlib only)"]
         errors["_errors, _ids, _clock, _json, _locate, _version"]
+        wire["_wire — one POST, one envelope: the decoder both clients share"]
     end
     subgraph L1["1 · core (PURE — no I/O)"]
         types["types — Card/Milestone/Event/Lease, KINDS registry"]
@@ -202,6 +203,7 @@ flowchart TB
         machine["machine — transition guards"]
         graph["graph — ready/blocked/doing/stalled"]
         scope["scope — the SERVER-scope roles: owner | member | anon"]
+        challenge["challenge — the login nonce: in memory, single-use, dead on claim"]
         mentionsm["mentions — who was named and has not answered"]
         reviewm["review — submitted/reviewed folded into a Standing"]
         hours["hours — working-time math"]
@@ -230,13 +232,15 @@ flowchart TB
         trailer["gitwork/trailer"]; bind["gitwork/bind"]; install["gitwork/install"]
         remote["gitwork/remote — origin: {host, slug, url}, and best-effort push"]
         diff["gitwork/diff — read-only, what the /git door serves"]
+        sigm["gitwork/sig — SSHSIG: ssh-keygen -Y sign / -Y verify"]
+        sessionm["session.py — the client half of the login: sign in, cache, refresh"]
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread, boards, fields"]
-        httpsrv["http/server, mounts, rpc, auth, feed, static, gitdoor, upstream"]
+        httpsrv["http/server, mounts, rpc, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join · hook   ·   serving: serve · invite · ui   ·   admin: server init"]
+        cli["commands: init · join --key · hook   ·   serving: serve · invite · ui   ·   admin: server init"]
     end
 
     L1 --> L0
@@ -330,6 +334,39 @@ after it is a signed call over the API. The `allowed_signers` file beside
 never hand-edited, never read back into the store — the same relationship
 `cache.sqlite` has to `events.jsonl`. Bearer tokens (`store/creds.py`, per
 board) are untouched: keys are how tokens come to be MINTED.
+
+**A key authenticates a LOGIN; the login mints a SESSION** (`http/login.py`,
+`core/challenge.py`, `gitwork/sig.py`, `session.py` — 2026-08-09). `POST /login`
+answers a random, single-use, in-memory nonce; the client signs it with
+`ssh-keygen -Y sign -n taskops`; the server runs `ssh-keygen -Y verify -f
+<root>/allowed_signers -I <principal>` and, if OpenSSH says yes, mints an
+ordinary bearer credential with a 12-hour TTL. **Every downstream path is
+UNTOUCHED** — /rpc's bearer check, /feed, the MCP board all see the token they
+always saw. That is why the session model beat per-request signing: a signature
+envelope would have to be taught to the stdlib HTTP server, to the WebSocket
+handshake and to the MCP layer, three times. Exactly one thing changed: where
+tokens come from.
+
+The signed payload is a SERVER-ISSUED CHALLENGE and not a client timestamp, so
+there is no clock-skew window to pick and no replay cache to size — the nonce
+dies on the claim (`core/challenge.py` carries the argument, and why it is
+memory and never a table: a challenge that outlived its process would be a
+stored fact whose only job is to be contradicted, which is `recover`'s shape).
+The subprocess runs through `gitwork/run.py::tool`, the ONE module allowed to
+start a process, and `tests/test_architecture.py` still enforces exactly that.
+ZERO pip dependencies, no hand-rolled crypto.
+
+The client half is `session.py`: `board.py::open_board` refreshes an absent or
+expiring session before it hands a board back, and `RemoteBoard.call` retries
+ONCE when the server says a credential expired — because the MCP server opens a
+board once and keeps it for a session longer than the token. A config with no
+`login` block, and a token with no expiry, are never touched: that is the shape
+production's four boards are in. One limit, stated and not solved: `-Y sign`
+needs the private key FILE, so an agent-only setup is refused in one sentence
+naming the limit rather than taught the ssh-agent protocol.
+
+    POST /login {"principal": "berna"}                        -> nonce, expires
+    POST /login {"principal", "nonce", "signature"}           -> token, expires, role
 
 Every refusal names the call that works. `core/actors.py::role_of` (re-exported
 by `core/types.py`, so `types` stays the one name a caller imports) is the
