@@ -37,7 +37,7 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**403 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+**406 passed** (no skips once `npm ci` has run in `ui/` — otherwise
 `tests/test_ui.py`'s harness half skips and it is 402+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
@@ -291,6 +291,18 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
   steps run and all four are green. The diff clause goes red while a wave of
   `.tsx`-only cards is in flight and green again at the chapter-close rebuild —
   that drift is what it exists to report, not a fault.
+- **A smoke section is a FILE, never an append.** `ui/smoke/sections/<slug>.tsx`,
+  one per section, named by what it pins — slugs, NEVER numbers, since the
+  §-numbering was itself the collision — each exporting `run(fixture, check,
+  harness)` against the `sections/section.ts` seam. `run.mjs` (and `npm run
+  typecheck`) regenerate `sections/index.generated.ts` from a `readdir` in
+  filename order; it is gitignored, so the list can never conflict, and two
+  files claiming one slug are refused loudly. The appendix it replaced —
+  `ui/smoke/main.tsx`, ~2.300 lines every UI card appended to — cost a 293-line
+  conflict block, an auto-stacked duplicate `const` that only tsc caught, two
+  sections both numbered §9 and a docs audit of dangling §N. The property is
+  pinned as such:
+  `tests/test_ui.py::test_two_cards_adding_a_smoke_section_in_parallel_do_not_conflict`.
 - **Do not run browser/UI demos unless asked.** The UI is tested headlessly —
   `tests/test_ui.py` builds a real board and hands the server's own payload to
   `ui/smoke/run.mjs`, which renders the modules `src/main.tsx` bundles through
@@ -403,7 +415,7 @@ Managing cards from the terminal does not exist — that is MCP (9 tools).
    and the door derives on demand. One cascade decides what a reader gets —
    `ui/src/links.tsx::cascade`: numstat → the patch → the forge link → one
    honest sentence — and `components/card/Patch.tsx` only draws the step it is
-   handed. All four steps are pinned headlessly (`ui/smoke/main.tsx`, the `cascade`
+   handed. All four steps are pinned headlessly (`ui/smoke/sections/git-diff.tsx`, the `cascade`
    assertions, from the door's OWN payload); `useGitDiff`'s effect firing is not reachable under
    `react-dom/server` and is covered against a real server in
    `tests/test_topology.py` instead.

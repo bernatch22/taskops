@@ -1,7 +1,11 @@
 /* The smoke harness: run the dashboard headlessly, with no browser and no DOM.
  *
- * WHAT IT RUNS. `smoke/main.tsx` imports the SAME modules `src/main.tsx` bundles
- * — the pages, the dossier, the pure rules — and renders them through
+ * WHAT IT RUNS. `smoke/main.tsx` is the plumbing and the run order; the list is
+ * `smoke/sections/`, ONE FILE PER SECTION (`sections/section.ts` carries the
+ * post-mortem of the single appendix that shape replaced), discovered by
+ * `sections.mjs` into a gitignored `sections/index.generated.ts` before esbuild
+ * reads it. Together they import the SAME modules `src/main.tsx` bundles — the
+ * pages, the dossier, the pure rules — and render them through
  * `react-dom/server`. This file only compiles that entry and calls it: esbuild
  * with the same `jsx: "automatic"` the real build uses, and `packages:
  * "external"` so React is resolved by node from `ui/node_modules` rather than
@@ -47,6 +51,8 @@ import { build } from "esbuild";
 import { mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
+import { generate } from "./sections.mjs";
+
 const here = new URL("./", import.meta.url);
 const cache = new URL("../node_modules/.cache/", here);
 const out = new URL("smoke.mjs", cache);
@@ -56,6 +62,12 @@ const fixturePath = process.argv[2]
   : new URL("fixture.json", here);
 
 await mkdir(cache, { recursive: true });
+
+// The list of sections is DISCOVERED from `sections/`, never hand-edited: see
+// `sections.mjs`. It has to be written before esbuild reads `main.tsx`, which
+// imports it statically.
+const found = await generate();
+console.log(`${found.length} smoke section(s)`);
 
 await build({
   entryPoints: [fileURLToPath(new URL("main.tsx", here))],

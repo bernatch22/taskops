@@ -6,7 +6,7 @@
  * counter that drifts, a hunk header misread. That is a function of a string,
  * so it is written as one — `react-dom/server` fires no effects and needs no
  * fixture to exercise this, and the harness asserts on the returned shape
- * instead of on markup (`ui/smoke/main.tsx`, and `Patch.tsx` only draws what
+ * instead of on markup (`ui/smoke/sections/diff-page.tsx`, and `Patch.tsx` only draws what
  * this returns).
  *
  * THE GRAMMAR IS `Patch.tsx::tone`'S AND NOTHING MORE. `@@ -a,b +c,d @@` opens a
