@@ -21,6 +21,7 @@ from .auth import Credential, authorize
 from .._json import as_object
 from .mounts import Mounts
 from .._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
+from ..core.types import ANON
 from ..store.stores import Stores
 
 MAX_BODY = 4 * 1024 * 1024
@@ -104,7 +105,12 @@ def rest_of(payload: dict[str, Any], subject: str) -> tuple[str, dict[str, Any]]
     """
     actor = payload.get("actor")
     if not isinstance(actor, str) or not actor:
-        actor = subject if subject.startswith(("dev:", "agent:")) else ""
+        # `anon` is a subject that DOES name its caller — it names nobody, on
+        # purpose (`core/actors.py::ANON`). Without it here a public board's
+        # reader would be told to export TASKOPS_ACTOR, which is advice for a
+        # worker and impossible for a stranger with a browser.
+        named = subject.startswith(("dev:", "agent:")) or subject == ANON
+        actor = subject if named else ""
     if not actor:
         raise BadRequest(
             "this credential names no person, so the call must name its actor. "

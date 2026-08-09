@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import _args, _facts, report, _context, _mentions
+from . import _args, _facts, report, project, _context, _mentions
 from .. import _clock
 from ..core import graph
 from ..core.types import Card
@@ -47,7 +47,6 @@ is exactly when a reader wants ALL of them — this project's own chapters close
 It is still a ceiling and not `None`: a pathological chapter must not be able to
 make this read unbounded, and `done_total` stays the honest count behind either
 cap."""
-
 
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
@@ -149,6 +148,7 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         # A board that never recorded one sends nothing, and every consumer
         # falls back to plain text: no origin, no links, no noise.
         "repo": state["project"].get("remote"),
+        "visibility": project.visibility(stores),  # DERIVED — `project.py` defaults it
         "milestone": stone,
         # The open chapters AND the recent landed ones. Sending only the open
         # ones was correct while `open` was the only status a chapter ever had;

@@ -23,7 +23,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { Dossier } from "../src/components/card/Drawer";
 import { Markdown } from "../src/components/shared/Markdown";
-import { CommentBox, submit } from "../src/components/card/CommentBox";
+import { CommentBox, submit, watching } from "../src/components/card/CommentBox";
 import { RpcError, createClient } from "../src/client";
 import { depth, escape, push } from "../src/components/shared/overlayStack";
 import { Board } from "../src/pages/Board";
@@ -1094,6 +1094,28 @@ export async function smoke(fixture: Fixture): Promise<string[]> {
     "and one honest sentence instead",
     allStale.includes('data-testid="nobody-live"') &&
       allStale.includes("a comment with no address still lands on the card"),
+  );
+
+  /* A window WATCHING a public board: the box says so instead of offering a
+     form whose every send is a 409. `watching()` is the whole rule and it reads
+     the SERVER's answer — an older payload with no `actor` is not anonymous. */
+  check("anon is watching", watching({ actor: "anon" }));
+  check("a named reader is not", !watching({ actor: "dev:berna" }));
+  check("and neither is a payload that predates the key", !watching({}) && !watching(undefined));
+
+  const window_ = renderToStaticMarkup(
+    <CommentBox team={[member("agent:berna/live", 10)]} onSend={noSend} readOnly />,
+  );
+  check("a watcher gets no textarea and no send", !window_.includes('data-testid="send"'), window_);
+  check("no mention picker either", chipsOf(window_) === 0);
+  check(
+    "and the refusal names how a key gets registered",
+    window_.includes('data-testid="read-only"') && window_.includes("--key ~/.ssh/id_ed25519"),
+  );
+  check(
+    "a reader WITH a credential still gets the form",
+    renderToStaticMarkup(<CommentBox team={[member("agent:berna/live", 10)]} onSend={noSend} />)
+      .includes('data-testid="send"'),
   );
 
   /* ── 6. Escape closes the top-most overlay only ────────────────────────── */

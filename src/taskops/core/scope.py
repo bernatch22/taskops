@@ -58,6 +58,13 @@ OPERATIONS: dict[str, Operation] = {
         "moving a board's history onto this host needs a registered key "
         f"(owner or member) — {ENROL}",
     ),
+    # Publishing a board is the OWNER's move and nobody else's — the same wall
+    # as `board.create`, and for the same reason: a member holds a key to a
+    # board, not the right to decide who else may read it.
+    "board.visibility": Operation(
+        OWNER,
+        "publishing a board — or taking it private again — is the server OWNER's move",
+    ),
     "board.read": Operation(ANYONE, ""),
     "board.write": Operation(
         KEYED,

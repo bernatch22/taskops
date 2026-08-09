@@ -72,3 +72,40 @@ def _keyline(key: str) -> str:
 
 def _whoami() -> str:
     return os.environ.get("USER", "owner")
+
+
+# ── break-glass: a board act, against the FILES, on the box ─────────────────
+#
+# `operate.py` runs these four acts over the API, keyed, from the laptop — that
+# is the chapter. They live HERE because this module is the one that runs ON the
+# machine, and `--root <dir>` is the same channel `server init` uses: the shell
+# of the box, which predates the API and is what you have left when the API is
+# what broke. Not deprecated, and not to be removed.
+
+
+def on_box_invite(root: Path, who: str, board: str) -> int:
+    from ..store.creds import WEEK, Credentials
+
+    creds = Credentials(root / "live.sqlite")
+    name = board or Path.cwd().name
+    token, credential = creds.mint(f"invite:{who}", name, _clock.now(), ttl=WEEK, once=True)
+    creds.close()
+    print(f"one-time invite for {who} (id {credential.id}, 7 days):")
+    print(f"  taskops join https://<host>/{name}?invite={token}")
+    return 0
+
+
+def on_box_revoke(root: Path, key: str, ident: str) -> int:
+    from ..store.creds import Credentials
+    from ..store.server import ServerStore
+
+    if key:
+        store = ServerStore(root)
+        store.revoke_key(key)
+        store.close()
+    else:
+        creds = Credentials(root / "live.sqlite")
+        creds.revoke(ident)
+        creds.close()
+    print(f"revoked {key or ident} in {root}")
+    return 0

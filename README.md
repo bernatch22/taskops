@@ -53,7 +53,18 @@ taskops board ls                                     # what is on that host, and
 taskops board push https://host:8787/my-project      # a LOCAL board becomes this one
 taskops invite ana --board my-project                # one-time link, 7 days
 taskops revoke --invite <id>                         # or --key SHA256:… to retire a key
+taskops board visibility https://host:8787/my-project public   # anyone may WATCH it
 ```
+
+**A board is PRIVATE until its owner publishes it**, and public is GitHub's
+word for GitHub's thing: anonymous READ, and a write that always needs a
+registered key. There is no third state. Anyone may then
+`taskops join https://host:8787/my-project` with no invite at all — config
+written, nothing minted, no key registered — and `taskops ui` opens a viewer's
+window whose comment box says so instead of offering a form it cannot send.
+An anonymous crawl of a public board leaves `events.jsonl` and `live.sqlite`
+byte-identical: reads renew no lease and record no presence for `anon`, which
+is pinned as a hash comparison in `tests/test_topology.py`.
 
 Ana, in **her own** checkout of the same repo:
 
@@ -70,8 +81,8 @@ Delete the file and it comes back. Without `--key` the join is the one it always
 was and the token is a standing one, which is why every board joined before this
 keeps working untouched.
 
-That same session is what `board create`, `board ls`, `invite` and `revoke`
-travel on: they are **server-scope** calls to the host's own `/rpc`
+That same session is what `board create`, `board ls`, `board visibility`,
+`invite` and `revoke` travel on: they are **server-scope** calls to the host's own `/rpc`
 (`src/taskops/http/admin.py`), authorized by the principal's role — owner,
 member, anon — and not by a board credential, which says nothing about the host.
 A member calling an owner verb is refused naming the role that may. The host is
@@ -344,6 +355,8 @@ taskops board create https://<host>/<name>    # a board exists because the owner
 taskops board ls https://<host>               # every board here, with size and last activity
 taskops invite <who> --board <name>           # the join line, minted by the host that honours it
 taskops revoke --invite <id> | --key SHA256:… # take one back
+taskops board visibility <host>/<name> public|private   # owner only — public means
+                                              # anonymous read, never anonymous write
 ```
 
 **A local board becomes a hosted one with one command**, and it is the same

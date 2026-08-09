@@ -2,8 +2,8 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **93 Python files / ~10.500 lines under `src/taskops`**, plus the
-dashboard — **45 TypeScript files / ~11.500 lines under `ui/src`**, whose built
+~340 files) as **97 Python files / ~10.900 lines under `src/taskops`**, plus the
+dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
 
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**372 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 371+1; see below), ruff +
+**388 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 387+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -165,9 +165,11 @@ presence.
    gitwork/ run trees remote trailer bind install diff sig  the ONLY subprocess
    session.py  the CLIENT half of the ssh login: sign in, cache, refresh
 5  mcp/     server hello tools gitmoves schema render dossier before brief thread boards fields
-   http/    server mounts rpc admin ingest auth login feed static gitdoor upstream
-6  cli/     commands (init join hook) · serving (serve ui) · operate (board invite
-            revoke) · push (board push) · admin (server init) · claude wording
+   http/    server mounts watcher rpc admin scoped grants ingest auth login
+            feed static gitdoor upstream
+6  cli/     commands (init join hook) · watch (the viewer's join) · serving
+            (serve ui) · operate (board invite revoke) · push (board push)
+            · admin (server init + break-glass) · claude wording
 ```
 
 `tests/test_architecture.py` enforces all of it by AST: the direction of
@@ -208,10 +210,11 @@ uv run python -m taskops.cli serve --root <dir>
 uv run python -m taskops.cli join "http://host/<board>?token=…"
 ```
 
-The CLI is like git: `init join serve tidy ui` + the five that OPERATE a host
-over its own API, keyed (`board create` · `board ls` · `board push` · `invite` ·
-`revoke` — `http/admin.py`, and `--root <dir>` is the break-glass path that still
-runs them against the files ON the box) + `server init` (bootstrap
+The CLI is like git: `init join serve tidy ui` + the six that OPERATE a host
+over its own API, keyed (`board create` · `board ls` · `board push` ·
+`board visibility` · `invite` · `revoke` — `http/admin.py` and
+`http/grants.py`, and `--root <dir>` is the break-glass path that still runs
+them against the files ON the box, now in `cli/admin.py`) + `server init` (bootstrap
 a HOST's owner from an ssh pubkey — the one command meant to run over ssh) +
 `join --key ~/.ssh/id_ed25519` (the invite AND the pubkey in one call: the key is
 registered, it signs in on the spot, and `remote.json` becomes a session cache
@@ -223,6 +226,15 @@ through `board.ingest`, counts compared per kind, and only THEN the config flip
 with `.taskops/board/` renamed rather than deleted (`cli/push.py`,
 `http/ingest.py`). No force flag, ever. And `join` refuses onto a repo whose
 local board has events, naming `board push` and `--discard-local`.
+**`taskops board visibility <host>/<name> public|private`** is GitHub's flag,
+owner only, and public means exactly what it means there: ANONYMOUS READ, a
+write that always needs a registered key, and no third state. `taskops join
+<url>` with no invite against a public board is then a READ-ONLY join —
+config written, nothing minted, no key registered, and no `project` event
+recorded either, because that would be the anonymous write the rule forbids
+(`cli/watch.py`). Reads by `anon` renew no lease and record no presence:
+`store/live.py::renew` is the ONE place that decides it, and a full anonymous
+crawl leaves `events.jsonl` and `live.sqlite` byte-identical.
 Managing cards from the terminal does not exist — that is MCP (9 tools).
 
 ## Working here

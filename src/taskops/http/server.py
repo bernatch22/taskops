@@ -14,6 +14,7 @@ The SAME routes serve a window onto a remote board (`taskops ui` in a joined che
 `/<board>/rpc` changes hands, forwarded to the server that owns it (`upstream.py`), while /ui
 and /git stay local — the page cannot tell, so the committed bundle is untouched by it. A
 BOARD HOST opens neither door that needs a clone (`gitdoor.py::NO_REPO`, `static.py::NO_UI`).
+A PUBLIC board answers every READ door as `anon`, with no credential (`auth.py::anonymous`).
 """
 
 from __future__ import annotations
@@ -25,9 +26,9 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 from . import rpc, feed, admin, login, static, gitdoor
 from .. import _clock
-from .auth import Credential, token_in
+from .auth import Credential, token_in, anonymous
 from .mounts import Mounts
-from .._errors import Refused, BadRequest, TaskopsError
+from .._errors import BadRequest, TaskopsError
 from .upstream import Upstream
 
 
@@ -102,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
         self._answer(lambda body: admin.answer(self.mounts, token, body, _clock.now()))
 
     def _feed(self, board: str) -> None:
-        try:
+        try:  # no credential on a PUBLIC board: `feed.py`'s third rule says why
             self.mounts.check(board)
             self._credential(board, "read")
         except TaskopsError as err:
@@ -140,9 +141,10 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True, "seq": 0, "data": data})
 
     def _credential(self, board: str, need: str) -> Credential:
+        """The token, or NOBODY — one method, so no door grants `anon` its own way."""
         token = token_in(self.headers.get("Authorization", ""), self.path)
         if not token:
-            raise Refused("no credential — run: taskops join <url with ?token= or ?invite=>")
+            return anonymous(self.mounts.public(board), need)
         return self.mounts.credentials.check(token, board, need, _clock.now())
 
     def _raw(self) -> bytes:

@@ -6,6 +6,7 @@
     taskops server init     bootstrap THIS host: its owner and their ssh key
     taskops board create    make a board on a host  ·  board ls, from anywhere
     taskops board push      THIS repo's local board becomes the hosted one
+    taskops board visibility <host>/<name> public|private   owner only
     taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
     taskops tidy            remove worktrees whose work is already in the trunk
     taskops ui              the dashboard — serves it if nothing is, opens the browser
@@ -56,8 +57,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     host.add_argument("--key", default="", help="the owner's pubkey: a path, or - for stdin")
     host.add_argument("--owner", default="", help="the owner's name (default: $USER)")
     boards = sub.add_parser("board", help="create or list the boards on a host")
-    boards.add_argument("action", choices=["create", "ls", "push"])
+    boards.add_argument("action", choices=["create", "ls", "push", "visibility"])
     boards.add_argument("target", nargs="?", default="", help="<host>/<name>, or just <name>")
+    boards.add_argument(
+        "visibility",
+        nargs="?",
+        default="",
+        choices=["", "public", "private"],
+        help="visibility: public means ANONYMOUS READ — writing always needs a key",
+    )
     boards.add_argument("--key", default="", help="push: the ssh key that signs you in")
     boards.add_argument("--invite", default="", help="push: register that key first")
     invite = sub.add_parser("invite", help="a single-use link for a teammate")

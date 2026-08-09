@@ -13,6 +13,7 @@ import argparse
 import threading
 from base64 import b64encode
 from typing import Any, BinaryIO, Iterator
+from hashlib import sha256
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -1593,6 +1594,363 @@ def test_a_directory_with_no_board_is_refused_exactly_as_before(tmp_path: Path) 
 
     with pytest.raises(TaskopsError, match="taskops init starts one"):
         serving.ui(tmp_path)
+
+
+# ── public boards: anyone may watch, nobody writes without a key ────────────
+#
+# GitHub's model, deliberately: PRIVATE by default, the owner may publish,
+# public means ANONYMOUS READ, and a write always needs a registered key. The
+# harshest of these is `test_an_anonymous_crawl_moves_not_one_byte` — not "no
+# new events" but byte-identical files, because the bug this chapter's second
+# rule exists to prevent is a PRESENCE row, which no card and no event would
+# ever show.
+
+READS = ("board", "card", "report", "events", "mentions")
+WRITES = ("plan", "take", "update", "bind", "project", "assign", "merged", "review")
+
+
+def publish(httpd: BoardServer, owner: str, wanted: str = "public") -> dict[str, Any]:
+    return admin(httpd, owner, "board.visibility", {"board": BOARD, "visibility": wanted})
+
+
+def anon(httpd: BoardServer, verb: str, args: dict[str, Any] | None = None) -> tuple[int, Any]:
+    """A call with NO Authorization header at all — a stranger with a browser."""
+    request = Request(
+        f"{url_of(httpd)}/rpc",
+        data=json.dumps({"verb": verb, "args": args or {}}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            return int(response.status), json.loads(response.read().decode())
+    except HTTPError as err:
+        with err:  # an HTTPError IS a response: unclosed, it leaks the socket
+            return int(err.code), json.loads(err.read().decode())
+
+
+def _prints(body: Any) -> str:
+    return str(body["error"]["message"])
+
+
+def _fingerprint(httpd: BoardServer) -> dict[str, str]:
+    """Every stored byte of the board EXCEPT the cache, which is derived and
+    disposable by design (delete it and it rebuilds). live.sqlite is in WAL
+    mode, so its -wal and -shm companions are hashed too: a presence INSERT
+    lands in the write-ahead log first, and hashing the main file alone would
+    call that write invisible — which is the whole failure being pinned."""
+    board = httpd.mounts.root / BOARD
+    return {
+        path.name: sha256(path.read_bytes()).hexdigest()
+        for path in sorted(board.iterdir())
+        if path.is_file() and not path.name.startswith("cache.sqlite")
+    }
+
+
+def test_the_owner_publishes_a_board_and_a_member_may_not(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion: the flag is an owner-only server-scope verb, and the refusal
+    names the role that may. A member holds a key to the board — that is not the
+    right to decide who else may read it."""
+    made = publish(server, owner)
+    assert made["board"] == BOARD and made["visibility"] == "public" and made["recorded"]
+
+    again = publish(server, owner)  # an unchanged fact writes NO event
+    assert again["visibility"] == "public" and not again["recorded"]
+
+    hers, _ = member(server, tmp_path)
+    with pytest.raises(Refused, match="OWNER's move"):
+        admin(server, hers, "board.visibility", {"board": BOARD, "visibility": "public"})
+
+
+def test_a_board_is_private_until_somebody_publishes_it(
+    server: BoardServer, owner: str
+) -> None:
+    """The DEFAULT is the whole model: a board that never heard of this feature —
+    every board on the production host — behaves exactly as it always did."""
+    assert client(server, BERNA).call("board", {})["visibility"] == "private"
+    status, body = anon(server, "board")
+    assert status == 409 and "taskops join <url with ?token=" in _prints(body)
+
+    publish(server, owner)
+    assert anon(server, "board")[0] == 200
+    publish(server, owner, "private")
+    assert anon(server, "board")[0] == 409  # and it goes back, the same way
+
+
+def test_a_visibility_outside_the_pair_is_refused_by_name(
+    server: BoardServer, owner: str
+) -> None:
+    """There is no third state. A typo must never be defaulted — defaulting it
+    would leave a board somebody meant to publish quietly private, or worse."""
+    with pytest.raises(BadRequest, match="'private' or 'public'"):
+        admin(server, owner, "board.visibility", {"board": BOARD, "visibility": "unlisted"})
+    assert client(server, BERNA).call("board", {})["visibility"] == "private"
+
+
+def test_a_public_board_answers_every_read_verb_with_no_credential(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 1: anonymous sees what a member sees. The board is planned by a
+    dev FIRST, so what comes back is real content and not an empty payload that
+    would pass whether the gate opened or not."""
+    plan(client(server, BERNA))
+    publish(server, owner)
+
+    status, body = anon(server, "board")
+    assert status == 200
+    assert [row["title"] for row in body["data"]["groups"]["take"]] == ["invoice model", "CSV parser"]
+    card_id = body["data"]["groups"]["take"][0]["id"]
+
+    assert anon(server, "card", {"task": card_id})[1]["data"]["card"]["spec"] == "the Invoice dataclass"
+    assert anon(server, "events", {})[1]["data"]["events"]
+    assert anon(server, "report", {})[0] == 200
+    # Empty BY CONSTRUCTION: a comment can only name an actor somebody registered,
+    # and `anon` is outside the actor grammar, so nothing can ever address it.
+    assert anon(server, "mentions", {})[1]["data"]["mentions"] == []
+
+
+def test_the_orchestrators_read_is_not_widened_to_a_stranger(
+    server: BoardServer, owner: str
+) -> None:
+    """`waiting` is the dev's three groups and stays DEV. "Public read" is the
+    set of reads the registry marks, not "every verb whose kind is read"."""
+    publish(server, owner)
+    status, body = anon(server, "waiting")
+    assert status == 409 and "orchestrator's moves" in _prints(body)
+
+
+def test_an_anonymous_write_is_refused_naming_how_a_key_gets_registered(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 3, on every write verb there is — and on a PUBLIC board, which
+    is the case somebody could think opens a little further. It does not."""
+    publish(server, owner)
+    for verb in WRITES:
+        status, body = anon(server, verb, {"task": "tk-000000"})
+        assert status == 409, verb
+        message = _prints(body)
+        assert "needs a registered key" in message, (verb, message)
+        assert "taskops join" in message and "invite" in message, (verb, message)
+
+
+def test_each_of_the_two_write_walls_stands_on_its_own() -> None:
+    """A MUTATION FINDING, and the reason this test exists at all.
+
+    Anonymous is refused a write TWICE: `http/auth.py::anonymous` never hands
+    out a credential for a write, and `verbs/__init__.py::call` refuses the role
+    at the registry. Over a socket that is defence in depth — and it made both
+    guards look pinned while neither was. Deleting the capability check left the
+    suite green (the registry caught it); declaring a write verb with WATCHERS
+    left it green too (the HTTP door caught it). So each is asserted HERE,
+    against its own function, where the other cannot answer for it.
+    """
+    from taskops import verbs
+    from taskops.http import auth
+    from taskops.core.types import ANON
+
+    # Wall one: the capability. A public board, a write, no credential.
+    with pytest.raises(Refused, match="needs a registered key"):
+        auth.anonymous(public=True, need="write")
+    assert auth.anonymous(public=True, need="read").subject == ANON
+    assert auth.ANONYMOUS.caps == frozenset({"read"})  # it could not carry a write
+
+    # Wall two: the role, with no HTTP anywhere near it. `Stores` is never even
+    # opened — `call` refuses on the registry before it touches one.
+    stores: Any = None
+    for verb, spec in verbs.REGISTRY.items():
+        if spec.kind != "write":
+            continue
+        with pytest.raises(Refused, match="needs a registered key") as refused:
+            verbs.call(stores, verb, ANON, {})
+        assert "taskops join" in str(refused.value), verb
+
+
+def test_an_anonymous_write_is_refused_on_a_private_board_too(server: BoardServer) -> None:
+    """No credential is no credential: the private board says what it has always
+    said, and the sentence a reader learned to recognise does not move."""
+    status, body = anon(server, "update", {"task": "tk-000000", "status": "done"})
+    assert status == 409 and "taskops join <url with ?token=" in _prints(body)
+
+
+def test_anonymous_may_not_claim_to_be_somebody(server: BoardServer, owner: str) -> None:
+    """The hole this closes: `actor` travels IN the call, so a stranger could
+    name `dev:berna` in the body and be judged as him. Anonymous may only ever
+    act as anonymous, and the refusal still names the way in."""
+    publish(server, owner)
+    request = Request(
+        f"{url_of(server)}/rpc",
+        data=json.dumps({"verb": "board", "actor": BERNA, "args": {}}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with pytest.raises(HTTPError) as caught:
+        urlopen(request, timeout=5)
+    with caught.value as answer:
+        assert "may not act as dev:berna" in answer.read().decode()
+
+
+def test_the_feed_of_a_public_board_opens_with_no_token(
+    server: BoardServer, owner: str
+) -> None:
+    """A message here is a POKE and carries no data (`feed.py`), so a watcher
+    learns only that the board moved — and answers by re-reading through /rpc,
+    where the anonymous gate applies again in full."""
+    with pytest.raises(HTTPError) as refused:
+        urlopen(f"{url_of(server)}/feed", timeout=5)
+    with refused.value as answer:
+        assert answer.code == 409
+
+    publish(server, owner)
+    with urlopen(f"{url_of(server)}/feed", timeout=5) as stream:
+        assert b"hello" in stream.readline() + stream.readline()
+
+
+def test_an_anonymous_crawl_of_a_public_board_moves_not_one_byte(
+    server: BoardServer, owner: str
+) -> None:
+    """Criterion 4, and the reason this card exists.
+
+    Every read verb opens with `stores.live.renew(actor, now)` — an INSERT into
+    `presence`. A public board without the anon guard would have every visitor
+    writing to live.sqlite on every page load: no event, no card, nothing any
+    other test would notice. So the assertion is not "no new events" but the
+    files themselves, hash for hash, after a crawl that touches every read door
+    there is INCLUDING the feed."""
+    dev = client(server, BERNA)
+    cards = plan(dev)
+    worker = client(server, W1, subject=BERNA)
+    worker.call("take", {"task": cards[0]["id"]})  # a live lease, to be renewed or not
+    publish(server, owner)
+
+    before = _fingerprint(server)
+    seen = dict(_presence(server))
+
+    for verb in READS:
+        args = {"task": cards[0]["id"]} if verb == "card" else {}
+        assert anon(server, verb, args)[0] == 200, verb
+    for verb in READS:  # twice: a second crawl is a second chance to write
+        assert anon(server, verb, {"task": cards[0]["id"]} if verb == "card" else {})[0] == 200
+    with urlopen(f"{url_of(server)}/feed", timeout=5) as stream:
+        assert b"hello" in stream.readline() + stream.readline()
+
+    assert _fingerprint(server) == before
+    assert dict(_presence(server)) == seen
+    assert "anon" not in dict(_presence(server))
+
+
+def test_the_lease_of_a_live_worker_is_not_renewed_by_a_stranger(
+    server: BoardServer, owner: str, clock: Any
+) -> None:
+    """The subtler half of the same rule, and the one a byte comparison could
+    miss if the write ever became an idempotent UPDATE: a visitor reading the
+    board must not keep a dead worker's card looking alive. `renew` updates
+    every lease held by `actor` — for anon there are none, and it never runs."""
+    dev = client(server, BERNA)
+    cards = plan(dev)
+    worker = client(server, W1, subject=BERNA)
+    worker.call("take", {"task": cards[0]["id"]})
+    publish(server, owner)
+    held = server.mounts.stores(BOARD).live.lease(cards[0]["id"], _clock.now())
+    assert held is not None
+
+    clock(60.0)
+    for _ in range(5):
+        assert anon(server, "board")[0] == 200
+    after = server.mounts.stores(BOARD).live.lease(cards[0]["id"], _clock.now())
+    assert after is not None and after["expires"] == held["expires"]
+
+
+def _presence(httpd: BoardServer) -> list[tuple[str, float]]:
+    return httpd.mounts.stores(BOARD).live.present(0.0)
+
+
+# ── the viewer's window: join with nothing, read as nobody ──────────────────
+
+
+def test_join_with_no_invite_against_a_public_board_is_a_read_only_window(
+    server: BoardServer, owner: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Criterion 5, end to end. Nothing is minted, no key is registered, and —
+    the part that is easy to miss — the join writes NOTHING on the board either:
+    a normal join records this repo's origin as a project event, which for a
+    viewer would be the milestone's rule broken by the act of becoming a reader."""
+    from taskops.cli import commands
+
+    plan(client(server, BERNA))
+    publish(server, owner)
+    project = tmp_path / "viewer"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:ana")
+
+    before = _fingerprint(server)
+    assert commands.join(project, url_of(server), "dev:ana") == 0
+    assert _fingerprint(server) == before  # the join itself wrote not one byte
+
+    config = json.loads((project / ".taskops" / "board.json").read_text())
+    assert config["url"] == url_of(server) and config["readonly"] is True
+    assert json.loads((project / ".taskops" / "remote.json").read_text())["token"] == ""
+    assert server.mounts.host.store().principal("ana") is None  # no key registered
+
+    watching = taskops.board.open_board(project, "dev:ana")
+    assert [row["title"] for row in watching.call("board", {})["groups"]["take"]][0] == "invoice model"
+    with pytest.raises(Refused, match="needs a registered key"):
+        watching.call("update", {"task": "tk-000000", "status": "done"})
+
+
+def test_taskops_ui_serves_a_watchers_window_with_no_credential_anywhere(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 5's second half — and a MUTATION FINDING: making `Mounts.public`
+    answer False for a bearer-less window left the suite green, because nothing
+    exercised the door `taskops ui` actually opens for a viewer.
+
+    Built through `serve()` exactly as `cli/serving.py::ui` builds it for a
+    read-only join: an `Upstream` with NO token. The window lets its own browser
+    read and forwards the call bare; the REMOTE is what decides, which is why the
+    write comes back in the server's own words and not this process's."""
+    from tests.test_git import repo
+    from taskops.http.upstream import Upstream
+
+    plan(client(server, BERNA))
+    publish(server, owner)
+    httpd = serve(
+        tmp_path / "watcher", "127.0.0.1", 0,
+        repo=repo(tmp_path, "watcher-clone"),
+        upstream=Upstream(url_of(server), ""),  # the viewer's join: no bearer at all
+    )
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_address[1]}/board"
+        before = _fingerprint(server)
+        status, body = _get_post(base, "", {"verb": "board"})
+        assert status == 200, body
+        assert [c["title"] for c in body["data"]["groups"]["take"]] == ["invoice model", "CSV parser"]
+
+        status, body = _get_post(base, "", {"verb": "update", "args": {"task": "tk-000000"}})
+        assert status == 409 and "needs a registered key" in body["error"]["message"]
+        assert _fingerprint(server) == before  # the whole window session, zero bytes
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_a_private_board_refuses_a_join_with_no_invite_exactly_as_today(
+    server: BoardServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """And it still names the link it wanted — the refusal a broken paste gets
+    has not become "this board is private", which would be a different bug."""
+    from taskops.cli import commands
+
+    project = tmp_path / "nope"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", "dev:ana")
+    with pytest.raises(TaskopsError, match="carries no .token= or .invite="):
+        commands.join(project, url_of(server), "dev:ana")
+    assert not (project / ".taskops" / "board.json").exists()
+
 
 
 def _get_post(url: str, token: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:

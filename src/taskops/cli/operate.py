@@ -2,6 +2,7 @@
 
     taskops board create <host>/<name>     owner only — THE way a board comes to exist
     taskops board ls [<host>]              owner: all of them; member: their own
+    taskops board visibility <host>/<name> public|private   owner only
     taskops invite <who> --board <name>    owner only — prints the join line
     taskops revoke --key <SHA256:…> | --invite <id>
 
@@ -13,7 +14,8 @@ session on the box — which is the anomaly this chapter exists to kill.
 files directly, on the machine that holds them, and it is what you use when the
 server is down or the owner's key is lost. It is not deprecated and must not be
 removed — a system whose only door is its own API cannot be repaired when that
-API is what broke.
+API is what broke. Those two acts live in `cli/admin.py`, beside `server init`,
+because that module is the one that runs ON the box; this one is the laptop.
 
 **No host alias registry, and that is a decision.** `taskops host add prod …`
 was the obvious next command and it is deliberately NOT here: the host is
@@ -30,6 +32,7 @@ import argparse
 from typing import Any
 from pathlib import Path
 
+from . import admin
 from .. import _wire, _clock, session
 from .._json import as_object
 from ..board import find_root, read_config
@@ -47,6 +50,8 @@ def board(args: argparse.Namespace) -> int:
     """`create` and `ls`. The target is `<host>/<name>` exactly as the card reads
     it, so the whole address is one argument and nothing has to be repeated."""
     action, target = str(args.action), str(args.target)
+    if action == "visibility":
+        return _visibility(target, str(getattr(args, "visibility", "") or ""))
     if action == "create":
         host, name = address(target)
         if not name:
@@ -64,13 +69,39 @@ def board(args: argparse.Namespace) -> int:
     return 0
 
 
+def _visibility(target: str, wanted: str) -> int:
+    """`taskops board visibility <host>/<name> public|private` — the owner's call.
+
+    It prints what public MEANS, every time, and not only the word it set: the
+    command that opens a board to the world is the last place to be terse, and
+    the reader is about to close the terminal. `recorded: false` is the board
+    saying the value was already that — an unchanged fact writes no event
+    (`verbs/project.py`), so re-running this is free and says so.
+    """
+    host, name = address(target)
+    if not name:
+        raise TaskopsError("taskops board visibility <host>/<name> public|private — which board?")
+    if wanted not in ("public", "private"):
+        raise TaskopsError(
+            f"taskops board visibility {target} public|private — a board is one or the other"
+        )
+    out = call(host, "board.visibility", {"board": name, "visibility": wanted})
+    moved = "already" if not out.get("recorded") else "now"
+    print(f"{out['board']} on {host} is {moved} {out['visibility']} (by {out.get('by', '?')})")
+    if out["visibility"] == "public":
+        print("  anyone may READ it with no credential; every write still needs a registered key")
+    else:
+        print("  only a credential this host minted may read it")
+    return 0
+
+
 def invite(args: argparse.Namespace) -> int:
     """A one-time join line, minted by the server that will honour it."""
     who, name = str(args.who), str(args.board)
     if not who:
         raise TaskopsError("taskops invite <who> --board <name>")
     if args.root:  # break-glass: the files, on the box
-        return _on_box_invite(Path(str(args.root)).expanduser(), who, name)
+        return admin.on_box_invite(Path(str(args.root)).expanduser(), who, name)
     if not name:
         raise TaskopsError("which board? taskops invite <who> --board <name>")
     host, _ = address(str(args.host))
@@ -86,7 +117,7 @@ def revoke(args: argparse.Namespace) -> int:
     if bool(key) == bool(ident):
         raise TaskopsError("taskops revoke --key <SHA256:…> | --invite <id> — exactly one")
     if args.root:  # break-glass: the files, on the box
-        return _on_box_revoke(Path(str(args.root)).expanduser(), key, ident)
+        return admin.on_box_revoke(Path(str(args.root)).expanduser(), key, ident)
     host, _ = address(str(args.host))
     verb = "key.revoke" if key else "invite.revoke"
     gone = call(host, verb, {"key": key} if key else {"invite": ident})
@@ -153,34 +184,3 @@ def _ago(row: dict[str, Any]) -> str:
         return "never used"
     minutes = max(0.0, (_clock.now() - active) / 60.0)
     return f"{minutes / 60:.0f}h ago" if minutes >= 60 else f"{minutes:.0f}m ago"
-
-
-# ── break-glass: the same acts, against the files, on the box ───────────────
-
-
-def _on_box_invite(root: Path, who: str, board: str) -> int:
-    from ..store.creds import WEEK, Credentials
-
-    creds = Credentials(root / "live.sqlite")
-    name = board or Path.cwd().name
-    token, credential = creds.mint(f"invite:{who}", name, _clock.now(), ttl=WEEK, once=True)
-    creds.close()
-    print(f"one-time invite for {who} (id {credential.id}, 7 days):")
-    print(f"  taskops join https://<host>/{name}?invite={token}")
-    return 0
-
-
-def _on_box_revoke(root: Path, key: str, ident: str) -> int:
-    from ..store.creds import Credentials
-    from ..store.server import ServerStore
-
-    if key:
-        store = ServerStore(root)
-        store.revoke_key(key)
-        store.close()
-    else:
-        creds = Credentials(root / "live.sqlite")
-        creds.revoke(ident)
-        creds.close()
-    print(f"revoked {key or ident} in {root}")
-    return 0

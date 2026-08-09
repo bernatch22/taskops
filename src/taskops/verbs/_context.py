@@ -135,6 +135,10 @@ def pulse(stores: Stores, actor: str, now: float, milestone: str = "") -> dict[s
             counts[shown] += 1
     stone = state["milestones"].get(milestone)
     return {
+        # WHO the board decided is speaking. Echoed because on a PUBLIC board it
+        # may be `anon` — and a reader that cannot write must be told BEFORE it
+        # types a paragraph, not by a 409 afterwards (`ui/.../CommentBox.tsx`).
+        "actor": actor,
         "milestone": stone["title"] if stone else "",
         "goal": stone["goal"] if stone else "",
         "counts": counts,

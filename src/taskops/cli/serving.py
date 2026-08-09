@@ -129,6 +129,12 @@ def _upstream(root: Path) -> Upstream | None:
     if not url:
         return None
     token = str(config.get("token", ""))
+    if not token and config.get("readonly"):
+        # A viewer's window (`commands.py::_watch`): an Upstream with no bearer.
+        # `Mounts.public` reads exactly this — no token means this window is
+        # itself anonymous, so it lets its own browser read and forwards; the
+        # REMOTE decides everything, including refusing the first write.
+        return Remote(url, "")
     if not token:
         raise TaskopsError(
             f"{root / DIR}/board.json points at {url} but there is no credential in "
