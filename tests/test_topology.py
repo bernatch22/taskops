@@ -1844,6 +1844,27 @@ def test_an_interrupted_push_re_runs_to_a_no_op_and_finishes_the_job(
     assert (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8") == theirs
 
 
+def test_a_payload_that_names_one_event_twice_writes_it_once(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """`Stores.write` appends everything it is handed to `events.jsonl` — the
+    CACHE ignores a repeated id, the log does not. So the door deduplicates
+    against ITSELF as well as against the board, or a payload that named one
+    line twice would put two identical lines in the truth and one row in the
+    index, and only the log's own reader would ever disagree."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+
+    answer = admin(server, owner, "board.ingest", {"board": "promoted", "events": [*mine, mine[0]]})
+    assert answer["received"] == len(mine) + 1
+    assert answer["written"] == len(mine)
+    assert answer["landed"] == len(mine)  # DISTINCT, read back from the store
+
+    theirs = (server.mounts.root / "promoted" / "events.jsonl").read_text(encoding="utf-8")
+    assert theirs.strip().splitlines()[1:] == mine
+
+
 def test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered(
     server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -1901,6 +1922,54 @@ def test_ingest_is_owner_or_member_only_and_says_how_a_key_gets_registered(
         admin(server, stray, "board.ingest", {"board": "promoted", "events": ["{}"]})
     assert "taskops join" in str(refused.value)
     assert server.mounts.stores("promoted").head() == 1  # only the board's own birth
+
+
+def test_ingest_is_refused_to_a_principal_whose_key_this_host_never_registered(
+    server: BoardServer, keyed: Path, owner: str
+) -> None:
+    """The ROLE gate, and it is a different wall from the one above: this
+    credential IS server-scoped, so it reaches `core/scope.py::permit` — which
+    finds no key for the principal, calls it `anon`, and refuses naming how a key
+    gets registered. Without the gate, a `*` token would be enough to move a
+    history onto somebody else's host."""
+    admin(server, owner, "board.create", {"name": "promoted"})
+    stray, _ = server.mounts.credentials.mint("dev:mallory", "*", _clock.now())
+    with pytest.raises(Refused) as refused:
+        admin(server, stray, "board.ingest", {"board": "promoted", "events": ["{}"]})
+    assert "anon may not board.ingest" in str(refused.value)
+    assert "taskops server key add" in str(refused.value)
+    assert server.mounts.stores("promoted").head() == 1
+
+
+def test_a_short_push_stops_before_the_config_flips(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Step 4, against a push that really is short — one event is dropped on the
+    way out, exactly as a truncated scp used to drop them. The counts disagree,
+    the command STOPS, and this repo is still the local board it was: without
+    the comparison the promotion would have reported success and lost an event."""
+    from taskops.cli import push as promote
+
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    monkeypatch.chdir(repo)
+
+    honest = promote.operate.call
+
+    def short(host: str, verb: str, args: dict[str, Any], token: str = "") -> dict[str, Any]:
+        args = {**args, "events": list(args["events"])[:-1]} if verb == "board.ingest" else args
+        return honest(host, verb, args, token)
+
+    monkeypatch.setattr(promote.operate, "call", short)
+    with pytest.raises(TaskopsError) as stopped:
+        pushed(f"{host_of(server)}/promoted", keyed)
+    assert "did not come back with what was sent" in str(stopped.value)
+    assert f"local {len(mine):>6}   remote {len(mine) - 1:>6}" in str(stopped.value)
+
+    assert "url" not in read_config(repo)
+    assert local_log(repo).exists()
+    assert not list((repo / ".taskops").glob("board.local-*"))
 
 
 def test_ingest_refuses_a_line_that_does_not_match_its_own_content(

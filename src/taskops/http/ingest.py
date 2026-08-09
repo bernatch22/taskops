@@ -75,9 +75,17 @@ def run(mounts: Mounts, args: dict[str, Any]) -> dict[str, Any]:
     if foreign:
         raise Refused(TWO_HISTORIES.format(name=name, held=len(foreign)))
 
-    fresh = [event for event in incoming if event["id"] not in held]
+    # Deduplicated against the board AND against itself: `Stores.write` appends
+    # everything it is handed to `events.jsonl` — the CACHE ignores a repeated id
+    # (`INSERT OR IGNORE`), the log does not — so a payload naming one line twice
+    # would put two identical lines in the truth and one row in the index, and
+    # only the log's own reader would ever disagree.
+    fresh = [event for event in _distinct(incoming) if event["id"] not in held]
     stores.write(fresh)
-    landed = [event for event in incoming if event["id"] in stores.ids()]
+    # READ BACK from the store, not counted from the payload: what the client
+    # compares its own log against has to be what the board actually holds.
+    now_held = stores.ids()
+    landed = [event for event in _distinct(incoming) if event["id"] in now_held]
     return {
         "board": name,
         "received": len(incoming),
@@ -85,13 +93,22 @@ def run(mounts: Mounts, args: dict[str, Any]) -> dict[str, Any]:
         # Non-zero on a RETRY and zero otherwise — the one number that says the
         # second run of an interrupted push did what it was supposed to: nothing.
         "already_held": len(incoming) - len(fresh),
-        # READ BACK from the store, not counted from the payload: the whole point
-        # of the comparison the client prints is that it is about what landed.
         "landed": len(landed),
         "kinds": Counter(event["kind"] for event in landed),
         "seq": stores.head(),
         "count": len(stores.ids()),
     }
+
+
+def _distinct(events: list[Event]) -> list[Event]:
+    """One id, one event — arrival order, first occurrence kept."""
+    seen: set[str] = set()
+    out: list[Event] = []
+    for event in events:
+        if event["id"] not in seen:
+            seen.add(event["id"])
+            out.append(event)
+    return out
 
 
 def _birth(stores: Stores) -> set[str]:
