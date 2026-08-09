@@ -48,8 +48,9 @@ That is the last shell on the box. Everything after it runs **from your laptop**
 signed by the key `server init` registered — creating the board included:
 
 ```sh
-taskops board create https://host:8787/my-project    # owner only: THE way a board exists
-taskops board ls                                     # what is on that host, and how big
+# the FIRST one names the key, because this laptop has never joined anything yet
+taskops board create https://host:8787/my-project --key ~/.ssh/id_ed25519
+taskops board ls                                     # from here on, no flags: the session is cached
 taskops board push https://host:8787/my-project      # a LOCAL board becomes this one
 taskops invite ana --board my-project                # one-time link, 7 days
 taskops revoke --invite <id>                         # or --key SHA256:… to retire a key
@@ -80,6 +81,15 @@ hours), the next call signs in again by itself, with nobody asked for anything.
 Delete the file and it comes back. Without `--key` the join is the one it always
 was and the token is a standing one, which is why every board joined before this
 keeps working untouched.
+
+**`--key` works on every one of these verbs, and it is what makes the FIRST one
+runnable.** A fresh laptop has no session, and the owner of a brand-new host has
+nothing to join — the invite `join` wants is minted by `taskops invite`, for a
+board nobody has created yet. So `--key ~/.ssh/id_ed25519` signs you in on the
+spot, `--as <principal>` names who that key belongs to when it is not your unix
+user, and the login is remembered: the second command needs no flags at all.
+(On `revoke` the signing key is `--sign-key`, because there `--key` is already
+the fingerprint being retired.)
 
 That same session is what `board create`, `board ls`, `board visibility`,
 `invite` and `revoke` travel on: they are **server-scope** calls to the host's own `/rpc`
@@ -348,13 +358,16 @@ live feed silently degrades.
 **That is the last ssh.** The two commands above — install and `server init` —
 are where trust enters, because authorising a remote bootstrap would need a
 credential the host does not have yet. Every operation after them is a `taskops`
-command run from wherever you are, signed by the key `server init` registered:
+command run from wherever you are, signed by the key `server init` registered —
+**the first board included**, which is the one case that used to send you back
+to the box: a laptop with no session names its key and signs in on the spot:
 
 ```sh
-taskops board create https://<host>/<name>    # a board exists because the owner made one
+# the first command from a laptop that never joined carries the key that signs it in
+taskops board create https://<host>/<name> --key ~/.ssh/id_ed25519    # and now a board exists
 taskops board ls https://<host>               # every board here, with size and last activity
 taskops invite <who> --board <name>           # the join line, minted by the host that honours it
-taskops revoke --invite <id> | --key SHA256:… # take one back
+taskops revoke --invite <id> | --key SHA256:… # take one back (--sign-key signs YOU in)
 taskops board visibility <host>/<name> public|private   # owner only — public means
                                               # anonymous read, never anonymous write
 ```
@@ -363,7 +376,7 @@ taskops board visibility <host>/<name> public|private   # owner only — public 
 four above plus a fifth — never a file copy:
 
 ```sh
-taskops board create https://<host>/<name>              # an empty board, on the host
+taskops board create https://<host>/<name> --key ~/.ssh/id_ed25519   # an empty board, on the host
 taskops board push https://<host>/<name> --key ~/.ssh/id_ed25519
 ```
 

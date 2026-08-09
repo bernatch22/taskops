@@ -61,6 +61,11 @@ STILL_WORKING = (
     "history, and a card being worked on is a fact that has not finished happening. "
     "Wait for them, or let the lease lapse, then push."
 )
+NO_KEY = (
+    "no session for {host} — say which key signs you in: "
+    "taskops board push <host>/<name> --key ~/.ssh/id_ed25519 "
+    "(add --invite <token> the first time, so the host registers it)"
+)
 MISMATCH = (
     "STOP — {host}/{name} did not come back with what was sent:\n{table}\n"
     "Nothing in this repo was changed: it is still the local board, and it is still "
@@ -130,28 +135,19 @@ def _session(
     Signing in caches the token in `remote.json`, and that is NOT the config flip:
     `board.json` still names no url, so `open_board` still opens the local board
     and every step above still fails into a repo that decides what it did before.
+    So the `login` block comes back UNWRITTEN and step 5 places it — this is the
+    one caller of `session.establish` that has an order to keep, and the reason
+    that helper returns the block rather than caching it (`operate.py` does).
     """
     from . import commands
 
     host = target.rpartition("/")[0]
     if invite and not key:
         raise TaskopsError("--invite registers a KEY — pass --key ~/.ssh/id_ed25519 with it")
-    if key:
-        named = as_object(config.get("login")).get("principal")
-        who = str(named or commands.actor().partition(":")[2])
-        if invite:
-            commands.redeem(target, invite, who, commands.pubkey(key))
-        path = Path(key).expanduser()
-        door = {"host": host, "principal": who, "key": str(path)}
-        return session.sign_in(root, host, who, path), door
-    token = session.fresh(root, config, _clock.now())
-    if not token:
-        raise TaskopsError(
-            f"no session for {host} — say which key signs you in: "
-            "taskops board push <host>/<name> --key ~/.ssh/id_ed25519 "
-            "(add --invite <token> the first time, so the host registers it)"
-        )
-    return token, None
+    who = session.principal_for(config, "", commands.principal())
+    if key and invite:
+        commands.redeem(target, invite, who, commands.pubkey(key))
+    return session.establish(root, host, config, key, who, refusal=NO_KEY)
 
 
 def _compare(events: list[Event], answer: dict[str, Any]) -> str | None:

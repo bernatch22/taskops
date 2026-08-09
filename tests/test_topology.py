@@ -1014,6 +1014,117 @@ def _argv(command: str, **fields: str) -> Any:
     return Namespace(command=command, **fields)
 
 
+# ── the FIRST command: --key, on a checkout that never joined ───────────────
+#
+# Everything above this line is run from `joined`, and that is exactly why the
+# deadlock below survived 391 tests: the owner of a brand-new host has nothing
+# to join. `taskops invite` mints the invite `join` wants, and it wanted a
+# session of its own, for a board nobody had created yet. The only exit was ssh
+# onto the box — the anomaly the chapter exists to kill. Found by running the
+# chapter end to end on a clean host (2026-08-09), so these go through `main()`
+# and the real argv: the WIRING was what was broken, and calling the functions
+# is what hid it (the same lesson `upstream=` taught this chapter once already).
+
+
+@pytest.fixture()
+def virgin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A checkout that has never joined anything, and cwd inside it."""
+    project = tmp_path / "laptop"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("TASKOPS_ACTOR", BERNA)
+    monkeypatch.chdir(project)
+    return project
+
+
+def test_the_owner_creates_the_first_board_from_the_laptop_with_only_a_key(
+    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criteria 1 and 2. `server init` happened on the box (the `keyed` fixture);
+    everything after it is this laptop, and the SECOND command carries no flags
+    at all — not even the host, because the login it cached records one."""
+    from taskops.cli import main
+
+    assert main(["board", "create", f"{host_of(server)}/e2e", "--key", str(keyed)]) == 0
+    assert (server.mounts.root / "e2e").is_dir()
+
+    saved = json.loads((virgin / ".taskops" / "remote.json").read_text())
+    assert saved["login"] == {"host": host_of(server), "principal": "berna", "key": str(keyed)}
+    assert saved["token"]
+
+    capsys.readouterr()
+    assert main(["board", "ls"]) == 0  # no --key, no --host: the session is cached
+    assert "e2e" in capsys.readouterr().out
+    assert main(["board", "visibility", "e2e", "public"]) == 0  # and so is every other verb
+
+
+def test_invite_and_revoke_are_runnable_as_the_first_command_too(
+    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other end of the deadlock: the invite that `join` needs is minted by a
+    laptop that never joined. And `revoke` signs in with `--sign-key`, because on
+    that verb `--key` is already the fingerprint being revoked."""
+    from taskops.cli import main
+
+    argv = ["invite", "ana", "--board", BOARD, "--host", host_of(server), "--key", str(keyed)]
+    assert main(argv) == 0
+    assert "taskops join" in capsys.readouterr().out
+
+    _, made = server.mounts.credentials.mint("invite:ana", BOARD, _clock.now(), once=True)
+    (virgin / ".taskops" / "remote.json").unlink()  # never joined, and no session cached either
+    kill = ["revoke", "--invite", made.id, "--host", host_of(server), "--sign-key", str(keyed)]
+    assert main(kill) == 0
+    assert json.loads((virgin / ".taskops" / "remote.json").read_text())["login"]["principal"]
+
+
+def test_as_names_the_principal_when_the_unix_user_is_not_it(
+    server: BoardServer, keyed: Path, virgin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Criterion 3. The $USER guess is wrong on any machine whose login name is
+    not the principal's, and before `--as` such a machine could not sign in at
+    all. The refused attempt also leaves NOTHING cached: a login block written
+    before the host accepted the signature would be a config that lies."""
+    from taskops.cli import main
+
+    monkeypatch.delenv("TASKOPS_ACTOR", raising=False)
+    monkeypatch.setenv("USER", "berna-laptop")
+    assert main(["board", "create", f"{host_of(server)}/wrong", "--key", str(keyed)]) == 1
+    assert not (server.mounts.root / "wrong").exists()
+    assert "login" not in read_config(virgin)
+
+    right = ["board", "create", f"{host_of(server)}/right", "--key", str(keyed), "--as", "berna"]
+    assert main(right) == 0
+    assert (server.mounts.root / "right").is_dir()
+    assert read_config(virgin)["login"]["principal"] == "berna"
+
+
+def test_with_no_session_and_no_key_the_refusal_names_both_doors(
+    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 4. It used to name only `join`, which is the one instruction the
+    owner on day one cannot follow — so the sentence sent them to ssh."""
+    from taskops.cli import main
+
+    assert main(["board", "ls", host_of(server)]) == 1
+    refusal = capsys.readouterr().err
+    assert "--key ~/.ssh/id_ed25519" in refusal and "--as <principal>" in refusal
+    assert "taskops join" in refusal
+
+
+def test_operating_another_host_leaves_this_checkouts_own_session_alone(
+    server: BoardServer, keyed: Path, joined: Path
+) -> None:
+    """`remote.json` holds ONE session, for the board this repo reads. Signing in
+    to a DIFFERENT server from inside a joined checkout is a legitimate thing to
+    do, and it must not leave this repo renewing itself somewhere else."""
+    from taskops.cli import main
+
+    before = json.loads((joined / ".taskops" / "remote.json").read_text())
+    other = f"http://localhost:{server.server_address[1]}"  # the same process, another address
+    assert main(["board", "create", f"{other}/otro", "--key", str(keyed)]) == 0
+    assert (server.mounts.root / "otro").is_dir()
+    assert json.loads((joined / ".taskops" / "remote.json").read_text()) == before
+
+
 def test_the_on_box_commands_survive_as_the_break_glass_path(tmp_path: Path) -> None:
     """The server being down is exactly when its API cannot be the only door.
     `--root` runs the same acts against the files, and it is NOT deprecated."""

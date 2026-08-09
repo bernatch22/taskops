@@ -2,7 +2,7 @@
 
 A shared work board (milestones → cards → subtasks) for teams of coding agents
 working in parallel, with a human who decides. Rewrite of `~/taskops` (v1,
-~340 files) as **97 Python files / ~10.900 lines under `src/taskops`**, plus the
+~340 files) as **97 Python files / ~11.000 lines under `src/taskops`**, plus the
 dashboard — **45 TypeScript files / ~11.700 lines under `ui/src`**, whose built
 bundle is committed to `src/taskops/ui/`. Re-derive both rather than trusting
 these numbers:
@@ -37,8 +37,8 @@ origin`". A CONCEPT named by two cards is a seam — land it serialized first.
 The module's own docstring is the post-mortem.
 
 Status: built and green end to end. `./scripts/lint && ./scripts/test` →
-**392 passed** (no skips once `npm ci` has run in `ui/` — otherwise
-`tests/test_ui.py`'s harness half skips and it is 391+1; see below), ruff +
+**397 passed** (no skips once `npm ci` has run in `ui/` — otherwise
+`tests/test_ui.py`'s harness half skips and it is 396+1; see below), ruff +
 pyright strict clean. Deployed: `taskops.bernardocastro.dev` has served v2's
 four boards since 2026-08-08 and runs **this tree** since 2026-08-09
 (tk-df8e64, ARCHITECTURE.md §17) — `/<board>/ui/` answers 410 on all four
@@ -219,7 +219,10 @@ The CLI is like git: `init join serve tidy ui` + the six that OPERATE a host
 over its own API, keyed (`board create` · `board ls` · `board push` ·
 `board visibility` · `invite` · `revoke` — `http/admin.py` and
 `http/grants.py`, and `--root <dir>` is the break-glass path that still runs
-them against the files ON the box, now in `cli/admin.py`) + `server init` (bootstrap
+them against the files ON the box, now in `cli/admin.py`; `--key`, plus `--as`
+for the principal, signs you in on ANY of them — `session.py::establish`, which
+is what makes the owner's FIRST command runnable from the laptop, and on
+`revoke` it is `--sign-key` because there `--key` is the fingerprint) + `server init` (bootstrap
 a HOST's owner from an ssh pubkey — the one command meant to run over ssh) +
 `join --key ~/.ssh/id_ed25519` (the invite AND the pubkey in one call: the key is
 registered, it signs in on the spot, and `remote.json` becomes a session cache

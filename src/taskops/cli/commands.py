@@ -134,6 +134,13 @@ def actor() -> str:
     return os.environ.get("TASKOPS_ACTOR") or f"dev:{os.environ.get('USER', 'me')}"
 
 
+def principal() -> str:
+    """The bare NAME inside `actor()` — `dev:berna` → `berna`. That is what a
+    host knows you as: a principal is registered against a key, not an actor
+    string. It is a guess from the environment and `--as` overrides it."""
+    return actor().partition(":")[2]
+
+
 def _wire(root: Path, who: str) -> None:
     """Everything init and join both do — including the ONE git fact the board
     can only learn from the side that has a clone (`gitwork/remote.py`)."""
