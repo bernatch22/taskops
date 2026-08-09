@@ -109,7 +109,7 @@ erDiagram
         string id "sha256(canonical)[:32] — idempotent"
         string task "or project for board-level facts"
         string actor
-        string kind "created|edited|claimed|released|status|comment|commit|merged|milestone|submitted|reviewed"
+        string kind "created|edited|claimed|released|status|comment|commit|merged|milestone|project|submitted|reviewed"
         object body "comment carries an optional mentions[] — an extra key, not a new kind"
         float ts
     }
@@ -215,7 +215,8 @@ flowchart TB
     end
     subgraph L3["3 · verbs (+ the REGISTRY)"]
         plan["plan"]; take["take"]; update["update"]; card["card"]
-        assign["assign"]; pulse["pulse (board, mentions, waiting)"]; record["record"]; report["report"]
+        assign["assign"]; pulse["pulse — the board"]; record["record"]; report["report"]
+        mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
         projectv["project — a board-level fact about the repo (op=remote)"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
@@ -225,10 +226,11 @@ flowchart TB
         run["gitwork/run"]; trees["gitwork/trees — worktrees"]
         trailer["gitwork/trailer"]; bind["gitwork/bind"]; install["gitwork/install"]
         remote["gitwork/remote — origin: {host, slug, url}, and best-effort push"]
+        diff["gitwork/diff — read-only, what the /git door serves"]
     end
     subgraph L5["5 · transports"]
-        mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread"]
-        httpsrv["http/server, mounts, rpc, auth, feed, static"]
+        mcpsrv["mcp/server, hello, tools, gitmoves, dossier, before, render, brief, schema, thread, boards, fields"]
+        httpsrv["http/server, mounts, rpc, auth, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
         cli["commands: init · join · hook   ·   serving: serve · invite · ui"]
@@ -285,7 +287,7 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 | `card` | read | both | — |
 | `report` | read | both | — |
 | `events` | read | both | — (the LOG, one keyset page at a time, newest first; board-wide by construction — see `verbs/events.py`) |
-| `plan` | write | `dev` | *"workers do not plan the board. Report what you found instead: `taskops_update`…"* |
+| `plan` | write | `dev` | *"workers do not plan the board. Report what you found instead: `taskops_comment task=<yours> text="…"`"* |
 | `assign` | write | `dev` | *"dispatching is the orchestrator's move. Take what is yours: `taskops_take`"* |
 | `merged` | write | `dev` | *"workers do not integrate branches. Close your card and the orchestrator merges it"* |
 | `take` | write | `agent` | *"you are the orchestrator — you dispatch, you do not hold cards"* |
@@ -294,7 +296,8 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 | `bind` | write | both | (internal — the git hooks call it) |
 | `project` | write | both | (internal — `taskops init` / `taskops join` record where the repo lives on the web; a board-level fact, `op=remote`) |
 
-Every refusal names the call that works. `role_of()` in `core/types.py` is the
+Every refusal names the call that works. `core/actors.py::role_of` (re-exported
+by `core/types.py`, so `types` stays the one name a caller imports) is the
 *only* actor parser in the codebase (v1 had five, plus an inference step that
 let an actor-less sub-agent silently resolve to the human).
 
@@ -484,8 +487,8 @@ nobody has touched yet.
 | a mark-as-read / ack verb for mentions | a stored `read` flag is `recover` again: a write whose only job is to contradict an earlier one | `core/mentions.py::pending()` derives it from the thread; `tests/test_verbs.py::test_a_mention_clears_itself_the_moment_the_actor_touches_the_card` |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
-| a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/main.tsx` §10 asserts the words `free`, `slot` and `capacity` appear nowhere in that markup |
-| a TILE per ephemeral sub-agent | the first Actors page drew one per ACTOR: sixty-seven tiles, sixty-six of them processes that had already died with their cards, each wearing the human's layout — the page contradicted its own goal | the top level is the DEV (`devRows()`), an agent is a row inside it, and `ui/smoke/main.tsx` §10 pins that a board with one dev and many agents draws exactly one card per dev and none per agent |
+| a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/main.tsx` asserts the words `free`, `slot` and `capacity` appear nowhere in that markup ("actors: NO WORKER SLOTS, under that name or any other") |
+| a TILE per ephemeral sub-agent | the first Actors page drew one per ACTOR: sixty-seven tiles, sixty-six of them processes that had already died with their cards, each wearing the human's layout — the page contradicted its own goal | the top level is the DEV (`devRows()`), an agent is a row inside it, and `ui/smoke/main.tsx` pins that a board with one dev and many agents draws exactly one card per dev and none per agent ("actors: one card per dev is DRAWN, and no card for an agent") |
 
 ---
 
@@ -551,7 +554,12 @@ Both remaining items are done. The migration ran against all four v1 boards
 (§17), and `taskops.bernardocastro.dev` serves v2 since 2026-08-08 — not via
 `shipway`, which moves a code tree to a pm2 app: a board host is a wheel plus a
 directory of board logs, so it is `pip install` into a venv and one pm2 entry
-(README, "Deployed"). The repo is under git and its history is real:
+(README, "Deployed"). **The box is one chapter behind this tree**: it still runs
+the wheel from tk-c86312, so `https://taskops.bernardocastro.dev/<board>/ui/`
+still answers a dashboard where the trunk answers `410` (§16, §17). Re-derivable:
+`curl -s https://taskops.bernardocastro.dev/healthz` and
+`curl -o /dev/null -w '%{http_code}' https://taskops.bernardocastro.dev/axion/ui/`
+— measured `{"boards": 4}` and `200` on 2026-08-09. The repo is under git and its history is real:
 the board's own milestones land on `master` through `taskops_merge
 milestone=`.
 
@@ -674,7 +682,10 @@ files that answer it:
   picker's OWN setter (`App.tsx::setMilestone`, threaded down) — a door, not a
   copy. Landed chapters are not listed; per-chapter counts are folded from
   `board.groups` and are drawn nowhere if no row names a chapter.
-* **Board** — the nine groups of `docs/design.md` §4, as the board reports them.
+* **Board** — the board's own groups (`docs/design.md` §4), folded into SIX
+  columns (`ui/src/pages/Board.tsx`): Ready · In flight (`doing` + `stalled`,
+  which carries a danger marker) · Review (`review` + `reviewing` + `changes`,
+  three chips in one column) · Blocked · To merge · Done.
 * **Actors** — the fourth view (`ui/src/pages/Actors.tsx`), and the one that
   answers "who has been on this board, what did they carry, and for how long".
   **It is a page about DEVS, and an agent is a LINE inside one.** It shipped
@@ -682,7 +693,7 @@ files that answer it:
   that built it — one human and sixty-six ephemeral sub-agents that had already
   died with their cards — which contradicts the chapter's own goal: an actor is
   a name bound to the RUN of a card, and `w1` today is not `w1` yesterday. The
-  top level is now the DEV, the durable identity (`core/types.py::role_of`; an
+  top level is now the DEV, the durable identity (`core/actors.py::role_of`; an
   `agent:<dev>/<name>` carries its dev in the name, `format.ts::ownerOf`, the
   same relation `http/auth.py::authorize` enforces on the wire), and TWO devs
   are two cards each with its own agents — the case the shape exists for, and
@@ -818,7 +829,8 @@ branches and the UI's own sentences are NOT prose and are drawn as text. A
 chapter goal is the longest writing the board carries — axion's is 4,252
 characters — so the pane gives it a max height and its own scroll: never a
 clamp and never an ellipsis, since a cut goal is a lie about what the chapter
-says. `ui/smoke/main.tsx` §1b pins all of it from the server's own payload.
+says. `ui/smoke/main.tsx` pins all of it from the server's own payload (the
+`the goal renders as markdown, not as characters` group).
 
 Colour lives in exactly one file, `ui/src/theme/tokens.css`; the theme is an
 attribute on `<html data-tk>`, remembered in `localStorage`, defaulting to the
@@ -843,14 +855,14 @@ Three mechanisms, all client-side, all in the layers that already had git:
 | # | mechanism | where |
 |---|---|---|
 | 1 | a commit event carries `numstat` — `+/-` per file, `null` for a file git could not count (a binary, never a `0`) | `gitwork/bind.py` → `verbs/record.py`; drawn by `ui/src/links.tsx` on the dossier's commit list and on the Event stream |
-| 2 | branches reach `origin` by **best-effort pushes** at the three lifecycle moments that already exist — done, integrate, land | `gitwork/remote.py::push`, called from `gitwork/trees.py` / `mcp/gitmoves.py`. `trees.py:121` is the precedent and its comment is the contract: *best effort; local still landed*. Never a gate, never in a commit hook, never a board fact |
+| 2 | branches reach `origin` by **best-effort pushes** at the three lifecycle moments that already exist — done, integrate, land | `gitwork/remote.py::push`, called from `gitwork/trees.py` / `mcp/gitmoves.py`. `trees.py`'s `merge_trunk` is the precedent and its comment is the contract: *best effort; local still landed*. Never a gate, never in a commit hook, never a board fact |
 | 3 | the repo's forge slug is recorded ONCE, by the side that HAS the repo (`init`/`join`), as `{host, slug, url}`, and rides on the board payload | `gitwork/remote.py::remember` → `verbs/project.py`; consumed by `ui/src/links.tsx` |
 
 **The switch for all of it is `git remote get-url origin`, never a
 local-vs-remote mode.** With no origin: nothing pushes, no link renders, and
 nothing degrades — a board without a remote behaves byte-for-byte like the
 taskops that predates this chapter, with no dead anchors and no column reserved
-for one. That case is pinned headlessly (`ui/smoke/main.tsx` §7: *not one anchor
+for one. That case is pinned headlessly (`ui/smoke/main.tsx`, the `no slug` assertions: *not one anchor
 is rendered*, and the Worktrees index still draws both its columns and every row
 in them) because it is the default, not the exception: this repo's own board
 records no origin.
@@ -907,7 +919,8 @@ DISCOVERED, not configured: the first refusal whose words are
 `gitdoor.py::NO_REPO` flips a module-level flag for the session and nothing asks
 again — an unknown ref does not flip it, because that means "ask again for
 another ref". All four steps are drawn from the door's own payload in
-`ui/smoke/main.tsx` §8; what no headless harness reaches is `useGitDiff`'s
+`ui/smoke/main.tsx` (the `cascade` groups, from `fixture.git`); what no
+headless harness reaches is `useGitDiff`'s
 effect firing, and that half is covered against a real server in
 `tests/test_topology.py`.
 
@@ -939,8 +952,9 @@ same `CommentBox`, fed the dossier `App` already opened when it opened the tree,
 writing through the same `update comment=`. There is **no worktree comment and
 there must never be one** — a worktree has no identity apart from its card
 (`gitwork/trees.py` pins `tk-<id>` as branch, directory and id at once), and a
-second thread would be two places to say one thing. `ui/smoke/main.tsx` §9 pins
-all of it, `split()` against the door's own patch.
+second thread would be two places to say one thing. `ui/smoke/main.tsx` pins
+all of it (`the page's pane is a page's`, `the card's own thread is on the page`),
+`split()` against the door's own patch.
 
 What did NOT change: `events.jsonl` still stores references and measures and
 never content; the door DERIVES on demand and nothing it returns is written
