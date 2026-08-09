@@ -11,6 +11,7 @@ from typing import Any, Callable
 import pytest
 
 from taskops import verbs, _clock
+from taskops.core import seams
 from taskops.store import log
 from taskops.verbs import pulse, _facts
 from taskops._errors import Refused, NotFound, BadRequest
@@ -1070,3 +1071,153 @@ def test_a_page_is_refused_a_size_it_cannot_serve(stores: Stores) -> None:
     _noisy(stores)
     with pytest.raises(BadRequest, match="outside 1..200"):
         call(stores, "events", BERNA, limit=5000)
+
+
+# ── the wave: what is safe to dispatch together (core/seams.py) ──────────────
+
+
+PROSE = """The board refuses a close that has no commit behind it, and the
+refusal names the call that works. Nothing here is stored; it is derived on
+every read, which is the whole point — a row survives the process that wrote
+it and a lease does not. Read the module before changing its decision."""
+
+
+def test_ordinary_prose_bears_no_concept_at_all() -> None:
+    """The narrowness IS the feature: one false hold and the orchestrator stops
+    reading the wave, which costs more than every seam it would ever catch."""
+    assert seams.terms(PROSE) == frozenset()
+
+
+def test_the_three_documented_shapes_are_what_a_concept_looks_like() -> None:
+    got = seams.terms(
+        "Both cards check `git remote get-url origin`, then draw "
+        "`panels.ts::WorktreeRow` from what `live.renew` decided."
+    )
+    assert "git remote get-url origin" in got
+    assert "panels.ts::worktreerow" in got
+    assert "live.renew" in got
+
+
+def test_a_bare_backticked_word_is_not_a_concept() -> None:
+    """Half the specs on this board backtick `done`, `main` and `open`."""
+    assert seams.terms("it closes `done` on `main`, never while `open`") == frozenset()
+
+
+def test_a_hyphen_is_not_a_joiner() -> None:
+    """`post-mortem` and `read-only` are prose; `done_total` is an identifier."""
+    assert seams.terms("the read-only post-mortem") == frozenset()
+    assert seams.terms("the read-only done_total") == frozenset({"done_total"})
+
+
+def test_overlaps_reports_only_the_pairs_that_share_something() -> None:
+    found = seams.overlaps(
+        {
+            "tk-a": "read `store/cache.py` and page it",
+            "tk-b": "write `store/cache.py` faster",
+            "tk-c": "nothing in common here at all",
+        }
+    )
+    assert found == [("tk-a", "tk-b", frozenset({"store/cache.py"}))]
+
+
+def waved(stores: Stores, **kwargs: Any) -> Any:
+    return call(stores, "board", BERNA, **kwargs)["wave"]
+
+
+def test_disjoint_ready_cards_are_all_safe_to_dispatch_together(stores: Stores) -> None:
+    planned(stores)
+    wave = waved(stores)
+    assert [c["title"] for c in call(stores, "board", BERNA)["groups"]["take"]] == [
+        "invoice model",
+        "CSV parser",
+    ]
+    assert len(wave["safe"]) == 2 and wave["held"] == []
+
+
+def test_a_shared_file_holds_a_card_and_names_the_file(stores: Stores) -> None:
+    out = call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="two halves",
+        goal="one file, two cards",
+        tasks=[
+            {"title": "left", "spec": "the left half", "files": ["src/tax.py"]},
+            {"title": "right", "spec": "the right half", "files": ["src/tax.py", "src/x.py"]},
+        ],
+    )
+    first, second = (c["id"] for c in out["cards"])
+    wave = waved(stores, milestone=out["milestone"]["id"])
+    assert wave["safe"] == [first]
+    assert wave["held"] == [
+        {"id": second, "title": "right", "why": {"with": first, "files": ["src/tax.py"]}}
+    ]
+
+
+def test_a_shared_concept_holds_a_card_even_with_disjoint_files(stores: Stores) -> None:
+    """The two `gitwork/remote.py` cards, reproduced: different declared files,
+    the same sentence in both specs."""
+    out = call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="the forge",
+        goal="link out to github",
+        tasks=[
+            {"title": "links", "spec": "check `git remote get-url origin`", "files": ["a.py"]},
+            {"title": "pushes", "spec": "we check `git remote get-url origin`", "files": ["b.py"]},
+        ],
+    )
+    first, second = (c["id"] for c in out["cards"])
+    wave = waved(stores, milestone=out["milestone"]["id"])
+    assert wave["safe"] == [first]
+    assert wave["held"][0]["why"] == {"with": first, "terms": ["git remote get-url origin"]}
+
+
+def test_when_both_hold_the_reader_gets_the_declared_fact(stores: Stores) -> None:
+    """THE LIVE CASE, from this repo's own board on 2026-08-09: the orchestrator
+    held tk-dfaff7 apart from tk-814c7b by hand because both declare
+    `src/taskops/mcp/gitmoves.py` and `tests/test_mcp.py` — and both specs also
+    name `taskops_merge`. Files and terms both fire; the answer is the FILES,
+    because a declared file is a fact the planner wrote and a term is an
+    inference from prose."""
+    out = call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="landing",
+        goal="one call integrates the chapter, and a chapter lands over a moved trunk",
+        tasks=[
+            {
+                "title": "batch",
+                "spec": "one taskops_merge call integrates every done card",
+                "files": ["src/taskops/mcp/gitmoves.py", "tests/test_mcp.py"],
+            },
+            {
+                "title": "landing gate",
+                "spec": "taskops_merge milestone= catches the trunk up first",
+                "files": ["src/taskops/mcp/gitmoves.py", "tests/test_mcp.py"],
+            },
+        ],
+    )
+    first, second = (c["id"] for c in out["cards"])
+    wave = waved(stores, milestone=out["milestone"]["id"])
+    assert wave["safe"] == [first]
+    assert wave["held"][0]["why"] == {
+        "with": first,
+        "files": ["src/taskops/mcp/gitmoves.py", "tests/test_mcp.py"],
+    }
+    both = {"tk-a": out["cards"][0]["spec"], "tk-b": out["cards"][1]["spec"]}
+    assert seams.overlaps(both) == [("tk-a", "tk-b", frozenset({"taskops_merge"}))]
+
+
+def test_one_ready_card_has_no_wave_to_compute(stores: Stores) -> None:
+    out = call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="alone",
+        goal="one card",
+        tasks=[{"title": "only", "spec": "by itself", "files": ["x.py"]}],
+    )
+    assert waved(stores, milestone=out["milestone"]["id"]) is None

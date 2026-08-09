@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import tools, render
+from . import tools, boardview
 from .. import _clock
 from ..board import Board
 from .._errors import TaskopsError
@@ -63,7 +63,7 @@ def panorama(board: Board, room: int) -> str:
     if room < 300:
         return ""  # a protocol that grew past the cap would truncate ITSELF here
     try:
-        shown = render.board(board.call("board", {}), _clock.now())
+        shown = boardview.board(board.call("board", {}), _clock.now())
     except TaskopsError:
         return ""
     budget = room - len(OPENING) - 2

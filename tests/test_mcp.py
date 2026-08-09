@@ -271,6 +271,62 @@ def test_with_two_chapters_open_the_board_names_both(repo: Path, boards: Any) ->
     assert "pass milestone=<id> to focus one" in text
 
 
+def waving(dev: Any) -> list[dict[str, Any]]:
+    """Two ready cards that name the same concept with disjoint declared files —
+    the two `gitwork/remote.py` cards of ARCHITECTURE.md §16, reproduced."""
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "the forge",
+            "goal": "link out to github",
+            "tasks": [
+                {"title": "links", "spec": "check `git remote get-url origin`", "files": ["a.py"]},
+                {"title": "pushes", "spec": "we check `git remote get-url origin`", "files": ["b.py"]},
+            ],
+        },
+    )
+    return list(out["cards"])
+
+
+def test_the_board_names_the_wave_under_take(repo: Path, boards: Any) -> None:
+    """Advice where the fan-out is decided, not per-take after the dispatch."""
+    dev = boards(BERNA)
+    first, second = waving(dev)
+    text = call(dev, repo, "taskops_board", milestone="the forge")
+    listed = text[text.index("TAKE —") : text.index("─ ◆")]
+    assert f"▸ safe to dispatch together: {first['id']}" in listed
+    assert f"held: {second['id']} (names git remote get-url origin with {first['id']})" in listed
+
+
+def test_one_ready_card_draws_no_wave_line(repo: Path, boards: Any) -> None:
+    dev, cards = seeded(boards)
+    dev.call("assign", {"tasks": [cards[0]["id"]]})  # leaves exactly one ready card
+    assert "safe to dispatch together" not in call(dev, repo, "taskops_board")
+
+
+def test_an_assign_the_wave_holds_apart_warns_and_proceeds(repo: Path, boards: Any) -> None:
+    """Rule 1 of the chapter: a warning is never a lock. The briefs carry the
+    sentence, and both cards are assigned all the same."""
+    dev = boards(BERNA)
+    first, second = waving(dev)
+    text = call(
+        dev, repo, "taskops_assign", tasks=[first["id"], second["id"]], worktrees=False
+    )
+    assert f"⚠ the wave holds this apart from {first['id']}" in text
+    assert "the same concept — git remote get-url origin" in text
+    assert "nothing is blocked" in text
+    # …and it went through: two briefs, two owners on the board.
+    assert text.count("spawn one sub-agent with this") == 2
+    cards = dev.call("board", {"milestone": "the forge"})["groups"]
+    assert [row["assignee"] for row in cards["stalled"]] == ["agent:berna/w1", "agent:berna/w2"]
+
+
+def test_an_assign_the_wave_leaves_alone_carries_no_warning(repo: Path, boards: Any) -> None:
+    dev, cards = seeded(boards)
+    text = call(dev, repo, "taskops_assign", tasks=[cards[0]["id"]], worktrees=False)
+    assert "the wave holds this apart" not in text
+
+
 def test_dispatch_returns_a_self_contained_brief(repo: Path, boards: Any) -> None:
     dev, cards = seeded(boards)
     text = call(dev, repo, "taskops_assign", tasks=[cards[0]["id"]], worktrees=False)
