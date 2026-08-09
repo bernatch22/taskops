@@ -21,7 +21,7 @@
  * `topology()` is a pure function: payload in, placed nodes out, positions a
  * deterministic circle by index. No force simulation, no animation loop, no
  * `Math.random()` — anywhere in this file. That is not an aesthetic preference,
- * it is what makes the pane testable: `ui/smoke/main.tsx` runs under
+ * it is what makes the pane testable: `ui/smoke/sections/swarm-topology.tsx` runs under
  * `react-dom/server` with no browser and no jsdom, so a layout that settles
  * over frames is a layout the harness can only render blank. Rendering the same
  * payload twice yields byte-identical coordinates, which is criterion 5.

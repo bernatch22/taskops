@@ -58,7 +58,7 @@ function clock(ts: number): string {
 /** A FIXTURE. Not board data, never reachable from `Monitor.tsx` — it exists so
  *  the entry markup above could be developed against the shapes `store/log.py`
  *  actually appends, and so the smoke harness can drive a POPULATED pane. That
- *  day has come: `smoke/main.tsx` renders `EventStream` with these rows, which
+ *  day has come: `smoke/sections/event-stream.tsx` renders `EventStream` with these rows, which
  *  is the only way a headless harness reaches markup that a real fetch draws.
  *
  *  The shapes are `core/types.py::Event` verbatim (`id · task · actor · kind ·

@@ -8,6 +8,9 @@ dist/
 
 # ui dev project
 ui/node_modules/
+# the smoke section index is DISCOVERED, never committed (ui/smoke/sections.mjs):
+# a hand-edited list is the appendix that made every parallel UI card conflict.
+ui/smoke/sections/index.generated.ts
 
 # taskops
 .taskops/remote.json
