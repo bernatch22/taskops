@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Lock, Thread
 
 from . import feed
+from .login import Host
 from .._errors import NotFound, BadRequest, TaskopsError
 from .upstream import Upstream, seq_of
 from ..store.creds import Credentials
@@ -28,12 +29,11 @@ WATCH_SECONDS = 1.0
 anybody is looking, and it runs for nobody otherwise."""
 
 REMOTE_WATCH_SECONDS = 3.0
-"""The same question asked of a REMOTE board, and slower on purpose: that
-`head()` is a `board` call over the network, not a rowid lookup, so once a
-second would be a request per second per open tab against somebody else's
-server. Three seconds is under the time it takes a reader to look away and back,
-and the cost of being late is exactly one tick — the message is a SIGNAL and the
-page refetches (`feed.py`). It still runs only while somebody is connected."""
+"""The same question asked of a REMOTE board, and slower on purpose: that `head()` is a
+`board` call over the network, not a rowid lookup, so once a second would be a request per
+second per open tab against somebody else's server. Three seconds is under the time it takes a
+reader to look away and back, and the cost of being late is exactly one tick — the message is a
+SIGNAL and the page refetches (`feed.py`). It still runs only while somebody is connected."""
 
 
 class Mounts:
@@ -58,19 +58,19 @@ class Mounts:
         self.root = root
         self.upstream = upstream
         # The ONE place that decides whether this process can read a repo, and
-        # it is decided by the CALLER at construction — never sniffed per
-        # request. `taskops ui` sits inside a checkout and hands its root;
-        # `taskops serve` sits in a boards directory and hands nothing, so its
-        # /git door refuses with a message that says exactly that (gitdoor.py).
+        # it is decided by the CALLER at construction, never sniffed per
+        # request (`gitdoor.py` carries the rest).
         self.repo = repo
-        # ONE switch, not two: the same `repo` that mounts /git mounts the
-        # bundle. A dashboard needs the viewer's CLONE to draw a diff, so a
-        # process with no clone has no business serving one — see `static.py`
-        # for the whole post-mortem. The bundle still ships inside the wheel;
-        # what went away is the server-side mount and the `--ui` flag that
-        # configured it.
+        # ONE switch, not two: the same `repo` that mounts /git mounts the bundle. A
+        # dashboard needs the viewer's CLONE to draw a diff, so a process with no clone
+        # has no business serving one — see `static.py` for the whole post-mortem. The
+        # bundle still ships inside the wheel; what went away is the server-side mount
+        # and the `--ui` flag that configured it.
         self.ui = _PACKAGED_UI if repo is not None else None
         self.credentials = Credentials(root / "live.sqlite")
+        # The HOST's own identity, and it opens NOTHING until a login asks
+        # (`login.py::Host` says why lazily is a rule here, not a taste).
+        self.host = Host(root)
         self.hub = feed.Hub()
         self._lock = Lock()
         self._boards: dict[str, Stores] = {}
@@ -155,14 +155,13 @@ class Mounts:
     def stores(self, name: str) -> Stores:
         """OPEN a board. Never create one — that is the whole of this method.
 
-        Until 2026-08-08 this said `Stores(self.root / name)` unconditionally,
-        and `Stores` makes its own directory. So a GET for a name nobody had
-        heard of — arriving BEFORE any credential was checked, since the router
-        calls `check` first and `_credential` second — left a board directory
-        with a cache and a lease file on disk: anonymous, unauthorised,
-        permanent, a write caused by a stranger's question. Creation is now a
-        server-scope OPERATION (`core/scope.py`: `board.create`), via `create()`.
-        """
+        Until 2026-08-08 this said `Stores(self.root / name)` unconditionally, and
+        `Stores` makes its own directory. So a GET for a name nobody had heard of —
+        arriving BEFORE any credential was checked, since the router calls `check`
+        first and `_credential` second — left a board directory with a cache and a
+        lease file on disk: anonymous, unauthorised, permanent, a write caused by a
+        stranger's question. Creation is now a server-scope OPERATION
+        (`core/scope.py`: `board.create`), via `create()`."""
         _named(name)
         with self._lock:
             if name not in self._boards:
@@ -190,6 +189,7 @@ class Mounts:
         for board in self._boards.values():
             board.close()
         self.credentials.close()
+        self.host.close()
 
 
 def _named(name: str) -> str:

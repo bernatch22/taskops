@@ -1,5 +1,6 @@
 """The taskops server: boards mounted by name, one door each.
 
+    POST /login                  an ssh key signs a challenge, gets a session token
     POST /<board>/rpc            every verb, read and write
     GET  /<board>/feed           WebSocket (SSE fallback) — the UI's live wire
     POST /<board>/invite/redeem  burn an invite, get a personal credential
@@ -9,12 +10,10 @@
 
 The boards themselves live in `mounts.py`; this file is only the router.
 
-The SAME routes serve a window onto a remote board (`taskops ui` in a joined
-checkout): only `/rpc` changes hands, forwarded to the server that owns the
-board (`upstream.py`), while /ui and /git stay local. The page cannot tell, and
-that is why the committed bundle is untouched by any of it.
-
-A BOARD HOST opens neither door that needs a clone, and each says so in its own
+The SAME routes serve a window onto a remote board (`taskops ui` in a joined checkout): only
+`/rpc` changes hands, forwarded to the server that owns the board (`upstream.py`), while /ui
+and /git stay local. The page cannot tell, and that is why the committed bundle is untouched
+by any of it. A BOARD HOST opens neither door that needs a clone, and each says so in its own
 words: `gitdoor.py::NO_REPO` and `static.py::NO_UI`, which carries the reasoning.
 """
 
@@ -25,7 +24,7 @@ from typing import Any, cast
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-from . import rpc, feed, static, gitdoor
+from . import rpc, feed, login, static, gitdoor
 from .. import _clock
 from .auth import Credential, token_in
 from .mounts import Mounts
@@ -36,10 +35,9 @@ from .upstream import Upstream
 class Handler(BaseHTTPRequestHandler):
     server_version = "taskops"
 
-    # HTTP/1.1, and not by taste: a WebSocket handshake is only valid over 1.1.
-    # With the default 1.0 the status line reads "HTTP/1.0 101 …" and every
-    # browser drops the connection — the UI would silently never go live, which
-    # is precisely the kind of failure that hides for a week.
+    # HTTP/1.1, and not by taste: a WebSocket handshake is only valid over 1.1. With the
+    # default 1.0 the status line reads "HTTP/1.0 101 …" and every browser drops the
+    # connection — the UI would silently never go live, which hides for a week.
     protocol_version = "HTTP/1.1"
 
     @property
@@ -52,7 +50,9 @@ class Handler(BaseHTTPRequestHandler):
         if tail == "rpc":
             self._rpc(board)
         elif tail == "invite/redeem":
-            self._redeem(board)
+            self._mint("redeem", board)
+        elif board == "login" and not tail:
+            self._mint("login", "")  # server scope: a key, not a board credential
         else:
             self._fail(404, BadRequest(f"nothing at {self.path}"))
 
@@ -89,18 +89,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(status, answer, "application/json")
 
-    def _redeem(self, board: str) -> None:
+    def _mint(self, door: str, board: str) -> None:
+        """The two doors that hand out a CREDENTIAL — `login.py` owns both, so
+        the router never learns what an invite or a signature is."""
         try:
-            payload = rpc.decode(self._raw())
-            who = str(payload.get("who", "")).strip()
-            token = str(payload.get("invite", "")).strip()
-            if not who or not token:
-                raise BadRequest('POST {"invite": "…", "who": "<your name>"}')
-            fresh = self.mounts.credentials.redeem(token, board, who, _clock.now())
+            body = rpc.decode(self._raw())
+            data = login.answer(
+                self.mounts.host, self.mounts.credentials, door, board, body, _clock.now()
+            )
         except TaskopsError as err:
             self._fail(rpc.status_for(rpc.failure(err)), err)
             return
-        self._json(200, {"ok": True, "seq": 0, "data": {"token": fresh, "actor": f"dev:{who}"}})
+        self._json(200, {"ok": True, "seq": 0, "data": data})
 
     def _feed(self, board: str) -> None:
         try:
@@ -116,8 +116,8 @@ class Handler(BaseHTTPRequestHandler):
         feed.attach(self, self.mounts.hub, board, *wanted)
 
     def _git(self, board: str, rest: str) -> None:  # same token door as /rpc
-        # Mounted from the LOCAL clone whether the board is local or remote:
-        # that is the whole point of serving the window here (§16).
+        # Mounted from the LOCAL clone whether the board is local or remote: that is
+        # the whole point of serving the window here (§16).
         try:
             self.mounts.check(board)
             self._credential(board, "read")
@@ -128,8 +128,8 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True, "seq": 0, "data": data})
 
     def _static(self, rest: str) -> None:
-        """`static.py` owns what this door answers and why — including the
-        sentence a board host (`mounts.ui is None`) gets instead of a page."""
+        """`static.py` owns what this door answers and why — including the sentence a
+        board host (`mounts.ui is None`) gets instead of a page."""
         self._send(*static.answer(self.mounts.ui, rest))
 
     # ── plumbing ────────────────────────────────────────────────────────────
@@ -171,8 +171,8 @@ def _split(path: str) -> tuple[str, str]:
 
 
 class BoardServer(ThreadingHTTPServer):
-    """A threading server that owns its mounts — no module-level state anywhere,
-    so one process can run three independent boards without them seeing each other."""
+    """A threading server that owns its mounts — no module-level state anywhere, so one
+    process can run three independent boards without them seeing each other."""
 
     daemon_threads = True
     allow_reuse_address = True

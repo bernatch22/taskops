@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import os
 import sys
-import json
 from pathlib import Path
-from urllib.request import Request, urlopen
 
-from .._json import query, as_object
+from .._json import query
+from .._wire import post as post_json
 from ..board import DIR, find_root, open_board
 from .._errors import TaskopsError
 from ..gitwork import run, bind, remote, install, trailer
@@ -29,19 +28,33 @@ def init(here: Path) -> int:
     return 0
 
 
-def join(here: Path, url: str, given: str) -> int:
+def join(here: Path, url: str, given: str, key: str = "") -> int:
+    """Connect this repo to a board — and, with `--key`, register the ssh key that
+    will mint every session from here on.
+
+    The invite and the PUBKEY travel in the same call: the server burns the invite
+    and enrols the key in one act, so the token that comes back is the last one
+    anybody ever handles. Without `--key` this is the join it always was, and the
+    board keeps its standing bearer token (milestone rule 3, and the reason the
+    old shape is still the default rather than a deprecation).
+    """
     root = find_root(here)
     base = url.partition("?")[0]
     params = query(url)
     who = given or actor()
-    token = params.get("token", "")
+    token, door = params.get("token", ""), {}
     if params.get("invite", ""):
-        token, who = _redeem(base, params["invite"], who.partition(":")[2] or "me")
+        name = who.partition(":")[2] or "me"
+        token, who = _redeem(base, params["invite"], name, _pubkey(key))
+        if key:
+            door = {"host": _host_of(base), "principal": name, "key": str(Path(key).expanduser())}
     if not token:
         raise TaskopsError("that URL carries no ?token= or ?invite= — ask for a fresh link")
-    install.write_config(root, base.rstrip("/"), token)
+    install.write_config(root, base.rstrip("/"), token, door or None)
     _wire(root, who)
     print(f"joined {base} as {who}. Hooks installed; the board is in MCP.")
+    if door:
+        print(f"  and {door['key']} signs you in from now on — no token to copy again")
     return 0
 
 
@@ -86,20 +99,31 @@ def _wire(root: Path, who: str) -> None:
     remote.remember(open_board(root, who), root)
 
 
-def _redeem(base: str, invite: str, who: str) -> tuple[str, str]:
-    request = Request(
-        f"{base.rstrip('/')}/invite/redeem",
-        data=json.dumps({"invite": invite, "who": who}).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=20) as response:  # noqa: S310 — the URL is the user's
-            body: object = json.loads(response.read().decode())
-    except OSError as err:
-        raise TaskopsError(f"{base} did not answer: {err}") from err
-    envelope = as_object(body)
-    if not envelope.get("ok"):
-        raise TaskopsError(f"that invite was refused: {body}")
-    data = as_object(envelope.get("data"))
+def _redeem(base: str, invite: str, who: str, pubkey: str = "") -> tuple[str, str]:
+    body: dict[str, str] = {"invite": invite, "who": who}
+    if pubkey:
+        body["pubkey"] = pubkey
+    data = post_json(f"{base.rstrip('/')}/invite/redeem", body, {}, 20.0)
     return str(data.get("token", "")), str(data.get("actor", f"dev:{who}"))
+
+
+def _pubkey(key: str) -> str:
+    """The PUBLIC half of `--key`, read from `<key>.pub` — never the private key,
+    which never leaves this machine and which `store/pubkeys.py` refuses by name
+    if it is ever sent by mistake."""
+    if not key:
+        return ""
+    private = Path(key).expanduser()
+    public = private if private.suffix == ".pub" else Path(f"{private}.pub")
+    try:
+        return public.read_text(encoding="utf-8").strip()
+    except OSError as err:
+        raise TaskopsError(
+            f"cannot read {public} — --key takes the PRIVATE key (the one ssh-keygen signs "
+            f"with); its .pub next to it is what gets registered: {err}"
+        ) from err
+
+
+def _host_of(base: str) -> str:
+    """The SERVER, out of a board address: `/login` is server scope, not a board's."""
+    return base.rstrip("/").rpartition("/")[0]
