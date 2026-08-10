@@ -3,10 +3,10 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
-## 0.4.0 — the rewrite: derive, don't write
+## 0.3.0 — the rewrite: derive, don't write
 
 A ground-up rewrite of taskops (v1 was ~340 files; this is ~110 under
-`src/taskops`, zero runtime dependencies). It follows v1's 0.3.0 as a MINOR bump:
+`src/taskops`, zero runtime dependencies). It follows 0.2.0 as a MINOR bump:
 the public contract (CLI, MCP, storage) breaks completely, which in 0.x is a
 minor, and nothing here claims 1.0 maturity yet. Nothing about v1's wire, CLI or
 storage survives — this is a new product under the old console script.
