@@ -2655,6 +2655,33 @@ def test_a_recorded_remote_is_configuration_too_and_does_not_block_the_push(
     assert server.mounts.stores("promoted").head() == len(mine) + 2
 
 
+def test_a_declared_forge_is_configuration_too_and_does_not_block_the_push(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """The op that ARGUED its way into the closed list. Declaring who may reach
+    a board is the same act as `visibility` one notch further, and it is done
+    to an EMPTY container by definition — nobody opts a board into GitHub after
+    filling it and then discovers the push refused."""
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    admin(server, owner, "board.create", {"name": "promoted"})
+    configured(
+        server, "promoted", "forge", {"host": "github.com", "repo": "x/y", "need": "push"}
+    )
+    monkeypatch.chdir(repo)
+
+    assert pushed(f"{host_of(server)}/promoted", keyed) == 0
+    assert server.mounts.stores("promoted").head() == len(mine) + 2
+
+    from taskops.verbs.project import forge
+
+    assert forge(server.mounts.stores("promoted")) == {
+        "host": "github.com",
+        "repo": "x/y",
+        "need": "push",
+    }
+
+
 def test_one_card_event_on_the_target_puts_the_wall_straight_back_up(
     server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
 ) -> None:

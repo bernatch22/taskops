@@ -206,6 +206,7 @@ flowchart TB
         challenge["challenge — the login nonce: in memory, single-use, dead on claim"]
         mentionsm["mentions — who was named and has not answered"]
         reviewm["review — submitted/reviewed folded into a Standing"]
+        forgem["forge — the forge vocabulary: which host can be asked, what access counts, owner/name"]
         hours["hours — working-time math"]
     end
     subgraph L2["2 · store (the ONLY SQL)"]
@@ -223,7 +224,7 @@ flowchart TB
         assign["assign"]; pulse["pulse — the board"]; record["record"]; report["report"]
         mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
-        projectv["project — board-level facts: op=remote, op=visibility"]
+        projectv["project — board-level facts: op=remote, op=visibility, op=forge"]
         helpersv["_args _cards _context _facts _rows — the helpers; the _ says 'not a verb'"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
@@ -335,7 +336,7 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 | `update` | write | both | — |
 | `review` | write | both | — (optional review: claim a submitted card, or record the verdict. A verifier is an ordinary agent — there is no reviewer role) |
 | `bind` | write | both | (internal — the git hooks call it) |
-| `project` | write | both | (internal — board-level facts: `op=remote`, where the repo lives on the web, and `op=visibility`, public or private) |
+| `project` | write | both | (internal — board-level facts: `op=remote`, where the repo lives on the web; `op=visibility`, public or private; and `op=forge`, the repo whose membership opens the board — absent by default, and `core/forge.py` owns its shape) |
 
 **A PUBLIC board: anyone may watch, nobody writes without a key** (2026-08-09).
 GitHub's model, deliberately and exactly — private by default, the owner may
@@ -528,9 +529,10 @@ Three decisions inside it, each pinned in `tests/test_topology.py`:
   precondition is true exactly once in a board's life. "Empty" is not `seq == 0`
   but **"no history but its own configuration"** — `board.create` writes WHO
   made the board as its first event, and setting the visibility or recording a
-  remote before the board is filled is a fact about the CONTAINER, not about the
-  work. So the door exempts project events whose `op` is in the CLOSED list
-  `{created, visibility, remote}` — and only while the board holds ZERO card
+  remote — or naming the forge that opens it — before the board is filled is a
+  fact about the CONTAINER, not about the work. So the door exempts project
+  events whose `op` is in the CLOSED list
+  `{created, visibility, remote, forge}` — and only while the board holds ZERO card
   events; one event about work and the exemption narrows back to the birth
   certificate (`ingest.py::_configuration`, whose docstring is the 2026-08-09
   reproduction: this repo's own board was created and made public before it was
@@ -1551,7 +1553,7 @@ board is what found it: `board create` then `board visibility public` and only
 LATER `board push` left the target holding a project event the push never
 observed, and the two-histories wall refused a push that had nothing to merge.
 `ingest.py::_birth` is now `_configuration`: project events whose `op` is in the
-CLOSED list `{created, visibility, remote}` are exempt while the board holds
+CLOSED list `{created, visibility, remote, forge}` are exempt while the board holds
 ZERO card events; one card event and the exemption narrows straight back to the
 birth certificate, so the wall against two real histories does not move. Four
 tests in `tests/test_topology.py` pin it against the real server, and each was
