@@ -3231,3 +3231,282 @@ def test_the_ui_window_forwards_with_a_legacy_token(
         httpd.shutdown()
         httpd.server_close()
     _untouched_host(server, tmp_path)
+
+
+# ── `taskops join <board> --github`: the whole flow, from one command ────────
+#
+# The client half of `/join/github` above. Appended as ONE contiguous block at
+# the end of the file on purpose: tk-9ebbc3 was editing this same file in its
+# own worktree, and two tail blocks merge cleanly where interleaved edits do
+# not. Every import below is local for the same reason — the header is shared.
+#
+# The `gh` these tests run is a REAL executable on a REAL PATH, for the reason
+# the forge stub is a real socket: `gh auth token` failing, printing nothing, or
+# not existing are three different things, and monkeypatching the call away
+# would test none of them. It also keeps the suite off the machine's own gh,
+# whose answer would be somebody's actual token.
+
+
+def fake_gh(where: Path, prints: str = "", code: int = 0) -> Path:
+    """A `gh` on PATH that records the arguments it was called with."""
+    import os
+    import stat
+
+    where.mkdir(parents=True, exist_ok=True)
+    seen = where / "gh-was-asked"
+    script = where / "gh"
+    script.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{seen}"\n'
+        f"if [ {code} -eq 0 ]; then printf '%s\\n' '{prints}'; "
+        f"else printf '%s\\n' '{prints}' >&2; fi\n"
+        f"exit {code}\n",
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    os.environ.setdefault("PATH", "")
+    return seen
+
+
+def on_path(monkeypatch: pytest.MonkeyPatch, where: Path) -> None:
+    import os
+
+    monkeypatch.setenv("PATH", f"{where}{os.pathsep}{os.environ.get('PATH', '')}")
+
+
+@pytest.fixture()
+def project(tmp_path: Path) -> Path:
+    """A checkout named after the board, so the BARE join can find it later."""
+    where = tmp_path / "clone" / BOARD
+    (where / ".git").mkdir(parents=True)
+    return where
+
+
+def test_join_github_is_one_command_and_what_lands_is_a_session_never_the_token(
+    server: BoardServer,
+    keyed: Path,
+    forge: Forge,
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The card, end to end: ONE command, no invite anywhere, and the file it
+    leaves behind holds a SESSION with an expiry — not the GitHub token, which
+    this process no longer has by the time it writes anything."""
+    from taskops.cli import commands
+
+    declare(server)
+    hers = keygen(tmp_path / "ana_key")
+    asked = fake_gh(tmp_path / "bin", prints=TOKEN)
+    on_path(monkeypatch, tmp_path / "bin")
+
+    assert commands.join(project, url_of(server), ANA, str(hers), github=True) == 0
+
+    # The token came from `gh auth token` — the CLI everybody already has.
+    assert asked.read_text(encoding="utf-8").strip() == "auth token"
+    # …went to GitHub exactly once, in a header, about the declared repo…
+    assert forge.seen == [("/repos/bernatch22/taskops", f"Bearer {TOKEN}")]
+
+    # …and what is on disk is the same shape an invite join leaves.
+    config = json.loads((project / ".taskops" / "remote.json").read_text(encoding="utf-8"))
+    assert config["token"] and config["token_expires"] > _clock.now()
+    assert config["login"] == {
+        "host": host_of(server),
+        "principal": "ana",
+        "key": str(hers),
+    }
+    assert json.loads((project / ".taskops" / "board.json").read_text())["url"] == url_of(server)
+
+    # Not one byte of the GitHub token anywhere in the checkout. The positive
+    # control is the key PATH: the scan really does read what the join wrote.
+    files = sorted(p for p in project.rglob("*") if p.is_file())
+    assert any(str(hers).encode() in path.read_bytes() for path in files)
+    for path in files:
+        assert TOKEN.encode() not in path.read_bytes(), f"the GitHub token reached {path}"
+
+    # The session in that file is an ordinary one, and the host knows her key.
+    assert RemoteBoard(url_of(server), config["token"], ANA).call("board", {})["seq"] >= 0
+    assert server.mounts.host.store().role_of("ana") == "member"
+
+
+def test_a_bare_join_still_works_unchanged_for_a_key_the_host_already_knows(
+    server: BoardServer,
+    keyed: Path,
+    forge: Forge,
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The half of the card that is about NOT changing anything: once the key is
+    enrolled, `taskops join <board>` bare is the same command it was before this
+    chapter — and it talks to GitHub not at all, `gh` on PATH or not."""
+    from taskops.cli import commands
+
+    declare(server)
+    hers = keygen(tmp_path / "ana_key")
+    on_path(monkeypatch, tmp_path / "bin")
+    fake_gh(tmp_path / "bin", prints=TOKEN)
+    commands.join(project, url_of(server), ANA, str(hers), github=True)
+    assert len(forge.seen) == 1
+
+    # Bare: no URL, no board name, no --invite, no --github. The host comes from
+    # the `login` block the join above recorded, the name from the directory.
+    monkeypatch.chdir(project)
+    (project / ".taskops" / "remote.json").unlink()  # even with the session gone
+    from taskops._locate import write_remote
+
+    write_remote(project, {"login": {"host": host_of(server), "principal": "ana"}})
+    assert commands.join(project, "", ANA, str(hers)) == 0
+
+    assert len(forge.seen) == 1  # the bare join asked GitHub nothing
+    config = json.loads((project / ".taskops" / "remote.json").read_text(encoding="utf-8"))
+    assert config["token"] and config["login"]["principal"] == "ana"
+    assert RemoteBoard(url_of(server), config["token"], ANA).call("board", {})["seq"] >= 0
+
+
+def test_the_token_is_gh_then_the_environment_then_a_HIDDEN_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Three sources, in one order, and the fourth that must never exist.
+
+    `gh` wins while it answers, because the machine of anybody with push on the
+    repo already has it authenticated and the common case must ask nothing."""
+    import getpass as getpass_module
+
+    from taskops.cli import enrol
+
+    monkeypatch.setenv("GITHUB_TOKEN", "from-the-environment")
+    monkeypatch.setattr(getpass_module, "getpass", _refuse_to_prompt)
+    asked = fake_gh(tmp_path / "bin", prints=TOKEN)
+    on_path(monkeypatch, tmp_path / "bin")
+    assert enrol.github_token() == TOKEN
+    assert asked.read_text(encoding="utf-8").strip() == "auth token"
+
+    # `gh` there but not logged in: the environment answers, and nothing prompts.
+    fake_gh(tmp_path / "bin", prints="not logged into any GitHub hosts", code=1)
+    assert enrol.github_token() == "from-the-environment"
+
+    # Neither: a HIDDEN prompt — getpass, never input(), which would echo the
+    # token into the terminal and into anything scraping the session.
+    monkeypatch.delenv("GITHUB_TOKEN")
+    monkeypatch.setattr("builtins.input", _refuse_to_prompt)
+    monkeypatch.setattr(getpass_module, "getpass", lambda *_: f"  {TOKEN}\n")
+    assert enrol.github_token() == TOKEN
+
+    # And typing nothing at it is a refusal that names all three ways in.
+    monkeypatch.setattr(getpass_module, "getpass", lambda *_: "")
+    with pytest.raises(TaskopsError) as refused:
+        enrol.github_token()
+    for way in ("gh auth login", "GITHUB_TOKEN", "hidden prompt"):
+        assert way in str(refused.value)
+    assert "no --github <token>" in str(refused.value)
+
+
+def _refuse_to_prompt(*_: Any, **__: Any) -> str:
+    raise AssertionError("a token was already available — this must not have prompted")
+
+
+def test_a_token_cannot_be_passed_as_a_flag_value_at_all(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The rule the card is about, pinned at the parser where it is decided:
+    `--github` takes no value, in either of argparse's two syntaxes. A secret in
+    an argument is written to the shell's history file before this process even
+    starts, and sits in `ps` for every user on the box while it runs — so the
+    only safe design is the one with no place to put it."""
+    from taskops.cli.main import main
+
+    for argv in (
+        ["join", "some-board", "--github", "ghp_never_in_history"],
+        ["join", "some-board", "--github=ghp_never_in_history"],
+    ):
+        with pytest.raises(SystemExit) as exited:
+            main(argv)
+        assert exited.value.code == 2  # argparse: this is not a usage that exists
+        assert "ghp_never_in_history" in capsys.readouterr().err  # and nothing ran
+
+    # A store_true flag is what makes that true, so pin the flag itself: given a
+    # value it would take, both lines above would silently start passing.
+    with pytest.raises(SystemExit):
+        main(["join", "--help"])
+    printed = capsys.readouterr().out
+    assert "--github" in printed
+    assert "--github GITHUB" not in printed  # argparse's rendering of a flag WITH a value
+
+
+def test_a_github_join_with_no_key_to_enrol_refuses_and_names_the_way_out(
+    server: BoardServer, keyed: Path, forge: Forge, project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub introduces you; the KEY is what signs you in afterwards. With no
+    key there is nothing to enrol, so this refuses before the token is even
+    looked for — and never touches GitHub or the machine's own gh."""
+    from taskops import identity
+    from taskops.cli import commands
+
+    declare(server)
+    monkeypatch.setattr(identity, "discover_key", lambda: None)
+    with pytest.raises(TaskopsError, match="ssh-keygen -t ed25519"):
+        commands.join(project, url_of(server), ANA, github=True)
+    assert not forge.seen
+    assert not (project / ".taskops" / "board.json").exists()
+
+
+def test_the_hosts_refusal_arrives_in_its_own_words_and_nothing_is_written(
+    server: BoardServer,
+    keyed: Path,
+    forge: Forge,
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused join must leave a checkout that has joined NOTHING — not a
+    board.json pointing at a board this key cannot read. And the sentence the
+    human sees is the server's, naming the repo and the level."""
+    from taskops.cli import commands
+
+    declare(server)
+    hers = keygen(tmp_path / "ana_key")
+    fake_gh(tmp_path / "bin", prints=TOKEN)
+    on_path(monkeypatch, tmp_path / "bin")
+    forge.payload = {"permissions": {"pull": True, "push": False}}
+
+    with pytest.raises(Refused, match="opens to whoever has push on bernatch22/taskops"):
+        commands.join(project, url_of(server), ANA, str(hers), github=True)
+    assert not (project / ".taskops" / "board.json").exists()
+    assert not (project / ".taskops" / "remote.json").exists()
+    assert server.mounts.host.store().principal("ana") is None
+
+    # And a board that declared no forge at all refuses through this door too,
+    # with the sentence that names the opt-in — the CLI adds no second story.
+    other = server.mounts.create("sin-forja")
+    del other
+    with pytest.raises(Refused, match="opened by invite"):
+        commands.join(
+            project, f"{host_of(server)}/sin-forja", ANA, str(hers), github=True
+        )
+
+
+def test_an_invite_and_github_together_are_refused_before_either_is_spent(
+    server: BoardServer, keyed: Path, forge: Forge, project: Path, tmp_path: Path
+) -> None:
+    """Two introductions to the same host, and running both would burn a
+    single-use invite for nothing. The refusal names which one to keep."""
+    from taskops.cli import commands
+
+    invite, _ = server.mounts.credentials.mint("invite:ana", BOARD, _clock.now(), once=True)
+    hers = keygen(tmp_path / "ana_key")
+    with pytest.raises(TaskopsError, match="Pick one"):
+        commands.join(project, url_of(server), ANA, str(hers), invite=invite, github=True)
+    assert not forge.seen
+    assert not (project / ".taskops").exists()
+
+    # An invite pasted as a LINK counts as the flag: the refusal is about two
+    # introductions, not about which syntax carried one of them.
+    with pytest.raises(TaskopsError, match="Pick one"):
+        commands.join(
+            project, f"{url_of(server)}?invite={invite}", ANA, str(hers), github=True
+        )
+
+    # The invite is intact: it still redeems, which is what "before either is
+    # spent" means — a refusal that had already burned it would be worse.
+    assert _redeem(url_of(server), invite, "ana", f"{hers}.pub")["actor"] == ANA

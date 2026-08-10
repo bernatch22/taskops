@@ -248,7 +248,7 @@ flowchart TB
         httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, github (membership enrols a key — it mints nothing), feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
+        cli["commands: init · join --key/--invite/--github   ·   enrol: the two introductions, and WHERE a GitHub token may come from   ·   hooks: what the two git hooks call   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
     end
 
     L1 --> L0
@@ -559,6 +559,22 @@ ever looked at it again or said so. It is now a STOP naming both ways out —
 `taskops board push` to take it along, or `--discard-local` to archive (never
 delete) and join anyway. It counts EVENTS, not the directory, so the ordinary
 `init` → `join` sequence is untouched.
+
+**`taskops join <board> --github` is the whole introduction in one command**
+(`cli/commands.py::join`, `cli/enrol.py::by_github` — the client half of the
+door in §10). It is the `--invite` path with a different proof: the pubkey
+travels with something that vouches for it, the host enrols it, and the key
+signs in ON THE SPOT through the same `session.sign_in`, so what lands in
+`remote.json` is a SESSION with an expiry and a `login` block and never a
+standing credential. **The GitHub token is never a flag value.** `--github` is
+a `store_true` and must stay one: a secret passed as an argument is written to
+the shell's history file before the process starts and is visible in `ps` to
+every user on the box while it runs. It comes from `gh auth token` (the CLI is
+already installed and already authenticated on the machine of anybody who has
+push on the repo, so the common case asks nothing), else `$GITHUB_TOKEN` (CI, and
+a shell with no `gh`), else a HIDDEN `getpass` prompt — three sources, one
+order, in `enrol.py::github_token`. A bare `taskops join` is untouched by all of
+this: an enrolled key still signs in with no flags and never speaks to GitHub.
 
 **The on-box commands survive as break-glass**: `taskops invite/revoke --root
 <dir>` still work against the files, on the machine that holds them, for the day
