@@ -1406,7 +1406,7 @@ The routes do not change, so the committed bundle is untouched by any of this:
         dev A (laptop)                             dev B (laptop)
 ┌────────────────────────────┐            ┌────────────────────────────┐
 │ $ taskops ui               │            │ $ taskops ui               │
-│  /board/ui/  ← the bundle  │            │  /board/ui/  ← the bundle  │
+│  /  ← the bundle           │            │  /  ← the bundle           │
 │  /board/rpc ─────┐         │            │  /board/rpc ─────┐         │
 │  /board/git ─ A's clone    │            │  /board/git ─ B's clone    │
 └──────────────────┼─────────┘            └──────────────────┼─────────┘

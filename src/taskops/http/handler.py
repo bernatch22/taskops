@@ -70,6 +70,8 @@ class Handler(BaseHTTPRequestHandler):
             self._git(board, tail[4:])
         elif tail.startswith("ui"):
             self._static(tail[2:])
+        elif (page := static.at_root(self.mounts.ui, self.path)) is not None:
+            self._send(200, *page)  # a WINDOW serves its page at the ROOT
         else:
             self._fail(404, BadRequest(f"nothing at {self.path}"))
 

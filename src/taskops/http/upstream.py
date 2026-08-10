@@ -1,7 +1,7 @@
 """The remote board a LOCAL window is a window onto — the one thing that differs.
 
 `taskops ui` always serves the dashboard from the checkout it stands in. The
-routes are the same in both modes (`/board/ui/`, `/board/rpc`, `/board/git/…`),
+routes are the same in both modes (`/` for the page, `/board/rpc`, `/board/git/…`),
 so the committed bundle never learns which kind of board it is talking to. The
 whole difference is who answers `/rpc`:
 

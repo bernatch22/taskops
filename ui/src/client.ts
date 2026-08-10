@@ -108,12 +108,16 @@ export function bootstrapToken(
   base: string,
   storage: Storage,
   search: string,
+  here: string,
   clean: (url: string) => void,
 ): boolean {
   const token = new URLSearchParams(search).get("token");
   if (!token) return false;
   storage.setItem(tokenKey(base), token);
-  clean(base + "/ui/");
+  // WHERE the page is, not where `base` says the board is: a window serves the
+  // page at `/` and mounts its board at `/board`, so deriving one from the
+  // other sent the address bar to a path the human never asked for.
+  clean(here);
   return true;
 }
 

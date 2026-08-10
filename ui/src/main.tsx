@@ -17,10 +17,20 @@ import { applyTheme, readTheme } from "./theme/theme";
 
 applyTheme(readTheme());
 
-// The page is served at /<board>/ui/; the board's own routes hang off /<board>.
-const base = location.pathname.replace(/\/ui\/?$/, "");
+// Two addresses, one page. A WINDOW serves it at the root — `taskops ui` hands
+// out `http://127.0.0.1:<port>/`, because `board` is only the name a window
+// mounts its single board under and `/ui/` was a door on a host that serves no
+// page at all; neither belongs in the URL a human types. Mounted under
+// /<board>/ui/ it still works, and that is where the routes hang off.
+const mounted = location.pathname.replace(/\/ui\/?$/, "");
+const base = mounted === "" || mounted === "/" ? "/board" : mounted;
 
-bootstrapToken(base, localStorage, location.search, (url) => history.replaceState({}, "", url));
+// The token is stripped from wherever the page actually IS, not from a path
+// recomputed out of `base` — at the root those two are different addresses, and
+// rewriting to the computed one is what put /board/ui/ back in the bar.
+bootstrapToken(base, localStorage, location.search, location.pathname, (url) =>
+  history.replaceState({}, "", url),
+);
 
 const client = createClient(base, localStorage);
 
