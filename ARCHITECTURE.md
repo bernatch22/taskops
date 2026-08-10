@@ -225,6 +225,7 @@ flowchart TB
         challenge["challenge — the login nonce: in memory, single-use, dead on claim"]
         mentionsm["mentions — who was named and has not answered"]
         reviewm["review — submitted/reviewed folded into a Standing"]
+        forgem["forge — the forge vocabulary: which host can be asked, what access counts, owner/name"]
         hours["hours — working-time math"]
     end
     subgraph L2["2 · store (the ONLY SQL)"]
@@ -242,7 +243,7 @@ flowchart TB
         assign["assign"]; pulse["pulse — the board"]; record["record"]; report["report"]
         mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
-        projectv["project — board-level facts: op=remote, op=visibility"]
+        projectv["project — board-level facts: op=remote, op=visibility, op=forge"]
         helpersv["_args _cards _context _facts _rows — the helpers; the _ says 'not a verb'"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
@@ -263,10 +264,10 @@ flowchart TB
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, integrate, dossier, before, render, brief, schema, thread, boards, fields"]
-        httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, feed, static, gitdoor, upstream"]
+        httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, github (membership enrols a key — it mints nothing), feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
+        cli["commands: init · join --key/--invite/--github   ·   enrol: the two introductions, and WHERE a GitHub token may come from   ·   hooks: what the two git hooks call   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · board forge   ·   grants: invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
     end
 
     L1 --> L0
@@ -354,13 +355,18 @@ The rule lives once, as data, in `verbs/__init__.py::REGISTRY`:
 | `update` | write | both | — |
 | `review` | write | both | — (optional review: claim a submitted card, or record the verdict. A verifier is an ordinary agent — there is no reviewer role) |
 | `bind` | write | both | (internal — the git hooks call it) |
-| `project` | write | both | (internal — board-level facts: `op=remote`, where the repo lives on the web, and `op=visibility`, public or private) |
+| `project` | write | both | (internal — board-level facts: `op=remote`, where the repo lives on the web; `op=visibility`, public or private; and `op=forge`, the repo whose membership opens the board — absent by default, and `core/forge.py` owns its shape) |
 
 **A PUBLIC board: anyone may watch, nobody writes without a key** (2026-08-09).
 GitHub's model, deliberately and exactly — private by default, the owner may
 publish (`taskops board visibility <host>/<name> public|private`, an owner-only
 server-scope operation), public means ANONYMOUS READ, and a write always needs a
 registered key. **No third state and no anonymous-write grace.**
+
+`board.forge` is that same shape one notch sharper — owner-only, one board, a
+value from a closed set — because it decides whose GitHub membership becomes a
+key here. Both are `verbs/project.py` facts reached through `http/admin.py`'s
+REGISTRY, and neither has a `get` half: the board payload already answers.
 
 The flag is a project-level EVENT beside `remote`, folded newest-wins, so "when
 did this become public and who did it" is in the log; absent, a board is private,
@@ -468,6 +474,8 @@ taskops board create [<name>]           owner only — THE way a board comes to 
 taskops board ls [<host>]               owner: all of them; member: their own
 taskops board push [<name>]             a LOCAL board becomes the hosted one
 taskops board visibility [<name>] public|private     owner only
+taskops board forge [<name>] <owner>/<repo> [--need push|admin]   owner only
+taskops board forge --clear             back to invite-only — opting in is reversible
 taskops invite <who> --board <name>     owner only — prints the join line
 taskops revoke --key SHA256:… | --invite <id>
 ```
@@ -547,9 +555,10 @@ Three decisions inside it, each pinned in `tests/test_topology.py`:
   precondition is true exactly once in a board's life. "Empty" is not `seq == 0`
   but **"no history but its own configuration"** — `board.create` writes WHO
   made the board as its first event, and setting the visibility or recording a
-  remote before the board is filled is a fact about the CONTAINER, not about the
-  work. So the door exempts project events whose `op` is in the CLOSED list
-  `{created, visibility, remote}` — and only while the board holds ZERO card
+  remote — or naming the forge that opens it — before the board is filled is a
+  fact about the CONTAINER, not about the work. So the door exempts project
+  events whose `op` is in the CLOSED list
+  `{created, visibility, remote, forge}` — and only while the board holds ZERO card
   events; one event about work and the exemption narrows back to the birth
   certificate (`ingest.py::_configuration`, whose docstring is the 2026-08-09
   reproduction: this repo's own board was created and made public before it was
@@ -576,6 +585,22 @@ ever looked at it again or said so. It is now a STOP naming both ways out —
 `taskops board push` to take it along, or `--discard-local` to archive (never
 delete) and join anyway. It counts EVENTS, not the directory, so the ordinary
 `init` → `join` sequence is untouched.
+
+**`taskops join <board> --github` is the whole introduction in one command**
+(`cli/commands.py::join`, `cli/enrol.py::by_github` — the client half of the
+door in §10). It is the `--invite` path with a different proof: the pubkey
+travels with something that vouches for it, the host enrols it, and the key
+signs in ON THE SPOT through the same `session.sign_in`, so what lands in
+`remote.json` is a SESSION with an expiry and a `login` block and never a
+standing credential. **The GitHub token is never a flag value.** `--github` is
+a `store_true` and must stay one: a secret passed as an argument is written to
+the shell's history file before the process starts and is visible in `ps` to
+every user on the box while it runs. It comes from `gh auth token` (the CLI is
+already installed and already authenticated on the machine of anybody who has
+push on the repo, so the common case asks nothing), else `$GITHUB_TOKEN` (CI, and
+a shell with no `gh`), else a HIDDEN `getpass` prompt — three sources, one
+order, in `enrol.py::github_token`. A bare `taskops join` is untouched by all of
+this: an enrolled key still signs in with no flags and never speaks to GitHub.
 
 **The on-box commands survive as break-glass**: `taskops invite/revoke --root
 <dir>` still work against the files, on the machine that holds them, for the day
@@ -795,6 +820,7 @@ nobody has touched yet.
 |---|---|---|
 | **MCP over stdio** | Claude / any MCP host, per-repo | newline-delimited JSON-RPC 2.0. `initialize` returns `instructions`: the whole role protocol AND the board as of that moment (`mcp/hello.py` — the same verb and renderer an agent would call, so it is a delivered answer, not a second version of one). That is what a v1 system prompt was, minus the second place for truth to live, and it needs no hook and no settings file to be trusted. **One server per SESSION, shared by every sub-agent**, which is why identity rides on the call (`actor=`, §5) and not in the process's environment. `tools/call` on a refusal answers `isError: true` with the refusal *as the text content* — never a protocol-level error, because an agent that cannot read the way out will invent one; an unexpected exception answers the same way rather than ending the loop, since that loop is the session's only door to the board. |
 | **HTTP RPC** | a remote board's clients (`RemoteBoard`, the browser) | `POST /<board>/rpc` with `{"verb", "args", "actor"}`, `Authorization: Bearer <token>`. Answer is always an envelope: `{"ok": true, "seq": N, "data": {...}}` or `{"ok": false, "error": {"code", "message"}}` — v1 let three verbs answer with a bare array and the decoder silently turned it into `{}`. |
+| **GitHub introduction** | somebody joining a board that DECLARED a forge | `POST /<board>/join/github` with `{"github_token", "principal", "pubkey"}`. The host asks GitHub once — `GET /repos/{owner}/{name}`, the caller's own token in the header, `permissions[need]` read out of the answer — and on yes enrols the pubkey exactly as `invite/redeem` does. It mints NOTHING: the answer is `{principal, actor, role, fingerprint, repo, need}` and the caller's next call is the ordinary `/login` challenge with the key it just enrolled, so from the second call on this door is invisible. **The token is a header on one outgoing request and nothing else** — not the log, not `server.sqlite`, not `remote.json`, not the answer, not a refusal. A board that declared no forge refuses before anything leaves the host and keeps its invite-only flow; GitHub not answering is `Unreachable`, never a grant. **The opt-in is `taskops board forge <owner>/<repo> [--need push|admin]`**, owner-only and server-scope beside `board.visibility`, and `--clear` takes it back to invite-only — the refusal's own sentence is TYPED as the argv of a test, so the message and the command cannot drift (`http/github.py::FORGE_VERB`, `cli/operate.py::_forge`, and the two blocks in `tests/test_topology.py`). |
 | **WebSocket feed** | the browser UI only | `GET /<board>/feed`, upgraded via the RFC 6455 handshake (`HTTP/1.1` required for the 101 response to be accepted — the one bug class invisible to a library-based test, caught only with a raw-socket test). A message is a *signal* (`{"type": "changed"}`), never a payload — the client refetches, so a dropped or duplicated frame can never show something the board never said. SSE is the automatic fallback for a proxy that eats the Upgrade. Agents never use this: their live channel is the "pulse" line appended to every tool result. The UI carries exactly ONE write — a comment box with a mention picker on the card panel, through the same `/rpc` door and token. |
 | **Delivery hook** | Claude Code sessions in a joined repo | `taskops hook claude`, wired by `init`/`join` into `.claude/settings.json` on `PostToolUse` + `UserPromptSubmit`. Read-only and one-way: resolves the reader (env, else worktree-path → card → holder) and injects context — `✉ …` when a mention is pending, for ANYBODY (throttled per reader per 30s); and `◆ …`, one line per group with the count and the call that clears it, when MERGE / REVIEW / STALLED is non-empty and the reader is a `dev:` (throttled per 180s, its own key). Silence otherwise, exit 0 always, any failure silent. Both reads (`mentions`, `waiting`) renew no lease. The one sanctioned Claude hook: it may deliver, never decide, store, or write. |
 
@@ -815,6 +841,7 @@ nobody has touched yet.
 | ANONYMOUS WRITES, in any form — including the invisible one | a public board is anonymous READ and nothing else. The subtle failure is not a card somebody could see: every read verb opens with `stores.live.renew(actor, now)`, an INSERT into `presence`, so a public board without a guard has every visitor writing to `live.sqlite` on every page load — no event, no card, nothing any ordinary test would notice. There is also no "anonymous-write grace" and no third visibility | `http/auth.py::anonymous` never hands out a credential with more than `{"read"}`, and refuses a write with the sentence that names how a key gets registered; `store/live.py::renew` is the ONE place that decides the presence row. `tests/test_topology.py::test_an_anonymous_crawl_of_a_public_board_moves_not_one_byte` asserts `events.jsonl` and `live.sqlite` (with `-wal` and `-shm`) hash-identical across a crawl of every read door there is, and `…::test_anonymous_may_not_claim_to_be_somebody` closes the `actor=` hole |
 | a `--force` on `taskops board push`, and a SYNC channel behind `board.ingest` | a non-empty target means two histories, and giving them an order they never had fabricates a timeline the board never observed. The precondition ("no history but its own beginning") is true exactly once in a board's life, which is what keeps the door a promotion and not replication between clones — the thing banned two rows up | `http/ingest.py` refuses and says so; `tests/test_topology.py::test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered`, and the argument is the module's own docstring |
 | a SILENT `taskops join` over a local board | the local history stayed on disk byte for byte and nothing ever looked at it again or said so — a command about connecting is what made it invisible | `cli/commands.py::_keep_or_archive` refuses naming `taskops board push` and `--discard-local` (which archives, never deletes); `tests/test_topology.py::test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out` |
+| GitHub as a CREDENTIAL — v1's GitHub login: a stored token, a call to GitHub on every sign-in | three costs, and §18 is the whole argument: a token that travels (worth stealing for reasons unrelated to the board), a network dependency at every login (GitHub down = nobody signs in), and a SECOND identity system beside the keys, with its own enrolment, expiry and revocation to keep in step. The convenience is kept and the costs are not: GitHub is asked ONCE, and what persists is an ssh key | `http/github.py` mints nothing — no token, no session, no `Set-Cookie`: the answer is `{principal, actor, role, fingerprint, repo, need}` and the caller's next call is the ordinary `/login`. The token is a header on one outgoing request and is written to no file (`tests/test_topology.py::test_the_github_token_is_written_to_no_file_and_no_event`, which greps the board log AND the host store, with a positive control), and it cannot be passed as a flag value at all (`…::test_a_token_cannot_be_passed_as_a_flag_value_at_all`). There is no `join.github` row in `core/scope.py` and no second credential type anywhere |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
 | a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/sections/actors.tsx` asserts the words `free`, `slot` and `capacity` appear nowhere in that markup ("actors: NO WORKER SLOTS, under that name or any other") |
@@ -1650,7 +1677,7 @@ board is what found it: `board create` then `board visibility public` and only
 LATER `board push` left the target holding a project event the push never
 observed, and the two-histories wall refused a push that had nothing to merge.
 `ingest.py::_birth` is now `_configuration`: project events whose `op` is in the
-CLOSED list `{created, visibility, remote}` are exempt while the board holds
+CLOSED list `{created, visibility, remote, forge}` are exempt while the board holds
 ZERO card events; one card event and the exemption narrows straight back to the
 birth certificate, so the wall against two real histories does not move. Four
 tests in `tests/test_topology.py` pin it against the real server, and each was
@@ -1683,6 +1710,13 @@ One thing the same incident exposed and this card did NOT fix: `Mounts` caches
 until the process restarts. It is noted in `_configuration`'s docstring so the
 next reader of that module knows it, and nowhere else.
 
+**Not yet running this chapter.** §18's door is in this tree and NOT on the
+domain — proved by asking it, not assumed: `POST /axion/join/github` answers
+*"nothing at /axion/join/github"*, and a `project op=forge` call on the axion
+board is refused with *"op='forge' is not a project fact — this board knows:
+('remote', 'visibility')"*. So the axion board has no forge declared and cannot
+have one until the sixth run of *Upgrading a host*. Everything §18 describes is
+true of the code and of the suite; nothing in it is true of production yet.
 ---
 
 ## 18. Reports — the loop, end to end (2026-08-10)
@@ -1762,3 +1796,131 @@ the host already has. Re-derive the numbers rather than trusting these:
 uv run python -c "import re;s=open('src/taskops/mcp/server.py').read();\
 print(len(re.search(r'INSTRUCTIONS = \"\"\"(.*?)\"\"\"',s,re.S).group(1).strip()))"
 ```
+
+---
+
+## 19. GitHub is the INTRODUCTION, never the credential (2026-08-10)
+
+Being on a repo's GitHub team should be enough to reach that repo's board. v1
+agreed with the goal and paid for it with the mechanism: it had **GitHub login**
+— you handed it a token, it kept the token, and every sign-in was another call
+to GitHub with it. v2 deleted that on purpose, and this chapter brings back the
+convenience without any of the three things it cost. The whole design is one
+sentence: **GitHub proves WHO you are once, the server enrols your ssh key from
+that proof, and from the second call onwards the chapter is invisible.**
+
+```
+taskops join axion --github
+   │  gh auth token  /  $GITHUB_TOKEN  /  a hidden prompt      (never a flag)
+   ▼
+POST /axion/join/github {github_token, principal, pubkey}
+   │  1. read the board's OWN declaration      ← no forge? refuse; nothing leaves the host
+   │  2. GET /repos/owner/name  ·  ONE call  ·  token in the header, nowhere else
+   │  3. permissions[need] is true → login.register(pubkey)   ← what an invite does
+   ▼  answers {principal, actor, role, fingerprint, repo, need} — NO token, NO session
+POST /login  →  the ordinary SSHSIG challenge, with the key just enrolled
+   ▼
+every call after this one is what it would have been with an invite
+```
+
+### The three costs, and where each one goes
+
+**1. A token that travels.** A GitHub token is a bearer for everything that
+account can reach; v1 stored one per user, so the board's database became worth
+stealing for reasons that had nothing to do with the board. Here the token is a
+LOCAL and a header: read out of one request body, put in the `Authorization` of
+one outgoing call, and gone with the frame. It is not in `events.jsonl`, not in
+`server.sqlite`, not in `allowed_signers`, not in `remote.json`, not in the
+answer, and not spelled into any refusal — `_why()` names the repo and the
+access level and never the credential. On the client side it is never a flag
+VALUE either: `--github` is a `store_true`, because a secret passed as an
+argument is in `~/.zsh_history` before the process starts and in `ps` for every
+user on the box while it runs.
+
+That is asserted rather than reviewed, in `tests/test_topology.py`:
+`test_the_github_token_is_written_to_no_file_and_no_event` greps every byte the
+host owns — the board log and the server store, not the two files somebody
+remembered — with a positive control proving the grep reads what the flow
+actually wrote; `test_join_github_is_one_command_and_what_lands_is_a_session_never_the_token`
+byte-scans the joined checkout afterwards; and
+`test_a_token_cannot_be_passed_as_a_flag_value_at_all` holds the parser to it in
+both argparse syntaxes.
+
+**2. A network dependency at every login.** v1 could sign nobody in while GitHub
+was down or rate-limiting, because GitHub was the login. Here GitHub is asked
+exactly ONCE in a principal's life, and by the caller's own token — so the rate
+budget spent is theirs (5000/h authenticated against 60/h anonymous) and not a
+shared one this host could exhaust for everybody. `GET /repos/{owner}/{name}`
+answers `permissions` *for the authenticated user*, which is why one request
+settles the question. After that the credential is an ssh key and the door is
+`/login`; a board whose members are all enrolled never speaks to GitHub again,
+and `test_a_bare_join_still_works_unchanged_for_a_key_the_host_already_knows`
+pins that by counting ZERO further calls at the stub forge. When GitHub *is*
+unreachable the answer is `Unreachable`, loudly — a host that cannot ask does
+not guess (`test_github_unreachable_refuses_LOUDLY_and_never_falls_back_to_granting`).
+
+**3. A second identity system.** This is the one that actually killed v1's
+version: two kinds of "who", each with its own enrolment, expiry and revocation,
+and every feature afterwards written twice. There is no second kind here because
+the door creates nothing of its own. It calls `login.register` — the *same*
+function `invite/redeem` calls, renamed from `_register` and shared rather than
+copied — so what persists is a pubkey and a line in `allowed_signers`, byte for
+byte what an invite leaves behind. It mints no session and returns no token, so
+there is nothing to expire, nothing extra to revoke (`taskops revoke --key
+SHA256:…` retires a GitHub-enrolled key exactly as it retires an invited one),
+and `permit` has one table.
+
+**And no new row in `core/scope.py`, deliberately.** A server-scope operation is
+a rule about what a ROLE may do, and the caller at this door holds no role yet —
+the same as at `invite/redeem`, whose authorisation is the invite it burns and
+not a principal it does not have. GitHub's yes IS that proof, and the effect is
+the one `key.add` already describes; a `join.github` operation would be a second
+credential type standing where a role belongs. What the caller *becomes* is
+`member`, through the ordinary table, on the ordinary `/login`. Nor is it the
+banned anonymous write: a named account with a named access level on a named
+repo caused it, which is strictly more than an invite proves.
+
+One refusal is not about GitHub at all. `login.register` ADDS a key to a
+principal that already exists — right for an invite, since an owner re-joining
+must not be demoted — so through this door it would let anybody with push on the
+repo hang their own key off the name `berna`. A principal this host already
+knows is therefore refused here: membership of a repo is not permission to BE
+somebody (`test_membership_of_the_repo_is_not_permission_to_BE_somebody`).
+
+### Why the board must OPT IN
+
+`forge()` is `None` for every board ever created, and the door reads it FIRST —
+before the body is parsed and before anything leaves the host. A board that
+never declared a forge has no such door: it refuses with the sentence that says
+it is opened by invite, its stub forge records nothing, and its invite flow is
+byte-identical to the one it had before this chapter existed
+(`test_a_board_that_declared_no_forge_keeps_its_invite_only_door`). That is not
+politeness towards old boards — it is the only way "GitHub can open a board" is
+not also "anybody who can name a repo can open *your* board". The declaration is
+an owner's act, `{host, repo, need}`, refused loudly on every part of it
+(`core/forge.py::declare`): an unknown host, a slug that is not exactly
+`owner/name`, a `need` outside GitHub's own `push`/`admin`. `pull` is absent on
+purpose — read access to a public repo is not a membership. And it is
+REVERSIBLE: `op=forge` with `repo=""` clears the fact and the board is
+invite-only again, because opting in is reversible or it is a trap.
+
+Reading the same fact back is asymmetric and that asymmetry is the design:
+`declare` refuses loudly because a human is typing and a typo that defaults to
+something plausible hands a board to a stranger; `understood` refuses SILENTLY
+to `None`, because a door GRANTS on its answer and a value nobody can verify —
+an older log, a newer op, a hand-edited file — must read as "no forge" rather
+than as a promise the host cannot keep.
+
+### How a board opts in
+
+`op=forge` is an owner's act and it now has a door a human reaches: `taskops board
+forge <owner>/<name> [--need push|admin]`, with `--clear` to make the board
+invite-only again. It is a server-scope OWNER operation beside `board.visibility`
+in `http/admin.py::REGISTRY` — same table, same role gate, no second door.
+
+`http/github.py::NO_FORGE` names that command, and the naming is a TEST rather
+than a string comparison: `test_the_refusal_names_a_command_the_cli_really_answers`
+splits the refusal's own sentence and feeds it back as argv, then reads the fact
+back. That refusal advertised a command that did not exist once — sending the one
+reader already blocked to an argparse error — and executing it is what makes that
+the last time.
