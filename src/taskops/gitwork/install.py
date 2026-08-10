@@ -104,6 +104,21 @@ def write_config(  # noqa: PLR0913 — one config file, one writer; the fields a
     os.chmod(secret, 0o600)
 
 
+def write_local(repo: Path) -> None:
+    """board.json says LOCAL — this repo reads the directory beside the file.
+
+    `taskops init`'s write and `board pull`'s config flip are the same act, so
+    they are the same line. Deliberately NOT `write_config(url="")`: that one
+    replaces the secret half whole, and a pull must leave `remote.json` exactly
+    as it found it — the host is still where `board create` and `board push` go,
+    and dropping the `login` block would make the next command ask for a key
+    that is already on disk.
+    """
+    folder = repo / ".taskops"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "board.json").write_text("{}\n", encoding="utf-8")
+
+
 def write_gitignore(repo: Path) -> bool:
     """Append the entries that are MISSING, one by one.
 

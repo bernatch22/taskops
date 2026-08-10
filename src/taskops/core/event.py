@@ -69,19 +69,29 @@ def to_line(event: Event) -> str:
 
 
 def from_line(line: str) -> Event:
-    """The ONE coercion from foreign JSON to an Event.
-
-    Strict about shape, lenient about extra body keys (an event written by a
-    newer version keeps its data intact). v1 had fifteen input coercions
-    scattered around and one of them read `claim="false"` as True.
-    """
+    """The ONE coercion from foreign JSON to an Event, for a caller holding TEXT
+    (a log line). A caller holding the parsed object calls `of` directly."""
     try:
         raw: object = json.loads(line)
     except ValueError as err:
         raise BadRequest(f"not JSON: {err}") from err
     if not isinstance(raw, dict):
         raise BadRequest("an event line must be a JSON object")
-    data = cast("dict[str, Any]", raw)
+    return of(cast("dict[str, Any]", raw))
+
+
+def of(data: dict[str, Any]) -> Event:
+    """The coercion proper: an already-parsed object becomes an Event, or raises.
+
+    Strict about shape, lenient about extra body keys (an event written by a
+    newer version keeps its data intact). v1 had fifteen input coercions
+    scattered around and one of them read `claim="false"` as True.
+
+    Split from `from_line` so the caller that receives events as OBJECTS rather
+    than lines — `cli/pull.py`, paging a host's log down through the `events`
+    verb — reaches the SAME coercion instead of re-serialising a dict just to
+    have this function parse it back. One coercion, two doors.
+    """
     for key in ("id", "task", "actor", "kind"):
         if not isinstance(data.get(key), str) or not data[key]:
             raise BadRequest(f"event field {key!r} must be a non-empty string")
