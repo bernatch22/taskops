@@ -11,6 +11,8 @@
     taskops board push      THIS repo's local board becomes the hosted one
     taskops board pull      the reverse: a hosted board comes down as a SNAPSHOT
                             that stops moving — the host keeps everything
+    taskops board rm        take a board OFF a host — refuses to destroy a history
+                            this checkout does not hold (--discard-history says so)
     taskops board visibility <host>/<name> public|private   owner only
     taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
     taskops tidy            remove worktrees whose work is already in the trunk
@@ -29,7 +31,17 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import pull as download, push as promote, admin, claude, remote, operate, serving, commands
+from . import (
+    rm,
+    pull as download,
+    push as promote,
+    admin,
+    claude,
+    remote,
+    operate,
+    serving,
+    commands,
+)
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -81,7 +93,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     host.add_argument("--key", default="", help="the owner's pubkey: a path, or - for stdin")
     host.add_argument("--owner", default="", help="the owner's name (default: $USER)")
     boards = sub.add_parser("board", help="create or list the boards on a host")
-    boards.add_argument("action", choices=["create", "ls", "push", "pull", "visibility"])
+    boards.add_argument(
+        "action", choices=["create", "ls", "push", "pull", "rm", "visibility"]
+    )
     boards.add_argument("target", nargs="?", default="", help="<host>/<name>, or just <name>")
     boards.add_argument(
         "visibility",
@@ -92,6 +106,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     boards.add_argument("--key", default="", help="the ssh key that signs you in")
     boards.add_argument("--invite", default="", help="push: register that key first")
+    # NOT `--force`, and never an alias for one (ARCHITECTURE.md §11): the flag
+    # that destroys a history has to name the history.
+    boards.add_argument(
+        "--discard-history",
+        action="store_true",
+        help="board rm: destroy a history this checkout does not hold — say so out loud",
+    )
     boards.add_argument("--as", dest="principal", default="", help=AS_HELP)
     invite = sub.add_parser("invite", help="a single-use link for a teammate")
     invite.add_argument("who", nargs="?", default="")
@@ -148,11 +169,16 @@ def _run(args: argparse.Namespace) -> int:
         # `push` and `pull` are each their own module — five ordered steps and a
         # config flip, against `board`'s two one-shot calls — so `main` routes
         # them, and neither imports the other (both need `operate`'s transport
-        # and its address parser, and nothing needs them back).
-        if str(args.action) == "push":
+        # and its address parser, and nothing needs them back). `rm` is separated
+        # for the mirrored reason: one call, and a guardrail around it that is
+        # the whole command.
+        action = str(args.action)
+        if action == "push":
             return promote.run(args)
-        if str(args.action) == "pull":
+        if action == "pull":
             return download.run(args)
+        if action == "rm":
+            return rm.run(args)
         return operate.board(args)
     if args.command == "invite":
         return operate.invite(args)

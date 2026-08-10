@@ -3476,3 +3476,247 @@ def test_an_event_that_fails_its_own_hash_is_never_written_down(
 
     assert not local_log(joined).exists()
     assert read_config(joined)["url"] == url_of(server)
+# ── a board comes OFF a host, and only when the history is not lost ──────────
+#
+# The last one-directional edge in a board's life: `board create` made one and
+# `board push` filled it, and taking one away meant ssh and `rm -rf`. This is
+# the door for it, and the whole of the door is the guardrail — the only
+# command in taskops that destroys something nobody can regenerate.
+
+
+def board_ids(httpd: BoardServer, name: str) -> list[str]:
+    """The ids the HOST really holds — the left-hand side of every comparison
+    below, read from the board and never from what a caller claimed."""
+    return sorted(httpd.mounts.stores(name).ids())
+
+
+def bare_repo(tmp_path: Path, name: str = "joined") -> Path:
+    """A checkout with no local history at all — what a repo that JOINED the
+    hosted board looks like: it reads the board over the wire and holds nothing."""
+    repo = tmp_path / name
+    (repo / ".taskops").mkdir(parents=True)
+    (repo / ".taskops" / "board.json").write_text("{}\n", encoding="utf-8")
+    return repo
+
+
+def pulled_into(repo: Path, httpd: BoardServer, name: str) -> Path:
+    """What `taskops board pull` leaves behind (tk-069df3, landing beside this):
+    the host's whole log in this checkout's local board. Written directly rather
+    than by calling that command, so these tests pin `board rm`'s own guardrail
+    and stay green whichever of the two lands first."""
+    local = repo / ".taskops" / "board"
+    local.mkdir(parents=True, exist_ok=True)
+    source = (httpd.mounts.root / name / "events.jsonl").read_text(encoding="utf-8")
+    (local / "events.jsonl").write_text(source, encoding="utf-8")
+    return local
+
+
+def removed(target: str, key: Path, discard: bool = False) -> int:
+    from taskops.cli import rm
+
+    return rm.run(
+        argparse.Namespace(action="rm", target=target, key=str(key), discard_history=discard)
+    )
+
+
+def test_board_rm_refuses_a_history_this_checkout_does_not_hold_and_names_both_ways_out(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criterion 3, end to end over the socket. The checkout is joined, so it
+    holds NONE of the ids — and the sentence a human gets names the two commands
+    that make a removal possible, the way `join`'s orphan refusal does."""
+    plan(client(server, BERNA))  # the board now has a history worth losing
+    before = board_ids(server, BOARD)
+    monkeypatch.chdir(bare_repo(tmp_path))
+
+    with pytest.raises(TaskopsError) as refused:
+        removed(f"{host_of(server)}/{BOARD}", keyed)
+
+    said = str(refused.value)
+    assert f"{len(before)} of the host's {len(before)} event(s) are not here" in said
+    assert f"taskops board pull {BOARD}" in said
+    assert f"taskops board rm {BOARD} --discard-history" in said
+    assert "there is no --force" in said
+    # Nothing happened: the board is there, event for event.
+    assert (server.mounts.root / BOARD).is_dir()
+    assert board_ids(server, BOARD) == before
+
+
+def test_board_rm_removes_a_history_this_checkout_holds_and_says_how_big_it_was(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criterion 4. The same checkout, after the history came down: every id the
+    host reports is held here, so the removal is not a loss and goes through —
+    and the answer says the SIZE of what just went, while the terminal is open."""
+    plan(client(server, BERNA))
+    theirs = board_ids(server, BOARD)
+    repo = bare_repo(tmp_path)
+    local = pulled_into(repo, server, BOARD)
+    monkeypatch.chdir(repo)
+
+    assert removed(f"{host_of(server)}/{BOARD}", keyed) == 0
+
+    assert not (server.mounts.root / BOARD).exists()
+    assert [row["name"] for row in admin(server, owner, "board.list", {})["boards"]] == []
+    # The local copy is untouched by the removal and is now THE copy — every id
+    # the host reported a moment ago is still readable here, from the log itself.
+    from taskops.cli import rm
+
+    assert (local / "events.jsonl").exists()
+    assert sorted(rm.held(repo)) == theirs
+
+
+def test_the_answer_carries_what_was_removed_and_how_many_events_went_with_it(
+    server: BoardServer, owner: str
+) -> None:
+    """A removal writes to no log — the board is the log, and it is gone. So the
+    ANSWER is the only record there will ever be, and it counts the events the
+    board really held, read from it before the directory went."""
+    plan(client(server, BERNA))
+    theirs = board_ids(server, BOARD)
+
+    answer = admin(server, owner, "board.remove", {"board": BOARD, "held": theirs})
+
+    assert answer["board"] == BOARD and answer["removed"] is True
+    assert answer["events"] == len(theirs)
+    assert answer["held_elsewhere"] is True
+    assert answer["gap"] == f"all {len(theirs)} event(s) are held here"
+
+
+def test_discard_history_destroys_it_anyway_and_the_answer_names_what_was_lost(
+    server: BoardServer, owner: str
+) -> None:
+    """The way out the refusal offers, and it is not a silent one: the board goes
+    even though nothing else held it, and the answer says exactly that so the
+    sentence somebody typed on purpose is also the sentence they can quote."""
+    plan(client(server, BERNA))
+    theirs = board_ids(server, BOARD)
+
+    answer = admin(server, owner, "board.remove", {"board": BOARD, "discard_history": True})
+
+    assert answer["events"] == len(theirs) and answer["held_elsewhere"] is False
+    assert f"{len(theirs)} of the host's {len(theirs)} event(s) are not here" in answer["gap"]
+    assert not (server.mounts.root / BOARD).exists()
+
+
+def test_the_flag_is_named_for_what_it_destroys_and_a_force_is_not_a_synonym(
+    server: BoardServer, owner: str
+) -> None:
+    """ARCHITECTURE.md §11: no `--force`, and not as an alias either. A caller
+    reaching for the word it knows from every other tool is refused, and so is a
+    truthy string — only a literal `true` destroys a history, because "yes" is
+    what a shell hands over when a variable was never set."""
+    plan(client(server, BERNA))
+    for args in ({"force": True}, {"discard_history": "yes"}, {"discard_history": 1}):
+        with pytest.raises(Refused, match="would destroy a history"):
+            admin(server, owner, "board.remove", {"board": BOARD, **args})
+    assert (server.mounts.root / BOARD).is_dir()
+
+
+def test_a_removed_name_is_created_EMPTY_and_the_two_histories_wall_still_stands(
+    server: BoardServer, keyed: Path, owner: str, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Criterion 5, and the reason `Mounts.forget` exists. A process keeps a
+    `Stores` per board for its own lifetime and sqlite goes on answering through
+    an unlinked file — so without dropping the handle, `board create` on the name
+    just removed would hand the destroyed history straight back, and a push into
+    the "new" board would be refused as two histories. Removal is not a way to
+    smuggle a second history into one name, in either direction."""
+    plan(client(server, BERNA))
+    admin(server, owner, "board.remove", {"board": BOARD, "discard_history": True})
+
+    made = admin(server, owner, "board.create", {"name": BOARD})
+    assert made["seq"] == 1  # the birth certificate, and nothing else
+    assert len(server.mounts.stores(BOARD).ids()) == 1
+
+    repo = local_repo(tmp_path)
+    mine = local_log(repo).read_text(encoding="utf-8").strip().splitlines()
+    monkeypatch.chdir(repo)
+    assert pushed(f"{host_of(server)}/{BOARD}", keyed) == 0  # genuinely empty
+    assert server.mounts.stores(BOARD).head() == len(mine) + 1
+
+    # And the wall is up on the fresh board, exactly as it is on any other.
+    stranger = local_repo(tmp_path, "stranger")
+    theirs = local_log(stranger).read_text(encoding="utf-8").strip().splitlines()
+    with pytest.raises(Refused) as second:
+        admin(server, owner, "board.ingest", {"board": BOARD, "events": theirs})
+    assert "this push never observed" in str(second.value)
+
+
+def test_a_removed_board_stops_being_served_by_the_process_that_held_it_open(
+    server: BoardServer, owner: str
+) -> None:
+    """The other half of `forget`, from the reader's side: a board removed under
+    a live server is gone for that server too, immediately, without a restart."""
+    plan(client(server, BERNA))
+    admin(server, owner, "board.remove", {"board": BOARD, "discard_history": True})
+
+    with pytest.raises(NotFound, match="no board named"):
+        client(server, BERNA).call("board", {})
+
+
+def test_a_removal_records_nothing_in_any_other_boards_log(
+    server: BoardServer, owner: str
+) -> None:
+    """There is no log left to record it in, and the nearest one is not a
+    substitute: a board holding another board's history is exactly the confusion
+    the whole storage model exists to avoid."""
+    admin(server, owner, "board.create", {"name": "otro"})
+    untouched = (server.mounts.root / "otro" / "events.jsonl").read_text(encoding="utf-8")
+    plan(client(server, BERNA))
+
+    admin(server, owner, "board.remove", {"board": BOARD, "discard_history": True})
+
+    assert not (server.mounts.root / BOARD).exists()
+    assert (server.mounts.root / "otro" / "events.jsonl").read_text(encoding="utf-8") == untouched
+
+
+def test_removing_a_board_is_the_server_owners_move_and_a_member_is_refused(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Server scope, OWNER only — the same table and the same gate as
+    `board.visibility`, so there is no second door onto destroying a board."""
+    hers, _ = member(server, tmp_path)
+    with pytest.raises(Refused) as refused:
+        admin(server, hers, "board.remove", {"board": BOARD, "discard_history": True})
+    assert "member may not board.remove" in str(refused.value)
+    assert "server OWNER's move" in str(refused.value)
+    assert (server.mounts.root / BOARD).is_dir()
+
+
+def test_a_name_that_is_not_a_board_removes_nothing_and_a_bad_name_never_reaches_disk(
+    server: BoardServer, owner: str
+) -> None:
+    """`board rm` is not `rm`: the name is checked against the same wall every
+    other door uses (`http/mounts.py::named`) BEFORE it is joined to a path, and
+    an unknown board is a refusal rather than a successful no-op."""
+    before = sorted(p.name for p in server.mounts.root.iterdir())
+    with pytest.raises(NotFound) as missing:
+        admin(server, owner, "board.remove", {"board": "fantasma", "discard_history": True})
+    assert "no board named 'fantasma'" in str(missing.value)
+    assert "taskops board ls" in str(missing.value)
+
+    for escape in ("../../etc", "/etc", "Facturador"):
+        with pytest.raises(BadRequest, match="names are"):
+            admin(server, owner, "board.remove", {"board": escape, "discard_history": True})
+    assert sorted(p.name for p in server.mounts.root.iterdir()) == before
+
+
+def test_the_cli_routes_board_rm_and_knows_no_force_flag(monkeypatch: Any) -> None:
+    """The wiring, pinned where a Namespace built by hand cannot see it: `board
+    rm` is a real action with a real `--discard-history`, and `--force` is not a
+    spelling argparse accepts — the flag has to name what it destroys."""
+    from taskops.cli import rm
+    from taskops.cli.main import main as cli
+
+    seen: list[argparse.Namespace] = []
+    monkeypatch.setattr(rm, "run", lambda args: (seen.append(args), 0)[1])
+    assert cli(["board", "rm", "facturador", "--discard-history"]) == 0
+    assert seen[0].action == "rm" and seen[0].target == "facturador"
+    assert seen[0].discard_history is True
+
+    assert cli(["board", "rm", "facturador"]) == 0
+    assert seen[1].discard_history is False
+
+    with pytest.raises(SystemExit):
+        cli(["board", "rm", "facturador", "--force"])

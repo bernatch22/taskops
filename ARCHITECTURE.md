@@ -263,10 +263,10 @@ flowchart TB
     end
     subgraph L5["5 · transports"]
         mcpsrv["mcp/server, hello, tools, gitmoves, integrate, dossier, before, render, brief, schema, thread, boards, fields"]
-        httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, feed, static, gitdoor, upstream"]
+        httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, removal, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
+        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   rm: board rm — the guardrail   ·   admin: server init + break-glass"]
     end
 
     L1 --> L0
@@ -468,6 +468,7 @@ taskops board create [<name>]           owner only — THE way a board comes to 
 taskops board ls [<host>]               owner: all of them; member: their own
 taskops board push [<name>]             a LOCAL board becomes the hosted one
 taskops board visibility [<name>] public|private     owner only
+taskops board rm [<name>] [--discard-history]        owner only — the only one that DESTROYS
 taskops invite <who> --board <name>     owner only — prints the join line
 taskops revoke --key SHA256:… | --invite <id>
 ```
@@ -814,6 +815,7 @@ nobody has touched yet.
 | HAND-ROLLED CRYPTO, and a pip crypto DEPENDENCY | two ways to lose the same argument. Writing ed25519 verification by hand is the classic own-goal; adding `cryptography` or `PyNaCl` to buy it back breaks "a wheel and a directory" — the property that makes `pip install taskops` on a bare box a deploy (§17) — and puts a compiled wheel in the path of every agent's install | the verifier is OpenSSH's own: `ssh-keygen -Y sign` / `-Y verify -f allowed_signers`, the same SSHSIG mechanism git uses to sign commits, invoked through the ONE subprocess module (`gitwork/sig.py`, under `gitwork/run.py`). `pyproject.toml` has no runtime dependency at all, and `tests/test_architecture.py` keeps `subprocess` out of every layer but that one |
 | ANONYMOUS WRITES, in any form — including the invisible one | a public board is anonymous READ and nothing else. The subtle failure is not a card somebody could see: every read verb opens with `stores.live.renew(actor, now)`, an INSERT into `presence`, so a public board without a guard has every visitor writing to `live.sqlite` on every page load — no event, no card, nothing any ordinary test would notice. There is also no "anonymous-write grace" and no third visibility | `http/auth.py::anonymous` never hands out a credential with more than `{"read"}`, and refuses a write with the sentence that names how a key gets registered; `store/live.py::renew` is the ONE place that decides the presence row. `tests/test_topology.py::test_an_anonymous_crawl_of_a_public_board_moves_not_one_byte` asserts `events.jsonl` and `live.sqlite` (with `-wal` and `-shm`) hash-identical across a crawl of every read door there is, and `…::test_anonymous_may_not_claim_to_be_somebody` closes the `actor=` hole |
 | a `--force` on `taskops board push`, and a SYNC channel behind `board.ingest` | a non-empty target means two histories, and giving them an order they never had fabricates a timeline the board never observed. The precondition ("no history but its own beginning") is true exactly once in a board's life, which is what keeps the door a promotion and not replication between clones — the thing banned two rows up | `http/ingest.py` refuses and says so; `tests/test_topology.py::test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered`, and the argument is the module's own docstring |
+| a `--force` on `taskops board rm` (and it is not an alias for `--discard-history`) | removing a board deletes the only copy of a history nobody can regenerate, and `--force` is a word every tool spends on something recoverable — it names no consequence, so it cannot warn. The flag that gets past the guardrail names the thing it destroys, and the guardrail itself is on the HOST, comparing the ids the caller says it holds against the ids the board really has: a wall the client enforces is a convention | `http/removal.py` refuses unless `core/holding.py` says the history is held elsewhere, and only a literal `true` opens `discard_history`; `tests/test_topology.py::test_the_flag_is_named_for_what_it_destroys_and_a_force_is_not_a_synonym` and `…::test_board_rm_refuses_a_history_this_checkout_does_not_hold_and_names_both_ways_out` |
 | a SILENT `taskops join` over a local board | the local history stayed on disk byte for byte and nothing ever looked at it again or said so — a command about connecting is what made it invisible | `cli/commands.py::_keep_or_archive` refuses naming `taskops board push` and `--discard-local` (which archives, never deletes); `tests/test_topology.py::test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out` |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
