@@ -65,6 +65,15 @@ OPERATIONS: dict[str, Operation] = {
         OWNER,
         "publishing a board — or taking it private again — is the server OWNER's move",
     ),
+    # Declaring the forge is the same wall again, one notch sharper: this fact
+    # says WHOSE GitHub membership opens the board, so whoever may set it may
+    # hand the board to a repo full of strangers. Clearing it is the same move
+    # backwards and gated by the same role — a door that only opens one way.
+    "board.forge": Operation(
+        OWNER,
+        "naming the repo whose membership opens a board — or clearing it — is the "
+        "server OWNER's move",
+    ),
     "board.read": Operation(ANYONE, ""),
     "board.write": Operation(
         KEYED,

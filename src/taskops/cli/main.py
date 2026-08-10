@@ -10,6 +10,8 @@
                             go BARE: no URL, no --key, no board name
     taskops board push      THIS repo's local board becomes the hosted one
     taskops board visibility <host>/<name> public|private   owner only
+    taskops board forge <owner>/<repo> [--need push|admin]  owner only — GitHub opens it
+    taskops board forge --clear                             invite-only again
     taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
     taskops tidy            remove worktrees whose work is already in the trunk
     taskops ui              the dashboard — serves it if nothing is, opens the browser
@@ -27,7 +29,8 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import push as promote, admin, hooks, claude, remote, operate, serving, commands
+from . import push as promote, admin, hooks, claude, grants, remote, operate, serving, commands
+from ..core import forge
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -88,14 +91,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     host.add_argument("--key", default="", help="the owner's pubkey: a path, or - for stdin")
     host.add_argument("--owner", default="", help="the owner's name (default: $USER)")
     boards = sub.add_parser("board", help="create or list the boards on a host")
-    boards.add_argument("action", choices=["create", "ls", "push", "visibility"])
+    boards.add_argument("action", choices=["create", "ls", "push", "visibility", "forge"])
     boards.add_argument("target", nargs="?", default="", help="<host>/<name>, or just <name>")
+    # ONE positional after the action is that action's VALUE and not the board —
+    # `board visibility public`, `board forge owner/repo`. argparse fills left to
+    # right and cannot know that, so `operate.py` does the swap; the choices that
+    # used to live on this slot moved there with it, since the two actions do not
+    # share a vocabulary and each already refuses its own typos by name.
     boards.add_argument(
-        "visibility",
+        "value",
         nargs="?",
         default="",
-        choices=["", "public", "private"],
-        help="visibility: public means ANONYMOUS READ — writing always needs a key",
+        help="visibility: public|private (public means ANONYMOUS READ — writing always "
+        "needs a key) · forge: the <owner>/<repo> whose GitHub membership opens the board",
+    )
+    boards.add_argument(
+        "--need",
+        default="",
+        choices=["", *forge.NEEDS],
+        help=f"forge: the access on that repo that opens the board (default: {forge.PUSH})",
+    )
+    boards.add_argument(
+        "--clear", action="store_true", help="forge: no repo opens this board — invite-only again"
     )
     boards.add_argument("--key", default="", help="the ssh key that signs you in")
     boards.add_argument("--invite", default="", help="push: register that key first")
@@ -158,9 +175,9 @@ def _run(args: argparse.Namespace) -> int:
         # the other (`push.py` needs `operate`'s transport and its address parser).
         return promote.run(args) if str(args.action) == "push" else operate.board(args)
     if args.command == "invite":
-        return operate.invite(args)
+        return grants.invite(args)
     if args.command == "revoke":
-        return operate.revoke(args)
+        return grants.revoke(args)
     if args.command == "tidy":
         removed = trees.tidy(find_root(here), str(args.trunk))
         print("\n".join(removed) if removed else "nothing to tidy — no integrated worktrees")
