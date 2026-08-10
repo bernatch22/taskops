@@ -85,6 +85,10 @@ NO_FORGE = (
     "this board is opened by invite, not by GitHub — its owner opts in by naming the "
     f"repo whose membership counts: {FORGE_VERB}"
 )
+"""Names the door that EXISTS. It used to advertise `taskops board forge …`,
+which never shipped — `taskops board` takes create/ls/push/visibility — and a
+refusal that names an unrunnable command is worse than one that names none: it
+sends the reader to argparse instead of to their board's owner."""
 
 
 def answer(host: login.Host, stores: Stores, body: dict[str, Any], now: float) -> dict[str, Any]:
