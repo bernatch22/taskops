@@ -342,6 +342,21 @@ the reader's own clone is therefore closed here; the half that is about the
 board's list is closed by one <code>taskops_filed</code> call in the next
 session.</p>
 
+<h3>One defect, found by the read itself and fixed</h3>
+
+<p>Reading this report back through the door turned up a copy-paste slip in
+<code>gitwork/patch.py::show()</code>: the <code>git show &lt;sha&gt;:&lt;path&gt;</code>
+line appeared <strong>twice</strong>, so every report read forked git twice and
+threw the first result away. Nothing was wrong with the answer, which is exactly
+why nothing caught it — the behaviour is identical, ruff sees a reassignment
+rather than an unused name, and pyright sees valid code. It took running the real
+door against a real committed file and looking at the function to notice. Removed
+in this close; the topology suite is unchanged and green either side of it.</p>
+
+<p>The general form is worth keeping: a test suite proves the answer, and only
+exercising the thing proves the <em>work</em> done to produce it. That is an
+argument for the dogfood step, not against it.</p>
+
 <h3>Two smaller findings, flagged not fixed</h3>
 <ul>
   <li><code>core/types.py</code> is at <strong>exactly 200 lines</strong>. Zero
