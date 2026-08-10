@@ -3738,6 +3738,9 @@ def reports_server(tmp_path: Path) -> Iterator[BoardServer]:
     (root / ".taskops" / "reports").mkdir(parents=True)
     (root / REPORT).write_text("<h1>the chapter</h1>\n", encoding="utf-8")
     (root / ".taskops" / "reports" / "notes.md").write_text("# plain\n", encoding="utf-8")
+    # A type the door has NEVER been taught, and the point of the fixture: `.md`
+    # used to play this part and stopped being unknown the day it got a renderer.
+    (root / ".taskops" / "reports" / "notes.rst").write_text("plain\n", encoding="utf-8")
     run.must("add", "-A", cwd=root)
     run.must("commit", "-q", "-m", "the report", cwd=root)
     httpd = serve(tmp_path / "boards", "127.0.0.1", 0, repo=root)
@@ -3778,9 +3781,32 @@ def test_only_a_literal_html_report_is_typed_as_html(
 ) -> None:
     """A type the door does not know degrades to TEXT, never to something a
     renderer would execute — and the type is a field in a JSON envelope, so no
-    path can make this origin, where the token lives, serve HTML itself."""
-    status, body = _file(reports_server, ".taskops/reports/notes.md")
+    path can make this origin, where the token lives, serve HTML itself.
+
+    The example used to be `notes.md`, and this test failed the day markdown got
+    a renderer. The CLAIM did not change and is not weakened here: an unknown
+    type still degrades, and `.html` is still the only thing typed as HTML — the
+    file standing for "unknown" is just one the door genuinely does not know,
+    since `.md` no longer is. The type it did gain is asserted right below, so
+    the pair says what the door answers for all three shapes."""
+    status, body = _file(reports_server, ".taskops/reports/notes.rst")
     assert status == 200 and body["data"]["content_type"] == "text/plain"
+    status, body = _file(reports_server, ".taskops/reports/" + REPORT.rpartition("/")[2])
+    assert status == 200 and body["data"]["content_type"] == "text/html"
+
+
+def test_a_markdown_report_is_typed_as_markdown_and_never_as_html(
+    reports_server: BoardServer,
+) -> None:
+    """Prose gets its own type so the READER can draw it as prose. It is not a
+    third security case and must never become one: `text/markdown` is drawn by
+    the dashboard's own renderer, which builds React elements and emits no HTML
+    (`ReportFrame.tsx`), so it needs no sandbox — and it is emphatically not
+    `text/html`, which is the type that does."""
+    status, body = _file(reports_server, ".taskops/reports/notes.md")
+    assert status == 200
+    assert body["data"]["content_type"] == "text/markdown"
+    assert body["data"]["content_type"] != "text/html"
 
 
 def test_every_path_that_is_not_a_report_is_refused_and_nothing_leaks(

@@ -3,6 +3,31 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.3.2 — the window's address, prose that reads as prose, and a link that stays inside
+
+- **`taskops ui` opens `http://127.0.0.1:<port>/`.** It used to hand out
+  `/board/ui/?token=…`, which leaked two implementation details into the one URL
+  a human types — `board` is only the name a window mounts its single board
+  under, and `/ui/` was a door on a HOST, which has served no page since the
+  dashboard moved to the binary. Worse, the page then rewrote the address bar to
+  a path recomputed from that mount, so a refresh landed on `/` and got a JSON
+  404. The board's own routes are unchanged and still hang off `/board`.
+- **A markdown report is rendered as markdown.** `.md` reports — the ones written
+  to be read — were served as their own source, hashes and pipes and all: the
+  door typed them `text/plain` and the reader dropped them in a `<pre>`. The door
+  now answers `text/markdown` and the dashboard draws them with the same renderer
+  a card spec and a close note use. It needs no sandbox and gets none: that
+  renderer builds React elements and emits no HTML, so raw markup inside a report
+  is drawn as the characters it is. A self-contained HTML report still goes in
+  the `allow-scripts`-only frame, and an unrecognised type still degrades to
+  plain text.
+- **The card's Worktree block opens the worktree, in the dashboard.** It offered
+  a forge `compare ↗` — two branches on somebody else's website, rendered for a
+  clone that may not be yours. It now opens the worktree diff view, reading your
+  own clone, with the card's thread beside it. It needs no forge slug, so a board
+  with no GitHub at all has it too.
+- The chapter goal pane got a taller clamp — a long goal scrolls less.
+
 ## 0.3.1 — three chapters: reports, GitHub as an introduction, and the whole lifecycle
 
 - **Reports.** A milestone's narration becomes part of the board: `taskops_activity`

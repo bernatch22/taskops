@@ -129,7 +129,6 @@ VIEWS = (
 #: the dev who carries a worktree, and the landed chapters in the picker.
 GITHUB_VISIBLE = (
     "commit-link",  # the sha, linking to github.com/<slug>/commit/<sha>
-    "card-compare",  # the card as a PR: /compare/ms...tk
     "chapter-compare",  # the chapter's own diff
     "worktree-compare",  # the same link from the Worktrees table
     "event-numstat",  # the +/- a commit event now carries
@@ -222,6 +221,11 @@ NOTHING_DRAWN = ("worktrees-none",)  # the both-empty message, centred in the pa
 #: it is the list of card ids joined by dots that stood where a drawing belongs.
 RETIRED = (
     "worktrees-empty",
+    # The card modal's forge `compare ↗`, replaced by `card-open-tree` below.
+    # It was in the bundle this rebuilt over (checked), so only the swap passes:
+    # a tree that kept both would be a source tree with two answers to "where
+    # does the Worktree block send the reader".
+    "card-compare",
     "actor-card",  # one tile per ephemeral sub-agent: sixty-seven of them
     "actor-card-open",
     "actor-pill",
@@ -823,7 +827,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE + REPORTS
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE + REPORTS + TREE_INWARD
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     for testid in RETIRED + RETIRED_TIMESHEET:
@@ -990,3 +994,11 @@ def test_the_generated_section_index_is_never_committed() -> None:
 
 
 _ = T0, _clock
+
+
+#: The card modal's Worktree block sends the reader INWARDS now — to the
+#: worktree view in this dashboard, reading this clone — instead of out to a
+#: forge compare of two branches (`card-compare`, retired above). It is a marker
+#: of its own and not a line in GITHUB_VISIBLE, because the whole point is that
+#: it needs no slug: a board with no forge at all still has worktrees.
+TREE_INWARD = ("card-open-tree",)

@@ -356,7 +356,7 @@ const listLabel: React.CSSProperties = {
  *  last character; the max height is a clamp so the pane scales with the
  *  screen instead of pinning one laptop's number. */
 const goalBox: React.CSSProperties = {
-  maxHeight: "clamp(180px, 32vh, 420px)",
+  maxHeight: "clamp(280px, 50vh, 720px)",
   overflowY: "auto",
   paddingRight: "6px",
 };

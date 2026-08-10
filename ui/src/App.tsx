@@ -286,6 +286,14 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           readOnly={watching(board?.pulse)}
           repo={board?.repo}
           reader={client}
+          /* The Worktree block sends the reader INTO this dashboard. Opening
+             the tree already closes this drawer — the mount above is
+             `openId && !tree` — so there is nothing to close by hand and no
+             second piece of state to keep in step. */
+          onOpenTree={(id) => {
+            openTree(id);
+            setTab("worktrees");
+          }}
         />
       ) : null}
     </div>

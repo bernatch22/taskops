@@ -94,6 +94,7 @@ ABSENT = (
 
 HTML = "text/html"
 TEXT = "text/plain"
+MARKDOWN = "text/markdown"
 
 
 def answer(repo: Path | None, tail: str, query: str) -> dict[str, Any]:
@@ -135,9 +136,8 @@ def _file(repo: Path, rev: str, wanted: str) -> dict[str, Any]:
     reading a report is the UI reading a patch, and a second vocabulary would be
     a second renderer. `content_type` is a FIELD, never this response's header —
     every door answers `application/json`, so no path can make THIS origin, the
-    one the token lives in, serve HTML; the reader sandboxes it. `text/html`
-    only for a literal `.html`, because a type this door does not know must
-    degrade to something no renderer will execute."""
+    one the token lives in, serve HTML; the reader sandboxes it. The three types
+    `_kind` answers are argued there."""
     path = reports.under(wanted)
     if not path:
         raise BadRequest(NOT_A_REPORT.format(path=wanted or "a missing ?path="))
@@ -153,7 +153,7 @@ def _file(repo: Path, rev: str, wanted: str) -> dict[str, Any]:
     return {
         "path": path,
         "rev": sha,
-        "content_type": HTML if path.endswith(".html") else TEXT,
+        "content_type": _kind(path),
         "text": text,
         "truncated": cut,
         "cap": patch.CAP,
@@ -186,3 +186,13 @@ def _param(query: str, key: str) -> str:
         if name == key:
             return unquote(value.replace("+", " "))
     return ""
+
+
+def _kind(path: str) -> str:
+    """The three answers, and the default keeps itself safe: an unrecognised
+    type falls to `text/plain`, which every reader draws as characters. Decided
+    HERE and never in the browser — `ReportFrame` reads what the door SAYS a
+    file is, never the extension it can see, so the two cannot drift apart."""
+    if path.endswith(".html"):
+        return HTML
+    return MARKDOWN if path.endswith(".md") else TEXT
