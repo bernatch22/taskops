@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The lifecycle runs backwards too — pull, and a board that cannot be lost</title>
+<style>
+  :root {
+    --ink: #16181d; --dim: #5c6270; --faint: #8b909c;
+    --paper: #ffffff; --panel: #f5f6f8; --rule: #e0e3e8;
+    --accent: #1f6feb; --warn: #9a5b00; --good: #1a7f4b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6e8ec; --dim: #9aa1ae; --faint: #6f7683;
+      --paper: #16181d; --panel: #1d2027; --rule: #2c313a;
+      --accent: #6ba6ff; --warn: #d99a3a; --good: #4cc38a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.25rem 5rem;
+    background: var(--paper); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  h2 {
+    font-size: 1.15rem; margin: 3rem 0 .85rem; padding-bottom: .4rem;
+    border-bottom: 1px solid var(--rule); letter-spacing: -.005em;
+  }
+  h3 { font-size: .95rem; margin: 1.9rem 0 .5rem; }
+  p, li { color: var(--ink); }
+  .lede { color: var(--dim); font-size: 1.02rem; margin: 0 0 .2rem; }
+  .stamp {
+    color: var(--faint); font: 400 .8rem/1.5 var(--mono);
+    margin: .9rem 0 0; padding-top: .9rem; border-top: 1px solid var(--rule);
+  }
+  code { font: .87em var(--mono); background: var(--panel); padding: .1em .35em; border-radius: 3px; }
+  .cards { display: grid; gap: .9rem; margin: 1.2rem 0; }
+  .card {
+    background: var(--panel); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent); border-radius: 5px; padding: .95rem 1.1rem;
+  }
+  .card h3 { margin: 0 0 .3rem; font-size: .98rem; }
+  .card .meta { font: .78rem/1.5 var(--mono); color: var(--faint); margin: 0 0 .55rem; }
+  .card p { margin: .5rem 0 0; font-size: .94rem; }
+  .scroll { overflow-x: auto; margin: 1.1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; white-space: nowrap; }
+  td.n { font-family: var(--mono); white-space: nowrap; }
+  figure { margin: 1.3rem 0; }
+  pre {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 5px;
+    padding: .9rem 1.1rem; overflow-x: auto; font: .82rem/1.6 var(--mono); margin: 0;
+  }
+  figcaption { color: var(--faint); font-size: .8rem; margin-top: .45rem; }
+  blockquote {
+    margin: 1.2rem 0; padding: .1rem 0 .1rem 1rem;
+    border-left: 3px solid var(--rule); color: var(--dim);
+  }
+  .flag {
+    background: var(--panel); border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn); border-radius: 5px;
+    padding: .95rem 1.1rem; margin: 1.3rem 0;
+  }
+  .flag h3 { margin-top: 0; color: var(--warn); }
+  .good { color: var(--good); }
+  ul { padding-left: 1.15rem; }
+  li { margin: .35rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>The lifecycle runs backwards too — pull, and a board that cannot be lost</h1>
+<p class="lede">The chapter that gave a board a way home, and then made it hard to lose.</p>
+<p class="stamp">
+  milestone ms-392423 · four cards · four workers · branch ms/the-lifecycle-runs-backwards-too<br>
+  written by agent:berna/close2 on tk-648a6c, 2026-08-10 · every figure below is re-derivable
+</p>
+
+<h2>What it set out to do</h2>
+
+<p>A board's life ran one way. <code>taskops board create</code> made one on a
+host and <code>taskops board push</code> promoted a local history into it — and
+that was the end of the road. Nothing brought a board back down, and
+<strong>nothing took one off a host</strong>. The only removal that existed was
+ssh plus <code>rm&nbsp;-rf</code> on a directory.</p>
+
+<p>Two things were wrong with that, and the second is the serious one. The first
+is a contradiction: the design's own line is that after the bootstrap, nothing on
+a host is ever administered over a shell, and here was an act — arguably the
+largest act — that could only happen over one. The second is that the act was
+<em>unguarded</em>. A board is its <code>events.jsonl</code>; that log is the only
+copy of a history nobody can regenerate, and <code>rm&nbsp;-rf</code> asks nothing
+of anybody.</p>
+
+<p>So the chapter had a shape before it had cards: <strong>build the guardrail
+first, and build the way home before the way out.</strong> Destroying a history
+had to stay possible — a system whose only door is its own API cannot be repaired
+when that API is what broke — but it had to become a sentence somebody typed on
+purpose, never a side effect of anything.</p>
+
+<figure>
+<pre> taskops init        board create+push       board pull            board rm
+┌──────────┐        ┌──────────────┐       ┌──────────────┐      ┌──────────────┐
+│ a LOCAL  │  ───▶  │ LIVE on the  │  ───▶ │ a SNAPSHOT   │ ───▶ │ off the host │
+│  board   │        │     host     │       │ back in here │      │  altogether  │
+└──────────┘        └──────────────┘       └──────────────┘      └──────────────┘
+ destroys            destroys nothing:      destroys nothing:     DESTROYS the host's
+ nothing             the local board is     the host keeps its    board — the only step
+                     RENAMED to .taskops/   board byte for byte   in the whole diagram
+                     board.local-&lt;date&gt;     and goes on moving    that destroys anything</pre>
+<figcaption>The whole life of a board after this chapter. The answer to "what does
+this destroy" is <em>nothing</em> at every step but the last, and the last one says
+so in the name of its own flag.</figcaption>
+</figure>
+
+<p>Five acceptance criteria, and the four cards were cut against them:</p>
+
+<ol>
+  <li><code>board pull &lt;name&gt;</code> materialises the hosted history locally,
+      proves every event id arrived, flips the config last, and leaves the host
+      untouched — verified by reading the host after;</li>
+  <li>an interrupted pull re-runs to a no-op and never leaves a checkout half
+      pointed at two boards;</li>
+  <li><code>board rm &lt;name&gt;</code> on a board this checkout has not pulled
+      refuses, and its sentence names the two commands that make it possible;</li>
+  <li>after a pull, <code>board rm</code> succeeds, the host no longer lists the
+      board, and the local copy still answers every read;</li>
+  <li>a removed board cannot be re-created into the same history by accident:
+      <code>board create</code> on that name makes an EMPTY board, and
+      <code>board push</code> into it still refuses if it is not empty.</li>
+</ol>
+
+<h2>What each card actually built</h2>
+
+<div class="cards">
+
+  <div class="card">
+    <h3>tk-b68686 — the seam: "is this history held here?", by id</h3>
+    <p class="meta">agent:berna/mirror1 · 10m · b8f3178 · 2 files, +163 · landed FIRST and alone</p>
+    <p><code>src/taskops/core/holding.py</code> — 100 lines, layer 1, pure. Ids in,
+    judgement out: no path, no store, no clock, no network. One function,
+    <code>compare(theirs, mine)</code>, returning a <code>Holding</code> that is
+    computed and never stored — <code>complete</code>, <code>theirs</code>,
+    <code>mine</code>, <code>missing</code>, and up to three of the missing ids in
+    sorted order. A second function, <code>phrase()</code>, renders the gap in
+    words; the sentence <em>around</em> the gap belongs to whichever caller is
+    refusing, exactly as <code>core/reports.py::under()</code> leaves its wording
+    to its callers.</p>
+    <p>It landed alone, before either command, because both of them ask the same
+    question and a concept named by two cards is a seam. Had they each answered it
+    for themselves, "safe" would have meant two things by the end of the day.</p>
+  </div>
+
+  <div class="card">
+    <h3>tk-1f721b — <code>taskops board rm</code>: the guardrail is the whole card</h3>
+    <p class="meta">agent:berna/rm2 (after rm1) · 38m · c793690 · 9 files, +481 −8</p>
+    <p>A <code>board.remove</code> admin verb in <code>http/removal.py</code>
+    (106 lines), server scope, OWNER only, registered beside
+    <code>board.visibility</code> in <code>http/admin.py</code> with one new
+    Operation in <code>core/scope.py</code> — same table, same role gate, no second
+    door. <code>cli/rm.py</code> (63 lines) is the client half: it reads the event
+    ids this checkout can still see out of
+    <code>.taskops/board/events.jsonl</code> through <code>store.log.read</code>,
+    so a quarantined line does not count as held, and sends them.</p>
+    <p>The judgement is made on the HOST. The refusal names both ways out, in the
+    sentence family <code>join</code>'s orphan refusal established. The flag past
+    it is <code>--discard-history</code> and only a literal <code>true</code> opens
+    it — <code>"false"</code> is refused rather than obeyed, and
+    <code>force</code> is not a synonym. The answer a human gets back says what
+    was removed and how many events went with it, read from the board
+    <em>before</em> the delete: it is the only record of the removal that will ever
+    exist, because the board is the log and the log is gone.</p>
+  </div>
+
+  <div class="card">
+    <h3>tk-069df3 — <code>taskops board pull</code>: push's five steps, reversed</h3>
+    <p class="meta">agent:berna/pull2 (after pull1) · 40m · 86c535b · 8 files, +547 −15</p>
+    <p><code>cli/pull.py</code> (162 lines) is the ORDER;
+    <code>cli/paging.py::whole_log</code> (75 lines) is the transport — it pages a
+    board's whole log down through the <code>events</code> verb that already
+    existed, keyset by <code>seq</code>, verifying each event's id against its own
+    content on arrival. Two small shared seams came out of it:
+    <code>core/event.of</code>, the one coercion, split out of
+    <code>from_line</code> so a caller holding a parsed object reaches it without
+    re-serialising a dict to have it parsed back; and
+    <code>gitwork/install.write_local</code>, now shared with <code>taskops
+    init</code>, which carried the same two lines inline.</p>
+    <p>The command prints what a pulled board <em>is</em>, every time, rather than
+    leaving it in a document somebody read once — a snapshot that stops moving.
+    <code>remote.json</code> is left completely untouched, which is what makes the
+    <code>pull</code> → <code>rm</code> sequence work with no flags at all: the host
+    is still where <code>board create</code>, <code>board push</code> and
+    <code>board rm</code> go.</p>
+  </div>
+
+  <div class="card">
+    <h3>tk-648a6c — this close: the lifecycle drawn whole</h3>
+    <p class="meta">agent:berna/close2 · docs + the criteria run for real</p>
+    <p>README gains the lifecycle as one picture with a "what does this destroy"
+    line under every step. ARCHITECTURE gains §19, which argues the three things a
+    reader would otherwise re-litigate and writes down the bug below so it is
+    findable. CLAUDE.md gains the CLI surface with both lists derived from
+    <code>--help</code> rather than copied. And the five criteria were run against a
+    real socket to write this page.</p>
+  </div>
+
+</div>
+
+<h2>The decisions that were argued</h2>
+
+<h3>By ID, never by a count — and the count still has a job</h3>
+
+<p>The seam takes <strong>sets of ids</strong>, and that is a scar rather than a
+preference. <code>cli/push.py</code> carries the post-mortem in its own docstring:
+it compared totals, and totals per kind, and a total that agrees says
+<em>nothing</em> about which events arrived — two logs of 402 events can share
+none of them. An event id is <code>sha256</code> of the event's own canonical
+bytes, so "did this exact event arrive" is set membership, and a re-run is a
+no-op instead of a duplicate.</p>
+
+<p>The direction is <code>theirs ⊆ mine</code>, not equality. Ids held only here
+are not a fault and are not counted: the question both callers ask is
+<em>would anything be LOST</em>, never <em>are these identical</em>. And an empty
+host history is complete, because there is nothing there to lose —
+<code>theirs</code> rides along on the answer so a caller surprised by that can
+say <code>0</code> out loud instead of guessing.</p>
+
+<p>What the pull card then found is that the count is not redundant after all,
+and the two checks do not substitute for each other: <code>total</code> guards the
+<strong>paging</strong>, because a page silently lost shrinks both sides of an id
+comparison and makes it agree with itself; the id set guards the
+<strong>write</strong>. Drop either and there is a way to be wrong quietly.</p>
+
+<h3>The step-1 guard had to recognise its own interrupted retry</h3>
+
+<p>Step 1 of a pull refuses a local board that would be merged into the incoming
+one. The obvious way to write that is "is there a local board here?" — and it is
+the wrong guard, in a way that only shows up on the second run.</p>
+
+<p>A pull that dies after step 3 leaves exactly that: a local board, half written,
+and a config that never flipped. The naive guard would make the retry
+<em>refuse itself</em>, and the checkout would sit between two boards with no
+command in the system able to finish the job. What must actually be refused is a
+local history <strong>the host does not hold</strong> — that one really would be
+two histories in one log, with an order they never had. So the same
+<code>holding.compare</code> decides, asked the other way round, and a partial copy
+of the board being pulled is recognised as the resumed pull it is. Step 3 then
+writes only what is missing, because <code>Stores.write</code> appends everything
+it is handed to the log while the cache ignores a repeated id.</p>
+
+<blockquote>The general shape: a guard on "does this state exist" cannot tell a
+half-finished run from a conflict. A guard on "whose state is this" can.</blockquote>
+
+<h3>Possession, not a confirmation prompt</h3>
+
+<p>Every other tool would have put <code>are you sure? [y/N]</code> here. It was
+never on the table, and the reason is worth saying plainly: <strong>a prompt asks
+whether you meant it; possession asks whether the history survives you.</strong>
+Those are different questions, and only the second one is about the thing at
+risk. Somebody who typed <code>board rm facturador</code> meant it — that is
+precisely the state a prompt is answered <em>yes</em> in — and none of that
+establishes that the 402 events exist anywhere else.</p>
+
+<p>It also could not have been a prompt mechanically: the removal happens on the
+host, at the far end of an RPC, in a process with no terminal. A prompt would
+have had to live on the client, which is the weakest place in the system to put a
+wall — and a prompt cannot be satisfied from a script, which is how a
+<code>--yes</code> flag gets born and how it ends up in somebody's Makefile.</p>
+
+<h3>The judgement lives on the HOST, and the flag names what it destroys</h3>
+
+<p><strong>A client-side wall is a convention a hand-written call can skip.</strong>
+If <code>cli/rm.py</code> had compared for itself, <code>curl</code> would be the
+way past the only wall in taskops standing in front of something irreversible, and
+nothing would have been refused, logged, or even surprised. So the client says
+what it holds and the host — which owns the data — decides:
+<code>holding.compare(stores.ids(), held)</code>. A client that fetched the host's
+ids to judge for itself would be re-deciding a wall it does not own.</p>
+
+<p>The way past is <code>--discard-history</code>, and <code>--force</code> stays
+banned with its own row in ARCHITECTURE §11. Every tool spends <code>--force</code>
+on something recoverable, so the word names no consequence and therefore cannot
+warn. This is the last command in the system that should be vague about what it
+takes away.</p>
+
+<figure>
+<pre>removing 'facturador' would destroy a history nothing else holds: 5 of the host's
+5 event(s) are not here (this copy holds 0) — e.g. 225fc3e6…, afbad07b…, c086c9f1…, ….
+Two ways forward, and both are explicit:
+  taskops board pull facturador                    take the history down first, then remove
+  taskops board rm facturador --discard-history    destroy it anyway; say so out loud
+(there is no --force: a flag that does not name what it overrides is how somebody
+destroys a history they meant to keep.)</pre>
+<figcaption>The refusal, verbatim from the live run below. Naming both ways out is
+the rule, not the politeness: a refusal that only says no is a dead end somebody
+works around, and the way around is always worse than the way through.</figcaption>
+</figure>
+
+<h2>The two bugs found on the way</h2>
+
+<div class="flag">
+<h3>1. sqlite keeps answering through an UNLINKED file</h3>
+<p><code>Mounts</code> caches a <code>Stores</code> per board for the life of the
+process. So <code>shutil.rmtree</code> on a board directory was <em>not</em> the
+end of that board: the handle the running server still held went on serving the
+destroyed cache, and <code>board.create</code> on the same name a moment later
+handed the <strong>destroyed history straight back</strong>. A push into the
+supposedly new board was then refused as two histories — which is to say the
+removal had become a route around the exact wall <code>board.ingest</code> exists
+to hold, arrived at from behind.</p>
+<p>The fix is one call in the right order: <code>Mounts.forget(name)</code> drops
+the handle and the watch <em>before</em> the <code>rmtree</code>. It belongs in
+<code>mounts.py</code> because <code>forget</code> is <code>create</code>'s
+counterpart and <code>_boards</code> lives nowhere else.</p>
+<p><strong>Why it generalises:</strong> a cache keyed by a path outlives the path.
+Anything here that deletes a directory a long-lived process has opened has the
+same bug waiting, and neither a type checker nor a test of the <em>answer</em>
+will see it — the answer is correct. It is just the correct answer to a question
+about a file that no longer exists.</p>
+</div>
+
+<div class="flag">
+<h3>2. A mutation survivor: blank ids were only pinned on one side</h3>
+<p>The seam strips blank ids from <strong>both</strong> sides of the comparison —
+the empty string is not a <code>sha256</code>, it is what a truncated wire row
+degrades into, and counting one would make a correct board read as incomplete
+forever. Mutation-checking that code one site at a time turned up a survivor: the
+strip on the <em>local</em> side could be deleted and the suite stayed green,
+because the test only put blanks on the host's side.</p>
+<p>The test was extended to put blanks on both, and the mutation died. This is the
+project's own house rule earning its keep — <em>a batch mutation proves something
+is pinned, never which</em> — and it is the second time in two chapters that a
+green suite was hiding an unpinned half.</p>
+</div>
+
+<h2>The criteria, run for real</h2>
+
+<p>Not a summary of the tests: a real host on a real socket, a real ed25519
+keypair, real argv through <code>taskops.cli.main.main</code>, on four throwaway
+repos. Every step below is the command's own output.</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>#</th><th>what ran</th><th>what it proved</th></tr></thead>
+  <tbody>
+    <tr><td class="n">1–2</td><td><code>init</code> → plan → <code>board create</code> → <code>board push</code></td>
+        <td>4 local events promoted; the host holds 5 (its birth certificate plus the four); the local board <em>renamed</em> to <code>board.local-2026-08-10</code>, not deleted</td></tr>
+    <tr><td class="n">3</td><td><code>board rm</code> from a checkout that never pulled</td>
+        <td class="good">refused, naming both ways out — criterion 3</td></tr>
+    <tr><td class="n">4</td><td><code>board pull</code></td>
+        <td class="good">5 events written; ids equal host-to-local; the host's bytes <em>unchanged</em>; <code>board.json</code> now <code>{}</code>; <code>remote.json</code> keeps its login — criterion 1</td></tr>
+    <tr><td class="n">5</td><td><code>board pull</code> again</td>
+        <td class="good">0 new events, the log byte-identical — criterion 2</td></tr>
+    <tr><td class="n">6</td><td><code>board rm</code>, now that the history is held</td>
+        <td class="good">gone, "5 event(s) went with it"; the host's root holds zero boards; <code>board ls</code> says 0; the local copy still answers <code>board</code> with its milestone and both ready cards — criterion 4</td></tr>
+    <tr><td class="n">7–9</td><td><code>board create</code> on the removed name, then two pushes</td>
+        <td class="good">the reborn board holds 1 event — its birth certificate — and shares nothing with the destroyed history; a first push lands, so the name is genuinely reusable; a <em>second, different</em> history is refused as two histories — criterion 5</td></tr>
+  </tbody>
+</table>
+</div>
+
+<figure>
+<pre>### 4 · board pull
+reading http://127.0.0.1:56578/facturador …
+  5 new event(s) written · all 5 event(s) are held here
+…/elsewhere/.taskops/board.json now reads the local copy in …/elsewhere/.taskops/board
+  http://127.0.0.1:56578/facturador still holds every one of those events — a pull destroys nothing,
+  and remote.json keeps its login: board create / board push still go there.
+  This copy is a SNAPSHOT and it STOPS MOVING: nothing syncs from here on, so
+  anything done on http://127.0.0.1:56578/facturador after this second will never appear in it.
+  by id, host vs local: True
+  the host's bytes are unchanged: True
+
+### 6 · board rm, now that the history is held here
+facturador is GONE from http://127.0.0.1:56578 — 5 event(s) went with it
+  all 5 event(s) are held here — this checkout still reads them, and it is now the copy
+  the host's root now holds: []
+http://127.0.0.1:56578 — 0 board(s), as owner
+  the local copy still answers: milestones=['MVP facturador']
+    ready cards=['invoice model', 'CSV parser']</pre>
+<figcaption>From the live run. The board is gone from the host and still fully
+readable here — which is the whole point of guarding removal by possession.</figcaption>
+</figure>
+
+<h2>What is not a sync, and why the ban is what made this safe</h2>
+
+<p>Git replication between clones is banned — §11's second row, the one whose
+cost was split-brain and two machines "owning" the same card. A command that
+brings a hosted history down looks exactly like that ban being broken, and it is
+the opposite: <strong>the ban is what made it safe to add.</strong></p>
+
+<p>Nothing new was built to move the events. The log comes down through the
+<code>events</code> verb — the same paged read the dashboard's Event pane makes,
+by a client with no more rights than any reader — and
+<code>test_pulling_added_no_verb_to_either_registry</code> asserts that
+<code>board.pull</code> is not a verb this host answers. No cursor is stored on
+either side, no second run is scheduled, nothing is kept in step. What lands is a
+snapshot: a card taken on the host a second later is never in it, and no mechanism
+anywhere would notice the divergence. Replication is a channel with an ongoing
+promise. This is one read, verified, that ends.</p>
+
+<h2>What this close could not dogfood</h2>
+
+<p>The reports loop is four moves: read the chapter with
+<code>taskops_activity</code>, write the file, commit it, register it with
+<code>taskops_filed</code>. The chapter that <em>built</em> those two tools could
+not run steps 1 and 4 — they were on its own branch, and the session's MCP server
+runs the <em>installed</em> <code>taskops</code>, loaded once at session start.
+That was written down as a structural finding rather than a defect.</p>
+
+<p>It happened again here, from the other side, and it is worth recording because
+the second occurrence is what turns an anecdote into a rule. The reports chapter
+has landed on master — <code>taskops_activity</code> and <code>taskops_filed</code>
+are in this repo's <code>src/</code>, in <code>mcp/schema.py</code>, right now —
+but the installed tool on this laptop predates them, so they are absent from
+<code>tools/list</code> and unreachable to every actor in this session, the
+orchestrator included. Driving the board from a shell instead is refused, and
+correctly so.</p>
+
+<p>So this page was assembled from <code>taskops_card</code> on each of the three
+cards — the same threads <code>activity depth=full</code> folds — plus
+<code>git log --numstat</code>, and its registration belongs to the session after
+<strong>ms-b9bf00</strong> puts master on the host and the tool on the laptop. The
+reader's half was proved the way the previous chapter proved it:
+<code>http/gitdoor.py::answer()</code>, the call the dashboard itself makes, reads
+this file back at its commit.</p>
+
+<blockquote>The rule that generalises: a chapter can dogfood any tool the
+<em>installed</em> <code>taskops</code> already has, and no chapter can dogfood one
+it introduced. Verification of a tool belongs to the session after the landing,
+not to the close that lands it.</blockquote>
+
+<h2>The gates, from the close's worktree</h2>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>gate</th><th>result</th></tr></thead>
+  <tbody>
+    <tr><td><code>uv run ruff check src tests</code></td><td class="good">All checks passed!</td></tr>
+    <tr><td><code>uv run pyright</code></td><td class="good">0 errors, 0 warnings, 0 informations</td></tr>
+    <tr><td><code>uv run pytest</code></td><td class="good">522 passed</td></tr>
+    <tr><td><code>cd ui &amp;&amp; npm ci &amp;&amp; npm run check</code></td><td class="good">typecheck + build + smoke ok, committed bundle unchanged (no <code>.tsx</code> moved in this chapter)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Module budgets are the thing to re-derive rather than trust, and this chapter
+left two files with almost none: <code>http/mounts.py</code> at 198 and
+<code>cli/main.py</code> at 198 of 200, with <code>core/types.py</code> at exactly
+200. The next thing that lands in any of them splits it, at a cohesive seam and
+never by relaxing the rule.</p>
+
+<figure>
+<pre>find src/taskops -name '*.py' -exec wc -l {} + | awk '$2!="total" &amp;&amp; $1&gt;=190' | sort -rn</pre>
+<figcaption>Zero headroom is a finding, not a pass.</figcaption>
+</figure>
+
+<p class="stamp">
+  commits: b8f3178 (seam) · c793690 (rm) · 86c535b (pull) · this close<br>
+  tests added: 7 in tests/test_core.py, 11 + 9 in tests/test_topology.py — counted from the diffs<br>
+  ARCHITECTURE.md §19 carries the arguments · README carries the picture · CLAUDE.md carries the surface
+</p>
+
+</main>
+</body>
+</html>
