@@ -111,7 +111,7 @@ def _distinct(events: list[Event]) -> list[Event]:
     return out
 
 
-CONFIGURATION = frozenset({"created", "visibility", "remote"})
+CONFIGURATION = frozenset({"created", "visibility", "remote", "forge"})
 
 
 def _configuration(stores: Stores) -> set[str]:
@@ -134,10 +134,15 @@ def _configuration(stores: Stores) -> set[str]:
     has no order to invent against the work, which is the only thing the wall
     exists to protect.
 
-    So the exemption is the CLOSED list `CONFIGURATION` — `created`,
-    `visibility`, `remote` — and closed on purpose: a project op added later
-    must argue its way in here, not fall in because it happens to be
-    board-level. And it applies ONLY while the board holds zero CARD events. One
+    So the exemption is the CLOSED list `CONFIGURATION` — and closed on
+    purpose: a project op added later must argue its way in here, not fall in
+    because it happens to be board-level. `forge` (`verbs/project.py`, the repo
+    whose membership opens the board) made the argument and is in: it is the
+    same act as `visibility` one notch further — who may reach this container,
+    settled BEFORE anything is put in it — and it has no order to invent
+    against work that does not exist yet. `archived`, say, would not: a board
+    retired before it was filled is not a push waiting to happen.
+    And it applies ONLY while the board holds zero CARD events. One
     event about work and the exemption narrows back to the birth certificate, so
     the wall against two real histories does not move an inch.
 

@@ -13,7 +13,7 @@ import pytest
 from taskops import verbs, _clock
 from taskops.core import seams
 from taskops.store import log
-from taskops.verbs import pulse, _facts
+from taskops.verbs import pulse, _facts, project
 from taskops._errors import Refused, NotFound, BadRequest
 from taskops.core.types import LEASE_TTL
 from taskops.store.stores import Stores
@@ -1001,6 +1001,87 @@ def test_a_changed_origin_wins_by_being_later(
 def test_an_unknown_project_fact_is_refused_by_name(stores: Stores) -> None:
     with pytest.raises(BadRequest, match="not a project fact"):
         call(stores, "project", BERNA, op="mascot", slug="a/b")
+
+
+# ── the forge that opens the board (op=forge) ───────────────────────────────
+
+
+def test_a_board_declares_no_forge_and_that_is_how_every_board_is_born(
+    stores: Stores,
+) -> None:
+    """The chapter's opt-in rule, at its only reader. Absent is not a special
+    case to remember — it is the answer `forge()` gives before anyone speaks,
+    and the board payload gains no key for it, so nothing downstream can even
+    see that the op exists."""
+    planned(stores)
+    assert project.forge(stores) is None
+    assert "forge" not in call(stores, "board", BERNA)
+
+
+def test_the_declared_forge_is_what_the_door_will_read(stores: Stores) -> None:
+    """The vocabulary, whole: `{host, repo, need}`, with github.com and `push`
+    as the defaults a caller may leave out — and the SAME dict from the write
+    and from the read, because the door reads it back, never the answer."""
+    out = call(stores, "project", BERNA, op="forge", repo="bernatch22/taskops")
+    assert out["value"] == {"host": "github.com", "repo": "bernatch22/taskops", "need": "push"}
+    assert out["recorded"] and project.forge(stores) == out["value"]
+
+    asked = call(stores, "project", BERNA, op="forge", repo="cloudacio/Axion", need="admin")
+    assert asked["value"] == {"host": "github.com", "repo": "cloudacio/Axion", "need": "admin"}
+    assert project.forge(stores) == asked["value"]
+
+
+def test_declaring_a_forge_is_reversible(stores: Stores, clock: Callable[[float], None]) -> None:
+    """`repo=""` is the way BACK to invite-only. Opting in has to be undoable
+    in the same breath it was done, or a mistyped owner is permanent."""
+    call(stores, "project", BERNA, op="forge", repo="bernatch22/taskops")
+    clock(60)
+    assert call(stores, "project", BERNA, op="forge", repo="")["value"] is None
+    assert project.forge(stores) is None
+
+
+def test_a_repo_that_is_not_owner_name_is_refused_rather_than_trimmed(stores: Stores) -> None:
+    """`GET /repos/{owner}/{name}` has nowhere to put a third segment, so a
+    GitLab-shaped slug is a refusal and never a truncation; the value the
+    caller has in hand is `remote.parse`'s `slug`, which is exactly this."""
+    for wrong in ("taskops", "team/sub/repo", "bernatch22/", "/taskops", "bern atch/taskops"):
+        with pytest.raises(BadRequest, match="exactly owner/name"):
+            call(stores, "project", BERNA, op="forge", repo=wrong)
+    assert project.forge(stores) is None
+
+
+def test_a_forge_this_host_cannot_ask_is_refused_at_declaration(stores: Stores) -> None:
+    """A board must never carry a promise nothing can keep: the host that can
+    be ASKED about membership is a shorter list than the hosts `remote` stores,
+    and the refusal says the repo is still recordable as the board's remote."""
+    with pytest.raises(BadRequest, match="does not open it"):
+        call(stores, "project", BERNA, op="forge", host="gitlab.com", repo="team/thing")
+
+
+def test_read_access_is_not_a_membership(stores: Stores) -> None:
+    """`need=pull` would open a public repo's board to everyone with a browser.
+    It is not in the pair, so it is refused by name rather than defaulted."""
+    with pytest.raises(BadRequest, match="Read access is not a membership"):
+        call(stores, "project", BERNA, op="forge", repo="bernatch22/taskops", need="pull")
+
+
+def test_a_forge_nobody_can_verify_reads_as_no_forge(stores: Stores) -> None:
+    """The read side refuses SILENTLY, and that asymmetry is the point: a
+    declaration can reach `state()` from a log another version wrote or a hand
+    edit, and a door that GRANTS on this answer must see "no forge" rather than
+    a half-understood promise. Written straight to the log, past the verb."""
+    from taskops.core.event import make
+
+    junk: list[Any] = [
+        {"host": "gitlab.com", "repo": "a/b", "need": "push"},  # a host nobody can ask
+        {"host": "github.com", "repo": "team/sub/repo", "need": "push"},  # no such API path
+        {"host": "github.com", "repo": "a/b", "need": "pull"},  # not a membership
+        {"repo": "a/b"},  # half a declaration
+        "github",  # not even an object
+    ]
+    for value in junk:
+        stores.write([make("project", BERNA, "project", {"op": "forge", "value": value}, 1000.0)])
+        assert project.forge(stores) is None
 
 
 # ── the log itself: the events verb and its keyset paging ───────────────────
