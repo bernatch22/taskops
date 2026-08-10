@@ -1114,6 +1114,41 @@ files that answer it:
   `WorktreeDiff.tsx` because the seam was held by another card, and came back at
   the chapter close. The seam is where a props contract lives; a page-local copy
   is a wave-length exception with a date on it, never the resting place.
+* **Reports** — a chapter's NARRATION, listed and then read full width
+  (`ui/src/pages/Reports.tsx`). The fifth tab, and the first that is not Nova's:
+  a report was a chat artefact when Nova was drawn. The INDEX costs nothing —
+  `verbs/pulse.py::run` folds the `report` events into `board.reports` on every
+  read, scoped to the chapter the header picker is on, newest first, with
+  `reports_total` beside it — so this page adds no fetcher and no filter; it is
+  a slice of the one board answer (`useBoard.ts`). The CONTENT is not on the
+  board and never will be (`events.jsonl` stores references, never bytes): a row
+  opens a full-width surface that REPLACES the index, exactly as a worktree
+  opens its diff page and for the same reason, and that surface asks the `/git`
+  file door for one report at a time out of the reader's own clone
+  (`links.tsx::fileRoute` + `useGitFile`, `useGitDiff`'s sibling — same
+  availability flag, same "a refusal is quoted, never paraphrased" rule). The
+  selection lives in `App.tsx` beside `tree` and is cleared by the same
+  `onTab`.
+  **The sandbox is the whole of `components/reports/ReportFrame.tsx`, and it is
+  a security boundary, not a preference**: a report is untrusted HTML somebody's
+  agent wrote, and this origin holds the token. An html report goes into
+  `<iframe sandbox="allow-scripts" srcdoc=…>` — SCRIPTS RUN (a panorama report
+  is a self-contained page with its own inline behaviour, and rendering it dead
+  would ship a broken document that looks fine) and `allow-same-origin` is never
+  beside them, because that pair is not two permissions but the absence of the
+  sandbox: with both, the frame reads `parent.localStorage`, writes
+  `parent.document` and can strip its own `sandbox` attribute. `SANDBOX` is a
+  constant and not a prop, so no caller can ask for a laxer frame. Everything
+  else (forms, popups, top navigation, modals, downloads) stays withheld, and
+  the frame carries `referrerpolicy="no-referrer"` and an empty `allow`. A
+  `text/plain` report is NOT framed: `srcdoc` parses as HTML, so it goes into a
+  `<pre>` as a React text node — escaped, whitespace intact, and no
+  `dangerouslySetInnerHTML` exists anywhere in this dashboard. It is pinned
+  headlessly in `ui/smoke/sections/report-sandbox.tsx` against a report the
+  fixture commits WITH a hostile `<script>` in it
+  (`tests/test_ui.py::A_HOSTILE_REPORT`): the sandbox attribute, the absence of
+  the forbidden pair, and — the claim that matters — that the dashboard's own
+  document contains no `<script` of the report's at all.
 * **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
@@ -1297,8 +1332,10 @@ clone, exactly as a patch does: `diff.resolve` for the rev, then `git show
 flagged the same way (`capped()` is one function so the two answers cannot
 disagree about what `truncated` means). It answers the same JSON envelope, so
 `content_type` (`text/html` only for a literal `.html`) is a FIELD and never
-this response's header — the token lives in this origin and the report is
-rendered in a sandboxed iframe.
+this response's header — the token lives in this origin, so no file can make it
+serve HTML, and deciding what to do with `text/html` is the READER's job. It is
+done in one place, `ui/src/components/reports/ReportFrame.tsx`: an `<iframe
+sandbox="allow-scripts">` with `srcdoc`, never beside `allow-same-origin` (§15).
 
 **It is not a file server, and the refusal is the feature.** The path is checked
 by `core/reports.py::under()` — the SAME call the verb that registers a report

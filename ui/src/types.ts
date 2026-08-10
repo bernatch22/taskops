@@ -367,6 +367,23 @@ export interface BoardPayload {
    *  standing is `pulse.actor`.
    *  @source `verbs/project.py::visibility`, via `verbs/pulse.py::run` */
   visibility?: "public" | "private";
+  /** The chapter's registered reports, NEWEST FIRST, capped at
+   *  `verbs/_facts.py::REPORTS_SHOWN` (20) — scoped to the milestone in focus,
+   *  board-wide when none is.
+   *
+   *  OPTIONAL for the header's usual reason: a board one version behind sends
+   *  neither key, and absent says the true thing — this screen can reach no
+   *  report. Consumers read `?? []` and `?? 0`.
+   *
+   *  It is a FOLD over `report` events computed per read, never a table
+   *  (`core/reports.py::of`), so a report registered a second ago is in the very
+   *  next answer with nothing to keep in step.
+   *
+   *  @source `verbs/pulse.py::run` */
+  reports?: FiledReport[];
+  /** How many reports the chapter really has, behind `reports`' cap.
+   *  @source `verbs/pulse.py::run` */
+  reports_total?: number;
   seq: number;
   pulse: Pulse;
 }
@@ -515,6 +532,58 @@ export interface GitDiff {
   patch: string; // unified diff text, whole range or one file
   truncated: boolean;
   cap: number; // bytes; `gitwork/diff.py::CAP`
+}
+
+/** One committed FILE at a rev, as `GET /<board>/git/file/<rev>?path=…` answers
+ *  it — the bytes of a report, read out of the reader's own clone.
+ *
+ *  @source `http/gitdoor.py::_file`
+ *
+ *  `content_type` IS A FIELD AND NEVER A HEADER, and the whole security posture
+ *  of the Reports view rests on that: the envelope is `application/json`
+ *  whatever the file is, so this origin — the one the token lives in — can never
+ *  be made to serve HTML. Deciding what to do with `text/html` is therefore the
+ *  READER'S job, and it is done in exactly one place
+ *  (`components/reports/ReportFrame.tsx`). A type this door does not know
+ *  degrades to `text/plain`, which no renderer executes.
+ *
+ *  `truncated` + `cap` is `GitDiff`'s vocabulary on purpose: the door reuses it
+ *  so one renderer can say "this was cut at N bytes" about a patch and about a
+ *  report with one sentence. */
+export interface GitFile {
+  path: string; // repo-relative, always under `.taskops/reports/`
+  rev: string; // 40-hex — the rev asked for, RESOLVED
+  content_type: "text/html" | "text/plain";
+  text: string;
+  truncated: boolean;
+  cap: number; // bytes; `gitwork/patch.py::CAP`
+}
+
+/* ── filed reports (core/reports.py, via verbs/_facts.py::reports) ────────── */
+
+/** One report a chapter has: a POINTER to a committed file, never its prose.
+ *
+ *  @source `core/reports.py::Report`, via `verbs/_facts.py::reports` and
+ *  `verbs/pulse.py::run`
+ *
+ *  NAMED `FiledReport` and not `Report` because `ReportPayload` above is
+ *  something else entirely — the HOURS summary (`verbs/report.py::summary`).
+ *  Two unrelated things called "report" met in this file; the one this name
+ *  belongs to is the one the `filed` verb registers.
+ *
+ *  `path` + `sha` is the pair, and neither is useful alone: the path is the
+ *  string the `/git` file door takes (guaranteed under `.taskops/reports/` by
+ *  `core/reports.py::under()`, checked again at that door) and the sha is the
+ *  commit to read it AT. A report is fetched, never pushed — `events.jsonl`
+ *  grows by a few hundred bytes whatever the narration weighs. */
+export interface FiledReport {
+  id: string; // the event id — a stable key for a list
+  path: string;
+  title: string;
+  milestone: string;
+  sha: string;
+  by: string; // who REGISTERED it
+  ts: number;
 }
 
 /* ── report (verbs/report.py::summary) ───────────────────────────────────── */
