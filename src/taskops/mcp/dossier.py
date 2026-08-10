@@ -111,15 +111,25 @@ def _commits(data: dict[str, Any]) -> list[str]:
         return []
     out = ["## Commits", ""]
     for commit in commits:
-        files = as_strings(commit.get("files"))
-        sized = [_sized(name, commit.get("numstat")) for name in files]
-        tail = f"  ({', '.join(sized)})" if files else ""
-        out.append(f"- {str(commit.get('sha', ''))[:8]}  {commit.get('subject', '')}{tail}")
+        out.append(f"- {sized_commit(commit)}")
     if not commits:
         out.append("- (none bound yet — `done` needs one, or no_code=true)")
     if merged:
         out += ["", f"_Integrated into {merged}._"]
     return [*out, ""]
+
+
+def sized_commit(commit: dict[str, Any]) -> str:
+    """One commit line: `sha  subject  (file +3-1, …)`.
+
+    Shared with `activity.py`'s chapter story rather than written twice — a
+    commit that reads one way in a card view and another in a milestone-wide
+    read is two vocabularies for one fact.
+    """
+    files = as_strings(commit.get("files"))
+    sized = [_sized(name, commit.get("numstat")) for name in files]
+    tail = f"  ({', '.join(sized)})" if files else ""
+    return f"{str(commit.get('sha', ''))[:8]}  {commit.get('subject', '')}{tail}"
 
 
 def _sized(name: str, numstat: Any) -> str:

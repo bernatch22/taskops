@@ -71,7 +71,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { GitDiff } from "./types";
+import type { GitDiff, GitFile } from "./types";
 
 /** The stored shape, structurally — `BoardPayload.repo` assigns to this. It is
  *  declared here rather than imported so this module is the seam and not a
@@ -285,6 +285,25 @@ export function gitRoute(target: GitTarget, path?: string): string {
   return `git/${tail}` + (path ? `?path=${encodeURIComponent(path)}` : "");
 }
 
+/** The door's THIRD question: one committed file's bytes at a rev.
+ *
+ *  `GET <board>/git/file/<rev>?path=<repo-relative>` — `http/gitdoor.py::_file`.
+ *
+ *  It is a function of its own and NOT a third member of `GitTarget`, which was
+ *  the first thing tried. `GitTarget` is the cascade's vocabulary: every value
+ *  of it has a forge page (`gitForge` switches on it) and a patch to draw. A
+ *  file at a rev has neither — there is no `…/blob/<sha>/<path>` step in this
+ *  cascade and no diff at the end of it — so adding a `kind: "file"` would have
+ *  made `gitForge`'s `else` silently answer `compare` for it, and every consumer
+ *  of `DiffStep` would need a branch that can never fire. Different question,
+ *  different route builder, same door.
+ *
+ *  `rev` and `path` are both percent-encoded: a rev may be a branch name with a
+ *  `/` in it, and a path always has several. The door `unquote`s both. */
+export function fileRoute(rev: string, path: string): string {
+  return `git/file/${encodeURIComponent(rev)}?path=${encodeURIComponent(path)}`;
+}
+
 /** The forge page for the same target — step THREE, in the same vocabulary as
  *  step two, so a caller never has to translate between them. */
 export function gitForge(repo: Repo | null | undefined, target: GitTarget): string | null {
@@ -436,4 +455,65 @@ export function useGitDiff(
   }, [reader, route, on]);
 
   return { diff, loading, refusal };
+}
+
+/** Ask the door for ONE report's bytes — `useGitDiff`'s sibling, same rules.
+ *
+ *  Per OPEN, not per board: a report is fetched when a reader opens that row and
+ *  never with the board payload. `null` is the closed state and clears
+ *  everything, so backing out of a report cannot leave the previous one's text
+ *  on screen under the next one's title — the `mine` latch is the same
+ *  stale-answer guard, for the same reason (an answer that lands after the
+ *  selection moved is answering a question nobody is asking).
+ *
+ *  It shares `gitAvailable()`/`noteGitRefusal()` with the diff hook rather than
+ *  keeping a flag of its own: whether this HOST has a clone is one fact about
+ *  one page load, and a second memory of it would probe a `taskops serve` host
+ *  the first hook already learned about. A refusal is kept as WORDS, never
+ *  thrown into a render — only the door knows which rev is missing from this
+ *  clone, and it names the `git fetch` that brings it. */
+export function useGitFile(
+  reader: GitReader | null | undefined,
+  at: { sha: string; path: string } | null,
+): { file: GitFile | null; loading: boolean; refusal: string | null } {
+  const [file, setFile] = useState<GitFile | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const route = at ? fileRoute(at.sha, at.path) : "";
+
+  useEffect(() => {
+    let mine = true;
+    if (!reader || !route || !gitAvailable()) {
+      setFile(null);
+      setRefusal(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setFile(null); // never the previous report's bytes under this one's title
+    reader
+      .git<GitFile>(route)
+      .then((answer) => {
+        if (mine) {
+          setFile(answer);
+          setRefusal(null);
+        }
+      })
+      .catch((failure: unknown) => {
+        const said = failure instanceof Error ? failure.message : "";
+        noteGitRefusal(said);
+        if (mine) {
+          setFile(null);
+          setRefusal(said || null);
+        }
+      })
+      .finally(() => {
+        if (mine) setLoading(false);
+      });
+    return () => {
+      mine = false;
+    };
+  }, [reader, route]);
+
+  return { file, loading, refusal };
 }

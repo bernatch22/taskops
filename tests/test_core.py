@@ -7,7 +7,16 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from taskops.core import event as ev, graph, hours, replay, review as corereview, machine, mentions
+from taskops.core import (
+    event as ev,
+    graph,
+    hours,
+    replay,
+    review as corereview,
+    machine,
+    reports,
+    mentions,
+)
 from taskops._errors import Refused, NotFound, BadRequest
 from taskops.core.types import Card, Event, role_of, slugify
 
@@ -646,3 +655,124 @@ def test_a_project_fact_never_lands_on_a_card() -> None:
     state = replay.fold([ev.make("project", "dev:berna", "project", {"op": "remote", "value": None}, 1000.0)])
     assert state["cards"] == {} and state["project"] == {"remote": None}
     assert replay.empty()["project"] == {}
+
+
+# ── reports ─────────────────────────────────────────────────────────────────
+
+
+def report_event(path: str, ts: float, milestone: str = "ms-1", **over: object) -> Event:
+    body: dict[str, object] = {
+        "path": path,
+        "title": path.rsplit("/", 1)[-1],
+        "milestone": milestone,
+        "sha": "abc1234",
+    }
+    body.update(over)
+    return ev.make("project", "agent:berna/w1", "report", body, ts)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".taskops/reports/chapter.md",
+        "./.taskops/reports/chapter.md",  # a `./` prefix cannot change the meaning
+        "  .taskops/reports/2026/chapter.html  ",  # nested, and surrounding space
+        ".taskops\\reports\\chapter.md",  # a Windows separator says the same thing
+    ],
+)
+def test_a_path_under_the_reports_directory_is_a_report(path: str) -> None:
+    assert reports.under(path).startswith(reports.DIR)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "notes/chapter.md",  # somewhere else entirely
+        ".taskops/reports",  # the directory, not a file in it
+        ".taskops/reports/",
+        ".taskops/reportsy/chapter.md",  # a prefix is not a parent
+        ".taskops/reports/../../../etc/passwd",  # the one that matters
+        ".taskops/reports/./chapter.md",
+        "/Users/berna/.taskops/reports/chapter.md",  # absolute: another machine's tree
+        ".taskops/reports//chapter.md",
+    ],
+)
+def test_everything_else_is_refused_and_never_repaired(path: str) -> None:
+    """`under()` returns "" rather than a fixed-up path: the caller owns the
+    refusal, and a traversal that got normalised into something acceptable is
+    exactly the bug the guard exists to prevent."""
+    assert reports.under(path) == ""
+
+
+def test_a_report_is_history_only_and_moves_no_state() -> None:
+    """Kind(False, …): nothing to fold. "Which reports has this chapter" is a
+    QUESTION (`reports.of`), never a column somebody keeps in step."""
+    state = replay.fold([report_event(".taskops/reports/one.md", 1000.0)])
+    assert state["cards"] == {} and state["project"] == {} and state["milestones"] == {}
+
+
+def test_a_report_body_is_a_pointer_and_never_the_prose() -> None:
+    """The chapter's rule, at the one place it can be enforced: the event knows
+    where the file is and which commit carries it, and nothing else."""
+    from taskops.core.types import KINDS
+
+    assert KINDS["report"].replayed is False
+    assert KINDS["report"].body_keys == ("path", "title", "milestone", "sha")
+    with pytest.raises(BadRequest, match="needs body keys"):
+        ev.make("project", "dev:berna", "report", {"path": ".taskops/reports/x.md"}, 1000.0)
+
+
+def test_the_fold_is_newest_first_and_scoped_to_one_chapter() -> None:
+    events = [
+        report_event(".taskops/reports/one.md", 1000.0),
+        report_event(".taskops/reports/two.md", 3000.0),
+        report_event(".taskops/reports/other.md", 2000.0, milestone="ms-2"),
+    ]
+    assert [r["path"] for r in reports.of(events, "ms-1")] == [
+        ".taskops/reports/two.md",
+        ".taskops/reports/one.md",
+    ]
+    assert [r["path"] for r in reports.of(events, "ms-2")] == [".taskops/reports/other.md"]
+    # No chapter in focus is the whole board, not an empty answer.
+    assert len(reports.of(events)) == 3
+
+
+def test_the_fold_reads_only_report_events_and_keeps_the_registrar() -> None:
+    """A `by` and a `ts` on every row: the list a screen draws says who narrated
+    the chapter and when, and neither is stored anywhere else."""
+    events = [
+        ev.make("project", "dev:berna", "project", {"op": "remote", "value": None}, 900.0),
+        report_event(".taskops/reports/one.md", 1000.0),
+    ]
+    rows = reports.of(events)
+    assert len(rows) == 1
+    assert rows[0]["by"] == "agent:berna/w1" and rows[0]["ts"] == 1000.0
+    assert rows[0]["sha"] == "abc1234" and rows[0]["title"] == "one.md"
+    assert rows[0]["id"] == events[1]["id"]  # the event id IS the row's identity
+
+
+def test_a_row_whose_path_stopped_being_a_report_path_is_dropped() -> None:
+    """History is replayed forever, so a rule that tightened must not resurrect
+    what it now refuses — and a fold over foreign rows must not raise."""
+    events = [
+        ev.make("project", "dev:berna", "report",
+                {"path": "notes/old.md", "title": "t", "milestone": "ms-1", "sha": "a"}, 1000.0),
+        report_event(".taskops/reports/one.md", 1100.0),
+    ]
+    assert [r["path"] for r in reports.of(events)] == [".taskops/reports/one.md"]
+
+
+def test_two_reports_in_the_same_instant_do_not_swap_between_reads() -> None:
+    """`sorted(reverse=True)` is stable, so a tie keeps arrival order — the same
+    way `replay` settles simultaneity. A list that reshuffles on every poll is a
+    screen nobody can read."""
+    events = [
+        report_event(".taskops/reports/first.md", 1000.0),
+        report_event(".taskops/reports/second.md", 1000.0),
+    ]
+    once = [r["path"] for r in reports.of(events)]
+    assert once == [r["path"] for r in reports.of(events)] == [
+        ".taskops/reports/first.md",
+        ".taskops/reports/second.md",
+    ]

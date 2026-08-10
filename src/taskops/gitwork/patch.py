@@ -7,7 +7,10 @@ string a browser sent — `diff.resolve` is the only door from a string to a
 sha, and everything below takes its output.
 
 The patch is capped in BYTES and the cap is stated in the answer: a silently
-cut patch is a lie, a flagged one is a fact.
+cut patch is a lie, a flagged one is a fact. `show()` — one committed file at a
+sha — lives here for that reason and no other: it is the same sentence (a
+resolved sha in, capped text out), and a second copy of the cap is how two
+answers start disagreeing about what "truncated" means.
 """
 
 from __future__ import annotations
@@ -39,9 +42,26 @@ def patch(
     if path:
         args += ["--", path]
     raw = run.git(*args, cwd=repo)
-    if not raw.ok:
-        return "", False
-    text = raw.out
+    return capped(raw.out, cap) if raw.ok else ("", False)
+
+
+def show(repo: Path, sha: str, path: str, cap: int = CAP) -> tuple[str, bool] | None:
+    """(text, truncated) for ONE file as that RESOLVED commit carries it, or None
+    when the commit does not carry it at all.
+
+    `<sha>:<path>` is git's OBJECT syntax, not a pathspec: it names one entry in
+    one tree, so nothing here globs, walks or touches the working copy — the
+    file on disk may differ, may be dirty, may not exist. None rather than an
+    empty string, because a committed empty file is a real and different answer;
+    the caller owns the wording of the refusal, as everywhere in this package."""
+    raw = run.git("show", f"{sha}:{path}", cwd=repo)
+    return capped(raw.out, cap) if raw.ok else None
+
+
+def capped(text: str, cap: int) -> tuple[str, bool]:
+    """(text, truncated) — the byte cap itself, in ONE place. Cut on the ENCODED
+    bytes and decoded back with `ignore`, so a cap landing mid-codepoint drops
+    that character instead of returning bytes no reader can decode."""
     encoded = text.encode("utf-8", "replace")
     if len(encoded) <= cap:
         return text, False
