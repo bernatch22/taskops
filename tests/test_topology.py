@@ -688,6 +688,206 @@ def test_a_re_join_never_demotes_the_owner_it_only_adds_a_key(
     assert sign_in(server, "berna", second)["token"]  # the new key signs in too
 
 
+# ── GitHub introduces you once: /join/github ────────────────────────────────
+#
+# A stub forge over a REAL socket, for the same reason the login tests use a
+# real keypair: monkeypatching `_wire.get` would test neither urllib nor the
+# header the token travels in, and the header is the only place the token is
+# ever allowed to appear.
+
+
+class Forge:
+    """What the stub answers, and what it SAW — the second half is the test."""
+
+    def __init__(self) -> None:
+        self.status = 200
+        self.payload: dict[str, Any] = {"permissions": {"pull": True, "push": True}}
+        self.seen: list[tuple[str, str]] = []  # (path, Authorization)
+
+
+@pytest.fixture()
+def forge(monkeypatch: pytest.MonkeyPatch) -> Iterator[Forge]:
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    from taskops.http import github
+
+    stub = Forge()
+
+    class Stub(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's contract
+            stub.seen.append((self.path, self.headers.get("Authorization", "")))
+            body = json.dumps(stub.payload).encode()
+            self.send_response(stub.status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_: Any) -> None:  # the suite's stderr stays readable
+            return
+
+    httpd = HTTPServer(("127.0.0.1", 0), Stub)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(github, "API", f"http://127.0.0.1:{httpd.server_address[1]}")
+    yield stub
+    httpd.shutdown()
+    httpd.server_close()
+
+
+TOKEN = "ghp_a-token-that-must-never-land-on-disk"
+
+
+def declare(httpd: BoardServer, repo: str = "bernatch22/taskops", need: str = "push") -> None:
+    """The board opts in — the owner's act, through the ordinary verb."""
+    client(httpd, BERNA).call("project", {"op": "forge", "repo": repo, "need": need})
+
+
+def join_with_github(
+    httpd: BoardServer, who: str, key: Path, token: str = TOKEN
+) -> dict[str, Any]:
+    from taskops import _wire
+
+    return _wire.post(
+        f"{url_of(httpd)}/join/github",
+        {
+            "github_token": token,
+            "principal": who,
+            "pubkey": Path(f"{key}.pub").read_text(encoding="utf-8"),
+        },
+        {},
+        5.0,
+    )
+
+
+def test_push_access_enrols_the_key_and_the_next_call_is_an_ordinary_session(
+    server: BoardServer, keyed: Path, forge: Forge, tmp_path: Path
+) -> None:
+    """Criterion 1, end to end: no invite is minted anywhere in this flow, and
+    what the door leaves behind is a pubkey — exactly what an invite leaves."""
+    declare(server)
+    hers = keygen(tmp_path / "ana_key")
+
+    got = join_with_github(server, "ana", hers)
+    assert got["principal"] == "ana" and got["actor"] == ANA and got["role"] == "member"
+    assert got["repo"] == "bernatch22/taskops" and got["need"] == "push"
+    assert "token" not in got  # GitHub is the introduction, never the credential
+
+    # ONE call, to the declared repo, with the token in the header and nowhere else.
+    assert [path for path, _ in forge.seen] == ["/repos/bernatch22/taskops"]
+    assert forge.seen[0][1] == f"Bearer {TOKEN}"
+
+    # And from here the chapter is invisible: an ordinary signed session.
+    minted = sign_in(server, "ana", hers)
+    assert minted["role"] == "member"
+    assert RemoteBoard(url_of(server), minted["token"], ANA).call("board", {})["seq"] >= 0
+    # `allowed_signers` is rewritten whole from the store, so her line is IN it
+    # and the owner's is still there — the enrolment an invite would have left.
+    signers = (server.mounts.root / "allowed_signers").read_text(encoding="utf-8").splitlines()
+    assert sorted(line.split()[0] for line in signers) == ["ana", "berna"]
+    assert got["fingerprint"] == server.mounts.host.store().keys("ana")[0].fingerprint
+
+
+def test_the_github_token_is_written_to_no_file_and_no_event(
+    server: BoardServer, keyed: Path, forge: Forge, tmp_path: Path
+) -> None:
+    """Criterion 3, proved by grepping the board AND the host store — every byte
+    this host owns, not the two files somebody remembered to check."""
+    declare(server)
+    hers = keygen(tmp_path / "ana_key")
+    got = join_with_github(server, "ana", hers)
+    sign_in(server, "ana", hers)
+
+    needle = TOKEN.encode()
+    files = sorted(p for p in server.mounts.root.rglob("*") if p.is_file())
+    # A positive control first: this scan really does read what the flow wrote —
+    # the enrolled KEY is in there, which is the one thing that must persist.
+    assert any(b"ssh-ed25519" in path.read_bytes() for path in files)
+    assert [p.name for p in files if p.name == "events.jsonl"]
+    for path in files:
+        assert needle not in path.read_bytes(), f"the GitHub token reached {path}"
+    assert needle not in json.dumps(got).encode()
+
+
+def test_no_push_access_is_refused_by_NAME_and_enrols_nobody(
+    server: BoardServer, keyed: Path, forge: Forge, tmp_path: Path
+) -> None:
+    """Criterion 2. The refusal names the repo and the level that would work —
+    "403" is a status, not something a person can act on."""
+    declare(server)
+    hers = keygen(tmp_path / "ana_key")
+    forge.payload = {"permissions": {"pull": True, "push": False}}
+
+    with pytest.raises(Refused) as refused:
+        join_with_github(server, "ana", hers)
+    assert "does not have push on it" in str(refused.value)
+    assert "opens to whoever has push on bernatch22/taskops" in str(refused.value)
+    assert TOKEN not in str(refused.value)  # not even into the sentence
+    assert server.mounts.host.store().principal("ana") is None
+
+    for status, said in ((401, "rejected that token"), (403, "SSO"), (404, "no repository")):
+        forge.status, forge.payload = status, {"message": "…"}
+        with pytest.raises(Refused, match=said):
+            join_with_github(server, "ana", hers)
+    assert server.mounts.host.store().principal("ana") is None
+
+
+def test_github_unreachable_refuses_LOUDLY_and_never_falls_back_to_granting(
+    server: BoardServer, keyed: Path, forge: Forge, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rule the whole chapter would be worthless without: a host that cannot
+    ask does not guess. Pointed at a port nobody is listening on — a real refused
+    connection, not a raised stub."""
+    from taskops.http import github
+
+    declare(server)
+    hers = keygen(tmp_path / "ana_key")
+    with socket.socket() as free:
+        free.bind(("127.0.0.1", 0))
+        dead = free.getsockname()[1]
+    monkeypatch.setattr(github, "API", f"http://127.0.0.1:{dead}")
+
+    with pytest.raises(Unreachable, match="did not answer"):
+        join_with_github(server, "ana", hers)
+    assert server.mounts.host.store().principal("ana") is None
+    assert not forge.seen
+
+
+def test_a_board_that_declared_no_forge_keeps_its_invite_only_door(
+    server: BoardServer, keyed: Path, forge: Forge, tmp_path: Path
+) -> None:
+    """Criterion 4: no opt-in, no door — and the refusal happens before anything
+    leaves the host, so a board that never asked for this never talks to GitHub."""
+    hers = keygen(tmp_path / "ana_key")
+    with pytest.raises(Refused, match="opened by invite"):
+        join_with_github(server, "ana", hers)
+    assert not forge.seen  # nothing left this host
+    assert server.mounts.host.store().principal("ana") is None
+
+    # The old door still works on that same board, byte for byte.
+    invite, _ = server.mounts.credentials.mint("invite:ana", BOARD, _clock.now(), once=True)
+    assert _redeem(url_of(server), invite, "ana", f"{hers}.pub")["actor"] == ANA
+
+
+def test_membership_of_the_repo_is_not_permission_to_BE_somebody(
+    server: BoardServer, keyed: Path, forge: Forge, tmp_path: Path
+) -> None:
+    """`login.register` adds a key to a principal this host already knows — which
+    is right for an invite (an owner re-joining must not be demoted) and is a
+    takeover here: anybody with push on the repo would hang their own key off the
+    OWNER's name and sign in as him. Through this door enrolment only CREATES."""
+    declare(server)
+    mallory = keygen(tmp_path / "mallory")
+
+    with pytest.raises(Refused, match="already has a principal named 'berna'"):
+        join_with_github(server, "berna", mallory)
+    keys = server.mounts.host.store().keys("berna")
+    assert len(keys) == 1
+    assert keys[0].keyline in Path(f"{keyed}.pub").read_text(encoding="utf-8")
+    with pytest.raises(TaskopsError):
+        sign_in(server, "berna", mallory)
+
+
 # ── the host is operated from taskops, over its own API ─────────────────────
 #
 # The anomaly the whole chapter exists to kill: every admin act used to be an
