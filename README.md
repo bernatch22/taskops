@@ -59,7 +59,7 @@ taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
-taskops board create|ls|push|visibility   the boards on a host
+taskops board create|ls|push|rm|visibility   the boards on a host
 taskops invite <who>                      a single-use link
 taskops revoke --key|--invite             a key or an invite stops working
 taskops tidy                              remove worktrees whose work is in the trunk
@@ -150,9 +150,23 @@ And the admin surface for any board on that host, from anywhere:
 ```sh
 taskops board ls
 taskops board visibility <name> public|private     # owner only
+taskops board rm <name>                            # owner only — see below
 taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>
 ```
+
+`board rm` is the only command here that destroys something nobody can
+regenerate, so it **refuses** unless this checkout already holds that history,
+and it names both ways out — take the history down first, or say out loud that
+you are destroying it:
+
+```sh
+taskops board rm <name>                      # refused: 402 of the host's 402 events are not here
+taskops board rm <name> --discard-history    # destroys it anyway
+```
+
+There is no `--force` and there will not be one: a flag that does not name what
+it overrides is how somebody destroys a history they meant to keep.
 
 No URL and no `--key` after `remote add`: the host is recorded in the checkout,
 `board create` records the name, and the key is **discovered** the way ssh
