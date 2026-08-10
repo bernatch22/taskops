@@ -2972,6 +2972,33 @@ def test_a_legacy_config_opens_the_MCP_board_and_its_handshake(
     _untouched_host(server, tmp_path)
 
 
+def test_a_forwarded_READ_pokes_nobody_so_a_window_cannot_feed_itself(
+    server: BoardServer, window: BoardServer
+) -> None:
+    """The infinite loop, pinned. Every envelope carries `seq`, so the forwarded
+    path's old `if status == 200 and seq` was true of every READ: a `board` call
+    published "the board changed", the page believed the frame and refetched, and
+    that refetch published again. A window on a REMOTE board hammered its own
+    server at the coalescing interval, forever, with nothing on the board moving —
+    measured at ~5 requests/second against a board whose seq never left 961.
+
+    The local path never had it because it asks `writes()` first; this asserts the
+    forwarded half asks the same question of the same registry."""
+    published: list[dict[str, Any]] = []
+    window.mounts.hub.publish = lambda board, message: published.append(message)  # type: ignore[method-assign]
+
+    plan(client(server, BERNA))  # something real to read, so seq is non-zero
+    viewer = RemoteBoard(url_of(window), _token(window, BERNA), BERNA)
+    for _ in range(3):
+        assert viewer.call("board", {})["seq"] > 0
+        viewer.call("events", {"limit": 1})
+    assert published == [], f"a read poked the page: {published}"
+
+    task = viewer.call("board", {})["groups"]["take"][0]["id"]
+    viewer.call("update", {"task": task, "comment": "a write, and this one IS news"})
+    assert [m["verb"] for m in published] == ["update"]
+
+
 def test_the_ui_window_forwards_with_a_legacy_token(
     server: BoardServer, tmp_path: Path, legacy: str
 ) -> None:

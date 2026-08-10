@@ -14,6 +14,7 @@ from . import rpc, feed, admin, login, static, gitdoor
 from .. import _clock
 from .auth import Credential, token_in, anonymous
 from .._errors import BadRequest, TaskopsError
+from .._version import __version__
 
 if TYPE_CHECKING:
     from .mounts import Mounts
@@ -34,6 +35,7 @@ class Handler(BaseHTTPRequestHandler):
         return cast("BoardServer", self.server).mounts
 
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's contract
+        self.mounts.touch()  # the window's idle clock (`cli/window.py`) reads this
         board, tail = split(self.path)
         if tail == "rpc":
             self._rpc(board)
@@ -47,9 +49,19 @@ class Handler(BaseHTTPRequestHandler):
             self._fail(404, BadRequest(f"nothing at {self.path}"))
 
     def do_GET(self) -> None:  # noqa: N802
+        self.mounts.touch()
         board, tail = split(self.path)
         if self.path.rstrip("/") == "/healthz":
-            self._json(200, {"ok": True, "seq": 0, "data": {"boards": self.mounts.count()}})
+            data: dict[str, Any] = {"boards": self.mounts.count()}
+            if self.mounts.repo is not None:
+                # IDENTITY, and only for a WINDOW: `taskops ui` must be able to
+                # tell "our window is up" from "something answered that port" —
+                # reusing by liveness alone reopened tabs onto a four-day-old
+                # binary (`cli/window.py`). A board HOST keeps the terse answer:
+                # its healthz is public, and a server path in it is a leak.
+                data["window"] = str(self.mounts.repo)
+                data["version"] = __version__
+            self._json(200, {"ok": True, "seq": 0, "data": data})
         elif tail == "feed":
             self._feed(board)
         elif tail.startswith("git/"):

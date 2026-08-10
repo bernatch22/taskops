@@ -12,6 +12,7 @@ from pathlib import Path
 from threading import Lock
 
 from . import feed, watcher
+from .. import verbs, _clock
 from .login import Host
 from ..verbs import project
 from .._errors import NotFound, BadRequest
@@ -59,9 +60,18 @@ class Mounts:
         # (`login.py::Host` says why lazily is a rule here, not a taste).
         self.host = Host(root)
         self.hub = feed.Hub()
+        # When a request last arrived — the window's idle clock (`cli/window.py`
+        # retires a window nobody asks anything of). Written by the handler on
+        # every request; a HOST reads it never, and that costs nothing.
+        self.last_seen = _clock.now()
         self._lock = Lock()
         self._boards: dict[str, Stores] = {}
         self._watched: set[str] = set()
+
+    def touch(self) -> None:
+        """A request happened. Unlocked on purpose: a float assignment is atomic
+        in CPython, and the idle clock tolerates a stale read by a tick."""
+        self.last_seen = _clock.now()
 
     def watch(self, name: str) -> None:
         """Poke every listener when this board moves — `watcher.py` owns the how."""
@@ -89,12 +99,21 @@ class Mounts:
         refusal must arrive in the server's own words. The poke is the same rule
         as the local path's: published only AFTER the remote confirmed, and it
         carries no payload, so a duplicate (the poll is about to see the same
-        move) costs a refetch and nothing else."""
+        move) costs a refetch and nothing else.
+
+        **Only a WRITE pokes, and forgetting that clause was an infinite loop.**
+        Every envelope carries `seq`, so `status == 200 and seq` is true of every
+        READ too: a `board` call published "the board changed", the page took the
+        frame as news and refetched, that refetch published again — a window on a
+        remote board hammered its own server at the coalescing interval, forever,
+        with nothing on the board moving. Only the forwarded path had the bug,
+        because the local path below asks `writes()` first; asking the same
+        registry here is what keeps the two halves from disagreeing again."""
         if self.upstream is None:
             raise NotFound("this host serves its own board — there is nothing to forward to")
         status, answer = self.upstream.rpc(raw)
         seq = seq_of(answer)
-        if status == 200 and seq:
+        if status == 200 and seq and verbs.writes(verb):
             self.hub.publish(board, {"type": "change", "verb": verb, "seq": seq})
         return status, answer
 
