@@ -85,8 +85,12 @@ def seeded(open_board: Callable[[str], LocalBoard]) -> tuple[LocalBoard, list[di
 # ── the surface ─────────────────────────────────────────────────────────────
 
 
-def test_there_are_exactly_nine_tools_and_each_has_a_schema() -> None:
-    assert len(tools.TOOLS) == 9  # the ninth is taskops_review (optional review)
+def test_there_are_exactly_eleven_tools_and_each_has_a_schema() -> None:
+    """The count is a DOC that expires: eleven since the reports chapter added
+    taskops_activity (the chapter-wide read) and taskops_filed (registering a
+    committed narration). It is asserted so that `mcp/tools.py`'s docstring,
+    ARCHITECTURE §6 and the README cannot drift from the table below them."""
+    assert len(tools.TOOLS) == 11
     assert set(tools.BY_NAME) == set(SCHEMAS)
     for tool in tools.TOOLS:
         assert tool.schema["additionalProperties"] is False  # no silent extra arguments
@@ -745,7 +749,7 @@ def test_the_loop_answers_one_line_per_request(repo: Path, boards: Any) -> None:
     server.serve(server.Boards(dev, repo, BERNA), io.StringIO("\n".join(lines) + "\n"), out)
     answers = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [a["id"] for a in answers] == [1, 2]  # the notification produced nothing
-    assert len(answers[1]["result"]["tools"]) == 9
+    assert len(answers[1]["result"]["tools"]) == len(tools.TOOLS)
 
 
 def test_junk_on_the_wire_is_a_parse_error_not_a_crash(repo: Path, boards: Any) -> None:
@@ -1373,3 +1377,63 @@ class TestAChapterLandsOverAMovedTrunk:
         assert "behind master" not in str(refusal.value)  # nothing was attempted
         assert run.must("rev-parse", "HEAD", cwd=tree) == before
         assert (tree / "scratch.txt").read_text(encoding="utf-8") == "mid-thought\n"
+
+
+# ── the chapter's story, and registering a report ───────────────────────────
+
+
+def test_taskops_activity_renders_a_chapter_card_by_card(repo: Path, boards: Any) -> None:
+    """One tool result an orchestrator reads top to bottom: the chapter's goal
+    and rules once, then a block per card with its state, its commits SIZED,
+    and the count of the conversation it is not being shown."""
+    dev, cards = seeded(boards)
+    first = cards[0]["id"]
+    dev.call("assign", {"tasks": [first], "worktrees": False})
+    worker = boards(W1)
+    worker.call("take", {"task": first})
+    worker.call(
+        "bind",
+        {
+            "task": first,
+            "sha": "a1b2c3d4e5",
+            "subject": "feat: the Invoice model",
+            "files": ["src/models.py"],
+            "numstat": {"src/models.py": [12, 3]},
+        },
+    )
+    out = call(dev, repo, "taskops_activity")
+
+    assert "read a bank CSV and issue invoices with VAT" in out  # the header, ONCE
+    assert out.count("invoice model") == 1
+    assert "a1b2c3d4  feat: the Invoice model  (src/models.py +12-3)" in out
+    assert "events (depth=full)" in out  # the thread it is NOT showing, and the way in
+    assert "S" * 4000 not in out  # …and no spec at the default depth
+    assert "S" * 4000 in call(dev, repo, "taskops_activity", depth="full")
+
+
+def test_taskops_filed_registers_a_committed_report_and_says_so_twice(
+    repo: Path, boards: Any
+) -> None:
+    """The half that makes the chapter usable from a session: an agent writes
+    the file, commits it, and registers it here. A repeat is not an error — the
+    same path at the same sha is already on the board, and the tool says which."""
+    dev, _ = seeded(boards)
+    args = {
+        "path": ".taskops/reports/mvp-facturador.md",
+        "title": "What the MVP shipped",
+        "sha": "9c2f1a",
+    }
+    first = call(dev, repo, "taskops_filed", **args)
+    assert "What the MVP shipped" in first and ".taskops/reports/mvp-facturador.md" in first
+    assert "already filed" not in first
+    assert "already filed" in call(dev, repo, "taskops_filed", **args)
+    # …and it is on the chapter's story from then on.
+    assert "What the MVP shipped" in call(dev, repo, "taskops_activity")
+
+
+def test_a_report_outside_the_reports_directory_is_refused_at_the_tool(
+    repo: Path, boards: Any
+) -> None:
+    dev, _ = seeded(boards)
+    with pytest.raises(Refused, match="is not a report path"):
+        call(dev, repo, "taskops_filed", path="notes/story.md", title="t", sha="9c2f1a")

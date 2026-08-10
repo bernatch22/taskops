@@ -38,7 +38,7 @@ can be misread:
 * **A repo**: joined to one board. `taskops remote add` once per checkout, then
   every command runs bare.
 * **Your agents**: they never touch any of this — they talk to the board through
-  the nine MCP tools.
+  the eleven MCP tools.
 
 ## Install
 
@@ -175,7 +175,7 @@ the server has the history and the counts agree, and `.taskops/board/` is RENAME
 to `.taskops/board.local-<date>` — a dead archive nothing reads again. There is no
 `--force`, ever.
 
-## The nine MCP tools
+## The eleven MCP tools
 
 The only management interface. Every tool takes `repo_path=` and `actor=`.
 
@@ -196,6 +196,13 @@ taskops_review     the verifier's one door: claim a submitted card, then
                    verdict=pass|changes note=…
 taskops_comment    say something on ANY open card, including one somebody else
                    holds. mentions=[…] addresses it to them
+taskops_activity   a whole chapter's story in ONE read: every card's standing,
+                   commits with numstat, where it merged, the reports filed on
+                   it. since=<seq> returns only what moved; depth=full adds each
+                   spec and thread. Never a diff — follow branch and sha into git
+taskops_filed      register a report you already COMMITTED under
+                   .taskops/reports/: path, title, sha. The board keeps the
+                   pointer, never the prose
 ```
 
 `plan`, `assign` and `merge` are the orchestrator's (`dev:<name>`); `take` is a
