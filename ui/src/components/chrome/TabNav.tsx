@@ -4,10 +4,12 @@
  * button that calls back. A hash route would be a second source of truth for one
  * boolean and a reload that lands on a card that no longer exists.
  *
- * Four tabs, in Nova's own order: Monitor first — it is the design's first and
- * central section, and the default view — then Board, then Actors, then
- * Worktrees, which are the sections the design draws after it. The order here IS
- * the order on screen, so it is not a detail: `TABS[0]` is what App opens on.
+ * Five tabs. Four are Nova's, in Nova's own order: Monitor first — it is the
+ * design's first and central section, and the default view — then Board, then
+ * Actors, then Worktrees, which are the sections the design draws after it.
+ * Reports is the fifth and is NOT Nova's; it is this chapter's, and it comes
+ * last. The order here IS the order on screen, so it is not a detail: `TABS[0]`
+ * is what App opens on.
  *
  * A tab is only ever added WITH its page. `App.tsx`'s switch falls through to the
  * Board, so a tab whose branch does not exist is a dead tab that still looks
@@ -18,7 +20,7 @@
  * The badge is a SLOT, not a hardcoded count: a tab with nothing to say carries
  * nothing. The board's pending mentions are on the KPI rail, not on a pill. */
 
-export type TabId = "monitor" | "board" | "actors" | "worktrees";
+export type TabId = "monitor" | "board" | "actors" | "worktrees" | "reports";
 
 export interface Tab {
   id: TabId;
@@ -32,6 +34,10 @@ export const TABS: readonly Tab[] = [
   { id: "board", name: "Board" },
   { id: "actors", name: "Actors" },
   { id: "worktrees", name: "Worktrees" },
+  /* Fifth, and last on purpose: a report is what a chapter LEAVES BEHIND, so it
+     sits after the four views about work in flight. It is not a Nova section —
+     Nova had nothing to draw here, because a report was a chat artefact then. */
+  { id: "reports", name: "Reports" },
 ];
 
 const bar: React.CSSProperties = {
