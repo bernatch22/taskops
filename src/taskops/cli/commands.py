@@ -26,7 +26,7 @@ from ..gitwork import remote, install, claudefiles
 def init(here: Path) -> int:
     root = find_root(here)
     (root / DIR / "board").mkdir(parents=True, exist_ok=True)
-    (root / DIR / "board.json").write_text("{}\n", encoding="utf-8")
+    install.write_local(root)
     _wire(root, actor())
     print(f"local board in {root / DIR / 'board'} — the MCP tools are the way in")
     return 0

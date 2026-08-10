@@ -170,6 +170,15 @@ class Mounts:
         (self.root / name).mkdir(parents=True, exist_ok=True)
         return self.stores(name)
 
+    def forget(self, name: str) -> None:
+        """Close a board and drop the handle — `create`'s counterpart. Without
+        it a REMOVED board outlives its own directory (`removal.py` says how)."""
+        with self._lock:
+            stores = self._boards.pop(name, None)
+            self._watched.discard(name)
+        if stores is not None:
+            stores.close()
+
     def count(self) -> int:
         with self._lock:
             return len(self._boards)

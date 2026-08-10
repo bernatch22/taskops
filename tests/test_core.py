@@ -13,6 +13,7 @@ from taskops.core import (
     hours,
     replay,
     review as corereview,
+    holding,
     machine,
     reports,
     mentions,
@@ -776,3 +777,65 @@ def test_two_reports_in_the_same_instant_do_not_swap_between_reads() -> None:
         ".taskops/reports/first.md",
         ".taskops/reports/second.md",
     ]
+
+
+# ── holding ─────────────────────────────────────────────────────────────────
+
+
+def test_the_local_copy_is_complete_when_it_holds_every_id_the_host_reported() -> None:
+    """theirs ⊆ mine, not equality: a local board that moved on holds the host's
+    history all the same, and `board rm` must not refuse on ids nobody can lose."""
+    answer = holding.compare(["a1", "b2"], ["b2", "a1", "c3"])
+    assert answer["complete"] is True
+    assert (answer["theirs"], answer["mine"], answer["missing"]) == (2, 3, 0)
+    assert answer["examples"] == []
+
+
+def test_a_count_that_agrees_proves_nothing_about_which_events_arrived() -> None:
+    """`cli/push.py`'s post-mortem, pinned: two logs of the same size sharing no
+    id at all. A comparison by totals calls this verified; by ids it is empty."""
+    answer = holding.compare(["a1", "b2", "c3"], ["x1", "y2", "z3"])
+    assert answer["theirs"] == answer["mine"] == 3
+    assert answer["complete"] is False and answer["missing"] == 3
+
+
+def test_an_incomplete_copy_names_how_many_and_a_few_of_them_in_a_stable_order() -> None:
+    """Never a bare boolean: a refusal has to be checkable against the log by
+    hand, and ids that reshuffle between runs cannot be compared with the last."""
+    answer = holding.compare(["e5", "a1", "d4", "c3", "b2"], ["c3"])
+    assert answer["missing"] == 4
+    assert answer["examples"] == ["a1", "b2", "d4"] == answer["examples"][: holding.EXAMPLES]
+    assert holding.compare(["e5", "a1", "d4", "c3", "b2"], ["c3"]) == answer
+
+
+def test_ids_are_counted_distinct_so_a_repeated_line_cannot_inflate_a_total() -> None:
+    """An id is the sha256 of the event's own bytes, so the same id twice is the
+    same event — a log replayed into itself must not read as a bigger history."""
+    answer = holding.compare(["a1", "a1", "b2"], ["a1", "b2", "b2"])
+    assert (answer["theirs"], answer["mine"]) == (2, 2) and answer["complete"] is True
+
+
+def test_a_blank_id_is_not_a_history_and_is_dropped_from_both_sides() -> None:
+    """A truncated wire row degrades into "", and counting one would leave a
+    correct board reading as incomplete forever."""
+    answer = holding.compare(["a1", "", "  "], [" a1 ", "", "   "])
+    assert answer["complete"] is True and (answer["theirs"], answer["mine"]) == (1, 1)
+
+
+def test_an_empty_host_history_is_complete_and_says_how_many_it_saw() -> None:
+    """Nothing there is nothing to lose — and `theirs` is on the answer so a
+    caller surprised by that can say 0 out loud instead of guessing."""
+    answer = holding.compare([], ["a1"])
+    assert answer["complete"] is True and answer["theirs"] == 0
+
+
+def test_the_phrase_carries_the_numbers_and_examples_a_human_can_act_on() -> None:
+    """The gap is worded once, here, so both callers describe it the same way;
+    what to DO about it is the caller's own sentence."""
+    said = holding.phrase(holding.compare(["a1", "b2", "c3", "d4"], ["a1"]))
+    assert "3 of the host's 4 event(s) are not here" in said
+    assert "this copy holds 1" in said and "b2, c3, d4" in said
+    assert "…" not in said  # exactly EXAMPLES missing: nothing is being elided
+    many = holding.phrase(holding.compare(["a1", "b2", "c3", "d4", "e5"], []))
+    assert many.endswith("a1, b2, c3, …")
+    assert holding.phrase(holding.compare(["a1"], ["a1"])) == "all 1 event(s) are held here"

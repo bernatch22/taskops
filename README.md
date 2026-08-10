@@ -59,7 +59,7 @@ taskops join [<name>] [--invite|--github] join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
-taskops board create|ls|push              the boards on a host
+taskops board create|ls|push|pull|rm      the boards on a host
 taskops board visibility|forge            who may read one · who GitHub lets in
 taskops invite <who>                      a single-use link
 taskops revoke --key|--invite             a key or an invite stops working
@@ -153,25 +153,62 @@ taskops remote add https://host:8787 [--replace]   # once per checkout
 taskops board create [<name>]                      # defaults to the directory's name
 taskops board push                                 # this repo's LOCAL board becomes that one
 taskops join <name>                                # or: a teammate connects to an existing one
+taskops board pull [<name>]                        # the reverse: it comes back down, verified by id
 ```
+
+### A board's whole life, and what each step destroys
+
+```
+  taskops init         board create+push       board pull            board rm
+ ┌──────────┐        ┌──────────────┐       ┌──────────────┐      ┌──────────────┐
+ │ a LOCAL  │  ───▶  │ LIVE on the  │  ───▶ │ a SNAPSHOT   │ ───▶ │ off the host │
+ │  board   │        │     host     │       │ back in here │      │  altogether  │
+ └──────────┘        └──────────────┘       └──────────────┘      └──────────────┘
+  destroys            destroys nothing:      destroys nothing:     DESTROYS the host's
+  nothing             the local board is     the host keeps its    board — the only step
+                      RENAMED to .taskops/   board byte for byte   that destroys anything,
+                      board.local-<date>     and goes on moving    and it says so in the
+                                                                   name of its own flag
+```
+
+Both transfers flip this checkout's config **last**: stream the history, prove
+every event id arrived, then change what the repo reads. A failure above that
+leaves the repo as it was and the command is simply run again.
+
+What a pull leaves you is a **snapshot that stops moving** — nothing syncs
+afterwards, so a card taken on the host a second later never appears here, and
+the command prints that sentence itself every time. `remote.json` keeps its
+login, so `board create` and `board push` still go to the same server.
 
 And the admin surface for any board on that host, from anywhere:
 
 ```sh
 taskops board ls
 taskops board visibility <name> public|private     # owner only
+taskops board rm <name>                            # owner only — see below
 taskops board forge <owner>/<repo> [--need push|admin]   # owner only: GitHub opens it
 taskops board forge --clear                        # invite-only again
 taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>      # a GitHub-enrolled key too
 ```
 
+`board rm` **refuses** unless this checkout already holds that history, and names
+both ways out — take the history down first, or say out loud that you are
+destroying it. The judgement is the host's, against the board's real event ids:
+
+```sh
+taskops board rm <name>                      # refused: 402 of the host's 402 events are not here
+taskops board rm <name> --discard-history    # destroys it anyway
+```
+
+There is no `--force` and there will not be one: a flag that does not name what
+it overrides is how somebody destroys a history they meant to keep.
+
 **Declaring the forge** — the repo whose membership opens a board — is a board
 fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
-until an owner records it and cleared again by recording `repo=""`. It has **no
-CLI verb yet**: today it is a `project` call over `/rpc`, so `--github` is a
-door only a board that has been opted in through that call answers at all. Every
-other board is invite-only, exactly as before.
+until an owner records it and cleared again with `--clear`. Only a board that
+has been opted in answers `--github` at all; every other one is invite-only,
+exactly as before.
 
 No URL and no `--key` after `remote add`: the host is recorded in the checkout,
 `board create` records the name, and the key is **discovered** the way ssh
@@ -189,10 +226,9 @@ for the day the server is down or the owner's key is lost.
 registered key, no third state. Anyone may then `taskops join <url>` with no
 invite — a read-only join that mints nothing and registers no key.
 
-**After a verified push there is exactly ONE source.** The config flips only once
-the server has the history and the counts agree, and `.taskops/board/` is RENAMED
-to `.taskops/board.local-<date>` — a dead archive nothing reads again. There is no
-`--force`, ever.
+**After a verified push there is exactly ONE source** — `.taskops/board/` is
+renamed to `.taskops/board.local-<date>`, a dead archive nothing reads again, and
+there is no `--force` on a push either.
 
 ## The eleven MCP tools
 
