@@ -55,7 +55,6 @@ def show(repo: Path, sha: str, path: str, cap: int = CAP) -> tuple[str, bool] | 
     empty string, because a committed empty file is a real and different answer;
     the caller owns the wording of the refusal, as everywhere in this package."""
     raw = run.git("show", f"{sha}:{path}", cwd=repo)
-    raw = run.git("show", f"{sha}:{path}", cwd=repo)
     return capped(raw.out, cap) if raw.ok else None
 
 
