@@ -1198,7 +1198,7 @@ construction and never sniffed per request** (`Mounts(repo=…)`,
 
 | host | root | /git | /ui/ |
 |---|---|---|---|
-| `taskops ui` | `<repo>/.taskops` — it IS in a checkout | mounted: `git/commit/<ref>`, `git/compare/<a>...<b>` | the bundle |
+| `taskops ui` | `<repo>/.taskops` — it IS in a checkout | mounted: `git/commit/<ref>`, `git/compare/<a>...<b>`, `git/file/<rev>?path=` | the bundle |
 | `taskops serve` | a directory of boards, no checkout | **404 with the reason spelled out**, and nothing faked | **410 and one sentence** |
 
 The `/ui/` column arrived later, and it is the same `repo` deciding both — see
@@ -1269,6 +1269,28 @@ ever interpolated. A commit is spelled `git diff <sha>^1 <sha>` (first parent
 only, so a merge does not explode into its whole branch; a root commit against
 git's empty tree), a compare is `merge-base(a, b) → b`, and an over-cap patch
 comes back `truncated: true` — flagged, never silently cut.
+
+**The third question: `git/file/<rev>?path=<file>` — one committed file's bytes**
+(the reports chapter). A report is a committed FILE and the event carries only
+`{path, title, milestone, sha}`, so the bytes have to come from the reader's own
+clone, exactly as a patch does: `diff.resolve` for the rev, then `git show
+<sha>:<path>` through `gitwork/patch.py::show`, capped on the same `CAP` and
+flagged the same way (`capped()` is one function so the two answers cannot
+disagree about what `truncated` means). It answers the same JSON envelope, so
+`content_type` (`text/html` only for a literal `.html`) is a FIELD and never
+this response's header — the token lives in this origin and the report is
+rendered in a sandboxed iframe.
+
+**It is not a file server, and the refusal is the feature.** The path is checked
+by `core/reports.py::under()` — the SAME call the verb that registers a report
+makes, so the two ends cannot drift — which refuses `..`, an absolute path, a
+doubled separator and the directory itself, and never repairs one: a traversal
+normalised into something acceptable is the bug. Anything outside
+`.taskops/reports/` is a 400 that names the directory, and `tests/test_topology.py`
+walks every shape (a real secret one directory up included, asserting its
+contents appear nowhere in the answer). `taskops serve` still mounts no `/git`
+at all: the switch is `Mounts.repo`, decided once at construction, and a new
+question underneath it opens no door.
 
 ### The window: `taskops ui` serves locally even for a REMOTE board (2026-08-08)
 
