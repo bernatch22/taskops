@@ -1,5 +1,5 @@
-/* Nova's header: who we are, which chapter is in scope, whether the page is
- * still connected, who else is here, and the theme switch.
+/* Nova's header: who we are, what opens this board, which chapter is in scope,
+ * whether the page is still connected, who else is here, and the theme switch.
  *
  * Pure presentation — everything arrives as a prop and nothing here fetches. The
  * milestone pill IS Nova's button (a `▾` and all), and it was a dead `div` until
@@ -12,7 +12,7 @@
  * The live dot is the one piece of state the payload cannot carry: it is the feed
  * socket's own health, so it comes from useBoard's `live`, green when connected
  * and red when the page may be stale. */
-import type { Milestone, TeamMember } from "../../types";
+import type { BoardPayload, Milestone, TeamMember } from "../../types";
 import type { Theme } from "../../theme/theme";
 import { AvatarStack } from "./AvatarStack";
 import { MilestonePicker } from "./MilestonePicker";
@@ -32,6 +32,13 @@ export interface HeaderProps {
   onSelect: (id: string) => void;
   /** The feed socket is connected. */
   live: boolean;
+  /** What opens this board, when anything does — `BoardPayload.forge`, handed
+   *  down whole rather than pre-formatted so the sentence is written once, here,
+   *  beside the identity it belongs to. `undefined` on an invite-only board (and
+   *  on a board one version behind, which says the same thing) and then NOTHING
+   *  is drawn: an empty line under `nova` would read as a board that lost its
+   *  forge, not as one that never declared one. */
+  forge?: BoardPayload["forge"];
   team: TeamMember[];
   theme: Theme;
   onToggleTheme: () => void;
@@ -76,7 +83,7 @@ const toggle: React.CSSProperties = {
 
 export function Header(props: HeaderProps): React.JSX.Element {
   const { milestone, milestones, landedTotal, selected, onSelect, live, team, theme } = props;
-  const { onToggleTheme, children } = props;
+  const { onToggleTheme, children, forge } = props;
   const dot = live ? "var(--ok)" : "var(--danger)";
   const dotSoft = live ? "var(--ok-soft)" : "var(--danger-soft)";
 
@@ -98,6 +105,28 @@ export function Header(props: HeaderProps): React.JSX.Element {
           <div className="mono" style={{ fontSize: "10px", color: "var(--text-3)" }}>
             nova
           </div>
+          {/* WHO CAN GET IN, under who we are — the one line that used to be
+              invisible to everybody but the owner who declared it and the
+              stranger the door refused. Drawn only when the board declared a
+              forge (`types.ts::BoardPayload.forge`).
+
+              Text and not an anchor on purpose: `links.tsx` owns every forge
+              URL this dashboard draws and keys them off `BoardPayload.repo`,
+              which is a DIFFERENT fact (where the code lives, not what opens
+              the board) and can name a different repo. A second, hand-built
+              base here would be that module's job spelled twice. The `title`
+              carries the command instead, which is what a reader who wants in
+              actually needs. */}
+          {forge ? (
+            <div
+              className="mono"
+              data-testid="board-forge"
+              title={`${forge.need} on this repo opens this board — taskops join <board> --github`}
+              style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "2px" }}
+            >
+              {forge.host}/{forge.repo} · {forge.need}
+            </div>
+          ) : null}
         </div>
 
         <MilestonePicker

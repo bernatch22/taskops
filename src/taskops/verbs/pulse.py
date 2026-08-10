@@ -145,6 +145,7 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     filed, reports_total = _facts.reports(stores, stone["id"] if stone else "")
 
     window = _args.text(args, "window", default="")
+    opens = project.forge(stores)
     return {
         "done_total": done_total,
         # Where this repo lives on the web, or absent — `verbs/project.py`.
@@ -152,6 +153,19 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         # falls back to plain text: no origin, no links, no noise.
         "repo": state["project"].get("remote"),
         "visibility": project.visibility(stores),  # DERIVED — `project.py` defaults it
+        # What OPENS this board, when anything does — `{host, repo, need}`,
+        # derived per read exactly like `visibility` above it and stored in the
+        # one place it was declared. Until this key existed the fact was
+        # readable only by the owner who declared it and by the stranger the
+        # door refused, so discovery was by bumping into it.
+        #
+        # **A board with no forge sends NO KEY**, not a `null` — which is why
+        # this is a `**` splat and not an entry. `None` would be a THIRD thing a
+        # consumer has to know about (absent / null / a fact), and every reader
+        # that never heard of the op keeps seeing the payload it always saw,
+        # byte for byte. That is also `forge()`'s own contract: absent, cleared
+        # and unintelligible collapse to one answer (`core/forge.py`).
+        **({"forge": opens} if opens else {}),
         "milestone": stone,
         # The open chapters AND the recent landed ones. Sending only the open
         # ones was correct while `open` was the only status a chapter ever had;

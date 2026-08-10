@@ -1,22 +1,23 @@
-"""`taskops board` · `invite` · `revoke` — operating a HOST from the laptop, keyed.
+"""`taskops board …` — operating the BOARDS on a host, from the laptop, keyed.
 
     taskops board create <host>/<name>     owner only — THE way a board comes to exist
     taskops board ls [<host>]              owner: all of them; member: their own
-    taskops board visibility <host>/<name> public|private   owner only
-    taskops invite <who> --board <name>    owner only — prints the join line
-    taskops revoke --key <SHA256:…> | --invite <id>
+    taskops board visibility [<host>/<name>] public|private       owner only
+    taskops board forge [<host>/<name>] <owner>/<repo> [--need]   owner only
+    taskops board forge --clear            back to invite-only
 
 Every one of these is a signed call to the server's own `/rpc` (`http/admin.py`),
 authenticated by the session an ssh key mints — `--key` on any of them signs in
 on the spot, which is what makes the FIRST one runnable (`signed_in`). Before
-them, all four were an ssh session on the box: the anomaly this chapter kills.
+them, all of them were an ssh session on the box: the anomaly this chapter kills.
+`invite` and `revoke` share that transport and live in `cli/grants.py`, because
+they are about a CREDENTIAL and everything here is about a BOARD.
 
-**THE BREAK-GLASS PATH SURVIVES**: `--root <dir>` runs the same act against the
-files directly, on the machine that holds them, and it is what you use when the
-server is down or the owner's key is lost. Not deprecated, never to be removed —
-a system whose only door is its own API cannot be repaired when that API is what
-broke. Those two acts live in `cli/admin.py`, beside `server init`: that module
-runs ON the box, this one is the laptop.
+**The last two are the same shape and that is why they sit together**: an
+owner-only fact about ONE board, a value from a closed set, recorded as an event
+by `verbs/project.py` and re-read from the log. Neither has a `get` half — the
+board's own payload already carries the answer, and a second door onto a fact is
+a second thing to keep in step with the first.
 
 **No host alias registry, and that is a decision.** `taskops host add prod …`
 was the obvious next command and it is deliberately NOT here: the host is already
@@ -34,7 +35,7 @@ import argparse
 from typing import Any
 from pathlib import Path
 
-from . import admin, commands
+from . import commands
 from .. import _wire, _clock, identity
 from .._json import as_object
 from ..board import find_root, read_config
@@ -49,7 +50,9 @@ def board(args: argparse.Namespace) -> int:
     it, so the whole address is one argument and nothing has to be repeated."""
     action, target = str(args.action), str(args.target)
     if action == "visibility":
-        return _visibility(args, target, str(getattr(args, "visibility", "") or ""))
+        return _visibility(args, target, _flag(args, "value"))
+    if action == "forge":
+        return _forge(args, target, _flag(args, "value"))
     if action == "create":
         host, name = named(target)
         made = call(host, "board.create", {"name": name}, signed_in(host, args))
@@ -95,33 +98,47 @@ def _visibility(args: argparse.Namespace, target: str, wanted: str) -> int:
     return 0
 
 
-def invite(args: argparse.Namespace) -> int:
-    """A one-time join line, minted by the server that will honour it."""
-    who, name = str(args.who), str(args.board)
-    if not who:
-        raise TaskopsError("taskops invite <who> --board <name>")
-    if args.root:  # break-glass: the files, on the box
-        return admin.on_box_invite(Path(str(args.root)).expanduser(), who, name)
-    if not name:
-        raise TaskopsError("which board? taskops invite <who> --board <name>")
-    host, _ = address(str(args.host))
-    made = call(host, "invite.mint", {"who": who, "board": name}, signed_in(host, args))
-    print(f"one-time invite for {who} (id {made['id']}, 7 days):")
-    print(f"  taskops join \"{host}/{made['board']}?invite={made['token']}\" --key ~/.ssh/id_ed25519")
-    return 0
+def _forge(args: argparse.Namespace, target: str, repo: str) -> int:
+    """`taskops board forge [<host>/<board>] <owner>/<repo> [--need push|admin]`.
 
+    The command the `/join/github` refusal names, and until it existed the whole
+    GitHub chapter was reachable only by hand-writing `{"op": "forge", …}` — an
+    opt-in nobody can perform is an opt-in nobody performs.
 
-def revoke(args: argparse.Namespace) -> int:
-    """A key stops signing anybody in; an invite stops being redeemable."""
-    key, ident = str(args.key), str(args.invite)
-    if bool(key) == bool(ident):
-        raise TaskopsError("taskops revoke --key <SHA256:…> | --invite <id> — exactly one")
-    if args.root:  # break-glass: the files, on the box
-        return admin.on_box_revoke(Path(str(args.root)).expanduser(), key, ident)
-    host, _ = address(str(args.host))
-    verb = "key.revoke" if key else "invite.revoke"
-    gone = call(host, verb, {"key": key} if key else {"invite": ident}, signed_in(host, args, "sign_key"))
-    print(f"revoked {key or ident} ({gone.get('principal') or gone.get('subject')}) on {host}")
+    ONE positional is the REPO and not the board, which is the reading the
+    refusal teaches and the common case (one checkout, one board, recorded).
+    `board visibility` disambiguates its bare form against a closed pair; here
+    the rule is simpler and needs no vocabulary: a repo is always given, so a
+    lone argument can only be it. `--clear` is the way BACK — opting in is
+    reversible or it is a trap — and it is a flag rather than the word "none"
+    so that no repository can ever be named it.
+
+    **This half owns none of the vocabulary and holds no default of its own**:
+    `need` travels EMPTY and comes back decided (`verbs/project.py::_forged`
+    falls back to `push`, `core/forge.py` says which words exist and refuses a
+    typo loudly, by name), and the forge host is never sent at all. So what is
+    printed is read out of the answer — a command that echoed its own argv
+    would agree with itself while the board said something else, and a `push`
+    spelled here would be a second default to keep in step with the first.
+    """
+    if not repo and not args.clear:
+        target, repo = "", target  # one positional: it can only be the repo
+    if bool(args.clear) == bool(repo):
+        raise TaskopsError(
+            "taskops board forge <owner>/<name> [--need push|admin] — the repo whose "
+            "GitHub membership opens this board; `--clear` (alone) takes it back to invite-only"
+        )
+    host, name = named(target)
+    sent = {"board": name, "repo": repo, "need": _flag(args, "need")}
+    out = call(host, "board.forge", sent, signed_in(host, args))
+    fact = as_object(out.get("forge"))
+    moved = "already" if not out.get("recorded") else "now"
+    if not fact:
+        print(f"{out['board']} on {host} is {moved} invite-only — no forge (by {out.get('by', '?')})")
+        return 0
+    print(f"{out['board']} on {host} is {moved} opened by {fact['host']}/{fact['repo']}")
+    print(f"  anyone with {fact['need']} on it joins with: taskops join {out['board']} --github")
+    print("  they become a member; the token they use is read once and stored nowhere")
     return 0
 
 

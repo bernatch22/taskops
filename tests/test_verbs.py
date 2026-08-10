@@ -14,7 +14,7 @@ import pytest
 from taskops import verbs, _clock
 from taskops.core import seams
 from taskops.store import log
-from taskops.verbs import pulse, _facts, _stories
+from taskops.verbs import pulse, _facts, project, _stories
 from taskops._errors import Refused, NotFound, BadRequest
 from taskops.core.types import ANON, LEASE_TTL
 from taskops.store.stores import Stores
@@ -1002,6 +1002,127 @@ def test_a_changed_origin_wins_by_being_later(
 def test_an_unknown_project_fact_is_refused_by_name(stores: Stores) -> None:
     with pytest.raises(BadRequest, match="not a project fact"):
         call(stores, "project", BERNA, op="mascot", slug="a/b")
+
+
+# ── the forge that opens the board (op=forge) ───────────────────────────────
+
+
+def test_a_board_declares_no_forge_and_that_is_how_every_board_is_born(
+    stores: Stores,
+) -> None:
+    """The chapter's opt-in rule, at its only reader. Absent is not a special
+    case to remember — it is the answer `forge()` gives before anyone speaks,
+    and the board payload gains no key for it, so nothing downstream can even
+    see that the op exists."""
+    planned(stores)
+    assert project.forge(stores) is None
+    assert "forge" not in call(stores, "board", BERNA)
+
+
+def test_the_board_payload_says_what_opens_it(stores: Stores) -> None:
+    """The fact stops being the owner's private knowledge.
+
+    `visibility`'s precedent, exactly (`verbs/pulse.py`): derived per read from
+    the one place it was declared, never a second copy. Before this key the only
+    two parties who could tell that `--github` works here were the owner who
+    declared the forge and the stranger the door refused — an agent with full
+    board access could not, and neither could the dashboard.
+
+    The payload carries the WHOLE fact and nothing reshaped: the door reads
+    `{host, repo, need}` and so does a reader, so a screen can name the repo AND
+    the access without knowing the default.
+    """
+    call(stores, "project", BERNA, op="forge", repo="cloudacio/Axion", need="admin")
+    assert call(stores, "board", BERNA)["forge"] == {
+        "host": "github.com",
+        "repo": "cloudacio/Axion",
+        "need": "admin",
+    }
+
+
+def test_a_cleared_forge_takes_the_key_out_of_the_payload_again(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Absent stays ABSENT — the key is never sent as `null`.
+
+    A cleared forge is the same board as one that never declared one (the door's
+    own rule, `core/forge.py::understood`), so the payload has to be the same
+    payload: a reader that learned "the key is there, look at its value" would
+    read `null` as a forge whose fields are missing. There is one shape for "no
+    GitHub door here", and it is no key.
+    """
+    call(stores, "project", BERNA, op="forge", repo="cloudacio/Axion")
+    clean = set(call(stores, "board", BERNA)) - {"forge"}
+    clock(60)
+    call(stores, "project", BERNA, op="forge", repo="")
+    after = call(stores, "board", BERNA)
+    assert "forge" not in after and set(after) == clean
+
+
+def test_the_declared_forge_is_what_the_door_will_read(stores: Stores) -> None:
+    """The vocabulary, whole: `{host, repo, need}`, with github.com and `push`
+    as the defaults a caller may leave out — and the SAME dict from the write
+    and from the read, because the door reads it back, never the answer."""
+    out = call(stores, "project", BERNA, op="forge", repo="bernatch22/taskops")
+    assert out["value"] == {"host": "github.com", "repo": "bernatch22/taskops", "need": "push"}
+    assert out["recorded"] and project.forge(stores) == out["value"]
+
+    asked = call(stores, "project", BERNA, op="forge", repo="cloudacio/Axion", need="admin")
+    assert asked["value"] == {"host": "github.com", "repo": "cloudacio/Axion", "need": "admin"}
+    assert project.forge(stores) == asked["value"]
+
+
+def test_declaring_a_forge_is_reversible(stores: Stores, clock: Callable[[float], None]) -> None:
+    """`repo=""` is the way BACK to invite-only. Opting in has to be undoable
+    in the same breath it was done, or a mistyped owner is permanent."""
+    call(stores, "project", BERNA, op="forge", repo="bernatch22/taskops")
+    clock(60)
+    assert call(stores, "project", BERNA, op="forge", repo="")["value"] is None
+    assert project.forge(stores) is None
+
+
+def test_a_repo_that_is_not_owner_name_is_refused_rather_than_trimmed(stores: Stores) -> None:
+    """`GET /repos/{owner}/{name}` has nowhere to put a third segment, so a
+    GitLab-shaped slug is a refusal and never a truncation; the value the
+    caller has in hand is `remote.parse`'s `slug`, which is exactly this."""
+    for wrong in ("taskops", "team/sub/repo", "bernatch22/", "/taskops", "bern atch/taskops"):
+        with pytest.raises(BadRequest, match="exactly owner/name"):
+            call(stores, "project", BERNA, op="forge", repo=wrong)
+    assert project.forge(stores) is None
+
+
+def test_a_forge_this_host_cannot_ask_is_refused_at_declaration(stores: Stores) -> None:
+    """A board must never carry a promise nothing can keep: the host that can
+    be ASKED about membership is a shorter list than the hosts `remote` stores,
+    and the refusal says the repo is still recordable as the board's remote."""
+    with pytest.raises(BadRequest, match="does not open it"):
+        call(stores, "project", BERNA, op="forge", host="gitlab.com", repo="team/thing")
+
+
+def test_read_access_is_not_a_membership(stores: Stores) -> None:
+    """`need=pull` would open a public repo's board to everyone with a browser.
+    It is not in the pair, so it is refused by name rather than defaulted."""
+    with pytest.raises(BadRequest, match="Read access is not a membership"):
+        call(stores, "project", BERNA, op="forge", repo="bernatch22/taskops", need="pull")
+
+
+def test_a_forge_nobody_can_verify_reads_as_no_forge(stores: Stores) -> None:
+    """The read side refuses SILENTLY, and that asymmetry is the point: a
+    declaration can reach `state()` from a log another version wrote or a hand
+    edit, and a door that GRANTS on this answer must see "no forge" rather than
+    a half-understood promise. Written straight to the log, past the verb."""
+    from taskops.core.event import make
+
+    junk: list[Any] = [
+        {"host": "gitlab.com", "repo": "a/b", "need": "push"},  # a host nobody can ask
+        {"host": "github.com", "repo": "team/sub/repo", "need": "push"},  # no such API path
+        {"host": "github.com", "repo": "a/b", "need": "pull"},  # not a membership
+        {"repo": "a/b"},  # half a declaration
+        "github",  # not even an object
+    ]
+    for value in junk:
+        stores.write([make("project", BERNA, "project", {"op": "forge", "value": value}, 1000.0)])
+        assert project.forge(stores) is None
 
 
 # ── the log itself: the events verb and its keyset paging ───────────────────

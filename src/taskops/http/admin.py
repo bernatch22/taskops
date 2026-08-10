@@ -97,6 +97,27 @@ def _visibility(call: Call) -> dict[str, Any]:
     return {"board": name, "visibility": wanted, "recorded": out.get("recorded"), "by": call.actor}
 
 
+def _forge(call: Call) -> dict[str, Any]:
+    """The repo whose membership opens this board — `repo=""` declares none.
+
+    `_visibility`'s shape exactly, and through `verbs.call` for the same reason:
+    `verbs/project.py` owns the op and `core/forge.py` owns the vocabulary, so
+    the CLI door and the `/join/github` door cannot end up disagreeing about
+    what a `need` is.
+
+    `repo` and `need` are read with `.get` rather than `scoped.text` because the
+    EMPTY value is legal here and `text` refuses a blank by name: `repo=""` is
+    the way BACK to invite-only, and `need=""` is "the default, `push`". Neither
+    is coerced — they travel as they arrived and `verbs/_args.text` refuses a
+    non-string one file down, which is where that wall already stands.
+    """
+    name = _mounts.named(_text(call.args, "board"))
+    call.mounts.check(name)
+    args = {"op": "forge", "repo": call.args.get("repo", ""), "need": call.args.get("need", "")}
+    out = verbs.call(call.mounts.stores(name), "project", call.actor, args)
+    return {"board": name, "forge": out.get("value"), "recorded": out.get("recorded"), "by": call.actor}
+
+
 def _list(call: Call) -> dict[str, Any]:
     """Everything, for the owner; a member's own boards, for a member.
     "Their own" is DERIVED and not a membership table: a board somebody holds a
@@ -118,6 +139,7 @@ REGISTRY: dict[str, Verb] = {
     "board.create": Verb("board.create", "write", _create),
     "board.list": Verb("board.list", "read", _list),
     "board.visibility": Verb("board.visibility", "write", _visibility),
+    "board.forge": Verb("board.forge", "write", _forge),
     "board.ingest": Verb("board.ingest", "write", _ingest),
     "invite.mint": Verb("invite.mint", "write", grants.mint),
     "key.revoke": Verb("key.revoke", "write", grants.revoke_key),

@@ -55,11 +55,12 @@ importable leaves commits un-stamped, silently.
 
 ```
 taskops init                              a local board in this repo
-taskops join [<name>] [--invite <id>]     join a board, install the hooks
+taskops join [<name>] [--invite|--github] join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
-taskops board create|ls|push|visibility   the boards on a host
+taskops board create|ls|push              the boards on a host
+taskops board visibility|forge            who may read one · who GitHub lets in
 taskops invite <who>                      a single-use link
 taskops revoke --key|--invite             a key or an invite stops working
 taskops tidy                              remove worktrees whose work is in the trunk
@@ -80,6 +81,7 @@ and the key is discovered the way ssh discovers one:
 taskops remote add https://host:8787      # once per checkout
 taskops join my-project                   # your key is registered: that is the credential
 taskops join my-project --invite <id>     # first time: the invite enrols your key too
+taskops join my-project --github          # first time, no invite: GitHub vouches for you
 taskops join my-project                   # no key + public board: read-only window
 ```
 
@@ -89,6 +91,14 @@ discovered key · `--as <actor>` when your unix user is not the principal's name
 `--discard-local` when this repo already has a local board with events. The old
 full-URL form (`taskops join "<url>?token=…"`) keeps working — boards joined
 before keys existed never rot.
+
+**`--github` works only on a board that declared a forge** (below), and only for
+the first join: having `push` on that repo stands in for an invite, your ssh key
+is enrolled, and every call after it is the ordinary signed session — GitHub is
+the introduction, never the credential. The token is used for one server-side
+call and stored nowhere, which is why it is **not** a flag value: `--github`
+takes none, and the token comes from `gh auth token`, else `$GITHUB_TOKEN`, else
+a hidden prompt.
 
 **Restart your Claude Code session after either** — MCP servers load once, at
 session start, from `.mcp.json`.
@@ -150,9 +160,25 @@ And the admin surface for any board on that host, from anywhere:
 ```sh
 taskops board ls
 taskops board visibility <name> public|private     # owner only
+taskops board forge <owner>/<repo> [--need push|admin]   # owner only: GitHub opens it
+taskops board forge --clear                        # invite-only again
 taskops invite <who> [--board <name>]
-taskops revoke --key SHA256:… | --invite <id>
+taskops revoke --key SHA256:… | --invite <id>      # a GitHub-enrolled key too
 ```
+
+**Declaring the forge** — the repo whose membership opens a board — is a board
+fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
+until an owner records it and cleared again by recording `repo=""`. A board that
+never recorded one is invite-only and its `/join/github` door does not exist.
+
+**The board says so out loud.** The declared forge rides on the `board` payload
+— derived per read from the one event that declared it, never a second copy —
+so anybody who can read the board can see what opens it, and the dashboard
+draws it under the board's own identity as
+`github.com/<owner>/<repo> · push`. Before that, the only two parties who knew
+were the owner who typed the command and the stranger the door refused. A board
+with no forge sends no such key at all, which is what keeps every older reader
+working unchanged.
 
 No URL and no `--key` after `remote add`: the host is recorded in the checkout,
 `board create` records the name, and the key is **discovered** the way ssh

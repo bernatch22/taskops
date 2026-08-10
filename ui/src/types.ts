@@ -367,6 +367,24 @@ export interface BoardPayload {
    *  standing is `pulse.actor`.
    *  @source `verbs/project.py::visibility`, via `verbs/pulse.py::run` */
   visibility?: "public" | "private";
+  /** What OPENS this board: the forge repo whose membership enrols a key, and
+   *  the access that counts (`taskops join <board> --github`).
+   *
+   *  OPTIONAL, and here the optionality is the FEATURE rather than the usual
+   *  version drift: a board that declared no forge sends no key at all — never
+   *  `null` — so absent covers both "this board is invite-only" and "this board
+   *  is one version behind", which are the same sentence to a reader: there is
+   *  no GitHub door here that this screen can name. Consumers read `?.` and
+   *  draw nothing; the refusal a stranger would get is the server's.
+   *
+   *  `need` is GitHub's own permission key (`push` | `admin`), not a taskops
+   *  word — `pull` is deliberately not among them, since read access to a
+   *  public repo is not a membership (`core/forge.py`). It is typed as the pair
+   *  and not as `string` because the pair is closed on the server side and a
+   *  third value could only arrive from a board this bundle cannot understand.
+   *
+   *  @source `verbs/project.py::forge`, via `verbs/pulse.py::run` */
+  forge?: { host: string; repo: string; need: "push" | "admin" };
   /** The chapter's registered reports, NEWEST FIRST, capped at
    *  `verbs/_facts.py::REPORTS_SHOWN` (20) — scoped to the milestone in focus,
    *  board-wide when none is.
