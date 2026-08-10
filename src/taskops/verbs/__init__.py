@@ -20,6 +20,7 @@ from . import (
     card,
     plan,
     take,
+    filed,
     pulse,
     assign,
     events,
@@ -29,6 +30,7 @@ from . import (
     update,
     project,
     _waiting,
+    activity,
     _mentions,
 )
 from .._errors import Refused, BadRequest
@@ -87,6 +89,9 @@ REGISTRY: dict[str, Verb] = {
         "these are the orchestrator's moves, not yours. Your own picture: taskops_board",
     ),
     "card": Verb(card.run, "read", WATCHERS, ""),
+    # `card` for a whole chapter, in one read: the same facts per card, minus
+    # the two long ones unless depth=full asks for them (`verbs/activity.py`).
+    "activity": Verb(activity.run, "read", WATCHERS, ""),
     "report": Verb(report.run, "read", WATCHERS, ""),
     # The LOG, paged — the one read that answers "what happened" rather than
     # "what is each card". Board-wide by construction (verbs/events.py).
@@ -128,6 +133,11 @@ REGISTRY: dict[str, Verb] = {
     # A fact about the repo itself, written by init/join — the only side that
     # has a clone. BOTH roles: whoever ran the command owns the checkout.
     "project": Verb(project.run, "write", BOTH, ""),
+    # A committed report is put on a chapter, by reference (`verbs/filed.py`).
+    # BOTH roles and no owner check: a chapter is not a card, so there is
+    # nobody holding it to be the one allowed to narrate it — and the read half
+    # (`core/reports.py::of`) is open to anyone the board is open to.
+    "filed": Verb(filed.run, "write", BOTH, ""),
 }
 
 

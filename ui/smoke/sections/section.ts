@@ -17,7 +17,7 @@
  * else it builds itself, in its own scope, which is what makes the collided
  * `const`s (`reviewed`, `handedBoard`) impossible by construction. */
 import type { rows } from "../../src/pages/Worktrees";
-import type { BoardPayload, CardPayload, GitDiff } from "../../src/types";
+import type { BoardPayload, CardPayload, GitDiff, GitFile } from "../../src/types";
 
 /** The fixture, as `tests/test_ui.py` writes it. */
 export interface Fixture {
@@ -31,8 +31,19 @@ export interface Fixture {
   board_landed: BoardPayload;
   /** substrings that chapter must still be able to say for itself */
   expect_landed: string[];
-  /** the /git door's own answer over a real clone, and its own no-repo refusal */
-  git: { compare: GitDiff; no_repo: string; stale: string };
+  /** the /git door's own answers over a real clone: a range, one committed
+   *  report's bytes (html, with a hostile `<script>` in it, and text), and its
+   *  own refusals — no clone here, a ref this clone lacks, a path that is not a
+   *  report. All of them come from `http/gitdoor.py`, never from a shape written
+   *  by hand: the words are what the UI matches on and quotes. */
+  git: {
+    compare: GitDiff;
+    no_repo: string;
+    stale: string;
+    file: GitFile;
+    text_file: GitFile;
+    not_a_report: string;
+  };
   /** two cards the board actually CLOSED: the reviewed one, then the `no_code`
    *  one. Their histories are where `submitted`, `reviewed` and `status` bodies
    *  come from — see `sections/thread-closing-note.tsx`. */

@@ -176,9 +176,13 @@ assignment · `land` or automatic merges to main · git replication between clon
 · Claude hooks **that decide or store** · a stored `doing` · a slug in a branch
 name · a `recover` · a mark-as-read/ack verb · per-request SIGNING · hand-rolled
 crypto or a pip crypto dependency · a `--force` on `board push` · a STORED
-GitHub token or a GitHub login as a second credential type · and ANONYMOUS
-WRITES in any form, including the invisible one (a `presence` row on a public
-read).
+GitHub token or a GitHub login as a second credential type · a report's CONTENT in
+`events.jsonl` or a reports TABLE beside it (the log holds `{path, title,
+milestone, sha}` and the list is a fold) · `allow-scripts` **beside**
+`allow-same-origin` on the report frame, or a `sandbox` a caller can pass — that
+pair is not two permissions, it is the absence of the sandbox, and this origin
+holds the token · and ANONYMOUS WRITES in any form, including the invisible one
+(a `presence` row on a public read).
 
 **Legacy bearer tokens are a fleet, not a detail.** Production's four boards
 were joined before keys existed: no principal, no pubkey, an empty

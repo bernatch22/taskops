@@ -38,7 +38,7 @@ can be misread:
 * **A repo**: joined to one board. `taskops remote add` once per checkout, then
   every command runs bare.
 * **Your agents**: they never touch any of this — they talk to the board through
-  the nine MCP tools.
+  the eleven MCP tools.
 
 ## Install
 
@@ -194,7 +194,7 @@ the server has the history and the counts agree, and `.taskops/board/` is RENAME
 to `.taskops/board.local-<date>` — a dead archive nothing reads again. There is no
 `--force`, ever.
 
-## The nine MCP tools
+## The eleven MCP tools
 
 The only management interface. Every tool takes `repo_path=` and `actor=`.
 
@@ -215,6 +215,13 @@ taskops_review     the verifier's one door: claim a submitted card, then
                    verdict=pass|changes note=…
 taskops_comment    say something on ANY open card, including one somebody else
                    holds. mentions=[…] addresses it to them
+taskops_activity   a whole chapter's story in ONE read: every card's standing,
+                   commits with numstat, where it merged, the reports filed on
+                   it. since=<seq> returns only what moved; depth=full adds each
+                   spec and thread. Never a diff — follow branch and sha into git
+taskops_filed      register a report you already COMMITTED under
+                   .taskops/reports/: path, title, sha. The board keeps the
+                   pointer, never the prose
 ```
 
 `plan`, `assign` and `merge` are the orchestrator's (`dev:<name>`); `take` is a
@@ -224,6 +231,48 @@ only taking, closing and releasing belong to the holder.
 Three states are stored — `open`, `done`, `dropped`. `ready`, `doing`, `blocked`,
 `stalled`, `review`, `reviewing`, `changes` and `mention` are all derived per read,
 which is why there is no `recover` verb and no mark-as-read.
+
+## Reports — the narration a machine cannot regenerate
+
+A report is what an agent understood, and until now it died in a chat
+transcript. It joins the board the way a commit does: **the file lives in git,
+the board holds a pointer.** Four steps, in this order, and the order is the
+whole design — the file is committed BEFORE it is registered, because a pointer
+to bytes that are not in history yet is a pointer to nothing.
+
+```
+1. read the chapter    taskops_activity milestone=ms-… depth=full
+2. write the file      .taskops/reports/<something>.html   (or .md, .txt)
+3. COMMIT it           git add + git commit — in your own worktree
+4. register it         taskops_filed path=… title=… sha=<that commit> milestone=ms-…
+```
+
+Then `taskops ui` lists it under the chapter's **Reports** tab and renders it
+full width, read out of **your own clone** at that sha — the dashboard never
+asks the server for the bytes, and there is nothing to serve: a host running
+`taskops serve` answers `/git` with a 404, whole.
+
+The rules that shape it, each of them the reason a step exists:
+
+* **The log stores a reference, never the prose.** The `report` event body is
+  `{path, title, milestone, sha}` and nothing else, so a 200KB report grows
+  `events.jsonl` by a few hundred bytes. Same rule that keeps diffs out of the
+  log: a commit is recorded as a sha and a numstat, never a patch.
+* **`.taskops/reports/` is a shape, not a convention.** `core/reports.py::under()`
+  is the one place that decides whether a path is a report path, and both ends
+  ask it — the verb that registers one and the `/git` door that later reads it.
+  A traversal, an absolute path or the bare directory is refused, never
+  repaired. The door is for reports; it is not a file server.
+* **A report is untrusted HTML, and it is read in a sandbox.** It renders inside
+  `<iframe sandbox="allow-scripts" srcdoc=…>`. Scripts run — a panorama report
+  is a self-contained page and rendering it dead ships a broken document — but
+  never beside `allow-same-origin`, which together are not two permissions but
+  the absence of the sandbox. The frame gets an opaque origin: no parent, no
+  `localStorage`, no cookie. The dashboard's token is in that origin, so this is
+  a boundary and not a preference. A `text/plain` report is not framed at all.
+* **The list is a fold, never a table.** "Which reports does this chapter have"
+  is answered from the `report` events on every read, newest first, capped with
+  the honest total beside it.
 
 ## Developing
 

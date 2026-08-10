@@ -251,10 +251,18 @@ export async function run(_fixture: Fixture, check: Check, h: Harness): Promise<
 
   /* The fourth tab exists AND has a page. A tab that falls through to the Board
    * is a dead tab that still looks alive; `App`'s page map is a
-   * `Record<TabId, …>`, so this list and that map cannot disagree. */
+   * `Record<TabId, …>`, so this list and that map cannot disagree.
+   *
+   * This asserted whole-list EQUALITY against `"monitor board actors worktrees"`
+   * until the Reports view was added (tk-535807). The claim this section owns is
+   * that Actors is Nova's FOURTH tab, in Nova's order — the four are a PREFIX,
+   * and a frozen full list could not survive any view Nova never had without
+   * saying something false about this card's subject. The whole list, Reports
+   * included, is pinned by the section that changed it
+   * (`sections/report-sandbox.tsx`), where a fifth tab is what is under test. */
   check(
-    "actors: the tab bar is Nova's four, in Nova's order",
-    TABS.map((t) => t.id).join(" ") === "monitor board actors worktrees",
+    "actors: the tab bar opens with Nova's four, in Nova's order",
+    TABS.slice(0, 4).map((t) => t.id).join(" ") === "monitor board actors worktrees",
   );
 
   /* ── The detail: an overlay, and a pane per DATE with an hour inside ──

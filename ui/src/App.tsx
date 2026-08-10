@@ -6,7 +6,8 @@
  * own fetch would only manage to paint a board half a second older than the rail
  * above it. Pages receive data; they never ask for it.
  *
- * Four pages, in TabNav's order: Monitor, the Board, Actors and Worktrees — the
+ * Five pages, in TabNav's order: Monitor, the Board, Actors, Worktrees and
+ * Reports — the
  * tab list and the branch below it are two halves of one fact, and a tab with no
  * branch here USED to fall through to the Board, which is a dead tab that still
  * looks alive: it highlights, the view does not change, and nothing says why.
@@ -42,6 +43,7 @@ import type { Client } from "./client";
 import { Actors } from "./pages/Actors";
 import { Board } from "./pages/Board";
 import { Monitor } from "./pages/Monitor";
+import { Reports } from "./pages/Reports";
 import { Worktrees } from "./pages/Worktrees";
 import { applyTheme, readTheme, type Theme } from "./theme/theme";
 import { useBoard } from "./useBoard";
@@ -75,9 +77,15 @@ const panel: React.CSSProperties = {
  *
  *  Pure, and exported, for the reason `submit()` is (CLAUDE.md): no handler
  *  fires under `react-dom/server`, so a rule left inside the closure would have
- *  no test at all. `ui/smoke/sections/diff-page.tsx`. */
-export function onTab(next: TabId): { tab: TabId; tree: string | null } {
-  return { tab: next, tree: null };
+ *  no test at all. `ui/smoke/sections/diff-page.tsx`.
+ *
+ *  `report` joins `tree` here and for the identical reason: the Reports view's
+ *  second surface replaces its index, so the same click on the same pill has to
+ *  bring the reader back to the list. One rule, one function, every full-width
+ *  surface cleared by it — a second one clearing itself would be the first bug
+ *  again, in a new view. */
+export function onTab(next: TabId): { tab: TabId; tree: string | null; report: string | null } {
+  return { tab: next, tree: null, report: null };
 }
 
 export function App({ client }: { client: Client }): React.JSX.Element {
@@ -92,6 +100,10 @@ export function App({ client }: { client: Client }): React.JSX.Element {
    * component being reset from outside itself. The state moves to where the
    * event is. */
   const [tree, setTree] = useState<string | null>(null);
+  // WHICH REPORT IS OPEN, up here for the same reason as `tree` — see `onTab`.
+  // Unlike a tree it opens no card: a report belongs to a CHAPTER, not to a card,
+  // so there is no dossier to fetch beside it.
+  const [report, setReport] = useState<string | null>(null);
   // The chapter in focus lives HERE, next to the tab, for the same reason: it is
   // view state that decides an ARGUMENT to the one fetch, never a second fetch.
   const [milestone, setMilestone] = useState("");
@@ -112,6 +124,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
   function selectTab(next: TabId): void {
     const view = onTab(next);
     if (tree !== view.tree) openTree(view.tree);
+    if (report !== view.report) setReport(view.report);
     setTab(view.tab);
   }
 
@@ -233,6 +246,24 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 team={board.team}
                 onComment={comment}
                 readOnly={watching(board.pulse)}
+              />
+            ),
+            /* The fifth view. The LIST is a slice of the one board answer —
+               `pulse.py::run` already scoped it to the chapter in focus, so
+               there is nothing to filter here and nothing to fetch. The BYTES
+               are not on the board and never will be, so the page is handed the
+               same `client` the diff surface gets, and reads one report at a
+               time from the reader's own clone. `?? []` / `?? 0` for a board one
+               version behind, which sends neither key (types.ts). */
+            reports: () => (
+              <Reports
+                reports={board.reports ?? []}
+                total={board.reports_total ?? 0}
+                chapter={board.milestone?.title ?? ""}
+                reader={client}
+                open={report}
+                onOpen={setReport}
+                now={Date.now() / 1000}
               />
             ),
           } satisfies Record<TabId, () => React.JSX.Element>)[tab]()

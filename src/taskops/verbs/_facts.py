@@ -7,10 +7,15 @@ answered two different ways in two verbs (v1 answered it in four).
 
 from __future__ import annotations
 
-from ..core import review, machine, mentions
+from ..core import (
+    review,
+    machine,
+    reports as reporting,  # `reports()` below is this module's door to it
+    mentions,
+)
 from ..store import reviews
 from .._errors import NotFound
-from ..core.types import CLOSED, Card, Event, Milestone
+from ..core.types import CLOSED, PROJECT, Card, Event, Milestone
 from ..store.stores import Stores
 
 
@@ -68,6 +73,29 @@ def chapters(stores: Stores) -> tuple[list[Milestone], int]:
     )
     open_now = [m for m in everything if m["status"] == "open"]
     return open_now + landed[:LANDED_SHOWN], len(landed)
+
+
+REPORTS_SHOWN = 20
+"""How many registered reports ride on a read, newest first.
+
+`LANDED_SHOWN`'s argument one notch along: reports only ever accumulate, so the
+list is capped and the honest total travels beside it (`done_total`'s idiom,
+which this chapter's rules make a requirement rather than a habit). 20 because a
+chapter is narrated a handful of times, so this is the whole story for a focused
+chapter and a generous tail for the board."""
+
+
+def reports(stores: Stores, milestone: str = "") -> tuple[list[reporting.Report], int]:
+    """A chapter's reports, newest first, and how many there really are.
+
+    The world half of `core/reports.py::of` — one read of the PROJECT thread,
+    which is where a `report` event lives (it is about a chapter, not a card).
+    Nothing is stored: the list is folded per read, so a report cannot exist in
+    the log and be missing from the list, which is the failure a `reports` table
+    would eventually produce.
+    """
+    rows = reporting.of(stores.events(PROJECT), milestone)
+    return rows[:REPORTS_SHOWN], len(rows)
 
 
 def in_scope(stores: Stores, given: str) -> Milestone | None:

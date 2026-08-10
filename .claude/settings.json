@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/berna/.local/share/uv/tools/taskops-cli/bin/python\" -m taskops.cli hook claude"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/berna/.local/share/uv/tools/taskops-cli/bin/python\" -m taskops.cli hook claude"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r '.tool_input.command // \"\"'); printf '%s' \"$c\" | grep -qE 'python[0-9.]*[[:space:]]+-(c|[[:space:]]|$)' && printf '%s' \"$c\" | grep -qE 'open_board|board[.]call|taskops[.]mcp|taskops[.]board|gitmoves' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"REFUSED: the board is driven through the taskops_* MCP tools, never through the shell. Use taskops_board, taskops_card, taskops_take, taskops_update, taskops_comment, taskops_assign, taskops_merge, taskops_review or taskops_plan, each with repo_path= and actor=. Why this is hard and not a preference: the MCP tool is the ONLY door that runs both halves. taskops_assign cuts the worktrees that the plain assign verb does not, and taskops_merge runs the git merge that the plain merged verb does not, so driving a verb from the shell records board state about git that never happened. A shelled call also skips the pulse line, so you stop being told what the board is waiting for. The taskops CLI stays fine for what it owns: join, remote add, ui, serve, invite, revoke, tidy, and board create/ls/push.\"}}'; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

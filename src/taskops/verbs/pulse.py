@@ -136,6 +136,13 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     groups["done"] = sorted(groups["done"], key=lambda r: r["since"], reverse=True)[:cap]
 
     chapters, landed_total = _facts.chapters(stores)
+    # The chapter's narrations, newest first — scoped to what is in focus, and
+    # board-wide when nothing is. It rides on THIS read rather than getting a
+    # door of its own for `visibility`'s reason (`verbs/project.py`): a screen
+    # that already asked what the board is waiting for should not have to ask a
+    # second time to say what was written about it. Capped, with the honest
+    # total beside it — `done_total` again, and this chapter's rule.
+    filed, reports_total = _facts.reports(stores, stone["id"] if stone else "")
 
     window = _args.text(args, "window", default="")
     return {
@@ -154,6 +161,8 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         # and it is fixed the same way: capped, newest first, with the total.
         "milestones": chapters,
         "landed_total": landed_total,
+        "reports": filed,
+        "reports_total": reports_total,
         "groups": groups,
         # Which of the READY cards are safe to fan out together — derived, never
         # stored, and ADVICE (`core/seams.py`). Computed over `groups.take` only.

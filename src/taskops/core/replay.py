@@ -60,7 +60,7 @@ def apply(state: State, event: Event, *, force: bool = False) -> bool:
     """Apply one event. Returns False if it must be retried after its card exists."""
     kind = KINDS.get(event["kind"])
     if kind is None or not kind.replayed:
-        return True  # history-only (comment, commit, merged) or from a newer version
+        return True  # history-only (comment, commit, merged, report) or from a newer version
     if event["kind"] == "milestone":
         chapters.fold(state["milestones"], event)
         return True

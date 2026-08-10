@@ -20,11 +20,11 @@ import argparse
 import webbrowser
 from typing import TYPE_CHECKING
 from pathlib import Path
-from urllib.request import urlopen
 
 if TYPE_CHECKING:  # a NAME for the annotation, never an import at start-up
     from ..http.upstream import Upstream
 
+from . import window
 from .. import _clock
 from .._json import as_object
 from ..board import DIR, find_root, is_project, read_config
@@ -73,21 +73,24 @@ def ui(here: Path) -> int:
     pointed at the wrong machine: the board is shared, the code is not, and a
     diff is read from the clone the reader actually has (ARCHITECTURE.md §16).
 
-    The port and token persist in `.taskops/ui.json` (gitignored), so the link
-    survives and a second `taskops ui` while one is running just reopens the
-    browser. Serving blocks, like `taskops serve` — ctrl-c stops it. An agent
-    runs it in the background; a human leaves the terminal open. No daemon to
-    forget."""
+    **The window is a LEASE** (`cli/window.py` carries the whole post-mortem):
+    `flock` on `.taskops/ui.lock` is the mutex — kernel-released on ANY death,
+    so a second `taskops ui` either holds it or defers to the process that
+    does, verified by /healthz IDENTITY (this checkout, this version), never by
+    "something answered the port". And a window nobody looks at retires itself
+    after `window.IDLE_SECONDS`. `ui.json` is only the holder's address cache.
+    Serving blocks, like `taskops serve` — ctrl-c stops it."""
     root = find_root(here)
     if not is_project(root):
         raise TaskopsError("no board here — taskops init starts one, taskops join connects one")
+    lease = window.claim(root / DIR)
+    if lease is None:  # somebody alive holds the window: reopen it, start nothing
+        return _open(window.holder(root / DIR, root))
     upstream = _upstream(root)
     state = as_object(json.loads((root / DIR / "ui.json").read_text())) if (
         root / DIR / "ui.json"
     ).exists() else {}
     port, token = int(state.get("port", 0) or 0), str(state.get("token", ""))
-    if port and _healthy(port):
-        return _open(f"http://127.0.0.1:{port}/board/ui/?token={token}")
     from ..http.server import serve as make_server  # the CLI must start without a server
 
     if not token:
@@ -106,6 +109,7 @@ def ui(here: Path) -> int:
         httpd = make_server(root / DIR, "127.0.0.1", 0, repo=root, upstream=upstream)
     port = httpd.server_address[1]
     (root / DIR / "ui.json").write_text(json.dumps({"port": port, "token": token}) + "\n")
+    window.retire_when_idle(httpd.mounts, httpd)
     _open(f"http://127.0.0.1:{port}/board/ui/?token={token}")
     try:
         httpd.serve_forever()
@@ -113,6 +117,7 @@ def ui(here: Path) -> int:
         print("\nstopping")
     finally:
         httpd.server_close()
+        lease.close()  # explicit, though any exit — even -9 — releases it anyway
     return 0
 
 
@@ -148,10 +153,3 @@ def _open(url: str) -> int:
     webbrowser.open(url)
     return 0
 
-
-def _healthy(port: int) -> bool:
-    try:
-        with urlopen(f"http://127.0.0.1:{port}/healthz", timeout=1) as answer:  # noqa: S310
-            return bool(as_object(json.loads(answer.read().decode())).get("ok"))
-    except (OSError, ValueError):
-        return False

@@ -3324,6 +3324,83 @@ def test_a_legacy_config_opens_the_MCP_board_and_its_handshake(
     _untouched_host(server, tmp_path)
 
 
+def test_the_two_branches_of_answered_agree_on_who_gets_poked(
+    server: BoardServer, window: BoardServer
+) -> None:
+    """PARITY, pinned as a class and not as one bug.
+
+    `rpc.answered` forks on `upstream`: a board this process owns is dispatched
+    locally, somebody else's is relayed. The two branches must agree about the
+    questions that are the SAME question on both sides — and the infinite loop
+    happened because one of them silently did not: the local branch asked
+    `writes()` before poking the page and the forwarded branch never did.
+
+    Nothing in the type system, the linter or any single-branch test could see
+    that, because each branch was correct on its own terms. So the parity is
+    asserted directly, verb by verb, over the whole registry: for every verb,
+    a LOCAL call and a FORWARDED call must reach the same verdict on whether the
+    page is told the board moved. A step added to one branch and forgotten in
+    the other now goes red here, whatever the step is."""
+    local, remote = [], []
+    server.mounts.hub.publish = lambda board, message: local.append(message["verb"])  # type: ignore[method-assign]
+    window.mounts.hub.publish = lambda board, message: remote.append(message["verb"])  # type: ignore[method-assign]
+
+    direct = client(server, BERNA)
+    through = RemoteBoard(url_of(window), _token(window, BERNA), BERNA)
+    plan(direct)  # a card to read and a card to write on, on the one board both see
+    task = direct.call("board", {})["groups"]["take"][0]["id"]
+
+    for verb, args in (
+        ("board", {}),
+        ("card", {"task": task}),
+        ("events", {"limit": 1}),
+        ("report", {"window": "1d"}),
+        ("update", {"task": task, "comment": "a write both branches must announce"}),
+    ):
+        # One branch at a time, or the bookkeeping lies: a FORWARDED write also
+        # reaches the host, whose own local branch pokes there too. What is
+        # being compared is the decision each branch takes about ITS listeners.
+        local.clear()
+        direct.call(verb, dict(args))
+        by_local = list(local)
+
+        remote.clear()
+        through.call(verb, dict(args))
+        by_forward = list(remote)
+
+        assert by_local == by_forward, (
+            f"{verb!r} pokes differently depending on which side answered: "
+            f"local={by_local} forwarded={by_forward}"
+        )
+
+
+def test_a_forwarded_READ_pokes_nobody_so_a_window_cannot_feed_itself(
+    server: BoardServer, window: BoardServer
+) -> None:
+    """The infinite loop, pinned. Every envelope carries `seq`, so the forwarded
+    path's old `if status == 200 and seq` was true of every READ: a `board` call
+    published "the board changed", the page believed the frame and refetched, and
+    that refetch published again. A window on a REMOTE board hammered its own
+    server at the coalescing interval, forever, with nothing on the board moving —
+    measured at ~5 requests/second against a board whose seq never left 961.
+
+    The local path never had it because it asks `writes()` first; this asserts the
+    forwarded half asks the same question of the same registry."""
+    published: list[dict[str, Any]] = []
+    window.mounts.hub.publish = lambda board, message: published.append(message)  # type: ignore[method-assign]
+
+    plan(client(server, BERNA))  # something real to read, so seq is non-zero
+    viewer = RemoteBoard(url_of(window), _token(window, BERNA), BERNA)
+    for _ in range(3):
+        assert viewer.call("board", {})["seq"] > 0
+        viewer.call("events", {"limit": 1})
+    assert published == [], f"a read poked the page: {published}"
+
+    task = viewer.call("board", {})["groups"]["take"][0]["id"]
+    viewer.call("update", {"task": task, "comment": "a write, and this one IS news"})
+    assert [m["verb"] for m in published] == ["update"]
+
+
 def test_the_ui_window_forwards_with_a_legacy_token(
     server: BoardServer, tmp_path: Path, legacy: str
 ) -> None:
@@ -3635,3 +3712,216 @@ def test_an_invite_and_github_together_are_refused_before_either_is_spent(
     # The invite is intact: it still redeems, which is what "before either is
     # spent" means — a refusal that had already burned it would be worse.
     assert _redeem(url_of(server), invite, "ana", f"{hers}.pub")["actor"] == ANA
+# ── /git/file — a committed REPORT, from the reader's own clone ─────────────
+#
+# The reports chapter puts the narration in git and a POINTER on the board, so
+# the bytes have to come from somewhere: this door, over the same token and the
+# same envelope as every other. Which makes it the one door that takes a PATH
+# from a browser, and every test below is about the wall in front of it —
+# `core/reports.py::under()`, the same call the verb that registers a report
+# makes, so the two ends cannot drift.
+
+
+REPORT = ".taskops/reports/ms-6f7a24-first.html"
+SECRET = "secrets.env"
+
+
+@pytest.fixture()
+def reports_server(tmp_path: Path) -> Iterator[BoardServer]:
+    """A host inside a checkout that carries a committed report — and, one
+    directory up from it, something nobody may ever be handed."""
+    from tests.test_git import repo
+    from taskops.gitwork import run
+
+    root = repo(tmp_path, "narrated")
+    (root / SECRET).write_text("TOKEN=hunter2\n", encoding="utf-8")
+    (root / ".taskops" / "reports").mkdir(parents=True)
+    (root / REPORT).write_text("<h1>the chapter</h1>\n", encoding="utf-8")
+    (root / ".taskops" / "reports" / "notes.md").write_text("# plain\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "the report", cwd=root)
+    httpd = serve(tmp_path / "boards", "127.0.0.1", 0, repo=root)
+    httpd.mounts.create(BOARD)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield httpd
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def _file(httpd: BoardServer, path: str, rev: str = "HEAD") -> tuple[int, dict[str, Any]]:
+    from urllib.parse import quote
+
+    url = f"{url_of(httpd)}/git/file/{rev}?path={quote(path, safe='')}"
+    return _get(url, _token(httpd, BERNA))
+
+
+def test_the_door_hands_back_one_committed_report_at_a_rev(
+    reports_server: BoardServer,
+) -> None:
+    """The whole point of the door: a reader renders the report from its OWN
+    clone, at the sha the event named, and `events.jsonl` never carried a byte
+    of it. The rev comes back RESOLVED — 40 hex — because that sha is what the
+    UI keys and refetches on, never the word the browser happened to send."""
+    status, body = _file(reports_server, REPORT)
+    assert status == 200 and body["ok"] is True
+    data = body["data"]
+    assert data["text"] == "<h1>the chapter</h1>"
+    assert data["path"] == REPORT
+    assert len(data["rev"]) == 40 and set(data["rev"]) <= set("0123456789abcdef")
+    assert data["content_type"] == "text/html"
+    assert data["truncated"] is False and data["cap"] > 0
+
+
+def test_only_a_literal_html_report_is_typed_as_html(
+    reports_server: BoardServer,
+) -> None:
+    """A type the door does not know degrades to TEXT, never to something a
+    renderer would execute — and the type is a field in a JSON envelope, so no
+    path can make this origin, where the token lives, serve HTML itself."""
+    status, body = _file(reports_server, ".taskops/reports/notes.md")
+    assert status == 200 and body["data"]["content_type"] == "text/plain"
+
+
+def test_every_path_that_is_not_a_report_is_refused_and_nothing_leaks(
+    reports_server: BoardServer,
+) -> None:
+    """The security boundary, one path per shape it can arrive in. The traversals
+    matter most: `under()` REFUSES them rather than normalising them, so a path
+    that would resolve to a real file outside the directory never reaches git.
+
+    The `..` cases are checked twice — refused, AND the secret's contents absent
+    from the whole answer — because a door that refused with the file quoted in
+    its message would still have leaked it."""
+    for path in (
+        SECRET,  # a real file, in the repo, one directory up
+        "../narrated/" + SECRET,
+        ".taskops/reports/../../" + SECRET,
+        ".taskops/reports/../" + SECRET,
+        "/etc/passwd",
+        "/" + REPORT,
+        ".taskops/reports//ms-6f7a24-first.html",  # a doubled separator
+        ".taskops/reports",  # the directory itself
+        ".taskops/reports/",
+        ".taskops/reportsX/evil.html",  # a prefix that only LOOKS like the dir
+        "",  # no ?path= at all
+    ):
+        status, body = _file(reports_server, path)
+        message = body["error"]["message"]
+        assert status == 400 and body["ok"] is False, f"{path} was not refused"
+        assert ".taskops/reports/" in message and "not a file server" in message
+        assert "hunter2" not in json.dumps(body), f"{path} leaked the file"
+
+
+def test_a_report_path_git_could_not_be_shown_is_its_own_refusal(
+    reports_server: BoardServer,
+) -> None:
+    """The second wall, and it says a different thing than the first: this IS
+    under the reports directory, and it is still refused — `diff.usable`, the one
+    shape guard everything handed to git passes. Its own words, because "not a
+    report" would be a lie about a file sitting right there."""
+    status, body = _file(reports_server, ".taskops/reports/a report.html")
+    assert status == 400 and body["ok"] is False
+    assert "not a shape this door shows git" in body["error"]["message"]
+    assert "Rename the file" in body["error"]["message"]
+
+
+def test_a_report_is_served_from_the_COMMIT_never_the_working_copy(
+    reports_server: BoardServer, tmp_path: Path,
+) -> None:
+    """`git show <sha>:<path>` reads a tree entry, not the disk. A report is
+    quoted at the sha its event names, so a checkout that has moved on — or a
+    file since deleted — still renders exactly what was registered."""
+    disk = tmp_path / "narrated" / REPORT
+    disk.write_text("<h1>rewritten since</h1>\n", encoding="utf-8")
+    status, body = _file(reports_server, REPORT)
+    assert status == 200 and body["data"]["text"] == "<h1>the chapter</h1>"
+    disk.unlink()
+    status, body = _file(reports_server, REPORT)
+    assert status == 200 and body["data"]["text"] == "<h1>the chapter</h1>"
+
+
+def test_a_rev_this_clone_lacks_reads_as_a_fetch_nobody_ran(
+    reports_server: BoardServer,
+) -> None:
+    """The same refusal the diff doors give, from the same `_stale` — a report
+    registered by another dev names a commit this clone may not have yet, and
+    that is not an error, it is the truth about this disk."""
+    status, body = _file(reports_server, REPORT, rev="tk-91a27e")
+    assert status == 404 and "not in your clone yet" in body["error"]["message"]
+    assert "git fetch origin tk-91a27e" in body["error"]["message"]
+
+
+def test_a_commit_that_does_not_carry_the_report_says_exactly_that(
+    reports_server: BoardServer,
+) -> None:
+    """Distinct from both other refusals: the rev resolved and the path is a
+    report — this commit simply predates the file. Saying so is what tells a
+    reader the event's sha is the one to ask for."""
+    status, body = _file(reports_server, REPORT, rev="HEAD~1")
+    assert status == 404 and body["ok"] is False
+    assert "does not carry that file" in body["error"]["message"]
+
+
+def test_an_over_cap_report_comes_back_flagged_with_the_cap_stated(
+    reports_server: BoardServer, tmp_path: Path,
+) -> None:
+    """A silently cut file is a lie, a flagged one is a fact — `patch()`'s idiom,
+    on the same constant, which is why `capped()` is one function and not two."""
+    from taskops.gitwork import run, patch
+
+    big = ".taskops/reports/ms-6f7a24-huge.html"
+    root = tmp_path / "narrated"
+    (root / big).write_text("<p>" + "x" * (patch.CAP + 1000) + "</p>\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "a huge report", cwd=root)
+    status, body = _file(reports_server, big)
+    assert status == 200
+    data = body["data"]
+    assert data["truncated"] is True and data["cap"] == patch.CAP
+    assert len(data["text"].encode()) <= patch.CAP
+
+
+def test_a_host_that_serves_boards_mounts_no_file_door_either(
+    server: BoardServer,
+) -> None:
+    """The switch is `Mounts.repo`, decided once at construction: `taskops serve`
+    has no clone, so /git is 404 whole — a new question underneath it does not
+    open a door the host never mounted."""
+    assert server.mounts.repo is None
+    status, body = _get(f"{url_of(server)}/git/file/HEAD?path={REPORT}", _token(server, BERNA))
+    assert status == 404 and "not a repository" in body["error"]["message"]
+
+
+def test_the_file_door_is_the_same_token_door_as_the_rest(
+    reports_server: BoardServer,
+) -> None:
+    """No second credential system, and no read-only exception for prose."""
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"{url_of(reports_server)}/git/file/HEAD?path={REPORT}", timeout=5)
+    assert json.loads(caught.value.read().decode())["error"]["code"] == "refused"
+
+
+def test_a_client_that_hangs_up_is_not_printed_as_a_crash(
+    server: BoardServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A browser opens several keep-alive connections per origin and closes the
+    spares once the page settles; a WebSocket upgrade replaces one outright.
+    socketserver answers every exception in its thread with a full traceback, so
+    a healthy `taskops ui` printed thirty lines of Python internals per
+    disconnect — which is how a REAL fault stops being visible.
+
+    Everything that is not a departure still prints: the second half asserts
+    that, because a handler that swallows errors is the worse bug."""
+    capsys.readouterr()
+    try:
+        raise ConnectionResetError(54, "Connection reset by peer")
+    except ConnectionResetError:
+        server.handle_error(None, ("127.0.0.1", 1))
+    assert capsys.readouterr().err == ""
+
+    try:
+        raise ValueError("a real fault, and it must be seen")
+    except ValueError:
+        server.handle_error(None, ("127.0.0.1", 1))
+    assert "a real fault" in capsys.readouterr().err

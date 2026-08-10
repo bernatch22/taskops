@@ -176,6 +176,10 @@ KINDS: dict[str, Kind] = {
     # kinds are history-only, and `core/review.py` folds them into a Standing.
     "submitted": Kind(False, ("note",)),  # the worker says it is finished
     "reviewed": Kind(False, ("verdict", "note")),  # verdict: "pass" | "changes"
+    # A narration that is a committed FILE. The body is a POINTER, never the
+    # bytes; `task` is PROJECT because a report is about a CHAPTER; the list per
+    # chapter is a fold. `core/reports.py` carries the argument and `path`'s rule.
+    "report": Kind(False, ("path", "title", "milestone", "sha")),
 }
 
 # Fields of a Card that `edited` may target. Anything else is a BadRequest, so
