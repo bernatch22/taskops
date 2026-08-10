@@ -115,6 +115,35 @@ Event ids are `sha256(canonical)[:32]`, so the log is idempotent. Replay sorts
 by `ts` with a STABLE sort — breaking ties by id reordered claims against
 releases. A board is created by an explicit act and never by being asked for.
 
+## The CLI surface — it connects, it never manages
+
+Eleven top-level commands, and `board` is the only one with actions of its own.
+Moving a card from the terminal does not exist: that is MCP. Re-derive both
+lists rather than trusting this paragraph — `--help` is the source:
+
+```sh
+uv run python -m taskops.cli --help | sed -n '/^usage/,/^$/p'   # the eleven
+uv run python -m taskops.cli board --help                       # its actions
+```
+
+`board` today: `create · ls · push · pull · rm · visibility`. The four that move
+a whole history are one lifecycle, and each says what it destroys:
+
+```
+init ──▶ board create + push ──▶ board pull ──▶ board rm
+ —          the local board       nothing:       the host's board, and ONLY
+            is RENAMED, not       the host       with --discard-history if
+            deleted               keeps its      this checkout does not
+                                  copy           already hold that history
+```
+
+`push` and `pull` are the same five steps in opposite directions and both flip
+`board.json` LAST, so a failure anywhere above leaves the repo as it was and the
+command is re-run. `rm`'s guardrail is judged on the HOST against the board's
+real event ids (`core/holding.py`, one comparison, both callers) — a wall the
+client enforces is a convention. There is no `--force` on `push` or on `rm`, and
+`--discard-history` is not an alias for one. ARCHITECTURE.md §19 argues all of it.
+
 ## Working here
 
 - **Mutation-check every fix**: break it on purpose, watch the test fail, put it
@@ -163,7 +192,9 @@ enforced: a reviewer ROLE, a stored review STATUS, or automatic reviewer
 assignment · `land` or automatic merges to main · git replication between clones
 · Claude hooks **that decide or store** · a stored `doing` · a slug in a branch
 name · a `recover` · a mark-as-read/ack verb · per-request SIGNING · hand-rolled
-crypto or a pip crypto dependency · a `--force` on `board push` · a report's CONTENT in
+crypto or a pip crypto dependency · a `--force` on `board push` **or on `board
+rm`** (nor a confirmation prompt in its place: a prompt asks whether you meant
+it, possession asks whether the history survives you) · a report's CONTENT in
 `events.jsonl` or a reports TABLE beside it (the log holds `{path, title,
 milestone, sha}` and the list is a fold) · `allow-scripts` **beside**
 `allow-same-origin` on the report frame, or a `sandbox` a caller can pass — that

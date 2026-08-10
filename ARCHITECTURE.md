@@ -225,6 +225,8 @@ flowchart TB
         challenge["challenge — the login nonce: in memory, single-use, dead on claim"]
         mentionsm["mentions — who was named and has not answered"]
         reviewm["review — submitted/reviewed folded into a Standing"]
+        reportsm["reports — is this a report PATH, and the chapter's list as a fold"]
+        holdingm["holding — 'is this history held here?', by event id: board pull + board rm"]
         hours["hours — working-time math"]
     end
     subgraph L2["2 · store (the ONLY SQL)"]
@@ -266,7 +268,7 @@ flowchart TB
         httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, removal, auth, login, feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   rm: board rm — the guardrail   ·   admin: server init + break-glass"]
+        cli["commands: init · join --key · hook   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   pull: board pull — the same five steps backwards, over paging: the whole log through the `events` verb   ·   rm: board rm — the guardrail   ·   admin: server init + break-glass"]
     end
 
     L1 --> L0
@@ -467,6 +469,7 @@ taskops remote add <url>                the host, once per checkout — git's or
 taskops board create [<name>]           owner only — THE way a board comes to exist
 taskops board ls [<host>]               owner: all of them; member: their own
 taskops board push [<name>]             a LOCAL board becomes the hosted one
+taskops board pull [<name>]             and back down: a SNAPSHOT here, the host untouched
 taskops board visibility [<name>] public|private     owner only
 taskops board rm [<name>] [--discard-history]        owner only — the only one that DESTROYS
 taskops invite <who> --board <name>     owner only — prints the join line
@@ -1764,3 +1767,190 @@ the host already has. Re-derive the numbers rather than trusting these:
 uv run python -c "import re;s=open('src/taskops/mcp/server.py').read();\
 print(len(re.search(r'INSTRUCTIONS = \"\"\"(.*?)\"\"\"',s,re.S).group(1).strip()))"
 ```
+
+---
+
+## 19. A board's whole life — create → push → (live) → pull → rm (2026-08-10)
+
+Until this chapter a board's life ran one way. `board create` made one, `board
+push` promoted a local history into it, and there it stayed: nothing brought a
+board back down, and nothing took one off a host. So the only removal was ssh
+plus `rm -rf` on a directory — which contradicts the design's own line (§5: after
+the bootstrap, nothing on a host is ever administered over a shell) and which
+destroyed, unguarded, the single copy of a history nobody can regenerate.
+
+```
+ taskops init        board create+push       board pull            board rm
+┌──────────┐        ┌──────────────┐       ┌──────────────┐      ┌──────────────┐
+│ a LOCAL  │  ───▶  │ LIVE on the  │  ───▶ │ a SNAPSHOT   │ ───▶ │ off the host │
+│  board   │        │     host     │       │ back in here │      │  altogether  │
+└──────────┘        └──────────────┘       └──────────────┘      └──────────────┘
+ destroys            destroys nothing:      destroys nothing:     DESTROYS the host's
+ nothing             the local board is     the host keeps its    board — the only step
+                     RENAMED to .taskops/   board byte for byte   in the whole diagram
+                     board.local-<date>     and goes on moving    that destroys anything
+```
+
+Three modules and one seam: `cli/pull.py` (the ORDER) over `cli/paging.py` (the
+transport), `http/removal.py` (the wall) under `cli/rm.py`, and `core/holding.py`
+underneath both — one pure comparison, two callers, so `board pull` and `board rm`
+cannot drift about what *safe* means. Each carries its own argument in its
+docstring; this section holds the three a reader would otherwise re-litigate.
+
+### Why a pull is a SNAPSHOT and not a sync — and why the ban makes it SAFE
+
+Git replication between clones is banned (§11, second row: split-brain, two
+machines "owning" the same card). A command that brings a hosted history down
+looks like exactly that ban being broken, and it is the opposite: **the ban is
+what makes it safe to add.**
+
+Nothing new was built to move the events. `board pull` reads the log through the
+`events` verb — the same paged read the dashboard's Event pane makes, by a client
+with no more rights than any reader — and `tests/test_topology.py::test_pulling_added_no_verb_to_either_registry`
+asserts `board.pull` is not a verb this host answers. No cursor is stored, on
+either side. No second run is scheduled. Nothing is kept in step. What lands is
+a **snapshot that stops moving**: a card taken on the host a second later is
+never in it, and no mechanism anywhere would ever notice the divergence — which
+is why the command prints that sentence itself, every time, instead of leaving
+it in a document somebody read once (`test_a_pulled_board_is_a_SNAPSHOT_and_it_stops_moving`
+pins the wording AND the fact behind it: the host plans a second chapter, the
+local copy still sees one).
+
+That is the whole difference from replication. Replication is a channel with an
+ongoing promise; this is one read, verified, that ends. Two logs that could both
+grow and both claim the same cards is the failure §11 names — and a pulled board
+grows only if a human starts working in it, at which point it is a board, not a
+replica.
+
+The transfer holds `board push`'s discipline reversed, config flipping LAST:
+
+```
+1  no FOREIGN local history here    it would be merged into this one
+2  page the whole log down          the `events` verb, the one that exists
+3  write through `Stores.write`     journal → index → fold, the store's order
+4  verify EVERY ID arrived          a gap STOPS, and the config is untouched
+5  only now: board.json goes local; remote.json is left alone
+```
+
+**Step 1 is judged BY ID, and that is not a detail.** "Is there a local board
+here?" is the obvious guard and it is the wrong one: a pull that died after step 3
+leaves exactly that, so the retry would refuse itself and the checkout would be
+stranded between two boards with no command able to finish the job. What must be
+refused is a local history *the host does not hold* — that one really would be
+merged, two histories in one log — so `holding.compare` decides and a partial copy
+of the board being pulled is recognised as the resumed pull it is. And **`total`
+does not substitute for the id set**: a page silently lost shrinks both sides of
+an id comparison and makes it agree with itself, so the length guards the paging
+and the ids guard the write.
+
+Step 5 leaves `remote.json` alone on purpose. The host is still where `board
+create`, `board push` and `board rm` go, and a checkout made to name a key again
+to reach the server it just pulled from would have lost something a pull has no
+business taking — which is also what makes the `pull` → `rm` sequence flagless
+end to end.
+
+### Why removal is guarded by POSSESSION, not by a confirmation prompt
+
+The obvious guardrail is `are you sure? [y/N]`. It was never on the table, and the
+reason is worth writing down because prompts are what everything else does.
+
+**A prompt asks whether you meant it. Possession asks whether the history
+survives you.** Those are different questions and only the second one is about
+the thing at risk. A human who typed `board rm facturador` meant it — that is
+precisely the state in which a prompt says yes — and none of that establishes
+that the 402 events are anywhere else. Possession is checkable, and it is checked
+against the board's real ids rather than against anyone's belief.
+
+It also has to be, mechanically: there is nobody to prompt. The removal happens
+on the HOST, at the far end of an RPC, in a process with no terminal — a prompt
+would live on the client, where it is the weakest thing in this document (see
+below). And a prompt cannot be satisfied in a script, which is how a `--yes` flag
+gets born and how it ends up in someone's Makefile.
+
+So the refusal is a possession refusal, and it names both ways out, in the
+sentence family `cli/commands.py::ORPHAN` established for `join`:
+
+```
+removing 'facturador' would destroy a history nothing else holds: 402 of the
+host's 402 event(s) are not here (this copy holds 0) — e.g. 0f3a…, 1b7c…, 4d21…, ….
+Two ways forward, and both are explicit:
+  taskops board pull facturador                    take the history down first, then remove
+  taskops board rm facturador --discard-history    destroy it anyway; say so out loud
+```
+
+Naming both ways out is the rule, not the politeness: a refusal that only says no
+is a dead end somebody works around, and the way around is always worse than the
+way through.
+
+### Why the judgement is on the HOST, and why the flag is `--discard-history`
+
+**A client-side wall is a convention a hand-written call can skip.** `board rm`
+sends the ids its own copy can still read (`cli/rm.py::held`, through
+`store.log.read` on `.taskops/board/events.jsonl`, so a quarantined line does not
+count as held) and the HOST compares them against what the board really has
+(`http/removal.py` → `holding.compare(stores.ids(), held)`). Had the CLI compared
+for itself, `curl` would be the way past the only wall in taskops that stands in
+front of something irreversible, and nothing would have been logged, refused or
+even surprised. A client that fetched the host's ids to judge for itself would be
+re-deciding a wall it does not own; the client's whole job here is to say what it
+holds and let the owner of the data decide.
+
+The exception is spelled `--discard-history`, and only a literal `true` opens it
+(`"false"` is refused rather than obeyed). **`--force` stays banned** (§11 carries
+the row): every tool spends `--force` on something recoverable, so it names no
+consequence and therefore cannot warn. This is the last command in the system
+that should be vague about what it takes away, so the flag is named for the thing
+it destroys. It is also not an alias — there is no `--force` in the argument
+parser at all, and `tests/test_topology.py::test_the_cli_routes_board_rm_and_knows_no_force_flag`
+is what keeps a helpful future contributor from adding one.
+
+The removal records nothing: the board is the log and the log is gone, and
+writing the removal into a *different* board would be one board holding another's
+history. What survives is the ANSWER — what was removed and how many events went
+with it, read from the board BEFORE the delete rather than echoed back from the
+caller's count — because a human deserves to see the size of what they just did
+while the terminal is still open.
+
+### The bug this chapter found, and it will bite somebody again
+
+`Mounts` caches a `Stores` per board for the life of the process, and **sqlite
+goes on answering through an UNLINKED file**. So `shutil.rmtree` on a board
+directory is not the end of that board: the handle the server still holds keeps
+serving the destroyed cache, and `board.create` on the same name a moment later
+handed the DESTROYED HISTORY straight back — the exact route `board.ingest`'s
+two-histories wall exists to close, arrived at from behind.
+
+The fix is one call in the right order: `Mounts.forget(name)` drops the handle
+and the watch **before** the `rmtree`, and it belongs there because `forget` is
+`create`'s counterpart and `_boards` lives nowhere else. Pinned by
+`test_a_removed_board_stops_being_served_by_the_process_that_held_it_open` and
+`test_a_removed_name_is_created_EMPTY_and_the_two_histories_wall_still_stands`.
+
+The general shape, which is why it is written here and not only in a docstring:
+**a cache keyed by a path outlives the path.** Anything in this codebase that
+deletes a directory a long-lived process has opened has the same bug waiting, and
+no type checker and no test of the ANSWER will see it — the answer is correct,
+it is just the answer to a question about a file that no longer exists.
+
+### What the close could and could not dogfood
+
+`.taskops/reports/lifecycle-chapter.html` is this chapter's report and the five
+milestone criteria were run FOR REAL to write it — a real socket, a real ed25519
+keypair, real argv through `cli.main.main`: create → push → rm(refused) → pull →
+pull again → rm → `board ls` → create → push → push(refused). Every one passed.
+
+Step 4 of §18's loop, `taskops_filed`, **could not run**, and for the same
+structural reason §18 records one chapter earlier, now observed a second time
+from the other side: the session's MCP server is the *installed* `taskops`, it
+loads once at session start, and the installed tool predates the reports chapter
+— so `taskops_activity` and `taskops_filed` are absent from `tools/list` even
+though both are in this repo's `src/`. The chapter's own material was assembled
+from `taskops_card` on each of the three cards (the same threads `activity
+depth=full` folds) plus `git log --numstat`, and the reader's half was proved the
+way §18 proved it: `http/gitdoor.py::answer()`, the call the dashboard makes,
+reads the committed report back at its sha.
+
+**The rule that generalises:** a chapter can dogfood any tool the *installed*
+`taskops` already has, and no chapter can dogfood one it introduced. Registering
+this report belongs to the session after `ms-b9bf00` puts master on the host and
+the tool on the laptop — the milestone that exists for exactly that.

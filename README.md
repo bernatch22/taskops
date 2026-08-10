@@ -146,12 +146,29 @@ taskops join <name>                                # or: a teammate connects to 
 taskops board pull [<name>]                        # the reverse: it comes back down, verified by id
 ```
 
-`board pull` writes the host's whole history into `.taskops/board/`, proves every
-event id arrived, and only then points this checkout at the local copy. **The host
-keeps its board — a pull destroys nothing** — and what you now hold is a
-**snapshot that stops moving**: nothing syncs afterwards, so work done on the host
-after the pull will never appear in it. `remote.json` keeps its login, so
-`board create` and `board push` still go to the same server.
+### A board's whole life, and what each step destroys
+
+```
+  taskops init         board create+push       board pull            board rm
+ ┌──────────┐        ┌──────────────┐       ┌──────────────┐      ┌──────────────┐
+ │ a LOCAL  │  ───▶  │ LIVE on the  │  ───▶ │ a SNAPSHOT   │ ───▶ │ off the host │
+ │  board   │        │     host     │       │ back in here │      │  altogether  │
+ └──────────┘        └──────────────┘       └──────────────┘      └──────────────┘
+  destroys            destroys nothing:      destroys nothing:     DESTROYS the host's
+  nothing             the local board is     the host keeps its    board — the only step
+                      RENAMED to .taskops/   board byte for byte   that destroys anything,
+                      board.local-<date>     and goes on moving    and it says so in the
+                                                                   name of its own flag
+```
+
+Both transfers flip this checkout's config **last**: stream the history, prove
+every event id arrived, then change what the repo reads. A failure above that
+leaves the repo as it was and the command is simply run again.
+
+What a pull leaves you is a **snapshot that stops moving** — nothing syncs
+afterwards, so a card taken on the host a second later never appears here, and
+the command prints that sentence itself every time. `remote.json` keeps its
+login, so `board create` and `board push` still go to the same server.
 
 And the admin surface for any board on that host, from anywhere:
 
@@ -163,10 +180,9 @@ taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>
 ```
 
-`board rm` is the only command here that destroys something nobody can
-regenerate, so it **refuses** unless this checkout already holds that history,
-and it names both ways out — take the history down first, or say out loud that
-you are destroying it:
+`board rm` **refuses** unless this checkout already holds that history, and names
+both ways out — take the history down first, or say out loud that you are
+destroying it. The judgement is the host's, against the board's real event ids:
 
 ```sh
 taskops board rm <name>                      # refused: 402 of the host's 402 events are not here
@@ -192,10 +208,9 @@ for the day the server is down or the owner's key is lost.
 registered key, no third state. Anyone may then `taskops join <url>` with no
 invite — a read-only join that mints nothing and registers no key.
 
-**After a verified push there is exactly ONE source.** The config flips only once
-the server has the history and the counts agree, and `.taskops/board/` is RENAMED
-to `.taskops/board.local-<date>` — a dead archive nothing reads again. There is no
-`--force`, ever.
+**After a verified push there is exactly ONE source** — `.taskops/board/` is
+renamed to `.taskops/board.local-<date>`, a dead archive nothing reads again, and
+there is no `--force` on a push either.
 
 ## The eleven MCP tools
 
