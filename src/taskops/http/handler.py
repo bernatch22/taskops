@@ -10,7 +10,7 @@ import json
 from typing import TYPE_CHECKING, Any, Callable, cast
 from http.server import BaseHTTPRequestHandler
 
-from . import rpc, feed, admin, login, static, gitdoor
+from . import rpc, feed, admin, login, github, static, gitdoor
 from .. import _clock
 from .auth import Credential, token_in, anonymous
 from .._errors import BadRequest, TaskopsError
@@ -41,6 +41,8 @@ class Handler(BaseHTTPRequestHandler):
             self._rpc(board)
         elif tail == "invite/redeem":
             self._mint("redeem", board)
+        elif tail == "join/github":
+            self._join(board)
         elif board == "login" and not tail:
             self._mint("login", "")  # server scope: a key, not a board credential
         elif board == "rpc" and not tail:
@@ -95,6 +97,19 @@ class Handler(BaseHTTPRequestHandler):
         the router never learns what an invite or a signature is."""
         host, creds = self.mounts.host, self.mounts.credentials
         self._answer(lambda body: login.answer(host, creds, door, board, body, _clock.now()))
+
+    def _join(self, board: str) -> None:
+        """The door that enrols a key on GitHub's word — `github.py` owns what is
+        asked, what is refused and what is never stored. It mints NOTHING, which
+        is why it is not one of the two above: the caller's next call is the
+        ordinary `/login` with the key this just registered.
+
+        The board is opened INSIDE the lambda so a name that is not servable comes
+        back as this host's own refusal instead of a traceback."""
+        host = self.mounts.host
+        self._answer(
+            lambda body: github.answer(host, self.mounts.stores(board), body, _clock.now())
+        )
 
     def _admin(self) -> None:
         """The HOST's own verbs — `admin.py` owns the registry, the role gate, the

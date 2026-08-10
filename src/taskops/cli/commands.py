@@ -1,7 +1,9 @@
-"""The two commands that CONNECT a repo to a board, and the git hooks.
+"""The two commands that CONNECT a repo to a board: `init` and `join`.
 
-`serve`, `invite` and `ui` — the ones that run a server — live in `serving.py`.
-`main.py` only parses and dispatches.
+`serve`, `invite` and `ui` — the ones that run a server — live in `serving.py`,
+and what the git hooks call is `hooks.py`. Both were split off this file rather
+than growing it: these two WRITE a checkout's configuration once, and neither
+runs a server nor fires on every commit. `main.py` only parses and dispatches.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from .._json import query
 from ..board import DIR, find_root, open_board
 from ..store import log
 from .._errors import TaskopsError
-from ..gitwork import run, bind, remote, install, trailer, claudefiles
+from ..gitwork import remote, install, claudefiles
 
 # ── the commands ────────────────────────────────────────────────────────────
 
@@ -40,8 +42,21 @@ ORPHAN = (
 )
 
 
-def join(
-    here: Path, target: str, given: str, key: str = "", discard: bool = False, invite: str = ""
+BOTH = (
+    "--invite and --github are two ways to be introduced to the same host, and running "
+    "both would burn the invite for nothing. Pick one: --invite <id> if somebody minted "
+    "you a link, --github if you have push on the repo the board declared."
+)
+
+
+def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
+    here: Path,
+    target: str,
+    given: str,
+    key: str = "",
+    discard: bool = False,
+    invite: str = "",
+    github: bool = False,
 ) -> int:
     """Connect this repo to a board. Bare like every other verb since the host is
     recorded and the key is discovered:
@@ -49,6 +64,7 @@ def join(
         taskops remote add https://host:8787        once per checkout
         taskops join my-project                     registered key: signs in, done
         taskops join my-project --invite <id>       first time: enrols the key too
+        taskops join my-project --github            first time, no invite: GitHub vouches
         taskops join my-project                     no key anywhere + public board: read-only
 
     The name defaults exactly as `board create`'s does (recorded name, else the
@@ -64,9 +80,13 @@ def join(
     archives (never deletes) before proceeding.
 
     With an invite, the invite and the PUBKEY travel in the same call: the server
-    burns the invite and enrols the key in one act. Either way the key then signs
-    in ON THE SPOT and what lands in remote.json is a SESSION with an expiry —
-    never a standing token to copy around. Keys exist so tokens do not travel.
+    burns the invite and enrols the key in one act. `--github` is the same shape
+    with a different proof — a token the CLI already has instead of a link
+    somebody minted (`enrol.by_github`), and it takes no value on purpose. Either
+    way the key then signs in ON THE SPOT and what lands in remote.json is a
+    SESSION with an expiry — never a standing token to copy around, and never the
+    GitHub one, which this process has already forgotten by the time it writes.
+    Keys exist so tokens do not travel.
     """
     from . import remote as remote_cli
 
@@ -76,9 +96,14 @@ def join(
         host, name = remote_cli.named(target)
         target = f"{host}/{name}"
     base = target.partition("?")[0]
-    _keep_or_archive(root, base, discard)
     params = query(target)
     invite = invite or params.get("invite", "")
+    # Before `_keep_or_archive`, which is the first thing here that MOVES anything:
+    # a refusal that had already renamed the local board would be the worse order,
+    # and the invite in a pasted `?invite=` link counts exactly as the flag does.
+    if invite and github:
+        raise TaskopsError(BOTH)
+    _keep_or_archive(root, base, discard)
     who = given or actor()
     name = who.partition(":")[2] or "me"
     found = Path(key).expanduser() if key else identity.discover_key()
@@ -87,6 +112,13 @@ def join(
         token, who = enrol.redeem(base, invite, name, enrol.pubkey(str(found) if found else ""))
         if found:
             door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
+    elif github:
+        # The door mints NOTHING (`http/github.py`), so there is no token to keep
+        # here: the enrolled key is the credential from the next line onwards.
+        vouched = enrol.by_github(base, name, enrol.pubkey(str(found) if found else ""))
+        who = vouched["actor"]
+        door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
+        print(f"  GitHub: you have {vouched['need']} on {vouched['repo']} — key enrolled")
     elif bare and found:
         # No invite and no token: the KEY is the whole credential. Proved against
         # the host BEFORE anything is written — a refused sign-in must not leave
@@ -121,29 +153,6 @@ def _keep_or_archive(root: Path, url: str, discard: bool) -> None:
     if not discard:
         raise TaskopsError(ORPHAN.format(path=local, n=len(events), url=url))
     print(f"  the local board ({len(events)} events) is archived at {archive(local)}")
-
-
-def hook(here: Path, which: str, rest: list[str]) -> int:
-    """The two GIT hooks; `hook claude` is routed in `main` and never prints.
-
-    Neither of these may block a commit. Failures print and return 0.
-    """
-    root = find_root(here)
-    if which == "trailer":
-        if rest:
-            trailer.stamp_file(Path(rest[0]), run.branch_at(here))
-        return 0
-    facts = bind.commit_facts(here)
-    if facts is None:
-        return 0
-    try:
-        board = open_board(root, actor())
-        bind.record(board, root, facts)
-        bind.drain(board, root)
-    except TaskopsError as err:
-        print(f"taskops: {err}", file=sys.stderr)  # visible, never swallowed
-    bind.push_card(here, str(facts["branch"]))
-    return 0
 
 
 # ── plumbing ────────────────────────────────────────────────────────────────

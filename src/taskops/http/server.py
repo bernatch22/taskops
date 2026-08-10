@@ -21,6 +21,8 @@ A PUBLIC board answers every READ door as `anon`, with no credential (`auth.py::
 
 from __future__ import annotations
 
+import sys
+from typing import Any
 from pathlib import Path
 from http.server import ThreadingHTTPServer
 
@@ -43,6 +45,24 @@ class BoardServer(ThreadingHTTPServer):
     def server_close(self) -> None:
         super().server_close()
         self.mounts.close()
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """A client that hung up is NOT an error, and printing it as one is worse
+        than silence: it teaches a reader to skim tracebacks.
+
+        A browser opens several keep-alive connections per origin and closes the
+        spares once the page settles; a WebSocket upgrade replaces one outright.
+        `socketserver` answers every exception in its thread with a full
+        traceback, so a perfectly healthy `taskops ui` printed a stack per
+        disconnect — thirty lines of Python internals under a page that was
+        working, which is exactly how a real fault stops being visible.
+
+        Everything else still prints, unchanged. The rule this file already
+        holds for the request log holds here too: a broken server is seen, never
+        swallowed. A departure is not a break."""
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def serve(root: Path, host: str = "127.0.0.1", port: int = 8787, repo: Path | None = None,

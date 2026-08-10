@@ -67,6 +67,19 @@ Reading and commenting are open to everyone; only taking, closing and releasing
 are the owner's. Any agent may `taskops_comment` on ANY open card — that
 asymmetry is the whole communication channel between parallel agents.
 
+**Two introductions, ONE credential** (2026-08-10, ARCHITECTURE §18). A key gets
+enrolled either by burning an invite (`POST /<board>/invite/redeem`) or by GitHub
+vouching for it (`POST /<board>/join/github`, `taskops join <board> --github`) —
+and both end in the same `login.register`, so what persists is a pubkey and an
+`allowed_signers` line, never a GitHub token. **GitHub is the INTRODUCTION, never
+the credential**: it is asked ONCE, server-side, with the caller's own token,
+which is a header on one outgoing request and is written nowhere. `--github` is a
+`store_true` and must stay one — a token in a flag value is in the shell history
+before the process starts. A board opts in with `op=forge` (`core/forge.py` owns
+the shape); absent — the state every board is born in — that door does not exist
+and the board is invite-only. `taskops board forge <owner>/<repo>` declares it and
+`--clear` takes it back — the owner's move, both ways (`core/scope.py`).
+
 ## Layers — imports only point DOWN
 
 ```
@@ -126,7 +139,7 @@ uv run python -m taskops.cli --help | sed -n '/^usage/,/^$/p'   # the eleven
 uv run python -m taskops.cli board --help                       # its actions
 ```
 
-`board` today: `create · ls · push · pull · rm · visibility`. The four that move
+`board` today: `create · ls · push · pull · rm · visibility · forge`. The four that move
 a whole history are one lifecycle, and each says what it destroys:
 
 ```
@@ -142,7 +155,7 @@ init ──▶ board create + push ──▶ board pull ──▶ board rm
 command is re-run. `rm`'s guardrail is judged on the HOST against the board's
 real event ids (`core/holding.py`, one comparison, both callers) — a wall the
 client enforces is a convention. There is no `--force` on `push` or on `rm`, and
-`--discard-history` is not an alias for one. ARCHITECTURE.md §19 argues all of it.
+`--discard-history` is not an alias for one. ARCHITECTURE.md §20 argues all of it.
 
 ## Working here
 
@@ -194,7 +207,8 @@ assignment · `land` or automatic merges to main · git replication between clon
 name · a `recover` · a mark-as-read/ack verb · per-request SIGNING · hand-rolled
 crypto or a pip crypto dependency · a `--force` on `board push` **or on `board
 rm`** (nor a confirmation prompt in its place: a prompt asks whether you meant
-it, possession asks whether the history survives you) · a report's CONTENT in
+it, possession asks whether the history survives you) · a STORED GitHub token or
+a GitHub login as a second credential type · a report's CONTENT in
 `events.jsonl` or a reports TABLE beside it (the log holds `{path, title,
 milestone, sha}` and the list is a fold) · `allow-scripts` **beside**
 `allow-same-origin` on the report frame, or a `sandbox` a caller can pass — that
