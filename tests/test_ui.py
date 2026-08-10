@@ -27,8 +27,11 @@ compiles TypeScript with the project's own esbuild — so it needs
 either, the first test SKIPS rather than pretending; the second needs neither
 and always runs.
 
-Ten waves of `.tsx`-only cards have now been rebuilt into that bundle, and
-each left its own row of markers below: `VIEWS` (tk-fadcdc — the Worktrees tab,
+Every wave of `.tsx`-only cards rebuilt into that bundle left its own row of
+markers below, and `markers` in the second test is their concatenation — the
+rows are the enumeration, so counting them here would be a number that rots
+(it had, twice, before `PROSE` and `REPORTS` were added). The rows, oldest
+first: `VIEWS` (tk-fadcdc — the Worktrees tab,
 the milestone picker, the Chapter pane's criteria), `GITHUB_VISIBLE` (tk-0bc9fa
 — the GitHub anchors, a commit's `+/-`, the Event stream's real rows and pager,
 the dev carrying a worktree, the picker's landed chapters), `OWN_CLONE`
@@ -46,10 +49,11 @@ a close's transition and the note the worker signed off with) and `ACTORS`
 markers of the draft it replaced) and `DATE_PANES` (tk-36b550 — the SECOND
 redesign of what a dev opens into: a pane per calendar day with an hour that
 folds open, which retired the lane-per-agent drawing and the hours bar panel
-whole: see `RETIRED_TIMESHEET`). All ten lists are the check that the bundle is the CURRENT source's output and not
-the previous wave's: none of those strings existed in the bundle its
-chapter-close replaced, so a close that forgot to run `node build.mjs` fails
-here.
+whole: see `RETIRED_TIMESHEET`) and `PROSE` (tk-382948 — the one markdown renderer) and
+`REPORTS` (tk-535807 — the Reports tab and the sandboxed frame). Every list is
+the check that the bundle is the CURRENT source's output and not the previous
+wave's: none of those strings existed in the bundle its chapter-close replaced,
+so a close that forgot to run `node build.mjs` fails here.
 
 The one marker that had to be RETIRED rather than added is the Event stream's
 `"no events verb"`. It was true while nothing returned the log; `verbs/events.py`
@@ -358,6 +362,36 @@ RETIRED_TIMESHEET = (
 PROSE = (
     "chapter-goal",  # the goal, rendered and scrolled, never cut
     "markdown-inline",  # the ONE renderer's spans-only mode
+)
+
+#: The REPORTS chapter's row (tk-535807), on the same terms as every row above:
+#: each is a `data-testid` written by exactly one card of the wave, and none of
+#: the ten is in the bundle this chapter-close rebuilt over — checked one at a
+#: time against `git show HEAD:src/taskops/ui/app.js` before this list existed.
+#:
+#: It was written OUTSIDE the wave's own cards for the reason `PANES` records
+#: for `pane-swarm`: those cards are `.tsx`-only and none of them may rebuild
+#: `src/taskops/ui/`, so every assertion here would have been red from the
+#: moment it was written until this rebuild.
+#:
+#: Both ENDS of the fifth tab are in it: the index (`reports`, `report-row`) and
+#: the page (`report-page`, `report-back`, `report-source`), and both branches of
+#: `ReportFrame` — the sandboxed iframe an html report is read in
+#: (`report-frame`) and the `<pre>` a `text/plain` one is drawn in
+#: (`report-text`), because `srcdoc` parses as HTML and text is not markup. The
+#: three empty/limit states are here too, since a report list that has nothing
+#: to say must say so rather than draw a zero.
+REPORTS = (
+    "reports",  # the FIFTH tab (pages/Reports.tsx)
+    "report-row",  # one filed report in the index
+    "report-page",  # …opened, full width
+    "report-frame",  # the SANDBOXED iframe an html report is read in
+    "report-text",  # …and the text/plain branch, which is never framed
+    "report-truncated",  # a cut report SAYS it was cut
+    "report-none",  # the door served nothing for this path at this sha
+    "reports-none",  # the chapter has no reports: one sentence, not an empty list
+    "report-source",  # the path and sha the bytes were read at
+    "report-back",  # the only way out of the page
 )
 
 
@@ -789,7 +823,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE + REPORTS
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     for testid in RETIRED + RETIRED_TIMESHEET:
@@ -804,6 +838,15 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
     assert "The log is empty." in app
     # The anchor host, verbatim in the bytes — without it no link renders at all.
     assert "github.com" in app
+    # The reports chapter's FOURTH acceptance criterion, in one line and against
+    # the SHIPPED bytes: a report is untrusted HTML and this origin holds the
+    # token, so the frame is `allow-scripts` and the pair `allow-scripts` +
+    # `allow-same-origin` — which lets the frame read `parent.localStorage` and
+    # strip its own sandbox attribute — must not exist anywhere in the bundle.
+    # `ui/smoke/sections/report-sandbox.tsx` pins the same rule on the RENDERED
+    # markup; this is what would notice a rebuild from a tree where it was
+    # widened, which no render of a well-behaved fixture ever could.
+    assert "allow-scripts" in app and "allow-same-origin" not in app
 
 
 SECTIONS = UI / "smoke" / "sections"
