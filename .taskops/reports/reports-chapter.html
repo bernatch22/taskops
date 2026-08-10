@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reports — the narration becomes part of the board</title>
+<style>
+  :root {
+    --ink: #16181d; --dim: #5c6270; --faint: #8b909c;
+    --paper: #ffffff; --panel: #f5f6f8; --rule: #e0e3e8;
+    --accent: #1f6feb; --warn: #9a5b00; --good: #1a7f4b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6e8ec; --dim: #9aa1ae; --faint: #6f7683;
+      --paper: #16181d; --panel: #1d2027; --rule: #2c313a;
+      --accent: #6ba6ff; --warn: #d99a3a; --good: #4cc38a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.25rem 5rem;
+    background: var(--paper); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  h2 {
+    font-size: 1.15rem; margin: 3rem 0 .85rem; padding-bottom: .4rem;
+    border-bottom: 1px solid var(--rule); letter-spacing: -.005em;
+  }
+  h3 { font-size: .95rem; margin: 1.9rem 0 .5rem; }
+  p, li { color: var(--ink); }
+  .lede { color: var(--dim); font-size: 1.02rem; margin: 0 0 .2rem; }
+  .stamp {
+    color: var(--faint); font: 400 .8rem/1.5 var(--mono);
+    margin: .9rem 0 0; padding-top: .9rem; border-top: 1px solid var(--rule);
+  }
+  code { font: .87em var(--mono); background: var(--panel); padding: .1em .35em; border-radius: 3px; }
+  .cards { display: grid; gap: .9rem; margin: 1.2rem 0; }
+  .card {
+    background: var(--panel); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent); border-radius: 5px; padding: .95rem 1.1rem;
+  }
+  .card h3 { margin: 0 0 .3rem; font-size: .98rem; }
+  .card .meta { font: .78rem/1.5 var(--mono); color: var(--faint); margin: 0 0 .55rem; }
+  .card p { margin: .5rem 0 0; font-size: .94rem; }
+  .scroll { overflow-x: auto; margin: 1.1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; white-space: nowrap; }
+  td.n { font-family: var(--mono); white-space: nowrap; }
+  figure { margin: 1.3rem 0; }
+  pre {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 5px;
+    padding: .9rem 1.1rem; overflow-x: auto; font: .82rem/1.6 var(--mono); margin: 0;
+  }
+  figcaption { color: var(--faint); font-size: .8rem; margin-top: .45rem; }
+  blockquote {
+    margin: 1.2rem 0; padding: .1rem 0 .1rem 1rem;
+    border-left: 3px solid var(--rule); color: var(--dim);
+  }
+  .flag {
+    background: var(--panel); border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn); border-radius: 5px;
+    padding: .95rem 1.1rem; margin: 1.3rem 0;
+  }
+  .flag h3 { margin-top: 0; color: var(--warn); }
+  .good { color: var(--good); }
+  ul { padding-left: 1.15rem; }
+  li { margin: .35rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Reports — the narration becomes part of the board</h1>
+<p class="lede">A chapter report about the chapter that made chapter reports possible.</p>
+<p class="stamp">
+  milestone ms-6f7a24 · five cards · four workers · branch ms/reports-the-narration-becomes-pa<br>
+  written by agent:berna/close1 on tk-37ac05, 2026-08-10 · every figure below is re-derivable
+</p>
+
+<h2>What it set out to do</h2>
+
+<p>A report is the one artefact a machine cannot regenerate. A commit can be
+re-derived from a diff, a status from the log, a board from its events — but
+what an agent <em>understood</em> after a day of work exists once, and until this
+chapter it existed in a chat transcript that nobody would ever open again.</p>
+
+<p>The chapter's goal was to give it the same standing a commit has, under one
+constraint that decided everything else: <strong>the log stores references and
+measures, never content.</strong> That rule already keeps patches out of
+<code>events.jsonl</code> — a commit is recorded as a sha and a numstat, and the
+reader goes to git for the bytes. Applied to prose it gives the whole design:
+the report is a <em>file</em>, committed; the board holds
+<code>{path, title, milestone, sha}</code>; and the reader renders it from its own
+clone.</p>
+
+<p>Four acceptance criteria, and they are what the five cards were cut against:</p>
+
+<ol>
+  <li>one <code>taskops_activity</code> call returns spec, thread, commits with
+      numstat, standing and <code>merged_into</code> for every card of a chapter,
+      and <code>since=&lt;seq&gt;</code> returns only what moved;</li>
+  <li>a report registered on chapter X appears in the UI's list for X and renders
+      from the local clone — while <code>taskops serve</code> still serves no UI
+      and no report;</li>
+  <li><code>events.jsonl</code> grows by less than 1KB per report, whatever the
+      report's size;</li>
+  <li>a report carrying a <code>&lt;script&gt;</code> tag cannot read the
+      dashboard's token.</li>
+</ol>
+
+<h2>What each card actually built</h2>
+
+<div class="cards">
+
+  <div class="card">
+    <h3>tk-ca31e0 — the report event, the fold, and the registration door</h3>
+    <p class="meta">agent:berna/w1 · 43m · be8a563 · 10 files, +572 −5 · landed FIRST and alone</p>
+    <p>The seam. One event kind, <code>report</code>, history-only — replay never
+    folds it into state because there is nothing to fold. <code>core/reports.py</code>
+    (116 lines, layer 1, pure) owns three things: <code>DIR</code>, the
+    <code>under()</code> guard that decides whether a path is a report path, and
+    <code>of()</code>, which answers "which reports does this chapter have" as a
+    fold over the events, newest first, on every read. The write door is a verb of
+    its own, <code>filed</code>. Registering the same path at the same sha twice
+    writes nothing and says <code>recorded: false</code>.</p>
+    <p>It landed alone because two cards were about to consume its vocabulary, and
+    a concept named by two cards is a seam — the fan-out rule the project already
+    had a scar for.</p>
+  </div>
+
+  <div class="card">
+    <h3>tk-dd304f — <code>taskops_activity</code>, a chapter's whole story in one read</h3>
+    <p class="meta">agent:berna/act1 · 27m · fa2e181 · 11 files, +766 −14</p>
+    <p>A read verb over N cards: the header once, then a story per card — state,
+    review standing verbatim, commits with their numstat, <code>merged_into</code>,
+    branch, the released note, the seconds. <code>since=&lt;seq&gt;</code> reuses the
+    cache's existing keyset pager, and <code>cards_total</code> keeps counting, so
+    "nothing moved" never reads as "empty chapter".</p>
+    <p>It is the one read in the codebase with a declared <strong>payload
+    budget</strong>, and the number was measured rather than assumed: 76 cards at
+    the default <code>depth=headline</code> come back at 88–96 KB against the real
+    board's two largest chapters. It is paid for by dropping the two unbounded
+    prose fields — the spec and the thread, which becomes
+    <code>thread_total</code> — and capping commits at ten with
+    <code>commits_total</code>. <code>depth=full</code> is roughly 13 KB per card,
+    about 1 MB for the same 76, which is exactly why it is not the default.</p>
+    <p>The same card added <code>taskops_filed</code>, the write half, after the
+    seam worker flagged that without it an agent could commit a narration and had
+    no way to put it on the board.</p>
+  </div>
+
+  <div class="card">
+    <h3>tk-9ebbc3 — the <code>/git</code> door serves one committed file at a rev</h3>
+    <p class="meta">agent:berna/door1 · 22m · 09c48fb · 4 files, +324 −6</p>
+    <p><code>GET /&lt;board&gt;/git/file/&lt;rev&gt;?path=&lt;repo-relative&gt;</code>.
+    The door could already resolve refs and read patches; it could not hand back
+    one file's bytes, which is precisely what rendering a report from the reader's
+    own clone needs. Bytes come from <code>git show &lt;sha&gt;:&lt;path&gt;</code>
+    — object syntax, never the working copy — capped on the same constant a patch
+    is capped on, through one shared <code>capped()</code> so the two answers cannot
+    disagree about what <code>truncated</code> means.</p>
+    <p>The walls run in order: <code>under()</code> — the seam's guard, the same
+    call the register verb makes — then addressability, then <code>resolve</code>,
+    still the only string-to-sha door. Nine tests walk every shape a traversal can
+    take, with a real secret planted one directory up, asserting its contents
+    appear nowhere in the answer.</p>
+  </div>
+
+  <div class="card">
+    <h3>tk-535807 — the Reports tab, and the sandbox</h3>
+    <p class="meta">agent:berna/ui1 · 18m · 77fb358 · 12 files, +1163 −130</p>
+    <p>A fifth tab. The <em>list</em> costs nothing: it is a slice of the one board
+    answer the dashboard already fetches, since the fold put <code>reports</code> and
+    <code>reports_total</code> into that payload scoped to the header's chapter
+    picker — so no new fetcher, no new filter, and no wait on
+    <code>taskops_activity</code>. A row opens a full-width surface that replaces the
+    index and reads one report at a time through the file door.</p>
+    <p>The card also declined to rebuild the committed bundle, and declined to add
+    the marker assertions that would prove the rebuild happened — both correctly.
+    That is the next section.</p>
+  </div>
+
+  <div class="card">
+    <h3>tk-37ac05 — this close</h3>
+    <p class="meta">agent:berna/close1 · docs, the one bundle rebuild, and this file</p>
+    <p>The rebuild, the marker row, the workflow in the README, this section of
+    ARCHITECTURE — and this report, written with the tools the chapter built, filed
+    the way the chapter says to file one.</p>
+  </div>
+
+</div>
+
+<h2>The decisions that were argued</h2>
+
+<h3>The sandbox pair is not two permissions</h3>
+
+<p>A report is untrusted HTML somebody's agent wrote, and the dashboard's origin
+holds the token. An html report is read inside
+<code>&lt;iframe sandbox="allow-scripts" srcdoc=…&gt;</code>, and
+<strong>scripts run on purpose</strong> — a panorama report is a self-contained
+page with inline behaviour, and rendering it dead ships a broken document that
+looks fine. The question was never whether script runs; it is what the script can
+reach.</p>
+
+<p><code>allow-scripts</code> beside <code>allow-same-origin</code> is not a
+slightly wider sandbox. It is the <em>absence</em> of one: with both, the frame
+reads <code>parent.localStorage</code>, writes <code>parent.document</code>, and
+can strip its own <code>sandbox</code> attribute from the inside. Without
+<code>allow-same-origin</code> the frame is an opaque origin — no parent, no
+storage, no cookie, no form, no popup, no top navigation.</p>
+
+<p>So the value is a module constant, not a prop: there is no argument a caller
+can pass to widen it. And the proof is not a well-behaved fixture. The test
+fixture <em>commits a hostile report</em> that reads the token out of
+<code>parent.localStorage</code>, overwrites <code>parent.document.title</code>,
+removes its own frame's sandbox attribute and POSTs the loot; the headless smoke
+section then asserts those exact bytes reach the parent document escaped inside
+an attribute, so the dashboard's own document contains no script element of the
+report's at all.</p>
+
+<figure>
+<pre>assert "allow-scripts" in app and "allow-same-origin" not in app</pre>
+<figcaption>The fourth acceptance criterion, compressed into one line against the
+SHIPPED bundle bytes. A minifier keeps string literals, so this is what would
+notice a rebuild from a tree where the sandbox had been widened — which no render
+of a well-behaved fixture ever could.</figcaption>
+</figure>
+
+<h3><code>content_type</code> is a field, never a header</h3>
+
+<p>The file door answers the same JSON envelope every other question answers, and
+it reports <code>content_type</code> as data: <code>text/html</code> only for a
+literal <code>.html</code>, otherwise <code>text/plain</code>. It is never set as
+the HTTP response header, and that is the point — the token lives in this origin,
+so no file may make this origin serve HTML. What to <em>do</em> with
+<code>text/html</code> is the reader's decision, taken in exactly one place. A
+<code>text/plain</code> report is therefore not framed at all: <code>srcdoc</code>
+parses as HTML, so text goes into a <code>&lt;pre&gt;</code> as a React text node,
+and there is no <code>dangerouslySetInnerHTML</code> anywhere in this
+dashboard.</p>
+
+<h3>Why <code>filed</code> is its own verb</h3>
+
+<p>Registration is an <em>act</em>, not a side effect of committing. A hook that
+noticed a file appear under <code>.taskops/reports/</code> and registered it would
+be a Claude hook that decides and writes — the thing this project bans by name —
+and it would file every draft, every rename, every experiment. Committing prose is
+cheap; saying "this is the chapter's report" is a claim, and a claim gets a door
+with a refusal attached to it.</p>
+
+<p>The refusal is the interesting half. <code>under()</code> never <em>repairs</em>
+a path — a traversal normalised into something acceptable is the bug, not the
+fix — and the refusal names the directory and shows the call that works:</p>
+
+<figure>
+<pre>'…' is not a report path — a report is a file COMMITTED under
+.taskops/reports/ (no '..', no absolute path). Move it there, commit it,
+and file it: filed path=".taskops/reports/&lt;name&gt;.md" title="…" sha=&lt;the commit&gt;</pre>
+<figcaption>One guard, one function, asked at both ends: by the verb that registers
+a report and by the door that later reads its bytes. That is what stops the two
+from drifting into a file server behind the dashboard's token.</figcaption>
+</figure>
+
+<h3>Nothing that can be derived is stored</h3>
+
+<p>There is no reports table and no column on <code>Milestone</code>. The list is
+a fold over the <code>report</code> events on every read, newest first, capped with
+its honest total beside it. A stored list would be a second fact somebody has to
+keep in step with the events that produced it, which is this project's oldest bug
+and has its own module docstring elsewhere.</p>
+
+<h2>What it cost, and what it bought</h2>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th>card</th><th>worker</th><th class="n">worked</th><th class="n">files</th><th class="n">lines</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>tk-ca31e0 the seam</td><td>agent:berna/w1</td><td class="n">43m</td><td class="n">10</td><td class="n">+572 −5</td></tr>
+    <tr><td>tk-dd304f taskops_activity</td><td>agent:berna/act1</td><td class="n">27m</td><td class="n">11</td><td class="n">+766 −14</td></tr>
+    <tr><td>tk-9ebbc3 the file door</td><td>agent:berna/door1</td><td class="n">22m</td><td class="n">4</td><td class="n">+324 −6</td></tr>
+    <tr><td>tk-535807 the Reports tab</td><td>agent:berna/ui1</td><td class="n">18m</td><td class="n">12</td><td class="n">+1163 −130</td></tr>
+    <tr><td><strong>the chapter, base to tip</strong></td><td>4 workers</td><td class="n">110m</td><td class="n">32</td><td class="n">+2822 −152</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>110 minutes of card time, one card at a time on the seam and three in parallel
+after it. The suite went from 468 to <strong class="good">485 passing</strong>.
+Every new module is inside the 200-line budget: <code>core/reports.py</code> 116,
+<code>verbs/filed.py</code> 114, <code>verbs/activity.py</code> 145,
+<code>verbs/_stories.py</code> 94, <code>mcp/activity.py</code> 131,
+<code>http/gitdoor.py</code> 188.</p>
+
+<p>Against the criteria: (1) is <code>taskops_activity</code>, with its budget
+measured rather than asserted; (2) and (4) are pinned headlessly and at the byte
+level in the shipped bundle; (3) is one line — the log's size before and after a
+<code>filed</code> call, differing by under 1024 bytes for a report of any size —
+and it is a test, not a claim.</p>
+
+<blockquote>Writing this report took four <code>taskops_card</code> calls, one per
+card, because the tool that collapses them into one is the tool this chapter
+built and it is not reachable from the session that built it. That is the next
+section, and it is the most useful thing this exercise found.</blockquote>
+
+<h2>What the dogfood found</h2>
+
+<div class="flag">
+<h3>A chapter that adds MCP tools cannot fully dogfood itself</h3>
+<p>This card was written to close the loop for real: read the chapter with
+<code>taskops_activity</code>, write the report, commit it, register it with
+<code>taskops_filed</code>, and watch it render. Three of those four ran. The two
+that name the new tools could not, and the reason is structural rather than a
+defect in anything the chapter built.</p>
+<p>The host starts <strong>one MCP server per session</strong>, from the
+<em>installed</em> <code>taskops</code>, and it loads once — at session start. The
+code that defines <code>taskops_activity</code> and <code>taskops_filed</code>
+lives on this chapter's branch. It is not in the installed tool and will not be
+until the chapter lands and that tool is upgraded, and the running server will not
+see it even then until the session restarts. So the tools are unreachable to every
+actor in this session, orchestrator included — and the board is deliberately not
+drivable from a shell, which is the correct refusal and not a gap to route
+around.</p>
+<p>Nothing here needs fixing; it needs <em>saying</em>. A chapter whose deliverable
+is an MCP tool has a verification step that belongs to the session <em>after</em>
+the landing, not to the close. The remaining half of criterion 2 — this report
+appearing in the board payload's <code>reports</code> — is that step, and it is one
+call.</p>
+</div>
+
+<p>What was verified for real, in this worktree, with no board involved: the file
+below is committed, and the <code>/git</code> file door reads it back at that
+commit through <code>gitdoor.answer()</code> — the same function the dashboard
+calls — returning the resolved 40-hex sha, <code>content_type: text/html</code>,
+<code>truncated: false</code>, and the bytes. The half of criterion 2 that is about
+the reader's own clone is therefore closed here; the half that is about the
+board's list is closed by one <code>taskops_filed</code> call in the next
+session.</p>
+
+<h3>Two smaller findings, flagged not fixed</h3>
+<ul>
+  <li><code>core/types.py</code> is at <strong>exactly 200 lines</strong>. Zero
+  headroom against the budget is a finding, not a pass — the next card that touches
+  it has nowhere to put a line. Splitting it while two chapters were in flight over
+  it would have been a conflict on purpose, so it was flagged during the chapter and
+  is still flagged now: it wants a card of its own.</li>
+  <li>The MCP handshake's <code>INSTRUCTIONS</code> does not mention the two new
+  tools, and this close deliberately left it that way. The budget is a cliff, not a
+  slope: the panorama gets whatever the protocol leaves under a 2900-character cap,
+  and below 300 characters of room it is dropped whole. It currently has 1040 and is
+  already being cut. <code>INSTRUCTIONS</code> is the <em>role protocol</em> — it names
+  the tools a role can be refused — and neither new tool is either role's alone, while
+  both arrive fully described through <code>tools/list</code>. Spending the panorama
+  to repeat a description the host already has is a bad trade.</li>
+</ul>
+
+<h2>Where the pieces live</h2>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>concern</th><th>file</th></tr></thead>
+  <tbody>
+    <tr><td>the shape rule, the fold, the event kind</td><td class="n">core/reports.py</td></tr>
+    <tr><td>the write door and its refusals</td><td class="n">verbs/filed.py</td></tr>
+    <tr><td>a chapter's story, capped</td><td class="n">verbs/activity.py · verbs/_stories.py</td></tr>
+    <tr><td>the file question on /git</td><td class="n">http/gitdoor.py · gitwork/patch.py</td></tr>
+    <tr><td>the sandbox, and only there</td><td class="n">ui/src/components/reports/ReportFrame.tsx</td></tr>
+    <tr><td>the tab and its page</td><td class="n">ui/src/pages/Reports.tsx</td></tr>
+    <tr><td>the token is unreachable, headlessly</td><td class="n">ui/smoke/sections/report-sandbox.tsx</td></tr>
+    <tr><td>the shipped bundle carries it</td><td class="n">tests/test_ui.py::REPORTS</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p class="stamp">
+  Re-derive anything above: <code>uv run pytest</code> ·
+  <code>git diff --numstat 665e37b..a85182f</code> ·
+  <code>find src/taskops -name '*.py' -exec wc -l {} + | awk '$2!="total" &amp;&amp; $1&gt;=190'</code>
+</p>
+
+</main>
+</body>
+</html>
