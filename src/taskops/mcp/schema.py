@@ -37,6 +37,32 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             "query": _text("search titles and specs instead"),
         }
     ),
+    "taskops_activity": _object(
+        {
+            "milestone": _text("ms-… — the whole chapter; default: the single open one"),
+            "tasks": _list("exactly these cards instead, in the order given (any chapter)"),
+            "since": {
+                "type": "integer",
+                "description": "a seq from a previous answer — only cards that moved since "
+                "come back. Every answer carries seq; send it back next time.",
+            },
+            "depth": {
+                "enum": ["headline", "full"],
+                "description": "headline (default): standing, commits with numstat, "
+                "merged_into, notes, thread_total — 76 cards fit in ~90KB. full: adds each "
+                "card's spec, criteria, files and whole thread — ~13KB per card.",
+            },
+        }
+    ),
+    "taskops_filed": _object(
+        {
+            "path": _text('the COMMITTED file, e.g. ".taskops/reports/chapter-close.md"'),
+            "title": _text("what it is called in the list — required"),
+            "sha": _text("the commit that carries the file at that path — required"),
+            "milestone": _text("ms-… it narrates; default: the single open chapter"),
+        },
+        ["path", "title", "sha"],
+    ),
     "taskops_plan": _object(
         {
             "milestone": _text("a title to open a chapter, or an existing ms-… id"),

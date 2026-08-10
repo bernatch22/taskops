@@ -1,4 +1,4 @@
-"""The nine tools. A tool is not a verb: a verb is one write on the board; a
+"""The eleven tools. A tool is not a verb: a verb is one write on the board; a
 tool is what an agent should be able to think in one move. The two handlers
 that run git live in `gitmoves.py` — every git invocation happens in the
 client, where the caller's filesystem actually is.
@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Callable, NamedTuple
 from pathlib import Path
 
-from . import render, dossier, gitmoves, boardview
+from . import render, dossier, activity, gitmoves, boardview
 from ..board import Board
 from .schema import SCHEMAS
 from .._errors import BadRequest
@@ -38,6 +38,18 @@ def _board(board: Board, repo: Path, args: Args, now: float) -> str:
 def _card(board: Board, repo: Path, args: Args, now: float) -> str:
     data = board.call("card", args)
     return render.matches(data) if "matches" in data else dossier.card_view(data, now)
+
+
+def _activity(board: Board, repo: Path, args: Args, now: float) -> str:
+    """N cards' story in one read. `taskops_card` is still the door for ONE
+    card — it never truncates, and this one is capped by design."""
+    return activity.story(board.call("activity", args), now)
+
+
+def _filed(board: Board, repo: Path, args: Args, now: float) -> str:
+    """The report is already COMMITTED when this is called: the board is being
+    told where it is, not being handed its bytes."""
+    return activity.filed(board.call("filed", args))
 
 
 def _plan(board: Board, repo: Path, args: Args, now: float) -> str:
@@ -104,6 +116,22 @@ TOOLS: list[Tool] = [
         "One card in full — spec, the whole thread, the graph, file collisions, its "
         "worktree. Or query=<text> to search titles and specs.",
         _card,
+    ),
+    _tool(
+        "taskops_activity",
+        "The whole story of a chapter in ONE read: every card's standing, commits (with "
+        "numstat), where it merged, and what was reported — milestone=ms-… or tasks=[tk-…]. "
+        "since=<seq from a previous answer> returns only what moved; depth=full adds each "
+        "spec and thread. No diffs: follow branch and sha into git yourself.",
+        _activity,
+    ),
+    _tool(
+        "taskops_filed",
+        "Register a report you already COMMITTED under .taskops/reports/: path=, title=, "
+        "sha=<the commit that carries it>, milestone= (default: the single open chapter). "
+        "The board stores the pointer, never the prose — every reader renders it from its "
+        "own clone.",
+        _filed,
     ),
     _tool(
         "taskops_plan",
