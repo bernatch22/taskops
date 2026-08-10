@@ -2972,6 +2972,56 @@ def test_a_legacy_config_opens_the_MCP_board_and_its_handshake(
     _untouched_host(server, tmp_path)
 
 
+def test_the_two_branches_of_answered_agree_on_who_gets_poked(
+    server: BoardServer, window: BoardServer
+) -> None:
+    """PARITY, pinned as a class and not as one bug.
+
+    `rpc.answered` forks on `upstream`: a board this process owns is dispatched
+    locally, somebody else's is relayed. The two branches must agree about the
+    questions that are the SAME question on both sides — and the infinite loop
+    happened because one of them silently did not: the local branch asked
+    `writes()` before poking the page and the forwarded branch never did.
+
+    Nothing in the type system, the linter or any single-branch test could see
+    that, because each branch was correct on its own terms. So the parity is
+    asserted directly, verb by verb, over the whole registry: for every verb,
+    a LOCAL call and a FORWARDED call must reach the same verdict on whether the
+    page is told the board moved. A step added to one branch and forgotten in
+    the other now goes red here, whatever the step is."""
+    local, remote = [], []
+    server.mounts.hub.publish = lambda board, message: local.append(message["verb"])  # type: ignore[method-assign]
+    window.mounts.hub.publish = lambda board, message: remote.append(message["verb"])  # type: ignore[method-assign]
+
+    direct = client(server, BERNA)
+    through = RemoteBoard(url_of(window), _token(window, BERNA), BERNA)
+    plan(direct)  # a card to read and a card to write on, on the one board both see
+    task = direct.call("board", {})["groups"]["take"][0]["id"]
+
+    for verb, args in (
+        ("board", {}),
+        ("card", {"task": task}),
+        ("events", {"limit": 1}),
+        ("report", {"window": "1d"}),
+        ("update", {"task": task, "comment": "a write both branches must announce"}),
+    ):
+        # One branch at a time, or the bookkeeping lies: a FORWARDED write also
+        # reaches the host, whose own local branch pokes there too. What is
+        # being compared is the decision each branch takes about ITS listeners.
+        local.clear()
+        direct.call(verb, dict(args))
+        by_local = list(local)
+
+        remote.clear()
+        through.call(verb, dict(args))
+        by_forward = list(remote)
+
+        assert by_local == by_forward, (
+            f"{verb!r} pokes differently depending on which side answered: "
+            f"local={by_local} forwarded={by_forward}"
+        )
+
+
 def test_a_forwarded_READ_pokes_nobody_so_a_window_cannot_feed_itself(
     server: BoardServer, window: BoardServer
 ) -> None:
