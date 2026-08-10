@@ -75,9 +75,15 @@ BODY = (
 )
 
 NO_FORGE = (
-    "this board is opened by invite, not by GitHub — its owner opts in by naming the "
-    "repo whose membership counts: taskops board forge <owner>/<name> --need push"
+    "this board is opened by invite, not by GitHub — its owner opts in by recording the "
+    "repo whose membership counts, as a board fact: a `project` call with "
+    "op=forge repo=<owner>/<name> need=push (`verbs/project.py`; no CLI verb declares "
+    "one yet). Until it does: ask for an invite and join with --invite <id>"
 )
+"""Names the door that EXISTS. It used to advertise `taskops board forge …`,
+which never shipped — `taskops board` takes create/ls/push/visibility — and a
+refusal that names an unrunnable command is worse than one that names none: it
+sends the reader to argparse instead of to their board's owner."""
 
 
 def answer(host: login.Host, stores: Stores, body: dict[str, Any], now: float) -> dict[str, Any]:
