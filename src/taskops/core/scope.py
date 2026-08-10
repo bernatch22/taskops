@@ -65,6 +65,14 @@ OPERATIONS: dict[str, Operation] = {
         OWNER,
         "publishing a board — or taking it private again — is the server OWNER's move",
     ),
+    # The only operation on this host that DESTROYS, and the same wall as
+    # `board.create` for the mirrored reason: a member holds a key to a board,
+    # never the right to end it. The guardrail in front of it (does anybody else
+    # still hold this history?) is a second, separate question — `http/removal.py`.
+    "board.remove": Operation(
+        OWNER,
+        "removing a board — and the history inside it — is the server OWNER's move",
+    ),
     "board.read": Operation(ANYONE, ""),
     "board.write": Operation(
         KEYED,
