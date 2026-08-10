@@ -888,6 +888,131 @@ def test_membership_of_the_repo_is_not_permission_to_BE_somebody(
         sign_in(server, "berna", mallory)
 
 
+# ── `taskops board forge`: the door onto the opt-in ──────────────────────────
+#
+# The chapter's opt-in existed with no human-facing surface: `op=forge` was
+# reachable from a raw /rpc call and nowhere else, so the only board that could
+# ever be opted in was one whose owner hand-wrote JSON. These pin the CLI half —
+# and the FIRST of them types the refusal's own sentence, because that sentence
+# named this command for a while before the command existed.
+
+
+def test_the_refusal_names_a_command_the_cli_really_answers(
+    server: BoardServer, keyed: Path, virgin: Path, forge: Forge, tmp_path: Path
+) -> None:
+    """`NO_FORGE`'s way out is not compared to a string here — it is TYPED.
+
+    The sentence's own words become the argv, with only the `<owner>/<name>`
+    placeholder filled in and the board named (this laptop has joined nothing),
+    so the message and the command cannot drift apart again: reword one and this
+    fails. It ran once already as a refusal pointing at a verb that did not
+    exist, which costs the reader an afternoon of believing they mistyped it.
+    """
+    from taskops.cli import main
+    from taskops.http import github
+    from taskops.verbs.project import forge as declared
+
+    hers = keygen(tmp_path / "who_key")
+    with pytest.raises(Refused, match="opened by invite"):
+        join_with_github(server, "ana", hers)
+
+    assert github.FORGE_VERB in github.NO_FORGE
+    typed = github.FORGE_VERB.replace("<owner>/<name>", "bernatch22/taskops").split()
+    assert typed[:3] == ["taskops", "board", "forge"]
+    # `<host>/<board>` and `--key` are what a checkout that has joined nothing
+    # would otherwise have recorded; every other word is the refusal's own.
+    argv = ["board", "forge", f"{host_of(server)}/{BOARD}", *typed[3:], "--key", str(keyed)]
+    assert main(argv) == 0
+
+    assert declared(server.mounts.stores(BOARD)) == {
+        "host": "github.com",
+        "repo": "bernatch22/taskops",
+        "need": "push",
+    }
+    # …and the door that refusal was guarding is open, for the repo it named.
+    assert join_with_github(server, "ana", hers)["role"] == "member"
+
+
+def test_the_forge_is_cleared_back_to_invite_only_by_the_same_verb(
+    server: BoardServer, keyed: Path, virgin: Path, forge: Forge, tmp_path: Path
+) -> None:
+    """Opting in is reversible or it is a trap. `--clear` is a FLAG and not the
+    word "none", so no repository can ever be named the thing that undoes it.
+    Declared, read back, cleared, read back — through the CLI, against a server."""
+    from taskops.cli import main
+    from taskops.verbs.project import forge as declared
+
+    at = f"{host_of(server)}/{BOARD}"
+    key = ["--key", str(keyed)]
+    assert main(["board", "forge", at, "bernatch22/taskops", "--need", "admin", *key]) == 0
+    assert declared(server.mounts.stores(BOARD)) == {
+        "host": "github.com",
+        "repo": "bernatch22/taskops",
+        "need": "admin",
+    }
+
+    assert main(["board", "forge", at, "--clear", *key]) == 0
+    assert declared(server.mounts.stores(BOARD)) is None
+    hers = keygen(tmp_path / "who_key")
+    with pytest.raises(Refused, match="opened by invite"):
+        join_with_github(server, "ana", hers)
+    assert not forge.seen  # cleared means nothing leaves this host again
+
+
+def test_the_bare_form_reads_its_one_positional_as_the_repo_not_the_board(
+    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The form the refusal prints and the README documents: ONE argument, and
+    it is the REPO — the board is the recorded one, as with every other bare
+    verb. argparse fills positionals left to right and cannot know that, so
+    without the swap in `operate._forge` this asks for a board called
+    `bernatch22/taskops`; `board visibility` carries the same amendment."""
+    from taskops.cli import main
+    from taskops.verbs.project import forge as declared
+
+    assert main(["board", "create", f"{host_of(server)}/e2e", "--key", str(keyed)]) == 0
+    capsys.readouterr()
+    assert main(["board", "forge", "bernatch22/taskops"]) == 0  # no host, no key, no board
+    printed = capsys.readouterr().out
+    # Neither `github.com` nor `push` was typed: the CLI sends `need=""` and the
+    # forge host not at all, and what it PRINTS is the fact the server decided
+    # and re-read — a command that echoed its own argv would agree with itself
+    # while the board said something else.
+    assert "e2e on http" in printed and "opened by github.com/bernatch22/taskops" in printed
+    assert "anyone with push on it joins with: taskops join e2e --github" in printed
+    assert declared(server.mounts.stores("e2e")) == {
+        "host": "github.com",
+        "repo": "bernatch22/taskops",
+        "need": "push",
+    }
+    assert not (server.mounts.root / "bernatch22").exists()
+
+
+def test_declaring_a_forge_is_the_owners_move_and_a_typo_is_refused_by_name(
+    server: BoardServer, keyed: Path, virgin: Path, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`board.visibility`'s wall, one notch sharper: a member holds a key to the
+    board, and this fact decides who ELSE gets one. And the CLI does not own the
+    vocabulary — `core/forge.py::declare` refuses loudly, which is what a door a
+    human types at wants; the board keeps no half-declared fact either way."""
+    from taskops.cli import main
+    from taskops.verbs.project import forge as declared
+
+    at = f"{host_of(server)}/{BOARD}"
+    key = ["--key", str(keyed)]
+    assert main(["board", "forge", at, "bernatch22/taskops/extra", *key]) == 1
+    assert "exactly owner/name" in capsys.readouterr().err
+    assert main(["board", "forge", *key]) == 1  # neither a repo nor --clear
+    assert "--clear" in capsys.readouterr().err
+    assert declared(server.mounts.stores(BOARD)) is None
+
+    hers, _ = member(server, tmp_path)
+    with pytest.raises(Refused, match="OWNER's move"):
+        admin(server, hers, "board.forge", {"board": BOARD, "repo": "x/y", "need": "push"})
+    assert declared(server.mounts.stores(BOARD)) is None
+
+
 # ── the host is operated from taskops, over its own API ─────────────────────
 #
 # The anomaly the whole chapter exists to kill: every admin act used to be an
@@ -1188,7 +1313,7 @@ def test_the_address_may_be_a_whole_url_and_a_url_is_never_split_by_slashes(
 def test_revoke_takes_exactly_one_of_key_and_invite(server: BoardServer, joined: Path) -> None:
     """Neither is a command with no object; both is two acts wearing one word."""
     from taskops.cli import main
-    from taskops.cli.operate import revoke
+    from taskops.cli.grants import revoke
 
     for argv in (["revoke"], ["revoke", "--key", "SHA256:x", "--invite", "id"]):
         assert main(argv) == 1  # `main` prints the refusal and never raises

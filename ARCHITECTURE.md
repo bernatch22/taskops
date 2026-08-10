@@ -248,7 +248,7 @@ flowchart TB
         httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, auth, login, github (membership enrols a key — it mints nothing), feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
-        cli["commands: init · join --key/--invite/--github   ·   enrol: the two introductions, and WHERE a GitHub token may come from   ·   hooks: what the two git hooks call   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
+        cli["commands: init · join --key/--invite/--github   ·   enrol: the two introductions, and WHERE a GitHub token may come from   ·   hooks: what the two git hooks call   ·   watch: join with nothing   ·   serving: serve · ui   ·   remote: remote add — which host, which board   ·   operate: board · board visibility · board forge   ·   grants: invite · revoke   ·   push: board push   ·   admin: server init + break-glass"]
     end
 
     L1 --> L0
@@ -343,6 +343,11 @@ GitHub's model, deliberately and exactly — private by default, the owner may
 publish (`taskops board visibility <host>/<name> public|private`, an owner-only
 server-scope operation), public means ANONYMOUS READ, and a write always needs a
 registered key. **No third state and no anonymous-write grace.**
+
+`board.forge` is that same shape one notch sharper — owner-only, one board, a
+value from a closed set — because it decides whose GitHub membership becomes a
+key here. Both are `verbs/project.py` facts reached through `http/admin.py`'s
+REGISTRY, and neither has a `get` half: the board payload already answers.
 
 The flag is a project-level EVENT beside `remote`, folded newest-wins, so "when
 did this become public and who did it" is in the log; absent, a board is private,
@@ -450,6 +455,8 @@ taskops board create [<name>]           owner only — THE way a board comes to 
 taskops board ls [<host>]               owner: all of them; member: their own
 taskops board push [<name>]             a LOCAL board becomes the hosted one
 taskops board visibility [<name>] public|private     owner only
+taskops board forge [<name>] <owner>/<repo> [--need push|admin]   owner only
+taskops board forge --clear             back to invite-only — opting in is reversible
 taskops invite <who> --board <name>     owner only — prints the join line
 taskops revoke --key SHA256:… | --invite <id>
 ```
@@ -775,7 +782,7 @@ nobody has touched yet.
 |---|---|---|
 | **MCP over stdio** | Claude / any MCP host, per-repo | newline-delimited JSON-RPC 2.0. `initialize` returns `instructions`: the whole role protocol AND the board as of that moment (`mcp/hello.py` — the same verb and renderer an agent would call, so it is a delivered answer, not a second version of one). That is what a v1 system prompt was, minus the second place for truth to live, and it needs no hook and no settings file to be trusted. **One server per SESSION, shared by every sub-agent**, which is why identity rides on the call (`actor=`, §5) and not in the process's environment. `tools/call` on a refusal answers `isError: true` with the refusal *as the text content* — never a protocol-level error, because an agent that cannot read the way out will invent one; an unexpected exception answers the same way rather than ending the loop, since that loop is the session's only door to the board. |
 | **HTTP RPC** | a remote board's clients (`RemoteBoard`, the browser) | `POST /<board>/rpc` with `{"verb", "args", "actor"}`, `Authorization: Bearer <token>`. Answer is always an envelope: `{"ok": true, "seq": N, "data": {...}}` or `{"ok": false, "error": {"code", "message"}}` — v1 let three verbs answer with a bare array and the decoder silently turned it into `{}`. |
-| **GitHub introduction** | somebody joining a board that DECLARED a forge | `POST /<board>/join/github` with `{"github_token", "principal", "pubkey"}`. The host asks GitHub once — `GET /repos/{owner}/{name}`, the caller's own token in the header, `permissions[need]` read out of the answer — and on yes enrols the pubkey exactly as `invite/redeem` does. It mints NOTHING: the answer is `{principal, actor, role, fingerprint, repo, need}` and the caller's next call is the ordinary `/login` challenge with the key it just enrolled, so from the second call on this door is invisible. **The token is a header on one outgoing request and nothing else** — not the log, not `server.sqlite`, not `remote.json`, not the answer, not a refusal. A board that declared no forge refuses before anything leaves the host and keeps its invite-only flow; GitHub not answering is `Unreachable`, never a grant (`http/github.py`, and its six tests in `tests/test_topology.py`). |
+| **GitHub introduction** | somebody joining a board that DECLARED a forge | `POST /<board>/join/github` with `{"github_token", "principal", "pubkey"}`. The host asks GitHub once — `GET /repos/{owner}/{name}`, the caller's own token in the header, `permissions[need]` read out of the answer — and on yes enrols the pubkey exactly as `invite/redeem` does. It mints NOTHING: the answer is `{principal, actor, role, fingerprint, repo, need}` and the caller's next call is the ordinary `/login` challenge with the key it just enrolled, so from the second call on this door is invisible. **The token is a header on one outgoing request and nothing else** — not the log, not `server.sqlite`, not `remote.json`, not the answer, not a refusal. A board that declared no forge refuses before anything leaves the host and keeps its invite-only flow; GitHub not answering is `Unreachable`, never a grant. **The opt-in is `taskops board forge <owner>/<repo> [--need push|admin]`**, owner-only and server-scope beside `board.visibility`, and `--clear` takes it back to invite-only — the refusal's own sentence is TYPED as the argv of a test, so the message and the command cannot drift (`http/github.py::FORGE_VERB`, `cli/operate.py::_forge`, and the two blocks in `tests/test_topology.py`). |
 | **WebSocket feed** | the browser UI only | `GET /<board>/feed`, upgraded via the RFC 6455 handshake (`HTTP/1.1` required for the 101 response to be accepted — the one bug class invisible to a library-based test, caught only with a raw-socket test). A message is a *signal* (`{"type": "changed"}`), never a payload — the client refetches, so a dropped or duplicated frame can never show something the board never said. SSE is the automatic fallback for a proxy that eats the Upgrade. Agents never use this: their live channel is the "pulse" line appended to every tool result. The UI carries exactly ONE write — a comment box with a mention picker on the card panel, through the same `/rpc` door and token. |
 | **Delivery hook** | Claude Code sessions in a joined repo | `taskops hook claude`, wired by `init`/`join` into `.claude/settings.json` on `PostToolUse` + `UserPromptSubmit`. Read-only and one-way: resolves the reader (env, else worktree-path → card → holder) and injects context — `✉ …` when a mention is pending, for ANYBODY (throttled per reader per 30s); and `◆ …`, one line per group with the count and the call that clears it, when MERGE / REVIEW / STALLED is non-empty and the reader is a `dev:` (throttled per 180s, its own key). Silence otherwise, exit 0 always, any failure silent. Both reads (`mentions`, `waiting`) renew no lease. The one sanctioned Claude hook: it may deliver, never decide, store, or write. |
 

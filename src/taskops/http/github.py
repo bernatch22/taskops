@@ -74,11 +74,16 @@ BODY = (
     '"principal": "<your name on this host>", "pubkey": "<~/.ssh/id_ed25519.pub>"}'
 )
 
+FORGE_VERB = "taskops board forge <owner>/<name> --need push"
+"""The command that would lift this refusal, spelled ONCE and pinned to the CLI
+by `test_the_refusal_names_a_command_the_CLI_really_answers`. This sentence has
+already lied once — it named a verb that did not exist yet — and a refusal that
+sends somebody to a command they cannot run is worse than one that says nothing,
+because they spend the afternoon believing they typed it wrong."""
+
 NO_FORGE = (
-    "this board is opened by invite, not by GitHub — its owner opts in by recording the "
-    "repo whose membership counts, as a board fact: a `project` call with "
-    "op=forge repo=<owner>/<name> need=push (`verbs/project.py`; no CLI verb declares "
-    "one yet). Until it does: ask for an invite and join with --invite <id>"
+    "this board is opened by invite, not by GitHub — its owner opts in by naming the "
+    f"repo whose membership counts: {FORGE_VERB}"
 )
 """Names the door that EXISTS. It used to advertise `taskops board forge …`,
 which never shipped — `taskops board` takes create/ls/push/visibility — and a
