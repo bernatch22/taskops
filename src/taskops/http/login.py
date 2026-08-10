@@ -14,6 +14,11 @@ the MCP layer, three times, each a place to get it subtly wrong. Here exactly
 one thing changed: where tokens COME FROM. They stop being a string a human
 copies out of a terminal and become an artifact a key mints.
 
+A THIRD door (`github.py`, `POST /<board>/join/github`) enrols a key too, and
+it is deliberately not here: it mints nothing. GitHub's answer replaces the
+invite as the PROOF, `register()` below is the shared effect, and what the
+caller does next is the ordinary `/login` above with the key it just enrolled.
+
 The legacy flow is untouched and stays legacy on purpose (milestone rule 3:
 production has four boards with minted bearer tokens). `invite/redeem` answers
 exactly what it always did; a `pubkey` in the same body is the NEW half — the
@@ -134,13 +139,18 @@ def _redeem(
     fresh = creds.redeem(token, board, who, now)
     out: dict[str, Any] = {"token": fresh, "actor": f"dev:{who}"}
     if str(body.get("pubkey", "")).strip():
-        out["principal"] = _register(host, who, str(body["pubkey"]), now)
+        out["principal"] = register(host, who, str(body["pubkey"]), now)
     return out
 
 
-def _register(host: Host, who: str, keyline: str, now: float) -> str:
+def register(host: Host, who: str, keyline: str, now: float) -> str:
     """Register the joiner's key — AFTER the invite was burned, so an unredeemed
     body can never enrol anybody.
+
+    THE enrolment, shared rather than copied: `github.py` calls it too, once
+    GitHub has said yes, so there is one description of what joining does to
+    this host's store and one place where that description can change. What
+    differs between the doors is the PROOF that precedes it, never the effect.
 
     `enroll` is not called blindly: it is an INSERT OR REPLACE on `principals`,
     so calling it for a name this host already knows would silently rewrite that
