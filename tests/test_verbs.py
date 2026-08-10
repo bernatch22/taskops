@@ -1221,3 +1221,151 @@ def test_one_ready_card_has_no_wave_to_compute(stores: Stores) -> None:
         tasks=[{"title": "only", "spec": "by itself", "files": ["x.py"]}],
     )
     assert waved(stores, milestone=out["milestone"]["id"]) is None
+
+
+# ── reports: the file is in git, the board holds the pointer (verbs/filed.py) ─
+
+
+REPORT = ".taskops/reports/mvp-facturador.md"
+
+
+def test_a_filed_report_is_a_pointer_on_the_chapter_and_rides_on_the_board_read(
+    stores: Stores,
+) -> None:
+    """The seam, end to end: one write, and both consumers can see it — the row
+    carries what a list needs (title, when, who) and what a renderer needs (the
+    path and the sha to read it at)."""
+    planned(stores)
+    out = call(stores, "filed", W1, path=REPORT, title="MVP facturador", sha="a1b2c3d")
+    assert out["recorded"] is True
+    stone = call(stores, "board", BERNA)["milestone"]["id"]
+    assert out["report"]["milestone"] == stone  # the single open chapter, unasked
+    assert out["report"]["by"] == W1
+
+    board = call(stores, "board", BERNA)
+    assert board["reports_total"] == 1
+    assert [r["path"] for r in board["reports"]] == [REPORT]
+    row = board["reports"][0]
+    assert row["title"] == "MVP facturador" and row["sha"] == "a1b2c3d"
+    assert row["by"] == W1 and row["ts"] == _clock.now() and row["id"]
+
+
+def test_the_log_grows_by_a_pointer_and_never_by_the_report(stores: Stores) -> None:
+    """The chapter's rule, measured where it can be measured: the API has no
+    door for the prose at all, so whatever the file weighs, the log gains four
+    short strings. A body key for content would fail this the moment it existed.
+    """
+    planned(stores)
+    before = stores.log_path.stat().st_size
+    call(stores, "filed", W1, path=REPORT, title="MVP facturador" * 4, sha="a1b2c3d")
+    assert stores.log_path.stat().st_size - before < 1024
+    body = [e["body"] for e in stores.events("project") if e["kind"] == "report"][0]
+    assert set(body) == {"path", "title", "milestone", "sha"}
+
+
+def test_a_report_outside_the_reports_directory_is_refused_and_the_way_in_is_named(
+    stores: Stores,
+) -> None:
+    planned(stores)
+    with pytest.raises(Refused, match=r"\.taskops/reports/") as refused:
+        call(stores, "filed", W1, path="notes/whatever.md", title="t", sha="a1b2c3d")
+    assert "filed path=" in str(refused.value)  # the refusal contains the call that works
+    with pytest.raises(Refused):
+        call(stores, "filed", W1, path=".taskops/reports/../../etc/passwd", title="t", sha="a")
+    assert [e for e in stores.events("project") if e["kind"] == "report"] == []
+
+
+def test_a_report_needs_a_title_and_the_sha_that_carries_it(stores: Stores) -> None:
+    """A row with no title cannot be read in a list; a path with no sha cannot
+    be fetched. Both are the whole point of the event."""
+    planned(stores)
+    with pytest.raises(BadRequest, match="title="):
+        call(stores, "filed", W1, path=REPORT, title="  ", sha="a1b2c3d")
+    with pytest.raises(BadRequest, match="sha="):
+        call(stores, "filed", W1, path=REPORT, title="t", sha="")
+
+
+def test_filing_the_same_report_twice_writes_nothing(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """A retry after a dropped connection must not leave two rows in a list a
+    screen draws — `verbs/project.py`'s rule, and the log has no delete."""
+    planned(stores)
+    first = call(stores, "filed", W1, path=REPORT, title="MVP", sha="a1b2c3d")
+    clock(60)
+    again = call(stores, "filed", W1, path=REPORT, title="MVP", sha="a1b2c3d")
+    assert first["recorded"] and not again["recorded"]
+    assert again["report"]["ts"] == first["report"]["ts"]  # the ORIGINAL, not a new one
+    assert call(stores, "board", BERNA)["reports_total"] == 1
+
+
+def test_the_same_path_at_a_new_sha_is_a_new_report(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """The file was rewritten, and both versions stay in the history with the
+    commit each one lived at — that is what makes the pointer worth storing."""
+    planned(stores)
+    call(stores, "filed", W1, path=REPORT, title="MVP", sha="a1b2c3d")
+    clock(60)
+    call(stores, "filed", W1, path=REPORT, title="MVP, rewritten", sha="ffffff1")
+    board = call(stores, "board", BERNA)
+    assert board["reports_total"] == 2
+    assert [r["sha"] for r in board["reports"]] == ["ffffff1", "a1b2c3d"]  # newest first
+
+
+def test_both_roles_may_file_a_report(stores: Stores) -> None:
+    """A chapter is not a card: nobody holds it, so there is no owner to be the
+    only one allowed to narrate it. The orchestrator and a worker file alike."""
+    planned(stores)
+    call(stores, "filed", BERNA, path=".taskops/reports/one.md", title="by the dev", sha="a1")
+    call(stores, "filed", W1, path=".taskops/reports/two.md", title="by the worker", sha="b2")
+    assert {r["by"] for r in call(stores, "board", BERNA)["reports"]} == {BERNA, W1}
+
+
+def test_the_reports_list_is_capped_and_says_how_many_there_really_are(
+    stores: Stores,
+) -> None:
+    """`done_total`'s idiom, which this chapter's rules make a requirement: a
+    truncated list that does not say so is a screen quietly losing history."""
+    planned(stores)
+    for i in range(_facts.REPORTS_SHOWN + 2):
+        call(stores, "filed", W1, path=f".taskops/reports/{i}.md", title=f"r{i}", sha=f"sha{i}")
+    board = call(stores, "board", BERNA)
+    assert board["reports_total"] == _facts.REPORTS_SHOWN + 2
+    assert len(board["reports"]) == _facts.REPORTS_SHOWN
+
+
+def test_reports_are_scoped_to_the_chapter_in_focus(stores: Stores) -> None:
+    """Two chapters, two narrations, and neither leaks into the other's read."""
+    first = planned(stores)["milestone"]["id"]
+    second = call(
+        stores, "plan", BERNA, milestone="Reports", goal="narrate", tasks=[{"title": "x"}]
+    )["milestone"]["id"]
+    call(stores, "filed", W1, milestone=first, path=".taskops/reports/one.md", title="A", sha="a1")
+    call(stores, "filed", W1, milestone=second, path=".taskops/reports/two.md", title="B", sha="b2")
+    assert [r["title"] for r in call(stores, "board", BERNA, milestone=first)["reports"]] == ["A"]
+    assert [r["title"] for r in call(stores, "board", BERNA, milestone=second)["reports"]] == ["B"]
+    # Nothing in focus is the whole board, the way `events` is board-wide.
+    assert call(stores, "board", BERNA)["reports_total"] == 2
+
+
+def test_a_report_on_no_chapter_and_on_a_chapter_that_does_not_exist(stores: Stores) -> None:
+    """With several open chapters the board asks instead of guessing — the same
+    bargain `taskops_plan` makes, refusal included."""
+    planned(stores)
+    call(stores, "plan", BERNA, milestone="Reports", goal="narrate", tasks=[{"title": "x"}])
+    with pytest.raises(BadRequest, match="no single open milestone"):
+        call(stores, "filed", W1, path=REPORT, title="t", sha="a1")
+    with pytest.raises(NotFound, match="does not exist"):
+        call(stores, "filed", W1, milestone="ms-000000", path=REPORT, title="t", sha="a1")
+
+
+def test_a_report_moves_no_card_and_no_state(stores: Stores) -> None:
+    """History-only: filing one changes nothing about the work itself, and the
+    board it is filed on looks exactly as it did."""
+    planned(stores)
+    before = call(stores, "board", BERNA)["groups"]
+    call(stores, "filed", W1, path=REPORT, title="MVP", sha="a1b2c3d")
+    after = call(stores, "board", BERNA)["groups"]
+    assert before == after
+    assert all(c["status"] == "open" for c in stores.state()["cards"].values())

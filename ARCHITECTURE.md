@@ -184,6 +184,18 @@ clears it. There is no `read` column and no ack verb, for the same reason
 there is no `recover`: both would be a write whose only job is to contradict
 an earlier one.
 
+A third one is about a *chapter*: its **reports** (`core/reports.py`). A report
+is a file COMMITTED under `.taskops/reports/`, registered by the `filed` verb
+with one history-only `report` event carrying `{path, title, milestone, sha}` —
+a pointer, never the prose, the same rule that keeps diffs out of the log. "Which
+reports does this chapter have" is `reports.of()` over those events on every
+read, newest first, capped with `reports_total` beside it — never a table and
+never a column on `Milestone`, because a stored list is a second fact somebody
+has to keep in step with the events that produced it. `core/reports.py::under()`
+is the ONE place that decides whether a path is a report path, and both ends ask
+it: the verb that registers one, and the `/git` door that later serves its bytes
+to the dashboard.
+
 ---
 
 ## 4. The six layers (imports only point down)
@@ -596,7 +608,7 @@ itself, and a dev's credential as that dev's own agents — nobody else's.
 
 ---
 
-## 6. The nine MCP tools (not the same as the fourteen verbs)
+## 6. The nine MCP tools (not the same as the fifteen verbs)
 
 A tool is what an agent should think in one move; a verb is one write on the
 board. The mapping is deliberately not 1:1 in either direction:
