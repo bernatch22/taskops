@@ -20,6 +20,7 @@ from . import (
     card,
     plan,
     take,
+    filed,
     pulse,
     assign,
     events,
@@ -128,6 +129,11 @@ REGISTRY: dict[str, Verb] = {
     # A fact about the repo itself, written by init/join — the only side that
     # has a clone. BOTH roles: whoever ran the command owns the checkout.
     "project": Verb(project.run, "write", BOTH, ""),
+    # A committed report is put on a chapter, by reference (`verbs/filed.py`).
+    # BOTH roles and no owner check: a chapter is not a card, so there is
+    # nobody holding it to be the one allowed to narrate it — and the read half
+    # (`core/reports.py::of`) is open to anyone the board is open to.
+    "filed": Verb(filed.run, "write", BOTH, ""),
 }
 
 
