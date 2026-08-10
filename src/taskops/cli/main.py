@@ -9,6 +9,8 @@
                             with a remote recorded and a key on disk, all of these
                             go BARE: no URL, no --key, no board name
     taskops board push      THIS repo's local board becomes the hosted one
+    taskops board pull      the reverse: a hosted board comes down as a SNAPSHOT
+                            that stops moving — the host keeps everything
     taskops board rm        take a board OFF a host — refuses to destroy a history
                             this checkout does not hold (--discard-history says so)
     taskops board visibility <host>/<name> public|private   owner only
@@ -29,7 +31,17 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import rm, push as promote, admin, claude, remote, operate, serving, commands
+from . import (
+    rm,
+    pull as download,
+    push as promote,
+    admin,
+    claude,
+    remote,
+    operate,
+    serving,
+    commands,
+)
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -81,7 +93,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     host.add_argument("--key", default="", help="the owner's pubkey: a path, or - for stdin")
     host.add_argument("--owner", default="", help="the owner's name (default: $USER)")
     boards = sub.add_parser("board", help="create or list the boards on a host")
-    boards.add_argument("action", choices=["create", "ls", "push", "rm", "visibility"])
+    boards.add_argument(
+        "action", choices=["create", "ls", "push", "pull", "rm", "visibility"]
+    )
     boards.add_argument("target", nargs="?", default="", help="<host>/<name>, or just <name>")
     boards.add_argument(
         "visibility",
@@ -152,14 +166,17 @@ def _run(args: argparse.Namespace) -> int:
     if args.command == "server":
         return admin.server(args)
     if args.command == "board":
-        # `push` is its own module — five ordered steps and a config flip, against
-        # `board`'s two one-shot calls — so `main` routes it, and neither imports
-        # the other (`push.py` needs `operate`'s transport and its address parser).
-        # `rm` is separated for the mirrored reason: one call, and a guardrail
-        # around it that is the whole command.
+        # `push` and `pull` are each their own module — five ordered steps and a
+        # config flip, against `board`'s two one-shot calls — so `main` routes
+        # them, and neither imports the other (both need `operate`'s transport
+        # and its address parser, and nothing needs them back). `rm` is separated
+        # for the mirrored reason: one call, and a guardrail around it that is
+        # the whole command.
         action = str(args.action)
         if action == "push":
             return promote.run(args)
+        if action == "pull":
+            return download.run(args)
         if action == "rm":
             return rm.run(args)
         return operate.board(args)

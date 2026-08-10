@@ -3223,6 +3223,259 @@ def test_the_file_door_is_the_same_token_door_as_the_rest(
     assert json.loads(caught.value.read().decode())["error"]["code"] == "refused"
 
 
+# ── and the lifecycle runs backwards: `taskops board pull` ──────────────────
+#
+# The same real server, the same real keypair and the same socket as the push
+# tests above — read in the other direction. Nothing here stubs the transfer:
+# the events are paged down through the `events` verb, written through
+# `Stores`, and the assertions compare the two logs BY ID.
+
+
+def pulled(target: str = "", key: str = "") -> int:
+    from taskops.cli import pull
+
+    return pull.run(argparse.Namespace(action="pull", target=target, key=key, principal=""))
+
+
+def host_log(httpd: BoardServer, name: str = BOARD) -> str:
+    """The host's own truth, on the host's own disk — read back after a pull to
+    prove the command took nothing away."""
+    return (httpd.mounts.root / name / "events.jsonl").read_text(encoding="utf-8")
+
+
+def ids_in(text: str) -> list[str]:
+    return [json.loads(line)["id"] for line in text.strip().splitlines()]
+
+
+def test_a_hosted_board_comes_down_whole_and_the_host_keeps_every_byte(
+    server: BoardServer, joined: Path
+) -> None:
+    """Criterion 1, end to end and over a socket: the whole history lands here,
+    every id is accounted for, the config flips LAST — and the board on the
+    server is byte for byte what it was, because a pull destroys nothing."""
+    from taskops.cli.main import main
+
+    plan(client(server, BERNA))
+    before = host_log(server)
+
+    assert main(["board", "pull", f"{host_of(server)}/{BOARD}"]) == 0
+
+    # Event for event, by ID, in the order the host holds them.
+    assert ids_in(local_log(joined).read_text(encoding="utf-8")) == ids_in(before)
+    # The HOST is read back: same bytes, same head. This is the milestone's rule.
+    assert host_log(server) == before
+    assert server.mounts.stores(BOARD).head() == len(ids_in(before))
+
+    # ONLY NOW the config — and only `board.json`. `remote.json` keeps its login,
+    # so `board create` / `board push` still know which server to go to.
+    config = read_config(joined)
+    assert "url" not in config
+    assert config["login"]["host"] == host_of(server) and config["token"]
+    board = taskops.board.open_board(joined, BERNA)
+    assert isinstance(board, taskops.board.LocalBoard)
+    assert [c["title"] for c in board.call("board", {})["groups"]["take"]] == [
+        "invoice model",
+        "CSV parser",
+    ]
+    board.close()
+
+
+def test_a_pulled_board_is_a_SNAPSHOT_and_it_stops_moving(
+    server: BoardServer, joined: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The sentence is part of the deliverable, and so is the fact behind it.
+    Nothing syncs after a pull: the host moves on, this copy does not, and
+    nothing anywhere would say so — which is why the command says it itself."""
+    plan(client(server, BERNA))
+    assert pulled(f"{host_of(server)}/{BOARD}") == 0
+    printed = capsys.readouterr().out
+    assert "SNAPSHOT" in printed and "STOPS MOVING" in printed
+    assert "nothing syncs" in printed
+    assert "destroys nothing" in printed
+
+    # The host moves on. The local copy does not, and never will.
+    after = client(server, BERNA)
+    after.call(
+        "plan",
+        {
+            "milestone": "second chapter",
+            "goal": "written after the pull",
+            "tasks": [{"title": "too late", "spec": "never seen here", "files": ["z.py"]}],
+        },
+    )
+    board = taskops.board.open_board(joined, BERNA)
+    assert [m["title"] for m in board.call("board", {})["milestones"]] == ["MVP facturador"]
+    board.close()
+    assert len(client(server, BERNA).call("board", {})["milestones"]) == 2
+
+
+def test_an_interrupted_pull_re_runs_to_a_no_op_and_finishes_the_job(
+    server: BoardServer, joined: Path
+) -> None:
+    """Criterion 2, and the interruption is real: half the log is written and the
+    process dies before step 5. The retry must NOT refuse itself — "is there a
+    local board here" would, which is why step 1 asks by ID instead — and it must
+    not duplicate a line either: the cache ignores a repeated id and the log
+    does not, so the write is filtered against what is already held."""
+    from taskops.store.stores import Stores
+
+    plan(client(server, BERNA))
+    theirs = host_log(server)
+    honest = Stores.write
+
+    def dies(self: Stores, events: Any) -> int:
+        rows = list(events)
+        honest(self, rows[: len(rows) // 2])
+        raise RuntimeError("the laptop closed")
+
+    # Its OWN context: `monkeypatch.undo()` would also undo the `joined`
+    # fixture's chdir and env, and the retry has to run where the first one did.
+    with pytest.MonkeyPatch.context() as broken:
+        broken.setattr(Stores, "write", dies)
+        with pytest.raises(RuntimeError):
+            pulled(f"{host_of(server)}/{BOARD}")
+
+    # Half a history on disk and a config that never flipped: still the host's.
+    partial = ids_in(local_log(joined).read_text(encoding="utf-8"))
+    assert 0 < len(partial) < len(ids_in(theirs))
+    assert read_config(joined)["url"] == url_of(server)
+
+    assert pulled(f"{host_of(server)}/{BOARD}") == 0
+    whole = local_log(joined).read_text(encoding="utf-8")
+    assert ids_in(whole) == ids_in(theirs)  # no duplicate, no reordering
+    assert "url" not in read_config(joined)
+
+    # And a THIRD run, with nothing left to do, is a pure no-op — including the
+    # sign-in, which comes off the `login` block the flip deliberately kept.
+    assert pulled(f"{host_of(server)}/{BOARD}") == 0
+    assert local_log(joined).read_text(encoding="utf-8") == whole
+    assert host_log(server) == theirs
+
+
+def test_a_pull_over_a_history_the_host_does_not_hold_names_both_ways_out(
+    server: BoardServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`join`'s orphan refusal, from the other side: two histories in one log is
+    what would happen, and it is refused with the two commands that avoid it.
+    Judged by ID and not by existence — the previous test is the reason."""
+    repo = local_repo(tmp_path, "otra")
+    mine = local_log(repo).read_text(encoding="utf-8")
+    plan(client(server, BERNA))
+    monkeypatch.setenv("TASKOPS_ACTOR", BERNA)
+    monkeypatch.chdir(repo)
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    (repo / ".taskops" / "remote.json").write_text(json.dumps({"token": token}), encoding="utf-8")
+
+    with pytest.raises(TaskopsError) as refused:
+        pulled(f"{host_of(server)}/{BOARD}")
+    assert "does not hold" in str(refused.value)
+    assert "--discard-local" in str(refused.value)
+    assert "taskops board pull" in str(refused.value)
+
+    # Nothing was written by the refusal, on either side.
+    assert local_log(repo).read_text(encoding="utf-8") == mine
+    assert "url" not in read_config(repo)
+
+
+def test_a_pull_that_arrives_short_stops_before_the_config_flips(
+    server: BoardServer, joined: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Step 4, against a pull that really is short — one event never reaches the
+    store. The ID sets disagree, the command STOPS, and this checkout still
+    reads the host: without the comparison it would have reported success and
+    started reading a board with a hole in it."""
+    from taskops.store.stores import Stores
+
+    plan(client(server, BERNA))
+    honest = Stores.write
+
+    def short(self: Stores, events: Any) -> int:
+        return honest(self, list(events)[:-1])
+
+    monkeypatch.setattr(Stores, "write", short)
+    with pytest.raises(TaskopsError) as stopped:
+        pulled(f"{host_of(server)}/{BOARD}")
+    assert "did not arrive whole" in str(stopped.value)
+    assert "1 of the host's" in str(stopped.value)
+
+    assert read_config(joined)["url"] == url_of(server)  # step 5 never ran
+
+
+def test_a_board_that_moved_under_the_read_is_refused_and_nothing_is_written(
+    server: BoardServer, joined: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check the ID comparison cannot make: a page silently lost shrinks BOTH
+    sides of it and agrees with itself. `total` is the log's own length, so a
+    read that does not add up refuses before a single event is written down."""
+    plan(client(server, BERNA))
+    honest = RemoteBoard.call
+
+    def inflated(self: RemoteBoard, verb: str, args: dict[str, Any]) -> dict[str, Any]:
+        answer = honest(self, verb, args)
+        return {**answer, "total": int(answer["total"]) + 1} if verb == "events" else answer
+
+    monkeypatch.setattr(RemoteBoard, "call", inflated)
+    with pytest.raises(TaskopsError, match="moved while it was being read"):
+        pulled(f"{host_of(server)}/{BOARD}")
+
+    assert not local_log(joined).exists()
+    assert read_config(joined)["url"] == url_of(server)
+
+
+def test_the_whole_log_comes_down_page_by_page_and_not_just_its_first_page(
+    server: BoardServer, joined: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The paging is keyset by `seq`, so a log longer than one page must arrive
+    whole and in order. The page size is shrunk rather than the history grown:
+    what is being pinned is the cursor loop, not the server's constant."""
+    from taskops.cli import paging
+
+    plan(client(server, BERNA))
+    theirs = host_log(server)
+    assert len(ids_in(theirs)) > 3
+    monkeypatch.setattr(paging, "MAX_PAGE", 2)
+
+    assert pulled(f"{host_of(server)}/{BOARD}") == 0
+    assert ids_in(local_log(joined).read_text(encoding="utf-8")) == ids_in(theirs)
+
+
+def test_pulling_added_no_verb_to_either_registry(server: BoardServer, owner: str) -> None:
+    """No replication channel, and this is the wall that says so: the whole
+    command reads the log through `events`, the verb the dashboard's Event pane
+    already uses. A `board.pull` — or any sync door — is the banned thing
+    (ARCHITECTURE §11), so the host must not answer one and must not have grown
+    one to make this feature possible."""
+    from taskops.verbs import REGISTRY
+
+    assert not [verb for verb in REGISTRY if "pull" in verb or "sync" in verb]
+    with pytest.raises(BadRequest, match="this host's own verbs are"):
+        admin(server, owner, "board.pull", {"board": BOARD})
+
+
+def test_an_event_that_fails_its_own_hash_is_never_written_down(
+    server: BoardServer, joined: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reader of a FILE quarantines a line whose id does not match its
+    content (`store/log.py`), and the same rule has to hold on the wire: an
+    event tampered with in flight would otherwise be written into a fresh log
+    that looks trustworthy, in a second place, with nobody having verified it."""
+    plan(client(server, BERNA))
+    honest = RemoteBoard.call
+
+    def forged(self: RemoteBoard, verb: str, args: dict[str, Any]) -> dict[str, Any]:
+        answer = honest(self, verb, args)
+        if verb != "events":
+            return answer
+        rows = [dict(row) for row in answer["events"]]
+        rows[0]["actor"] = "dev:mallory"
+        return {**answer, "events": rows}
+
+    monkeypatch.setattr(RemoteBoard, "call", forged)
+    with pytest.raises(TaskopsError, match="does not match its own content"):
+        pulled(f"{host_of(server)}/{BOARD}")
+
+    assert not local_log(joined).exists()
+    assert read_config(joined)["url"] == url_of(server)
 # ── a board comes OFF a host, and only when the history is not lost ──────────
 #
 # The last one-directional edge in a board's life: `board create` made one and

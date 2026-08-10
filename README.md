@@ -59,7 +59,7 @@ taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
-taskops board create|ls|push|rm|visibility   the boards on a host
+taskops board create|ls|push|pull|rm|visibility   the boards on a host
 taskops invite <who>                      a single-use link
 taskops revoke --key|--invite             a key or an invite stops working
 taskops tidy                              remove worktrees whose work is in the trunk
@@ -143,7 +143,15 @@ taskops remote add https://host:8787 [--replace]   # once per checkout
 taskops board create [<name>]                      # defaults to the directory's name
 taskops board push                                 # this repo's LOCAL board becomes that one
 taskops join <name>                                # or: a teammate connects to an existing one
+taskops board pull [<name>]                        # the reverse: it comes back down, verified by id
 ```
+
+`board pull` writes the host's whole history into `.taskops/board/`, proves every
+event id arrived, and only then points this checkout at the local copy. **The host
+keeps its board — a pull destroys nothing** — and what you now hold is a
+**snapshot that stops moving**: nothing syncs afterwards, so work done on the host
+after the pull will never appear in it. `remote.json` keeps its login, so
+`board create` and `board push` still go to the same server.
 
 And the admin surface for any board on that host, from anywhere:
 
