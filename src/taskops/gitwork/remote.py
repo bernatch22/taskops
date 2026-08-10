@@ -142,6 +142,19 @@ def push(repo: Path, *branches: str, cwd: Path | None = None) -> None:
         return
     for name in names:
         try:
-            run.git("push", "origin", name, cwd=where, timeout=PUSH_TIMEOUT)
+            # BOTH sides of the refspec, always. `git push origin <name>` looks
+            # explicit and is not: with no colon, git resolves the destination
+            # through `push.default`, and under `upstream` — a setting a human
+            # may have in ~/.gitconfig for their own reasons — that destination
+            # is the branch's UPSTREAM, not its name. Measured here on
+            # 2026-08-10: milestone branches cut in v1 still tracked
+            # `origin/main`, so this best-effort visibility push was writing
+            # integration branches onto MAIN, in a function that swallows every
+            # error, in a repo whose whole point is that only the human lands
+            # anything on the trunk. `<name>:refs/heads/<name>` cannot be
+            # reinterpreted by any config.
+            run.git(
+                "push", "origin", f"{name}:refs/heads/{name}", cwd=where, timeout=PUSH_TIMEOUT
+            )
         except TaskopsError:  # timeout, or no git at all — never the caller's problem
             return
