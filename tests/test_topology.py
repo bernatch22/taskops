@@ -3271,3 +3271,28 @@ def test_the_file_door_is_the_same_token_door_as_the_rest(
     with pytest.raises(HTTPError) as caught:
         urlopen(f"{url_of(reports_server)}/git/file/HEAD?path={REPORT}", timeout=5)
     assert json.loads(caught.value.read().decode())["error"]["code"] == "refused"
+
+
+def test_a_client_that_hangs_up_is_not_printed_as_a_crash(
+    server: BoardServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A browser opens several keep-alive connections per origin and closes the
+    spares once the page settles; a WebSocket upgrade replaces one outright.
+    socketserver answers every exception in its thread with a full traceback, so
+    a healthy `taskops ui` printed thirty lines of Python internals per
+    disconnect — which is how a REAL fault stops being visible.
+
+    Everything that is not a departure still prints: the second half asserts
+    that, because a handler that swallows errors is the worse bug."""
+    capsys.readouterr()
+    try:
+        raise ConnectionResetError(54, "Connection reset by peer")
+    except ConnectionResetError:
+        server.handle_error(None, ("127.0.0.1", 1))
+    assert capsys.readouterr().err == ""
+
+    try:
+        raise ValueError("a real fault, and it must be seen")
+    except ValueError:
+        server.handle_error(None, ("127.0.0.1", 1))
+    assert "a real fault" in capsys.readouterr().err
