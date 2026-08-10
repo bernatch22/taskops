@@ -159,6 +159,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           selected={milestone}
           onSelect={setMilestone}
           live={live}
+          forge={board?.forge}
           team={board?.team ?? []}
           theme={theme}
           onToggleTheme={flip}

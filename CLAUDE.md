@@ -77,7 +77,11 @@ which is a header on one outgoing request and is written nowhere. `--github` is 
 `store_true` and must stay one — a token in a flag value is in the shell history
 before the process starts. A board opts in with `op=forge` (`core/forge.py` owns
 the shape); absent — the state every board is born in — that door does not exist
-and the board is invite-only. There is no CLI verb that declares a forge yet.
+and the board is invite-only. The owner declares it with `taskops board forge
+<owner>/<repo> [--need push|admin]` (`--clear` takes it back), and the board SAYS
+so: the fact rides on the `board` payload, derived per read exactly as
+`visibility` is, so a reader finds the door instead of bumping into it. **A board
+with no forge sends no key at all** — never `null`.
 
 ## Layers — imports only point DOWN
 

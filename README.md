@@ -168,10 +168,17 @@ taskops revoke --key SHA256:… | --invite <id>      # a GitHub-enrolled key too
 
 **Declaring the forge** — the repo whose membership opens a board — is a board
 fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
-until an owner records it and cleared again by recording `repo=""`. It has **no
-CLI verb yet**: today it is a `project` call over `/rpc`, so `--github` is a
-door only a board that has been opted in through that call answers at all. Every
-other board is invite-only, exactly as before.
+until an owner records it and cleared again by recording `repo=""`. A board that
+never recorded one is invite-only and its `/join/github` door does not exist.
+
+**The board says so out loud.** The declared forge rides on the `board` payload
+— derived per read from the one event that declared it, never a second copy —
+so anybody who can read the board can see what opens it, and the dashboard
+draws it under the board's own identity as
+`github.com/<owner>/<repo> · push`. Before that, the only two parties who knew
+were the owner who typed the command and the stranger the door refused. A board
+with no forge sends no such key at all, which is what keeps every older reader
+working unchanged.
 
 No URL and no `--key` after `remote add`: the host is recorded in the checkout,
 `board create` records the name, and the key is **discovered** the way ssh

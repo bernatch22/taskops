@@ -1019,6 +1019,46 @@ def test_a_board_declares_no_forge_and_that_is_how_every_board_is_born(
     assert "forge" not in call(stores, "board", BERNA)
 
 
+def test_the_board_payload_says_what_opens_it(stores: Stores) -> None:
+    """The fact stops being the owner's private knowledge.
+
+    `visibility`'s precedent, exactly (`verbs/pulse.py`): derived per read from
+    the one place it was declared, never a second copy. Before this key the only
+    two parties who could tell that `--github` works here were the owner who
+    declared the forge and the stranger the door refused — an agent with full
+    board access could not, and neither could the dashboard.
+
+    The payload carries the WHOLE fact and nothing reshaped: the door reads
+    `{host, repo, need}` and so does a reader, so a screen can name the repo AND
+    the access without knowing the default.
+    """
+    call(stores, "project", BERNA, op="forge", repo="cloudacio/Axion", need="admin")
+    assert call(stores, "board", BERNA)["forge"] == {
+        "host": "github.com",
+        "repo": "cloudacio/Axion",
+        "need": "admin",
+    }
+
+
+def test_a_cleared_forge_takes_the_key_out_of_the_payload_again(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Absent stays ABSENT — the key is never sent as `null`.
+
+    A cleared forge is the same board as one that never declared one (the door's
+    own rule, `core/forge.py::understood`), so the payload has to be the same
+    payload: a reader that learned "the key is there, look at its value" would
+    read `null` as a forge whose fields are missing. There is one shape for "no
+    GitHub door here", and it is no key.
+    """
+    call(stores, "project", BERNA, op="forge", repo="cloudacio/Axion")
+    clean = set(call(stores, "board", BERNA)) - {"forge"}
+    clock(60)
+    call(stores, "project", BERNA, op="forge", repo="")
+    after = call(stores, "board", BERNA)
+    assert "forge" not in after and set(after) == clean
+
+
 def test_the_declared_forge_is_what_the_door_will_read(stores: Stores) -> None:
     """The vocabulary, whole: `{host, repo, need}`, with github.com and `push`
     as the defaults a caller may leave out — and the SAME dict from the write
