@@ -6,6 +6,7 @@ plan → dispatch → take → commit → done → merge, plus the two ugly case
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
 import pytest
@@ -13,9 +14,9 @@ import pytest
 from taskops import verbs, _clock
 from taskops.core import seams
 from taskops.store import log
-from taskops.verbs import pulse, _facts
+from taskops.verbs import pulse, _facts, _stories
 from taskops._errors import Refused, NotFound, BadRequest
-from taskops.core.types import LEASE_TTL
+from taskops.core.types import ANON, LEASE_TTL
 from taskops.store.stores import Stores
 
 BERNA = "dev:berna"
@@ -1369,3 +1370,226 @@ def test_a_report_moves_no_card_and_no_state(stores: Stores) -> None:
     after = call(stores, "board", BERNA)["groups"]
     assert before == after
     assert all(c["status"] == "open" for c in stores.state()["cards"].values())
+
+
+# ── activity: N cards' whole story in ONE read (verbs/activity.py) ───────────
+
+
+def carried(stores: Stores) -> tuple[str, str]:
+    """A chapter whose first card was carried all the way — taken, released,
+    re-taken, committed, closed and integrated — so a story has something to
+    say in every field it declares."""
+    plan = planned(stores)
+    card = plan["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(
+        stores,
+        "update",
+        W1,
+        task=card,
+        status="released",
+        comment="got as far as the VAT rounding",
+    )
+    call(stores, "take", W2, task=card)
+    call(
+        stores,
+        "bind",
+        W2,
+        task=card,
+        sha="a1b2c3",
+        subject="feat: the Invoice model",
+        files=["src/models.py"],
+        numstat={"src/models.py": [12, 3]},
+    )
+    call(stores, "update", W2, task=card, status="done", comment="model + tests")
+    call(stores, "merged", BERNA, task=card, sha="9c2f")
+    return plan["milestone"]["id"], card
+
+
+def test_activity_answers_a_whole_chapter_in_one_read(stores: Stores) -> None:
+    """What N `card` calls answered, once — and the chapter's header sent ONCE
+    instead of re-sent with every one of them."""
+    stone, card = carried(stores)
+    out = call(stores, "activity", BERNA, milestone=stone)
+
+    assert out["milestone"]["goal"] == "read a bank CSV and issue invoices with VAT"
+    assert out["cards_total"] == 5 and len(out["cards"]) == 5
+    story = next(c for c in out["cards"] if c["id"] == card)
+    assert story["state"] == "done"
+    assert story["branch"] == card and story["merged_into"] == "ms/mvp-facturador"
+    assert story["commits"] == [
+        {
+            "sha": "a1b2c3",
+            "subject": "feat: the Invoice model",
+            "files": ["src/models.py"],
+            "branch": "",
+            "numstat": {"src/models.py": [12, 3]},
+        }
+    ]
+    # The previous worker's note, verbatim — the same field a take is shown.
+    assert story["resume"] == "got as far as the VAT rounding"
+    assert story["seconds"] >= 0 and story["thread_total"] == len(stores.events(card))
+
+
+def test_activity_carries_pointers_into_git_and_never_a_diff(stores: Stores) -> None:
+    """The chapter's rule: branch, shas and merged_into are what a reader
+    follows into its own clone. Nothing here is patch text, and a commit body
+    is a MEASURE (numstat) rather than the lines it counts."""
+    stone, _ = carried(stores)
+    out = call(stores, "activity", BERNA, milestone=stone, depth="full")
+    for story in out["cards"]:
+        for commit in story["commits"]:
+            assert set(commit) <= {"sha", "subject", "files", "numstat", "branch"}
+    assert "@@" not in json.dumps(out)  # a hunk header — the shape of a patch
+
+
+def test_activity_caps_the_thread_and_says_how_long_it_really_is(stores: Stores) -> None:
+    """The done/done_total idiom, which this chapter's rules make a requirement:
+    the headline sends `THREAD_HEADLINE` events and the honest total beside
+    them, so "0 of 8" is actionable where a paragraph that stops is not."""
+    stone, card = carried(stores)
+    real = len(stores.events(card))
+    assert real > _stories.THREAD_HEADLINE  # there IS something being capped
+
+    head = next(c for c in call(stores, "activity", BERNA, milestone=stone)["cards"] if c["id"] == card)
+    assert len(head["thread"]) == _stories.THREAD_HEADLINE
+    assert len(head["thread"]) < head["thread_total"] == real  # capped, and it SAYS so
+    assert "spec" not in head and "criteria" not in head and "files" not in head
+
+    whole = next(
+        c
+        for c in call(stores, "activity", BERNA, milestone=stone, depth="full")["cards"]
+        if c["id"] == card
+    )
+    assert len(whole["thread"]) == whole["thread_total"] == real
+    assert whole["spec"] == "the Invoice dataclass" and whole["files"] == ["src/models.py"]
+
+
+#: The fixture below is this board's OWN measured shape (2026-08-10), each
+#: number rounded UP: 1.6 commits per card → 2, 4.7 files per commit → 6, and 6
+#: events per card → 10, of which 4 are long comments rather than statuses. A
+#: budget pinned against a fixture invented out of nothing pins nothing.
+COMMITS, FILES, COMMENTS = 2, 6, 4
+
+
+def test_seventy_six_cards_at_headline_fit_the_payload_budget(stores: Stores) -> None:
+    """The card's acceptance, MEASURED rather than assumed: 76 cards, each with
+    a 2KB spec, its commits with their numstat, and a thread of long comments.
+    At `full` the same read is several times bigger — which is exactly why
+    `headline` is the default and why the two long fields are the two it drops."""
+    call(
+        stores,
+        "plan",
+        BERNA,
+        milestone="A chapter that grew",
+        goal="g",
+        tasks=[
+            {"title": f"card {i}", "spec": "why this exists. " * 120, "files": ["src/a.py"]}
+            for i in range(76)
+        ],
+    )
+    for n, card in enumerate(stores.state()["cards"].values()):
+        for commit in range(COMMITS):
+            call(
+                stores,
+                "bind",
+                W1,
+                task=card["id"],
+                sha=f"{n:04x}{commit}",
+                subject="feat: something with a subject of an ordinary length",
+                files=[f"src/module_{f}.py" for f in range(FILES)],
+                numstat={f"src/module_{f}.py": [f * 3, f] for f in range(FILES)},
+            )
+        for comment in range(COMMENTS):
+            call(stores, "update", W1, task=card["id"], comment=f"{comment}: what I found. " * 40)
+
+    out = call(stores, "activity", BERNA, milestone="", depth="headline")
+    size = len(json.dumps(out))
+    assert len(out["cards"]) == 76
+    assert size < 100 * 1024, f"{size} bytes for 76 cards at headline"
+    assert len(json.dumps(call(stores, "activity", BERNA, depth="full"))) > 4 * size
+
+
+def test_activity_since_returns_only_what_moved_and_still_counts_the_rest(
+    stores: Stores,
+) -> None:
+    """`since=` is the cache's keyset (`store/cache.py::page`'s cursor), not a
+    second one — and an empty answer under it means "nothing moved", which is
+    why `cards_total` keeps counting the chapter."""
+    stone, card = carried(stores)
+    seq = call(stores, "activity", BERNA, milestone=stone)["seq"]
+
+    quiet = call(stores, "activity", BERNA, milestone=stone, since=seq)
+    assert quiet["cards"] == [] and quiet["cards_total"] == 5
+
+    other = call(stores, "card", BERNA, query="CSV parser")["matches"][0]["id"]
+    call(stores, "update", BERNA, task=other, comment="the bank changed its export")
+    moved = call(stores, "activity", BERNA, milestone=stone, since=seq)
+    assert [c["id"] for c in moved["cards"]] == [other]
+    assert moved["cards_total"] == 5 and moved["seq"] > seq
+    assert card not in {c["id"] for c in moved["cards"]}
+
+
+def test_activity_reads_named_cards_across_chapters(stores: Stores) -> None:
+    """`tasks=` is the narrower question and wins. The header is the chapter
+    they SHARE — nothing at all when they do not, rather than one of the two
+    chosen silently."""
+    first = planned(stores)["cards"][0]["id"]
+    second = call(
+        stores, "plan", BERNA, milestone="Reports", goal="narrate", tasks=[{"title": "x"}]
+    )["cards"][0]["id"]
+    both = call(stores, "activity", BERNA, tasks=[first, second])
+    assert [c["id"] for c in both["cards"]] == [first, second]
+    assert both["milestone"] is None
+    one = call(stores, "activity", BERNA, tasks=[second])
+    assert one["milestone"] is not None and one["milestone"]["title"] == "Reports"
+
+
+def test_activity_carries_the_chapters_reports(stores: Stores) -> None:
+    """The seam card's fold, consumed: a chapter's narrations ride on the read
+    that tells its story, capped with the honest total (`_facts.reports`)."""
+    stone, _ = carried(stores)
+    call(stores, "filed", W1, path=REPORT, title="MVP facturador", sha="a1b2c3d")
+    out = call(stores, "activity", BERNA, milestone=stone)
+    assert [r["title"] for r in out["reports"]] == ["MVP facturador"]
+    assert out["reports_total"] == 1
+
+
+def test_activity_is_a_read_anonymous_may_run_and_it_writes_nothing(stores: Stores) -> None:
+    """WATCHERS, and the milestone's rule: no lease renewed for anon, nothing
+    written anywhere. A `presence` row on a public read is the invisible
+    anonymous write ARCHITECTURE §11 bans."""
+    stone, _ = carried(stores)
+    head, present = stores.head(), stores.live.present(0.0)
+    out = call(stores, "activity", ANON, milestone=stone)
+    assert out["cards_total"] == 5
+    assert stores.head() == head
+    assert stores.live.present(0.0) == present
+
+
+def test_activity_refuses_what_it_cannot_answer_and_names_the_door(stores: Stores) -> None:
+    planned(stores)
+    call(stores, "plan", BERNA, milestone="Reports", goal="narrate", tasks=[{"title": "x"}])
+    with pytest.raises(BadRequest, match="milestone=ms-…"):
+        call(stores, "activity", BERNA)  # two open chapters: asked, never guessed
+    with pytest.raises(NotFound, match="does not exist"):
+        call(stores, "activity", BERNA, milestone="ms-000000")
+    with pytest.raises(BadRequest, match="headline or full"):
+        call(stores, "activity", BERNA, milestone="", depth="everything")
+
+
+def test_the_commits_list_is_capped_and_says_how_many_there_really_are(stores: Stores) -> None:
+    """The other half of the same rule: every capped list travels with its
+    honest total. `commits` is the one field a single card can grow without a
+    bound anybody controls, so it is capped NEWEST-first — the recent work is
+    what a chapter-wide reader is deciding about."""
+    plan = planned(stores)
+    card = plan["cards"][0]["id"]
+    extra = 3
+    for i in range(_stories.COMMITS_SHOWN + extra):
+        call(stores, "bind", W1, task=card, sha=f"{i:06x}", subject=f"c{i}", files=["src/a.py"])
+    out = call(stores, "activity", BERNA, milestone=plan["milestone"]["id"])
+    story = next(c for c in out["cards"] if c["id"] == card)
+    assert story["commits_total"] == _stories.COMMITS_SHOWN + extra
+    assert len(story["commits"]) == _stories.COMMITS_SHOWN
+    assert story["commits"][-1]["subject"] == f"c{_stories.COMMITS_SHOWN + extra - 1}"

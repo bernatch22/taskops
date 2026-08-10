@@ -608,7 +608,7 @@ itself, and a dev's credential as that dev's own agents — nobody else's.
 
 ---
 
-## 6. The nine MCP tools (not the same as the fifteen verbs)
+## 6. The eleven MCP tools (not the same as the sixteen verbs)
 
 A tool is what an agent should think in one move; a verb is one write on the
 board. The mapping is deliberately not 1:1 in either direction:
@@ -626,6 +626,21 @@ verb — one write path underneath, because v1 split closing across six modules
 and forgot to record it in one of them, but two moves on top, because saying
 something is not changing something.
 
+`taskops_activity` and `taskops_filed` are the reports chapter's pair, and the
+count of tools is asserted in `tests/test_mcp.py` so this sentence cannot rot.
+**`taskops_activity` is `taskops_card` for a whole chapter**: the header once,
+then a story per card — state, standing, commits with their numstat,
+`merged_into`, the released note, the seconds. It is the one read with a
+declared PAYLOAD BUDGET (`verbs/activity.py` carries the measurement): 76 cards
+at the default `depth=headline` come back under ~100KB, which is paid for by
+dropping the two unbounded prose fields — the spec and the thread — and sending
+`thread_total` instead. `depth=full` asks for them. No diffs and no patch text,
+ever: `branch` and the shas are the pointers a reader follows into its own
+clone, exactly as the log stores a report's path and not its bytes.
+**`taskops_filed`** is the write half of that same rule (§2's reports), and the
+reason it exists as a tool at all: without it an agent can commit a narration
+and has no way to put it on the board.
+
 ```mermaid
 flowchart LR
     subgraph Orchestrator
@@ -640,6 +655,8 @@ flowchart LR
         comment_t["taskops_comment"]
         card_t["taskops_card"]
         review_t["taskops_review — neither role's alone"]
+        activity_t["taskops_activity — neither role's alone"]
+        filed_t["taskops_filed — neither role's alone"]
     end
     plan_t -->|"writes cards"| verbP["verb: plan"]
     dispatch_t -->|"assign + cut worktree"| verbA["verb: assign"] --> gitA["gitwork/trees.ensure_card"]
@@ -648,6 +665,8 @@ flowchart LR
     comment_t -->|"say something on ANY open card (+mentions)"| verbU
     review_t -->|"task= claims · verdict= judges"| verbR["verb: review"] --> liveR["live.sqlite — the REVIEW lease"]
     merge_t -->|"--no-ff in integration worktree"| gitM["gitwork/landing.merge_card"] --> verbM["verb: merged"]
+    activity_t -->|"a chapter's story, capped, no diffs"| verbAc["verb: activity — a READ"]
+    filed_t -->|"path + sha of a COMMITTED report"| verbF["verb: filed"]
 ```
 
 ---
