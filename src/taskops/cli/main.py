@@ -1,7 +1,7 @@
 """The CLI, which behaves like git: it connects, it never manages.
 
     taskops init            a local board in this repo
-    taskops join <url>      join one (?token= or ?invite=), install the hooks
+    taskops join <url>      join one (?token=, ?invite= or --github), install the hooks
     taskops remote add <url>  the host this checkout operates, like git's origin
     taskops serve           host boards — an events API, no dashboard
     taskops server init     bootstrap THIS host: its owner and their ssh key
@@ -27,7 +27,7 @@ import argparse
 from typing import Sequence
 from pathlib import Path
 
-from . import push as promote, admin, claude, remote, operate, serving, commands
+from . import push as promote, admin, hooks, claude, remote, operate, serving, commands
 from ..board import find_root
 from .._errors import TaskopsError
 from ..gitwork import trees
@@ -52,6 +52,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--invite",
         default="",
         help="first join: the single-use id from `taskops invite` — your key is enrolled with it",
+    )
+    join.add_argument(
+        # A STORE_TRUE, and that is the feature: `--github <token>` is not a way to
+        # pass one, because the shell writes a flag's value into the history file
+        # before this process even starts. The token is discovered (`gh auth token`,
+        # `$GITHUB_TOKEN`) or typed at a hidden prompt — `cli/enrol.py::github_token`.
+        "--github",
+        action="store_true",
+        help="first join, no invite: GitHub membership of the board's repo enrols your key",
     )
     join.add_argument(
         "--discard-local",
@@ -135,6 +144,7 @@ def _run(args: argparse.Namespace) -> int:
             str(args.key),
             bool(args.discard_local),
             str(args.invite),
+            bool(args.github),
         )
     if args.command == "remote":
         return remote.remote(args)
@@ -162,4 +172,4 @@ def _run(args: argparse.Namespace) -> int:
         # own error policy end to end: it prints NOTHING, ever, including the
         # `taskops: …` line `main()` writes for every other failure.
         return claude.deliver(here)
-    return commands.hook(here, str(args.which), [str(x) for x in args.rest])
+    return hooks.hook(here, str(args.which), [str(x) for x in args.rest])
