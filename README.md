@@ -59,7 +59,8 @@ taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
-taskops board create|ls|push|visibility   the boards on a host
+taskops board create|ls|push              the boards on a host
+taskops board visibility|forge            who may read one · who GitHub lets in
 taskops invite <who>                      a single-use link
 taskops revoke --key|--invite             a key or an invite stops working
 taskops tidy                              remove worktrees whose work is in the trunk
@@ -150,6 +151,8 @@ And the admin surface for any board on that host, from anywhere:
 ```sh
 taskops board ls
 taskops board visibility <name> public|private     # owner only
+taskops board forge <owner>/<repo> [--need push|admin]   # owner only: GitHub opens it
+taskops board forge --clear                        # invite-only again
 taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>
 ```
