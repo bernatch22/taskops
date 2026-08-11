@@ -343,6 +343,31 @@ full width, read out of **your own clone** at that sha — the dashboard never
 asks the server for the bytes, and there is nothing to serve: a host running
 `taskops serve` answers `/git` with a 404, whole.
 
+**Reading one, from the other side.** Everything above is the author's half; a
+reader needs no ceremony at all. Three doors onto the same bytes:
+
+```sh
+taskops ui                             # the Reports tab: the chapter's list, rendered
+```
+```
+taskops_activity milestone=ms-…        # the same list as data: {path, title, sha}
+                                       # newest first, with the honest total beside it
+```
+```sh
+git pull && $EDITOR .taskops/reports/<name>.md    # it is a committed file, nothing more
+```
+
+Which one you want depends on what you are: a human wants the tab, an agent
+wants `activity` and then opens the file in its own worktree. There is no
+`read_report` tool and there is not going to be one — the bytes are already in
+the clone, and a tool that returned them would be a second way to do what
+opening a file does, with the whole chapter's prose pushed through context.
+
+The one failure worth naming: **the report renders blank or 404s when your
+clone does not have that sha yet** — the pointer is fine, your git is behind.
+`git fetch --all` and reload. The board deliberately cannot help you here; it
+never had the bytes.
+
 The rules that shape it, each of them the reason a step exists:
 
 * **The log stores a reference, never the prose.** The `report` event body is
