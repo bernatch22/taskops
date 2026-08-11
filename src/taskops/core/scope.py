@@ -95,6 +95,15 @@ OPERATIONS: dict[str, Operation] = {
         OWNER,
         "registering a key is the server OWNER's move",
     ),
+    # A batch of principals and the keys that speak for them — `key.add`'s wall,
+    # and not a softer one because it arrives as a list: whoever may run it
+    # decides who exists on this host. It ADDS only (revoking stays a separate
+    # act, `key.revoke` below), which is why the OWNER row is the whole rule.
+    "members.enroll": Operation(
+        OWNER,
+        "enrolling members — a principal and the keys that speak for it — is the "
+        "server OWNER's move",
+    ),
     "key.revoke": Operation(
         OWNER,
         "revoking a key is the server OWNER's move",

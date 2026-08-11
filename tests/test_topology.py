@@ -1218,6 +1218,180 @@ def test_revoking_a_key_stops_it_signing_anybody_in(
         admin(server, owner, "key.revoke", {"key": "SHA256:nothing"})
 
 
+# ── the host enrols a whole team in one call: members.enroll ────────────────
+#
+# The seam the forge sync stands on. Everything here is principals and ssh key
+# lines: this door does not know what GitHub is, and the tests do not mention it
+# either — real keypairs, a real socket, and the same `allowed_signers` the
+# login tests verify signatures against.
+
+
+def enrol(server: BoardServer, token: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return admin(server, token, "members.enroll", {"members": rows})
+
+
+def pubkey(key: Path) -> str:
+    return Path(f"{key}.pub").read_text(encoding="utf-8")
+
+
+def team(tmp_path: Path, *names: str) -> dict[str, Path]:
+    return {name: keygen(tmp_path / f"{name}_key") for name in names}
+
+
+def signers_of(server: BoardServer) -> str:
+    return (server.mounts.root / "allowed_signers").read_text(encoding="utf-8")
+
+
+def test_one_batch_enrols_a_team_and_re_running_it_leaves_the_same_state(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criteria 1 and 4. The batch is the seam the owner's sync will call, so the
+    second run is the whole test: same input, same state, and `allowed_signers`
+    byte for byte — a key already live is SKIPPED rather than written again."""
+    keys = team(tmp_path, "ana", "leo")
+    batch = [{"principal": name, "keys": [pubkey(key)]} for name, key in keys.items()]
+
+    first = enrol(server, owner, batch)
+    assert first["enrolled"] == ["ana", "leo"]
+    assert [row["principal"] for row in first["added"]] == ["ana", "leo"]
+    assert first["unchanged"] == [] and first["skipped"] == []
+    assert first["signers"] == 3  # berna's own key, and the two just enrolled
+
+    # A new principal is a MEMBER, and its key really signs — the file the login
+    # verifies against was regenerated whole, not appended to.
+    store = server.mounts.host.store()
+    assert [(p.name, p.role) for p in store.principals()] == [
+        ("ana", "member"), ("berna", "owner"), ("leo", "member")
+    ]
+    assert sign_in(server, "ana", keys["ana"])["role"] == "member"
+    written = signers_of(server)
+    assert sorted(line.split()[0] for line in written.splitlines()) == ["ana", "berna", "leo"]
+    held = store.keys(live=False)
+
+    again = enrol(server, owner, batch)
+    assert again["enrolled"] == [] and again["added"] == []
+    assert again["unchanged"] == ["ana", "leo"] and again["skipped"] == []
+    assert signers_of(server) == written
+    assert store.keys(live=False) == held
+
+
+def test_the_owner_re_enrolled_stays_owner_and_the_keys_accumulate(
+    server: BoardServer, owner: str, keyed: Path, tmp_path: Path
+) -> None:
+    """Criterion 2, and the property `test_a_re_join_never_demotes_the_owner…`
+    pins for the invite door: the batch goes through `login.register`, so an
+    existing principal only ever gains a KEY. Reaching past it to
+    `ServerStore.enroll` — an INSERT OR REPLACE on principals — would hand the
+    owner back as a member the first time a sync named them."""
+    laptop = keygen(tmp_path / "berna_laptop")
+    out = enrol(server, owner, [{"principal": "berna", "keys": [pubkey(keyed), pubkey(laptop)]}])
+
+    assert out["enrolled"] == []  # berna existed; nothing was created
+    assert [row["principal"] for row in out["added"]] == ["berna"]  # the laptop key only
+    store = server.mounts.host.store()
+    assert store.role_of("berna") == "owner"
+    assert len(store.keys("berna")) == 2
+    assert sign_in(server, "berna", laptop)["role"] == "owner"  # both keys sign
+
+
+def test_enrolling_members_is_the_server_owners_move_and_a_member_is_refused_BY_ROLE(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Criterion 3. Whoever may run this decides who exists on the host, so it is
+    `key.add`'s wall and not a softer one — and the refusal names the role that
+    may, from `core/scope.py::permit` and not a second copy of the rule."""
+    hers, _ = member(server, tmp_path)
+    mallory = keygen(tmp_path / "mallory_key")
+
+    with pytest.raises(Refused) as refused:
+        enrol(server, hers, [{"principal": "mallory", "keys": [pubkey(mallory)]}])
+    assert "member may not members.enroll" in str(refused.value)
+    assert "owner may" in str(refused.value)
+    assert server.mounts.host.store().principal("mallory") is None
+
+
+def test_a_revoked_key_is_not_resurrected_and_another_principals_key_is_not_moved(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """Two keys the batch refuses to write, and REPORTS instead of obeying: a
+    revocation a re-run would undo, and a fingerprint that belongs to somebody
+    else — the primary key is the fingerprint, so writing it would move the key
+    off its holder and quietly stop them signing."""
+    keys = team(tmp_path, "ana", "leo")
+    enrol(server, owner, [{"principal": "ana", "keys": [pubkey(keys["ana"])]}])
+    fingerprint = server.mounts.host.store().keys("ana")[0].fingerprint
+    admin(server, owner, "key.revoke", {"key": fingerprint})
+
+    out = enrol(
+        server,
+        owner,
+        [
+            {"principal": "ana", "keys": [pubkey(keys["ana"])]},
+            {"principal": "leo", "keys": [pubkey(keys["ana"]), pubkey(keys["leo"])]},
+        ],
+    )
+    leo = server.mounts.host.store().keys("leo")[0].fingerprint
+    assert out["added"] == [{"principal": "leo", "fingerprint": leo}]
+    assert [(row["principal"], row["fingerprint"]) for row in out["skipped"]] == [
+        ("ana", fingerprint), ("leo", fingerprint)
+    ]
+    assert "does not undo a revocation" in out["skipped"][0]["why"]
+    assert "ana already holds this key" in out["skipped"][1]["why"]
+
+    # The revocation still stands, and the key is still ana's.
+    with pytest.raises(TaskopsError):
+        sign_in(server, "ana", keys["ana"])
+    held = server.mounts.host.store().keys(live=False)
+    assert [(k.principal, k.revoked) for k in held if k.fingerprint == fingerprint] == [
+        ("ana", True)
+    ]
+
+
+def test_a_batch_is_validated_WHOLE_and_a_bad_entry_enrols_nobody(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """A malformed key in the second entry would otherwise leave the first
+    enrolled and the command re-run against a half-applied host — so the names
+    and the key grammar are checked before a single row is written."""
+    keys = team(tmp_path, "ana", "leo")
+    good = {"principal": "ana", "keys": [pubkey(keys["ana"])]}
+
+    with pytest.raises(BadRequest, match="not an ssh public key"):
+        enrol(server, owner, [good, {"principal": "leo", "keys": ["not-a-key"]}])
+    with pytest.raises(BadRequest, match="1-40 chars"):
+        enrol(server, owner, [good, {"principal": "Leo Messi", "keys": [pubkey(keys["leo"])]}])
+    with pytest.raises(BadRequest, match="taskops invite leo"):
+        enrol(server, owner, [good, {"principal": "leo", "keys": []}])
+    with pytest.raises(BadRequest, match="this call needs members="):
+        enrol(server, owner, [])
+
+    store = server.mounts.host.store()
+    assert [p.name for p in store.principals()] == ["berna"]
+    assert signers_of(server).splitlines() == [f"berna {store.keys('berna')[0].keyline}"]
+
+
+def test_the_answer_names_who_the_batch_did_NOT_name_and_revokes_nobody(
+    server: BoardServer, owner: str, tmp_path: Path
+) -> None:
+    """The drift, reported and never acted on: a principal enrolled by invite has
+    no reason to be in a forge's collaborator list, and a sync that never heard of
+    them would revoke them for existing. So `others` carries them — with the
+    fingerprints the owner's own `taskops revoke --key` takes — and the batch
+    itself touches nobody outside its own list."""
+    hers, ana_key = member(server, tmp_path)
+    keys = team(tmp_path, "leo")
+
+    out = enrol(server, owner, [{"principal": "leo", "keys": [pubkey(keys["leo"])]}])
+    store = server.mounts.host.store()
+    assert out["others"] == [
+        {"principal": "ana", "role": "member", "keys": [store.keys("ana")[0].fingerprint]},
+        {"principal": "berna", "role": "owner", "keys": [store.keys("berna")[0].fingerprint]},
+    ]
+    # Reported, and that is ALL: ana still signs in and her board is still hers.
+    assert sign_in(server, "ana", ana_key)["role"] == "member"
+    assert [row["name"] for row in admin(server, hers, "board.list", {})["boards"]] == [BOARD]
+
+
 def test_a_board_credential_cannot_operate_the_host_and_the_refusal_names_the_key(
     server: BoardServer, keyed: Path
 ) -> None:
