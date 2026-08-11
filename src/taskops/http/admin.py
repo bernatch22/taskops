@@ -10,6 +10,8 @@ could open from a laptop. The on-box commands survive as break-glass (README).
 `board.ingest` — a whole local history, once — lives in `ingest.py`, because
 its preconditions are longer than the verb; `board.remove` lives in `removal.py`
 for the same reason, and because it is the only one of these that destroys.
+`members.enroll` — a whole team's keys, in one batch — lives in `members.py`,
+because what it refuses to write is longer than what it writes.
 
 **Why the root `/rpc` and not `/admin/rpc`.** A board name is `[a-z0-9-]`
 (`mounts.py::NAME`), so `admin` is a legal board and `/admin/rpc` would be that
@@ -31,7 +33,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import grants, ingest, mounts as _mounts, removal
+from . import grants, ingest, mounts as _mounts, members, removal
 from .. import verbs
 from .auth import Credential
 from ..core import scope
@@ -150,6 +152,7 @@ REGISTRY: dict[str, Verb] = {
     "board.forge": Verb("board.forge", "write", _forge),
     "board.ingest": Verb("board.ingest", "write", _ingest),
     "board.remove": Verb("board.remove", "write", _remove),
+    "members.enroll": Verb("members.enroll", "write", members.enroll),
     "invite.mint": Verb("invite.mint", "write", grants.mint),
     "key.revoke": Verb("key.revoke", "write", grants.revoke_key),
     "invite.revoke": Verb("invite.revoke", "write", grants.revoke_invite),

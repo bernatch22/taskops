@@ -1929,6 +1929,49 @@ splits the refusal's own sentence and feeds it back as argv, then reads the fact
 back. That refusal advertised a command that did not exist once — sending the one
 reader already blocked to an argparse error — and executing it is what makes that
 the last time.
+
+### The host enrols in BATCH — `members.enroll` (2026-08-11)
+
+The seam the owner's side of this chapter stands on, and the reason it is worth
+its own row in `core/scope.py` when `/join/github` deliberately has none: this
+one is called by a PRINCIPAL with a role — the owner, over `/rpc`, with a
+session an ssh key minted — and what it decides is *who exists on this host*.
+That is `key.add`'s wall and not a softer one because the argument is a list
+(`http/members.py`, `admin.py::REGISTRY`).
+
+```
+{"verb": "members.enroll", "args": {"members": [{"principal": "ana",
+                                                 "keys": ["ssh-ed25519 AAAA…"]}]}}
+-> {"enrolled": […], "added": [{principal, fingerprint}…], "unchanged": […],
+    "skipped": [{principal, fingerprint, why}…], "others": […], "signers": 3}
+```
+
+**It does not know what GitHub is.** It receives principals and key lines; the
+forge, the collaborator list and the owner's token live entirely in the CLI that
+calls it, so there is no token to store here because none ever arrives. And the
+enrolment is `login.register` — the same function the invite door calls, which
+is what keeps "an existing principal only ever GAINS a key" one rule rather than
+two: a batch that names the owner leaves the owner an owner
+(`test_the_owner_re_enrolled_stays_owner_and_the_keys_accumulate`, beside the
+invite door's own `test_a_re_join_never_demotes_the_owner_it_only_adds_a_key`).
+
+**Idempotent by SKIPPING, not by rewriting.** A key already live for its
+principal is not written again, so a re-run touches no row and `allowed_signers`
+comes out byte for byte (`test_one_batch_enrols_a_team_and_re_running_it_leaves_the_same_state`).
+Two keys are refused and REPORTED rather than obeyed: a fingerprint the owner
+revoked — otherwise the next sync undoes every revocation — and one another
+principal already holds, which the fingerprint being the primary key would MOVE,
+silently stopping somebody outside the batch from signing. The whole batch is
+validated (names and key grammar) before a single row is written, so a typo in
+the tenth entry does not leave nine enrolled.
+
+**And it revokes nobody.** A principal enrolled by invite has no reason to be in
+a forge's collaborator list, so a sync that never heard of them would revoke them
+for existing. The answer instead carries `others` — every principal the batch did
+not name, with their live fingerprints, which is what `taskops revoke --key`
+takes — and the decision stays a human's
+(`test_the_answer_names_who_the_batch_did_NOT_name_and_revokes_nobody`).
+
 ## 20. A board's whole life — create → push → (live) → pull → rm (2026-08-10)
 
 Until this chapter a board's life ran one way. `board create` made one, `board
