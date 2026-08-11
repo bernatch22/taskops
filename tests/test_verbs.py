@@ -453,6 +453,45 @@ def test_a_stalled_card_is_handed_over_with_the_verb_that_already_existed(
     assert call(stores, "take", W2, task=card)["state"] == "doing"
 
 
+def test_the_orchestrator_hands_over_a_card_whose_lease_is_still_live(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """The clock is not the authority on whether a worker is alive.
+
+    A sub-agent that dies keeps renewing nothing, but its lease is live for up
+    to `LEASE_TTL` — and for those minutes the orchestrator, which watched the
+    process die, could not hand the card on. Waiting the clock out was waiting
+    for a worse answer than the one it already had (`store/handover.py`).
+    """
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "assign", BERNA, tasks=[card])
+    call(stores, "take", W1, task=card)
+    assert [r["id"] for r in call(stores, "board", BERNA)["groups"]["doing"]] == [card]
+
+    clock(60)  # a minute later — the lease is unmistakably LIVE
+    out = call(stores, "assign", BERNA, tasks=[card], workers=["w2"])
+
+    assert out["briefs"][0]["displaced"] == W1  # said out loud, in the brief
+    assert call(stores, "take", W2, task=card)["state"] == "doing"
+
+
+def test_handing_a_card_to_the_worker_that_holds_it_leaves_its_lease_alone(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Re-assigning to the same name is not a displacement, so it must not cost
+    that worker the lease it is holding — nor report one."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "assign", BERNA, tasks=[card])
+    lease = call(stores, "take", W1, task=card)
+    clock(60)
+
+    out = call(stores, "assign", BERNA, tasks=[card], workers=["w1"])
+
+    assert out["briefs"][0]["displaced"] is None
+    assert stores.live.holder(card, _clock.now()) == W1
+    assert lease["state"] == "doing"
+
+
 def test_a_live_worker_is_never_stalled(stores: Stores, clock: Callable[[float], None]) -> None:
     """The heartbeat is the traffic: any call renews the leases that actor holds."""
     card = planned(stores)["cards"][0]["id"]
