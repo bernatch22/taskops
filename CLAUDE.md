@@ -37,7 +37,7 @@ releases its card by definition. A stalled card is handed over with
 **2. Branches are inhabited, not switched.** `git switch` appears nowhere.
 
 ```
-main ────────────────────────────▶ the HUMAN decides: a PR, or taskops_merge milestone=
+master ──────────────────────────▶ the HUMAN decides: a PR, or taskops_merge milestone=
   └─ ms/<slug> ──┬──────┬───────▶ the ORCHESTRATOR integrates, card by card
               tk-a11  tk-b22     ← one WORKER each, one worktree each
 ```
@@ -202,7 +202,7 @@ what it exists to report, not a fault.
 
 Each has its line in ARCHITECTURE.md §11 saying what it cost and where it is
 enforced: a reviewer ROLE, a stored review STATUS, or automatic reviewer
-assignment · `land` or automatic merges to main · git replication between clones
+assignment · `land` or automatic merges to the trunk · a SECOND trunk (2026-08-10: `main` and `master` both existed, `trees.base_ref` cut every chapter from `origin/main`, and a one-sided push refspec was quietly landing card merges there — three facts that only became a bug together) · git replication between clones
 · Claude hooks **that decide or store** · a stored `doing` · a slug in a branch
 name · a `recover` · a mark-as-read/ack verb · per-request SIGNING · hand-rolled
 crypto or a pip crypto dependency · a `--force` on `board push` **or on `board
