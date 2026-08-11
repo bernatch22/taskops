@@ -80,6 +80,15 @@ the shape); absent — the state every board is born in — that door does not e
 and the board is invite-only. `taskops board forge <owner>/<repo>` declares it and
 `--clear` takes it back — the owner's move, both ways (`core/scope.py`).
 
+**And `board forge` SYNCS the team** (2026-08-11, §19): collaborators with the
+declared access → their PUBLIC `github.com/<login>.keys` → one `members.enroll`
+batch. `cli/github.py` asks GitHub (the owner's token lives in ONE header, per
+page, and never reaches the host), `cli/team.py` runs the flow and prints the
+report. It **adds only** — a principal who lost access is named with the exact
+`taskops revoke --key`, never revoked, because an invite-enrolled principal is
+not a GitHub login. Nobody is dropped in silence: a collaborator with no
+published key is named with `taskops invite <login>`.
+
 ## Layers — imports only point DOWN
 
 ```

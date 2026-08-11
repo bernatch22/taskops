@@ -603,7 +603,7 @@ every user on the box while it runs. It comes from `gh auth token` (the CLI is
 already installed and already authenticated on the machine of anybody who has
 push on the repo, so the common case asks nothing), else `$GITHUB_TOKEN` (CI, and
 a shell with no `gh`), else a HIDDEN `getpass` prompt — three sources, one
-order, in `enrol.py::github_token`. A bare `taskops join` is untouched by all of
+order, in `cli/github.py::token`. A bare `taskops join` is untouched by all of
 this: an enrolled key still signs in with no flags and never speaks to GitHub.
 
 **The on-box commands survive as break-glass**: `taskops invite/revoke --root
@@ -1921,7 +1921,8 @@ than as a promise the host cannot keep.
 `op=forge` is an owner's act and it now has a door a human reaches: `taskops board
 forge <owner>/<name> [--need push|admin]`, with `--clear` to make the board
 invite-only again. It is a server-scope OWNER operation beside `board.visibility`
-in `http/admin.py::REGISTRY` — same table, same role gate, no second door.
+in `http/admin.py::REGISTRY` — same table, same role gate, no second door. Since
+2026-08-11 that command also SYNCS the repo's team into the host (below).
 
 `http/github.py::NO_FORGE` names that command, and the naming is a TEST rather
 than a string comparison: `test_the_refusal_names_a_command_the_cli_really_answers`
@@ -1971,6 +1972,63 @@ for existing. The answer instead carries `others` — every principal the batch 
 not name, with their live fingerprints, which is what `taskops revoke --key`
 takes — and the decision stays a human's
 (`test_the_answer_names_who_the_batch_did_NOT_name_and_revokes_nobody`).
+
+### The owner SYNCS the team — `taskops board forge` (2026-08-11)
+
+Declaring and syncing are ONE command because they are one intention. The owner
+who names the repo means "these people work here"; a second verb to make that
+true is a second thing to forget, and the whole point of the chapter is that the
+dev on the other end types `taskops join` and nothing else. So `taskops board
+forge <owner>/<repo>` records the fact and then, on the fact **re-read out of
+the answer** (never on its own argv, which is why `--clear` asks GitHub nothing):
+
+```
+cli/operate.py::_forge   declares, signs in ONCE, hands the session down
+  └─ cli/team.py::sync   the flow and the report — knows no transport
+       ├─ cli/github.py::token()         gh auth token → $GITHUB_TOKEN → hidden prompt
+       ├─ cli/github.py::collaborators() GET /repos/…/collaborators?permission=push
+       │                                 …paginated. AUTHENTICATED, and the only call that is
+       ├─ cli/github.py::keys_of()       GET github.com/<login>.keys — PUBLIC, no token
+       └─ members.enroll                 ONE batch to the host (§19 above)
+```
+
+**The token's whole life is `collaborators`.** It is read on the owner's laptop,
+put in one `Authorization` header per page, and dropped with the frame — not
+returned, not printed, not written, and *not sent to the taskops host at all*.
+That is the difference from the `/join/github` door, where a stranger's token
+arrives in a request body: here it never leaves the machine that owns it, and
+`test_the_owners_token_is_spent_on_ONE_endpoint_and_written_nowhere` greps the
+host's whole tree AND the checkout's for it, with a positive control so the scan
+is known to be reading real bytes.
+
+**Pagination is not a detail.** A first page is 30 by default and 100 at most,
+and a team that outgrows one page is exactly the team this command exists for:
+stopping at page one enrols some of them and reports the rest as DRIFT, which
+reads to the owner as a revocation list. `test_the_forge_enrols_every_collaborator_with_push_across_every_page`
+puts five people over three pages against a real socket.
+
+**Nobody is dropped in silence, and that is the whole report.** Three outcomes
+travel back and each names its own way out:
+
+| what happened | printed as |
+|---|---|
+| enrolled / already there | `enrolled`, `unchanged`, `keys N added` — from the host's own answer |
+| a collaborator with no ssh key on GitHub | named, with `taskops invite <login>` |
+| a principal here who is no longer a collaborator | named, with the exact `taskops revoke --key SHA256:…` |
+
+The third one is REPORTED and never acted on, for §19's reason: a principal
+enrolled by an invite is not a GitHub login, so a pruning sync would retire them
+for having been introduced the other way. The owner is excluded from that list
+outright — a `revoke` line beside the account running the command is a way to
+lock yourself out of your own host. A login GitHub capitalises is lower-cased on
+the CLI side, because a principal name is `[a-z0-9._-]` and `Ana` would be
+refused mid-batch; a `Bot` collaborator is dropped by `type`, having neither a
+legal principal name nor a key to publish.
+
+`_wire.text()` exists for this: `get()` is that plus one `json.loads` into an
+OBJECT, and neither of the two answers here is one — `.keys` is `text/plain` and
+the collaborator page is a JSON *array*, which `as_object` flattens to `{}`. A
+page of people silently reading as nobody is the bug that shape prevents.
 
 ## 20. A board's whole life — create → push → (live) → pull → rm (2026-08-10)
 

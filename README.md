@@ -188,7 +188,7 @@ And the admin surface for any board on that host, from anywhere:
 taskops board ls
 taskops board visibility <name> public|private     # owner only
 taskops board rm <name>                            # owner only — see below
-taskops board forge <owner>/<repo> [--need push|admin]   # owner only: GitHub opens it
+taskops board forge <owner>/<repo> [--need push|admin]   # owner only: declare AND sync the team
 taskops board forge --clear                        # invite-only again
 taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>      # a GitHub-enrolled key too
@@ -211,6 +211,31 @@ fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
 until an owner records it and cleared again with `--clear`. Only a board that
 has been opted in answers `--github` at all; every other one is invite-only,
 exactly as before.
+
+**And declaring it SYNCS the team, in the same command.** `taskops board forge
+<owner>/<repo>` lists that repo's collaborators with the declared access (one
+authenticated call to GitHub, paginated, with the owner's own token — `gh auth
+token`, else `$GITHUB_TOKEN`, else a hidden prompt), reads each one's published
+ssh keys from the PUBLIC `https://github.com/<login>.keys`, and enrols them all
+in one batch. Re-run it to re-sync; a run that changes nothing writes nothing.
+
+```
+bernatch22/taskops — 4 collaborator(s) with push
+  enrolled  ana, dan, leo
+  keys      3 added
+  no ssh key published on GitHub — 1, not enrolled:
+    mia            github.com/mia.keys is empty — taskops invite mia
+  on this host but NOT a collaborator any more — 1, nothing revoked:
+    tomas          taskops revoke --key SHA256:…
+    a principal introduced by invite belongs here legitimately — revoking is yours
+```
+
+It **adds only**. Somebody who lost push is reported with the exact `revoke`
+command and nothing else happens: a principal introduced by an invite is not a
+GitHub login and a pruning sync would retire them for existing. The owner is
+never in that list. The token is spent on the collaborator pages and on nothing
+else — it never reaches the taskops host, which receives principals and ssh key
+lines and does not know what GitHub is.
 
 ### The whole flow, and why cloning is not enough
 

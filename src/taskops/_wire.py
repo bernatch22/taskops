@@ -69,12 +69,30 @@ def get(url: str, headers: dict[str, str], timeout: float) -> tuple[int, dict[st
     is above, because the one caller of this function GRANTS on its answer and
     must never be able to read silence as a yes.
     """
+    status, raw = text(url, headers, timeout)
+    return status, _decode(raw)
+
+
+def text(url: str, headers: dict[str, str], timeout: float) -> tuple[int, str]:
+    """GET a foreign body UNDECODED — the status, and whatever bytes came back.
+
+    `get` is this plus one `json.loads` into an object, and two callers cannot
+    use that: `https://github.com/<login>.keys` answers `text/plain`, one ssh
+    key line each, and `/repos/…/collaborators` answers a JSON ARRAY, which
+    `as_object` flattens to `{}` — a page of people read as nobody, silently.
+    So the decoding belongs to whoever knows what it asked for, and what is
+    shared here is the part that must never differ: the status is preserved
+    (401 and 404 mean different things to a forge), and a failure with NO
+    status at all — refused connection, DNS miss, timeout — is `Unreachable`
+    rather than an empty answer somebody could read as "this person has no
+    keys" and then quietly leave them out of a team.
+    """
     request = Request(url, headers=headers, method="GET")  # noqa: S310 — https, from our config
     try:
         with urlopen(request, timeout=timeout) as answer:  # noqa: S310
-            return int(answer.status), _decode(answer.read())
+            return int(answer.status), _read(answer.read())
     except HTTPError as err:
-        return int(err.code), _decode(_body_of(err))
+        return int(err.code), _read(_body_of(err))
     except (URLError, TimeoutError, ValueError) as err:
         raise Unreachable(
             f"{url} did not answer ({err}). Nothing was granted and nothing was written — "
@@ -89,11 +107,17 @@ def _body_of(err: HTTPError) -> bytes:
         return b""
 
 
-def _decode(raw: bytes) -> dict[str, Any]:
+def _read(raw: bytes) -> str:
+    """Undecodable bytes are not an exception here: the STATUS already carried
+    the meaning, and a mangled character must not become `Unreachable`."""
+    return raw.decode("utf-8", "replace")
+
+
+def _decode(raw: str) -> dict[str, Any]:
     """A foreign answer that is not an object is not an error here: the STATUS
     already carried the meaning, and the caller reads a field or finds none."""
     try:
-        return as_object(json.loads(raw or b"{}"))
+        return as_object(json.loads(raw or "{}"))
     except ValueError:
         return {}
 

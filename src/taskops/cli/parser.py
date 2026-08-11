@@ -72,7 +72,7 @@ def _join(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
         # A STORE_TRUE, and that is the feature: `--github <token>` is not a way to
         # pass one, because the shell writes a flag's value into the history file
         # before this process even starts. The token is discovered (`gh auth token`,
-        # `$GITHUB_TOKEN`) or typed at a hidden prompt — `cli/enrol.py::github_token`.
+        # `$GITHUB_TOKEN`) or typed at a hidden prompt — `cli/github.py::token`.
         "--github",
         action="store_true",
         help="first join, no invite: GitHub membership of the board's repo enrols your key",

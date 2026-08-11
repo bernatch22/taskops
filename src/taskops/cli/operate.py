@@ -35,7 +35,7 @@ import argparse
 from typing import Any
 from pathlib import Path
 
-from . import commands
+from . import team, commands
 from .. import _wire, _clock, identity
 from .._json import as_object
 from ..board import find_root, read_config
@@ -105,6 +105,10 @@ def _forge(args: argparse.Namespace, target: str, repo: str) -> int:
     GitHub chapter was reachable only by hand-writing `{"op": "forge", …}` — an
     opt-in nobody can perform is an opt-in nobody performs.
 
+    **It declares AND syncs, in that order** (`cli/team.py` owns the second half
+    and every word of why). The sync runs on the fact RE-READ out of the answer,
+    never on this argv — so `--clear`, an empty fact, asks GitHub nothing.
+
     ONE positional is the REPO and not the board, which is the reading the
     refusal teaches and the common case (one checkout, one board, recorded).
     `board visibility` disambiguates its bare form against a closed pair; here
@@ -129,8 +133,9 @@ def _forge(args: argparse.Namespace, target: str, repo: str) -> int:
             "GitHub membership opens this board; `--clear` (alone) takes it back to invite-only"
         )
     host, name = named(target)
+    token = signed_in(host, args)
     sent = {"board": name, "repo": repo, "need": _flag(args, "need")}
-    out = call(host, "board.forge", sent, signed_in(host, args))
+    out = call(host, "board.forge", sent, token)
     fact = as_object(out.get("forge"))
     moved = "already" if not out.get("recorded") else "now"
     if not fact:
@@ -138,7 +143,7 @@ def _forge(args: argparse.Namespace, target: str, repo: str) -> int:
         return 0
     print(f"{out['board']} on {host} is {moved} opened by {fact['host']}/{fact['repo']}")
     print(f"  anyone with {fact['need']} on it joins with: taskops join {out['board']} --github")
-    print("  they become a member; the token they use is read once and stored nowhere")
+    team.sync(fact, lambda verb, sending: call(host, verb, sending, token))
     return 0
 
 
