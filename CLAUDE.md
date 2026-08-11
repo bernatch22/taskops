@@ -67,27 +67,33 @@ Reading and commenting are open to everyone; only taking, closing and releasing
 are the owner's. Any agent may `taskops_comment` on ANY open card — that
 asymmetry is the whole communication channel between parallel agents.
 
-**Two introductions, ONE credential** (2026-08-10, ARCHITECTURE §18). A key gets
-enrolled either by burning an invite (`POST /<board>/invite/redeem`) or by GitHub
-vouching for it (`POST /<board>/join/github`, `taskops join <board> --github`) —
-and both end in the same `login.register`, so what persists is a pubkey and an
-`allowed_signers` line, never a GitHub token. **GitHub is the INTRODUCTION, never
-the credential**: it is asked ONCE, server-side, with the caller's own token,
-which is a header on one outgoing request and is written nowhere. `--github` is a
-`store_true` and must stay one — a token in a flag value is in the shell history
-before the process starts. A board opts in with `op=forge` (`core/forge.py` owns
-the shape); absent — the state every board is born in — that door does not exist
-and the board is invite-only. `taskops board forge <owner>/<repo>` declares it and
-`--clear` takes it back — the owner's move, both ways (`core/scope.py`).
+**ONE introduction per side, ONE credential** (2026-08-11, ARCHITECTURE §19).
+A key gets enrolled either by burning an invite (`POST /<board>/invite/redeem`)
+or by the OWNER's forge sync (`members.enroll`, a batch) — and both end in the
+same `login.register`, so what persists is a pubkey and an `allowed_signers`
+line, never a GitHub token. **GitHub is the INTRODUCTION, never the credential,
+and it is the OWNER's business alone**: `taskops board forge <owner>/<repo>`
+declares the repo AND syncs its team — collaborators with the declared access →
+their PUBLIC `github.com/<login>.keys` → one `members.enroll` batch.
+`cli/github.py` asks GitHub (the owner's token lives in ONE header, per page, and
+never reaches the host), `cli/team.py` runs the flow and prints the report. A
+board opts in with `op=forge` (`core/forge.py` owns the shape); absent — the
+state every board is born in — it is invite-only. `--clear` takes it back — the
+owner's move, both ways (`core/scope.py`).
 
-**And `board forge` SYNCS the team** (2026-08-11, §19): collaborators with the
-declared access → their PUBLIC `github.com/<login>.keys` → one `members.enroll`
-batch. `cli/github.py` asks GitHub (the owner's token lives in ONE header, per
-page, and never reaches the host), `cli/team.py` runs the flow and prints the
-report. It **adds only** — a principal who lost access is named with the exact
+The sync **adds only**: a principal who lost access is named with the exact
 `taskops revoke --key`, never revoked, because an invite-enrolled principal is
-not a GitHub login. Nobody is dropped in silence: a collaborator with no
+not a GitHub login. Nobody is dropped in silence — a collaborator with no
 published key is named with `taskops invite <login>`.
+
+**The DEV types `taskops join` and nothing about GitHub** (§19.1). There was a
+door on their side for one day — `POST /<board>/join/github`, a `--github` flag,
+a token discovered inside `join` — and it is DELETED: it made every dev's own
+credential travel for a fact the owner already holds. Their key was already
+enrolled by the sync, so the bare join signs a challenge with it and is in. What
+survived the flag is the rule about the TOKEN (`cli/github.py::token`: `gh auth
+token`, else `$GITHUB_TOKEN`, else a hidden prompt — **never a flag value**, the
+shell writes those into the history file before the process starts).
 
 ## Layers — imports only point DOWN
 
@@ -216,8 +222,10 @@ assignment · `land` or automatic merges to the trunk · a SECOND trunk (2026-08
 name · a `recover` · a mark-as-read/ack verb · per-request SIGNING · hand-rolled
 crypto or a pip crypto dependency · a `--force` on `board push` **or on `board
 rm`** (nor a confirmation prompt in its place: a prompt asks whether you meant
-it, possession asks whether the history survives you) · a STORED GitHub token or
-a GitHub login as a second credential type · a report's CONTENT in
+it, possession asks whether the history survives you) · a STORED GitHub token,
+a GitHub login as a second credential type, **or a GitHub door on the DEV's side**
+(a `/join/github`, a `--github`, a token discovered at join time: the owner
+already knows the team, so nobody else's credential has to travel) · a report's CONTENT in
 `events.jsonl` or a reports TABLE beside it (the log holds `{path, title,
 milestone, sha}` and the list is a fold) · `allow-scripts` **beside**
 `allow-same-origin` on the report frame, or a `sandbox` a caller can pass — that

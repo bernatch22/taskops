@@ -15,12 +15,12 @@ takes principals and ssh key lines and does not know what GitHub is. That is how
 `taskops board forge` syncs a team without the host ever holding somebody's
 credential.
 
-`http/github.py` asks a NEIGHBOURING question at the board's door (does THIS
-token have `need` on the repo) and shares neither direction nor lifetime with
-this one: there the token arrives in a body from a stranger, here it never leaves
-the machine that owns it. `headers` is spelled twice on purpose — `cli/` may not
-import `http/` at all (peers, layers 5 and 6), and one shared helper would be a
-module both doors depend on for the one thing each must be free to change alone.
+**This is the ONLY place in taskops that talks to GitHub.** A board door used to
+ask the neighbouring question — does the token this stranger just POSTed have
+`need` on the repo — and it is deleted: it made every dev's own credential travel
+to the host for a fact the owner already holds. Here the token never leaves the
+machine that owns it, and the host is told nothing but principals and ssh key
+lines. A second door asking GitHub anything is the thing not to re-introduce.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ NO_TOKEN = (
     "  gh auth login              the CLI's token is read automatically\n"
     "  export GITHUB_TOKEN=…      an environment variable\n"
     "  (or paste it at the hidden prompt)\n"
-    "There is deliberately no --github <token>: a token in a flag lands in your shell "
+    "No flag takes a token, deliberately: a token in a flag value lands in your shell "
     "history forever, and this one is only ever used for a single command."
 )
 

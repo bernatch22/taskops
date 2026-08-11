@@ -105,8 +105,8 @@ def _forge(call: Call) -> dict[str, Any]:
 
     `_visibility`'s shape exactly, and through `verbs.call` for the same reason:
     `verbs/project.py` owns the op and `core/forge.py` owns the vocabulary, so
-    the CLI door and the `/join/github` door cannot end up disagreeing about
-    what a `need` is.
+    this door and the owner's sync (`cli/team.py`, which reads the fact back out
+    of the answer) cannot end up disagreeing about what a `need` is.
 
     `repo` and `need` are read with `.get` rather than `scoped.text` because the
     EMPTY value is legal here and `text` refuses a blank by name: `repo=""` is

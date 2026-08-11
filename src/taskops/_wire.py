@@ -1,6 +1,6 @@
 """One POST, one envelope, one place that turns an HTTP failure into OUR error.
-And, since the host learned to ask a forge, one GET that deliberately does NOT
-wear that envelope — `get()` at the bottom says why.
+And, since the OWNER's `board forge` learned to ask GitHub, one GET that
+deliberately does NOT wear that envelope — `text()` at the bottom says why.
 
     {"ok": true,  "seq": 41, "data": {...}}     ->  the data, with `seq` in it
     {"ok": false, "error": {"code", "message"}} ->  raised, in the SERVER's words
@@ -55,37 +55,25 @@ def post(
     return _unwrap(envelope, url)
 
 
-def get(url: str, headers: dict[str, str], timeout: float) -> tuple[int, dict[str, Any]]:
-    """GET JSON from a server that is NOT a taskops one — the status comes back.
-
-    `post` unwraps `{"ok", "data"}` because both of its callers speak to a
-    taskops door. A forge does not: it answers its own shape and says what it
-    MEANS in the status — 401 is a bad token, 404 is "no repo you can see" —
-    so flattening those into one error would throw away the only thing the
-    caller can turn into a sentence somebody can act on.
-
-    What stays shared is the failure with no status at all: a refused
-    connection, a DNS miss, a timeout. That is `Unreachable` here exactly as it
-    is above, because the one caller of this function GRANTS on its answer and
-    must never be able to read silence as a yes.
-    """
-    status, raw = text(url, headers, timeout)
-    return status, _decode(raw)
-
-
 def text(url: str, headers: dict[str, str], timeout: float) -> tuple[int, str]:
     """GET a foreign body UNDECODED — the status, and whatever bytes came back.
 
-    `get` is this plus one `json.loads` into an object, and two callers cannot
-    use that: `https://github.com/<login>.keys` answers `text/plain`, one ssh
-    key line each, and `/repos/…/collaborators` answers a JSON ARRAY, which
-    `as_object` flattens to `{}` — a page of people read as nobody, silently.
-    So the decoding belongs to whoever knows what it asked for, and what is
-    shared here is the part that must never differ: the status is preserved
-    (401 and 404 mean different things to a forge), and a failure with NO
-    status at all — refused connection, DNS miss, timeout — is `Unreachable`
-    rather than an empty answer somebody could read as "this person has no
-    keys" and then quietly leave them out of a team.
+    `post` unwraps `{"ok", "data"}` because both of its callers speak to a
+    taskops door. GitHub does not: it answers its own shape and says what it
+    MEANS in the status — 401 is a bad token, 404 is "no repo you can see" — so
+    flattening those into one error would throw away the only thing the caller
+    can turn into a sentence somebody can act on.
+
+    Nor is the body decoded here. It briefly was, into an OBJECT, and its two
+    callers cannot use that: `https://github.com/<login>.keys` answers
+    `text/plain`, one ssh key line each, and `/repos/…/collaborators` answers a
+    JSON ARRAY, which `as_object` flattens to `{}` — a page of people read as
+    nobody, silently. So the decoding belongs to whoever knows what it asked
+    for, and what is shared here is the part that must never differ: the status
+    is preserved, and a failure with NO status at all — refused connection, DNS
+    miss, timeout — is `Unreachable` rather than an empty answer somebody could
+    read as "this person has no keys" and then quietly leave them out of a
+    team.
     """
     request = Request(url, headers=headers, method="GET")  # noqa: S310 — https, from our config
     try:
@@ -111,15 +99,6 @@ def _read(raw: bytes) -> str:
     """Undecodable bytes are not an exception here: the STATUS already carried
     the meaning, and a mangled character must not become `Unreachable`."""
     return raw.decode("utf-8", "replace")
-
-
-def _decode(raw: str) -> dict[str, Any]:
-    """A foreign answer that is not an object is not an error here: the STATUS
-    already carried the meaning, and the caller reads a field or finds none."""
-    try:
-        return as_object(json.loads(raw or "{}"))
-    except ValueError:
-        return {}
 
 
 def _unwrap(body: dict[str, Any], url: str) -> dict[str, Any]:

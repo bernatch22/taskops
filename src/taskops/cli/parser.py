@@ -69,15 +69,6 @@ def _join(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
         help="first join: the single-use id from `taskops invite` — your key is enrolled with it",
     )
     join.add_argument(
-        # A STORE_TRUE, and that is the feature: `--github <token>` is not a way to
-        # pass one, because the shell writes a flag's value into the history file
-        # before this process even starts. The token is discovered (`gh auth token`,
-        # `$GITHUB_TOKEN`) or typed at a hidden prompt — `cli/github.py::token`.
-        "--github",
-        action="store_true",
-        help="first join, no invite: GitHub membership of the board's repo enrols your key",
-    )
-    join.add_argument(
         "--discard-local",
         action="store_true",
         help="a local board here is archived instead of orphaned by the join",
