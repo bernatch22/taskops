@@ -30,6 +30,16 @@ here, never written twice.
   enrolled before they ever typed anything. Invites are unchanged, and a board
   that declared no forge is invite-only exactly as before.
 
+## 0.3.3 — a clone joins with two words
+
+- **`taskops join` reads the address the clone already carries.** v2 committed
+  `.taskops/board.json` exactly as v1 did — and never read it back: a bare join
+  resolved through the per-machine recorded remote, so a fresh clone died on
+  "which host?" while holding the answer in its tree. Restored: inside a clone,
+  `taskops join` (or `taskops join --github`, first time) is the whole
+  onboarding. `taskops remote add` remains for a checkout that carries no
+  address, or a join onto a different board.
+
 ## 0.3.2 — the window's address, prose that reads as prose, and a link that stays inside
 
 - **`taskops ui` opens `http://127.0.0.1:<port>/`.** It used to hand out

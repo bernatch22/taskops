@@ -49,6 +49,14 @@ def briefs(data: dict[str, Any]) -> str:
         ]
         if brief.get("labels"):
             out += ["> labels: " + " ".join(f"#{x}" for x in as_strings(brief.get("labels")))]
+        if brief.get("displaced"):
+            # Said out loud because the worktree may not be empty: whoever held
+            # this was working in it, and stopped mid-sentence rather than at a
+            # commit. `git status` there before the first edit, not after.
+            out += [
+                f"> ⚠ handed over from {brief['displaced']}, whose lease was still live — "
+                "check `git status` in the worktree for work it left uncommitted"
+            ]
         if brief.get("resume"):
             out += [f"> it was released before: {brief['resume']}"]
         if as_rows(brief.get("collisions")):

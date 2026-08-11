@@ -31,8 +31,15 @@ Prefer a single test file over the whole suite while iterating:
 `changes` are all computed per read. A row survives the process that wrote it; a
 lease does not — which is why there is **no `recover` verb and must never be
 one**. Closing a blocker frees its dependents by definition; a dying worker
-releases its card by definition. A stalled card is handed over with
-`taskops_assign`.
+releases its card by definition. A card is handed over with `taskops_assign` —
+**including one whose lease is still live** (2026-08-11, ARCHITECTURE §12):
+the lease's only heartbeat is MCP traffic, so the clock cannot tell a dead
+worker from one that has been editing quietly for twenty minutes, and it was
+wrong in both directions at once. `stalled` is a report, never a mechanism;
+the orchestrator that spawned the process is the authority on whether it is
+alive, and the card goes to a NAMED replacement in the same call. Which is
+still not a `recover`: nothing is resurrected, and nothing is taken by the
+passage of time.
 
 **2. Branches are inhabited, not switched.** `git switch` appears nowhere.
 

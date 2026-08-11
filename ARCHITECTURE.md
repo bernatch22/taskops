@@ -832,7 +832,7 @@ nobody has touched yet.
 
 | removed / never built | why | where it's enforced |
 |---|---|---|
-| a `recover` verb | doing is derived from the live lease; nothing is ever wrong to recover | no entry in `verbs/__init__.py::REGISTRY`; `tests/test_verbs.py::test_a_dead_workers_card_comes_back_by_itself` |
+| a `recover` verb | doing is derived from the live lease; nothing is ever wrong to recover. Handing a card on is not that verb and never grew into one — it stayed inside `assign`, needs a named replacement, and is argued in §12 | no entry in `verbs/__init__.py::REGISTRY`; `tests/test_verbs.py::test_a_dead_workers_card_comes_back_by_itself` |
 | a reviewer ROLE, a stored review STATUS, automatic reviewer assignment | v1's review system: `peer` deadlocks, 14 closing rules over 6 modules, reviewers eating the budget of the work | review EXISTS since 2026-08-07 but narrowed: optional per card, derived from history-only events + a second lease, judged by an ordinary agent that may never judge its own work. `CARD_STATUSES` stays three; there is no reviewer role and nothing auto-assigns |
 | AUTOMATIC merges to the trunk | v1's `land` merged as a side effect of closing a card and ran checkout under working agents | a CARD cannot be merged to the trunk — `taskops_merge task=` takes no target. A finished MILESTONE lands via `taskops_merge milestone=` (2026-08-07): explicit, refused while any card is open or unintegrated, refused off-trunk, recorded as a `milestone landed` event. What stays impossible is the trunk moving as a side effect of anything |
 | git replication between clones | split-brain, two machines "owning" the same card | `RemoteBoard` never falls back to a local store on write failure (`Unreachable` instead) |
@@ -863,6 +863,29 @@ name (`…_but_recover_always_can`) advertised a recovery path this board does
 not have. A dead function that describes a banned design is worse than no
 function — the next reader takes it as permission. An abandoned lease expires;
 nothing takes a card away from its holder.
+
+**Amended 2026-08-11, and the amendment is narrow.** One thing does take a card
+from its holder, and it is not a recover: `taskops_assign` handing that card to
+a NAMED replacement (`store/handover.py::displace`, its only caller
+`verbs/assign.py`). What made `force_release()` a banned shape was that it freed
+a lease into nobody's hands, on nobody's authority, to fix something the design
+says is never wrong. This frees it into a named worker's, on the orchestrator's,
+in the same call and the same event that names them — and the reason is that the
+clock was answering a question it cannot answer. The lease's only heartbeat is
+`Live.renew`, called by every verb, so *MCP traffic* stands in for *alive*, and
+that proxy is wrong in both directions at once: a worker that DIED holds its card
+for up to `LEASE_TTL` while the orchestrator that watched it die is refused the
+hand-over, and a worker that is WORKING — twenty quiet minutes of reading,
+editing and running tests, not one MCP call — stops renewing and is reported
+`stalled` while alive. No value of `LEASE_TTL` fixes both; raising it worsens the
+first and lowering it worsens the second. They are one bug pulling in opposite
+directions. So the clock stopped being the authority: `stalled` is now a
+*report* ("quiet for N minutes", `quiet_for`), never a mechanism, and what
+changes hands is decided by somebody, on the record. Nothing is taken by the
+passage of time, and a displaced worker still does not lose what it built —
+`core/machine.py::_not_somebody_elses` asks about the ASSIGNEE, never the clock.
+Pinned by `tests/test_verbs.py::test_the_orchestrator_hands_over_a_card_whose_lease_is_still_live`
+and `…::test_handing_a_card_to_the_worker_that_holds_it_leaves_its_lease_alone`.
 
 The remaining "recover" mentions (`core/types.py`, `verbs/assign.py`,
 `mcp/tools.py`, `gitwork/run.py`, `core/mentions.py`, `store/live.py`) are

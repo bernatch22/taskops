@@ -18,6 +18,7 @@ from typing import Any
 from . import _args, _facts, _context
 from .. import _clock
 from ..core import seams
+from ..store import handover
 from .._errors import Refused, BadRequest
 from ..core.event import make
 from ..core.types import Card, Event
@@ -40,9 +41,12 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     held = {row["id"]: row["why"] for row in (apart or {}).get("held", [])}
     for task, name in zip(tasks, names, strict=True):
         card = _facts.find(stores, task)
-        _check(stores, card, now)
+        _check(card)
+        # The hand-over, not a race: `handover.displace` is the whole argument
+        # for why the orchestrator does not wait out a lease it knows is dead.
+        was = handover.displace(stores.live, card["id"], name, now)
         events.append(make(card["id"], actor, "edited", {"field": "assignee", "to": name}, now))
-        briefs.append(_brief(stores, card, name, now) | {"apart": held.get(task)})
+        briefs.append(_brief(stores, card, name, now) | {"apart": held.get(task), "displaced": was})
     seq = stores.write(events)
     stores.live.renew(actor, now)
     stone = _facts.milestone_of(stores, _facts.find(stores, tasks[0]))
@@ -53,16 +57,15 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     }
 
 
-def _check(stores: Stores, card: Card, now: float) -> None:
+def _check(card: Card) -> None:
+    """A closed card is the only thing there is nothing to hand out.
+
+    A LIVE lease used to be refused here, which made the clock the authority on
+    whether a worker was alive — the bug `store/handover.py` is the post-mortem
+    for. Handing over is now always the orchestrator's call to make.
+    """
     if card["status"] in ("done", "dropped"):
         raise Refused(f"{card['id']} is {card['status']} — there is nothing to hand out")
-    holder = stores.live.holder(card["id"], now)
-    if holder is not None:
-        raise Refused(
-            f"{card['id']} is being worked on by {holder} right now — somebody is holding "
-            "its lease. If that worker is gone it will show up under STALLED within the "
-            "lease window and you can hand it over then."
-        )
 
 
 def _brief(stores: Stores, card: Card, name: str, now: float) -> dict[str, Any]:
