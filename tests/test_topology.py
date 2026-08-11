@@ -926,7 +926,7 @@ def test_membership_of_the_repo_is_not_permission_to_BE_somebody(
 
 
 def test_the_refusal_names_a_command_the_cli_really_answers(
-    server: BoardServer, keyed: Path, virgin: Path, forge: Forge, tmp_path: Path
+    server: BoardServer, keyed: Path, virgin: Path, forge: Forge, hub: Hub, tmp_path: Path
 ) -> None:
     """`NO_FORGE`'s way out is not compared to a string here — it is TYPED.
 
@@ -962,7 +962,7 @@ def test_the_refusal_names_a_command_the_cli_really_answers(
 
 
 def test_the_forge_is_cleared_back_to_invite_only_by_the_same_verb(
-    server: BoardServer, keyed: Path, virgin: Path, forge: Forge, tmp_path: Path
+    server: BoardServer, keyed: Path, virgin: Path, forge: Forge, hub: Hub, tmp_path: Path
 ) -> None:
     """Opting in is reversible or it is a trap. `--clear` is a FLAG and not the
     word "none", so no repository can ever be named the thing that undoes it.
@@ -988,7 +988,7 @@ def test_the_forge_is_cleared_back_to_invite_only_by_the_same_verb(
 
 
 def test_the_bare_form_reads_its_one_positional_as_the_repo_not_the_board(
-    server: BoardServer, keyed: Path, virgin: Path, capsys: pytest.CaptureFixture[str]
+    server: BoardServer, keyed: Path, virgin: Path, hub: Hub, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The form the refusal prints and the README documents: ONE argument, and
     it is the REPO — the board is the recorded one, as with every other bare
@@ -3774,33 +3774,37 @@ def test_the_token_is_gh_then_the_environment_then_a_HIDDEN_prompt(
     """Three sources, in one order, and the fourth that must never exist.
 
     `gh` wins while it answers, because the machine of anybody with push on the
-    repo already has it authenticated and the common case must ask nothing."""
+    repo already has it authenticated and the common case must ask nothing.
+
+    It MOVED to `cli/github.py` when `board forge` grew a second caller for it —
+    the order, the hidden prompt and the flag that must never exist are the
+    contract and are unchanged; only the module holding them is."""
     import getpass as getpass_module
 
-    from taskops.cli import enrol
+    from taskops.cli import github as asking
 
     monkeypatch.setenv("GITHUB_TOKEN", "from-the-environment")
     monkeypatch.setattr(getpass_module, "getpass", _refuse_to_prompt)
     asked = fake_gh(tmp_path / "bin", prints=TOKEN)
     on_path(monkeypatch, tmp_path / "bin")
-    assert enrol.github_token() == TOKEN
+    assert asking.token() == TOKEN
     assert asked.read_text(encoding="utf-8").strip() == "auth token"
 
     # `gh` there but not logged in: the environment answers, and nothing prompts.
     fake_gh(tmp_path / "bin", prints="not logged into any GitHub hosts", code=1)
-    assert enrol.github_token() == "from-the-environment"
+    assert asking.token() == "from-the-environment"
 
     # Neither: a HIDDEN prompt — getpass, never input(), which would echo the
     # token into the terminal and into anything scraping the session.
     monkeypatch.delenv("GITHUB_TOKEN")
     monkeypatch.setattr("builtins.input", _refuse_to_prompt)
     monkeypatch.setattr(getpass_module, "getpass", lambda *_: f"  {TOKEN}\n")
-    assert enrol.github_token() == TOKEN
+    assert asking.token() == TOKEN
 
     # And typing nothing at it is a refusal that names all three ways in.
     monkeypatch.setattr(getpass_module, "getpass", lambda *_: "")
     with pytest.raises(TaskopsError) as refused:
-        enrol.github_token()
+        asking.token()
     for way in ("gh auth login", "GITHUB_TOKEN", "hidden prompt"):
         assert way in str(refused.value)
     assert "no --github <token>" in str(refused.value)
@@ -4650,3 +4654,216 @@ def test_a_client_that_hangs_up_is_not_printed_as_a_crash(
     except ValueError:
         server.handle_error(None, ("127.0.0.1", 1))
     assert "a real fault" in capsys.readouterr().err
+
+
+# ── `taskops board forge` SYNCS the team: collaborators → .keys → enroll ─────
+#
+# Appended as ONE contiguous tail block, for the reason the `--github` block
+# above says: parallel worktrees merge two tails cleanly and interleaved edits
+# not at all. The stub is a REAL socket serving BOTH GitHub endpoints this side
+# calls — `api.github.com/repos/…/collaborators` (paginated, authenticated) and
+# `github.com/<login>.keys` (plain text, PUBLIC) — because the point of the
+# chapter is exactly which of the two carries the token, and monkeypatching
+# `_wire` away would test neither the header nor the pagination.
+
+
+class Hub:
+    """The stub's answers, and what it SAW. The second half is the test."""
+
+    def __init__(self) -> None:
+        self.people: list[dict[str, Any]] = []
+        self.published: dict[str, str] = {}
+        self.status = 200
+        self.seen: list[tuple[str, str]] = []  # (path, Authorization)
+
+
+@pytest.fixture()
+def hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Hub]:
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    from taskops.cli import github as asking
+
+    stub = Hub()
+
+    class Stub(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's contract
+            stub.seen.append((self.path, self.headers.get("Authorization", "")))
+            if self.path.endswith(".keys"):
+                who = self.path.rsplit("/", 1)[1][: -len(".keys")]
+                return self._say(200, stub.published.get(who, ""), "text/plain")
+            page = int(dict(_query(self.path)).get("page", "1"))
+            size = asking.PAGE
+            rows = stub.people[(page - 1) * size : page * size]
+            self._say(stub.status, json.dumps(rows), "application/json")
+
+        def _say(self, status: int, text: str, kind: str) -> None:
+            body = text.encode()
+            self.send_response(status)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_: Any) -> None:
+            return
+
+    httpd = HTTPServer(("127.0.0.1", 0), Stub)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    root = f"http://127.0.0.1:{httpd.server_address[1]}"
+    monkeypatch.setattr(asking, "API", root)
+    monkeypatch.setattr(asking, "KEYS", root)
+    # `gh auth token` is the FIRST source, so a real `gh` on the runner's PATH
+    # would hand a real token to this socket. A fake one on PATH answers first.
+    fake_gh(tmp_path / "ghbin", prints=TOKEN)
+    on_path(monkeypatch, tmp_path / "ghbin")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    yield stub
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def _query(path: str) -> list[tuple[str, str]]:
+    _, _, tail = path.partition("?")
+    return [(bit.split("=")[0], bit.split("=")[1]) for bit in tail.split("&") if "=" in bit]
+
+
+def collaborator(login: str, need: str = "push", kind: str = "User") -> dict[str, Any]:
+    return {"login": login, "type": kind, "permissions": {"pull": True, need: True}}
+
+
+def forge_sync(server: BoardServer, keyed: Path, repo: str = "bernatch22/taskops") -> int:
+    from taskops.cli import main
+
+    return main(["board", "forge", f"{host_of(server)}/{BOARD}", repo, "--key", str(keyed)])
+
+
+def test_the_forge_enrols_every_collaborator_with_push_across_every_page(
+    server: BoardServer, keyed: Path, virgin: Path, hub: Hub, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Criterion 1. Five collaborators over THREE pages — the loop is the test:
+    stopping at the first page would enrol two of them and report the other
+    three as drift, which reads to the owner as a revocation list.
+
+    `Bot` and a `pull`-only account are in the list on purpose: the door in
+    `http/github.py` grants on `permissions[need]`, so the sync that fills the
+    host has to read the same field or the two disagree about who works here."""
+    from taskops.cli import github as asking
+
+    monkeypatch.setattr(asking, "PAGE", 2)  # 5 people, pages of 2: 2 + 2 + 1
+    keys = {name: keygen(tmp_path / f"{name}_key") for name in ("ana", "leo", "dan", "mia")}
+    hub.published = {name: pubkey(key) for name, key in keys.items()}
+    hub.people = [
+        collaborator("Ana"), collaborator("leo"), collaborator("dan"),
+        collaborator("robot", kind="Bot"), collaborator("mia"),
+    ]
+
+    assert forge_sync(server, keyed) == 0
+    printed = capsys.readouterr().out
+    assert "4 collaborator(s) with push on bernatch22/taskops" in printed  # the Bot is not one
+    assert "enrolled  ana, dan, leo, mia" in printed
+
+    # Three pages were really asked for, and the third ended the loop by being short.
+    pages = [path for path, _ in hub.seen if "/collaborators" in path]
+    assert [path.rsplit("page=", 1)[1] for path in pages] == ["1", "2", "3"]
+
+    # `Ana` with a capital is `ana` on this host: a principal name is [a-z0-9._-],
+    # and a login GitHub happily capitalises would otherwise be refused mid-batch.
+    store = server.mounts.host.store()
+    assert sorted(p.name for p in store.principals()) == ["ana", "berna", "dan", "leo", "mia"]
+    assert sign_in(server, "ana", keys["ana"])["role"] == "member"  # the key really signs
+
+    # Re-running it re-syncs and writes nothing: idempotent all the way down.
+    written = signers_of(server)
+    assert forge_sync(server, keyed) == 0
+    assert "unchanged ana, dan, leo, mia" in capsys.readouterr().out
+    assert signers_of(server) == written
+
+
+def test_a_collaborator_with_no_key_on_github_is_NAMED_with_their_way_in(
+    server: BoardServer, keyed: Path, virgin: Path, hub: Hub, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Criterion 2. There is nothing to enrol for somebody who pushes over
+    HTTPS, and the failure mode this pins is the SILENT one: a team of three
+    reported as two is a bug found three weeks later by the person left out."""
+    hub.published = {"ana": pubkey(keygen(tmp_path / "ana_key"))}
+    hub.people = [collaborator("ana"), collaborator("dan"), collaborator("mia")]
+
+    assert forge_sync(server, keyed) == 0
+    printed = capsys.readouterr().out
+    assert "no ssh key published on GitHub — 2, not enrolled" in printed
+    assert "taskops invite dan" in printed and "taskops invite mia" in printed
+    assert "github.com/dan.keys is empty" in printed
+    assert server.mounts.host.store().principal("dan") is None
+
+
+def test_the_drift_is_REPORTED_with_the_revoke_command_and_nothing_revokes_itself(
+    server: BoardServer, keyed: Path, virgin: Path, hub: Hub, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Criterion 3, and the milestone's own decision: a sync ADDS. `ana` came in
+    through an invite and is not a GitHub login at all, so a pruning sync would
+    revoke her for having been introduced the other way — she is reported, with
+    the exact command, and still signs in afterwards. The OWNER is never in that
+    list: a `revoke` line beside the account running this is a way to lock
+    yourself out of your own host."""
+    _, hers = member(server, tmp_path)
+    leo = keygen(tmp_path / "leo_key")
+    hub.published = {"leo": pubkey(leo)}
+    hub.people = [collaborator("leo")]
+
+    assert forge_sync(server, keyed) == 0
+    printed = capsys.readouterr().out
+    named = server.mounts.host.store().keys("ana")[0].fingerprint
+    assert "on this host but NOT a collaborator any more — 1, nothing revoked" in printed
+    assert f"ana                      taskops revoke --key {named}" in printed
+    assert "berna" not in printed.split("nothing revoked")[1]  # the owner is not drift
+    assert "introduced by invite belongs here legitimately" in printed
+
+    assert sign_in(server, "ana", hers)["role"] == "member"  # nothing was revoked
+    assert sign_in(server, "berna", keyed)["role"] == "owner"
+
+
+def test_the_owners_token_is_spent_on_ONE_endpoint_and_written_nowhere(
+    server: BoardServer, keyed: Path, virgin: Path, hub: Hub, tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Criterion 4. The token authenticates the COLLABORATOR pages and nothing
+    else — `<login>.keys` is public, and sending a credential to it would spend
+    the owner's identity on a request that does not need one. Then the grep: the
+    host's whole tree and the checkout's, not the two files somebody remembered.
+    """
+    hub.published = {"leo": pubkey(keygen(tmp_path / "leo_key"))}
+    hub.people = [collaborator("leo")]
+    assert forge_sync(server, keyed) == 0
+
+    carried = {path.split("?")[0]: auth for path, auth in hub.seen}
+    assert carried["/repos/bernatch22/taskops/collaborators"] == f"Bearer {TOKEN}"
+    assert carried["/leo.keys"] == ""  # public: no credential is spent on it
+
+    needle = TOKEN.encode()
+    files = [p for p in server.mounts.root.rglob("*") if p.is_file()]
+    files += [p for p in virgin.rglob("*") if p.is_file()]
+    assert any(b"ssh-ed25519" in p.read_bytes() for p in files)  # the scan reads real bytes
+    for path in files:
+        assert needle not in path.read_bytes(), f"the GitHub token reached {path}"
+    assert TOKEN not in capsys.readouterr().out
+
+
+def test_github_refusing_the_owners_token_names_the_repo_and_enrols_nobody(
+    server: BoardServer, keyed: Path, virgin: Path, hub: Hub,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A 401/403/404 is a status, not something a person can act on — and the
+    token is in none of the three sentences. The declaration is already recorded
+    when this happens, which is what makes the fix "run the same command again"."""
+    hub.people = [collaborator("leo")]
+    for status, said in ((401, "rejected that token"), (403, "SSO"), (404, "no repository")):
+        hub.status = status
+        assert forge_sync(server, keyed) == 1
+        printed = capsys.readouterr()
+        assert said in printed.err and TOKEN not in printed.err
+        assert "bernatch22/taskops" in printed.err
+    assert [p.name for p in server.mounts.host.store().principals()] == ["berna"]
