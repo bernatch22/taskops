@@ -35,8 +35,9 @@ can be misread:
   into it exactly once, to install it and register your key.
 * **A board**: one directory on that host. Created from your laptop with
   `taskops board create`.
-* **A repo**: joined to one board. `taskops remote add` once per checkout, then
-  every command runs bare.
+* **A repo**: joined to one board. A clone carries the board's address
+  (`.taskops/board.json`, committed), so `taskops join` is the whole step;
+  `taskops remote add` covers a checkout that carries none.
 * **Your agents**: they never touch any of this — they talk to the board through
   the eleven MCP tools.
 
@@ -78,10 +79,11 @@ Joining a hosted one is bare, like every other verb — the host is recorded onc
 and the key is discovered the way ssh discovers one:
 
 ```sh
-taskops remote add https://host:8787      # once per checkout
-taskops join my-project                   # your key is registered: that is the credential
-taskops join my-project --invite <id>     # first time: the invite enrols your key too
-taskops join my-project --github          # first time, no invite: GitHub vouches for you
+taskops join                              # a clone: board.json carries the address, done
+taskops join --github                     # same clone, first time: GitHub vouches for you
+taskops join my-project --invite <id>     # first time by invite: it enrols your key too
+taskops remote add https://host:8787      # no carried address? record the host once…
+taskops join my-project                   # …and name the board
 taskops join my-project                   # no key + public board: read-only window
 ```
 
@@ -209,6 +211,59 @@ fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
 until an owner records it and cleared again with `--clear`. Only a board that
 has been opted in answers `--github` at all; every other one is invite-only,
 exactly as before.
+
+### The whole flow, and why cloning is not enough
+
+Cloning the repo gives you the board's ADDRESS — `.taskops/board.json` is
+committed and travels with the code — but the host has never seen you: it is a
+different server from GitHub, sharing no session and no cookie with it. So one
+command — `taskops join --github`, no URL: the clone already carries it —
+introduces you, once per checkout, and after that GitHub is not in the picture
+at all.
+
+```
+        GitHub                                the board HOST
+   <owner>/<repo>, private                principals + allowed_signers
+          |                                          |
+ 1. git clone  ->  the code, and .taskops/board.json (the address).
+                   remote.json is 0600 and gitignored: no credential travels.
+          |                                          |
+ 2. taskops join --github   (the carried address)    |
+    |                                                |
+    |-- the CLI finds YOUR token: `gh auth token`, else $GITHUB_TOKEN,
+    |   else a hidden prompt. Never a flag value — the shell writes those
+    |   into ~/.zsh_history before the process starts.
+    |                                                |
+    |-- POST /<board>/join/github ------------------>|
+    |      { github_token, principal, pubkey }       |
+    |                                                |
+    |          the host asks GitHub ONCE, with your token:
+    |          "does this user have <need> on <owner>/<repo>?"
+    |                                                |
+    |          yes -> it writes exactly two rows:    |
+    |                   principals:      <you>, member
+    |                   allowed_signers: <you> ssh-ed25519 AAAA...
+    |          no  -> refused, without saying whether the repo exists
+    |                                                |
+ 3. the GitHub token dies with that request. It is on neither disk.
+
+    from here on GitHub never participates again:
+
+    every session:  your key signs a challenge  ->  the host checks it
+                    (~/.ssh/id_ed25519)             against allowed_signers
+                                                    -> a 12h session
+```
+
+The alternative — re-checking GitHub on every request — would mean the host
+holding somebody else's token, or being handed one on each call. That is the
+whole category of problem this removes: there is no token to steal because
+there is none stored.
+
+**One consequence, stated plainly: access is granted automatically and taken
+back by hand.** Losing push on the repo does not close the board, because the
+credential is no longer GitHub — it is the enrolled key. Remove it with
+`taskops revoke --key SHA256:…`, which is the same verb an invite-enrolled key
+takes.
 
 No URL and no `--key` after `remote add`: the host is recorded in the checkout,
 `board create` records the name, and the key is **discovered** the way ssh

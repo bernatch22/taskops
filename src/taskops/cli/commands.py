@@ -15,7 +15,7 @@ from pathlib import Path
 from . import enrol, watch
 from .. import session, identity
 from .._json import query
-from ..board import DIR, find_root, open_board
+from ..board import DIR, find_root, open_board, read_config
 from ..store import log
 from .._errors import TaskopsError
 from ..gitwork import remote, install, claudefiles
@@ -58,13 +58,15 @@ def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
     invite: str = "",
     github: bool = False,
 ) -> int:
-    """Connect this repo to a board. Bare like every other verb since the host is
-    recorded and the key is discovered:
+    """Connect this repo to a board. Bare like every other verb: the address is
+    CARRIED by the clone, the key is discovered, and the recorded remote is the
+    fallback for a checkout that carries nothing:
 
-        taskops remote add https://host:8787        once per checkout
-        taskops join my-project                     registered key: signs in, done
-        taskops join my-project --invite <id>       first time: enrols the key too
-        taskops join my-project --github            first time, no invite: GitHub vouches
+        taskops join                                a clone: board.json travels, done
+        taskops join --github                       same clone, first time: GitHub vouches
+        taskops join my-project --invite <id>       first time by invite: enrols the key
+        taskops remote add https://host:8787        no carried address? record the host…
+        taskops join my-project                     …and name the board
         taskops join my-project                     no key anywhere + public board: read-only
 
     The name defaults exactly as `board create`'s does (recorded name, else the
@@ -93,8 +95,17 @@ def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
     root = find_root(here)
     bare = "://" not in target
     if bare:
-        host, name = remote_cli.named(target)
-        target = f"{host}/{name}"
+        # v1's whole ambition, restored (its join.py said it in one line: "a
+        # clone carries `.taskops/board.json`, so the second developer types
+        # two words"). The committed address is read FIRST, so a fresh clone
+        # joins with no URL and no `remote add` — the recorded remote is for
+        # the checkout that has no carried address, or a DIFFERENT board.
+        carried = str(read_config(root).get("url", ""))
+        if carried and target in ("", carried.rsplit("/", 1)[-1]):
+            target = carried
+        else:
+            host, name = remote_cli.named(target)
+            target = f"{host}/{name}"
     base = target.partition("?")[0]
     params = query(target)
     invite = invite or params.get("invite", "")

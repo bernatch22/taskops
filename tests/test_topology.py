@@ -665,6 +665,34 @@ def test_an_invite_registers_the_joiners_key_and_still_answers_a_token(
     assert RemoteBoard(url_of(server), minted["token"], ANA).call("board", {})["seq"] >= 0
 
 
+def test_a_clone_that_carries_its_boards_address_joins_bare_no_url_no_remote(
+    server: BoardServer, keyed: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """v1's two-word join, restored (2026-08-11). `.taskops/board.json` is
+    COMMITTED and travels with the clone, so the second developer types
+    `taskops join` and nothing else — no URL pasted from a chat, no
+    `remote add` first. The regression: v2 resolved a bare join through the
+    RECORDED remote (`remote.json`, per-machine, never travels) and ignored the
+    address the clone already carried. The recorded remote stays the fallback
+    for a checkout with no carried address, or a join onto a DIFFERENT board.
+
+    Both bare spellings, because both read the carried address: no target at
+    all, and the board's own name (which must not fall through to `named()`
+    and die on the missing remote)."""
+    from taskops.cli import commands
+
+    for target in ("", BOARD):
+        project = tmp_path / f"clone-{target or 'bare'}"
+        (project / ".git").mkdir(parents=True)
+        (project / ".taskops").mkdir()
+        (project / ".taskops" / "board.json").write_text(json.dumps({"url": url_of(server)}))
+        monkeypatch.setenv("TASKOPS_ACTOR", BERNA)
+        commands.join(project, target, BERNA, str(keyed))
+        saved = json.loads((project / ".taskops" / "remote.json").read_text())
+        assert saved["login"]["host"] == host_of(server)
+        assert RemoteBoard(url_of(server), saved["token"], BERNA).call("board", {})["seq"] >= 0
+
+
 def test_a_re_join_never_demotes_the_owner_it_only_adds_a_key(
     server: BoardServer, keyed: Path, tmp_path: Path
 ) -> None:
