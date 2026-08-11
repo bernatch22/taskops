@@ -3,6 +3,33 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## Unreleased — the forge enrols the team; GitHub is the owner's, and nobody else's
+
+- **`taskops board forge <owner>/<repo>` declares AND syncs.** It used to record
+  a fact; it now records it and then enrols the team behind it: one authenticated,
+  paginated `GET /repos/<owner>/<repo>/collaborators?permission=<need>` with the
+  owner's own token, then the PUBLIC `github.com/<login>.keys` per person, then a
+  single `members.enroll` over `/rpc` carrying principals and key lines. **No
+  GitHub token ever reaches a taskops host, and none is stored on either side** —
+  it is a header on the owner's outgoing request and dies with the command.
+  Re-running it re-syncs, and a run that changes nothing writes nothing.
+- **The sync ADDS ONLY, and reports the rest.** A principal the batch did not
+  name is printed as drift with the exact `taskops revoke --key SHA256:…` beside
+  it, and nothing revokes itself: a principal enrolled by invite is not a GitHub
+  login, and a pruning sync would retire them for existing. The owner is never in
+  that list. A collaborator whose GitHub account publishes no ssh key is NAMED
+  with `taskops invite <login>`, never skipped in silence. A key another
+  principal already holds, or one that was revoked here, is reported and not
+  written — a batch may not move a key off somebody who is not in it.
+- **The dev's GitHub door is DELETED.** `POST /<board>/join/github`, the
+  `--github` flag and the token discovery inside `join` are gone — not deprecated,
+  not answering 410. It made every dev's own credential travel to a host that has
+  no business seeing one, to prove a fact the owner already holds, and it asked
+  for an ssh key from people who, having push over ssh, had published one already.
+  A dev in a fresh clone now types **`taskops join`**, bare: their key was
+  enrolled before they ever typed anything. Invites are unchanged, and a board
+  that declared no forge is invite-only exactly as before.
+
 ## 0.3.2 — the window's address, prose that reads as prose, and a link that stays inside
 
 - **`taskops ui` opens `http://127.0.0.1:<port>/`.** It used to hand out
