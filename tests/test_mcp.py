@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from taskops import _clock
-from taskops.mcp import hello, tools, server, boardview
+from taskops.mcp import hello, tools, before, server, boardview
 from taskops.board import LocalBoard, RemoteBoard
 from tests.conftest import T0
 from tests.test_git import repo as git_repo
@@ -595,6 +595,52 @@ def test_a_conflict_refusal_names_the_worktree_not_a_departed_worker(
     assert "only the worker" not in said
     assert str(trees.card_tree(repo, card)) in said
     assert "orchestrator or worker" in said
+
+
+def test_a_declared_union_seam_turns_that_refusal_into_a_merge(
+    repo: Path, boards: Any
+) -> None:
+    """The declaration travels: `update milestone= union_files=[…]` is a
+    milestone FACT, folded per read like `rules`, riding on the card dossier the
+    integration already loads, and it reaches the catch-up merge.
+
+    Same fixture as the conflict refusal above, one declaration apart — the card
+    and the chapter both touched `shared.py`, and now it folds instead of
+    refusing. Nothing is resolved for anybody: only the named path unions.
+    """
+    dev, card, stone_branch, _branch, tree = behind_by_one(repo, boards, card_file="shared.py")
+    stone = str(dev.call("card", {"task": card})["milestone"]["id"])
+    dev.call("update", {"milestone": stone, "union_files": ["shared.py"]})
+
+    out = call(dev, repo, "taskops_merge", task=card)
+
+    assert stone_branch in out
+    kept = (tree / "shared.py").read_text(encoding="utf-8")
+    assert "VAT = 21" in kept and "VAT = 10" in kept  # both sides, no marker
+    assert "<<<<<<<" not in kept
+    assert run.git("status", "--porcelain", cwd=tree).out == ""
+
+
+def test_the_declaration_is_derived_per_read_and_reaches_every_reader(
+    repo: Path, boards: Any
+) -> None:
+    """Criterion 5. It is stored once, as a milestone event, and read from the
+    fold everywhere — the card payload, the board payload, and the take a worker
+    is shown. No second copy, and `union_files=[]` withdraws it whole."""
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    stone = str(dev.call("card", {"task": card})["milestone"]["id"])
+
+    dev.call("update", {"milestone": stone, "union_files": ["src/registry.py", ""]})
+
+    assert dev.call("card", {"task": card})["milestone"]["union_files"] == ["src/registry.py"]
+    assert dev.call("board", {})["milestone"]["union_files"] == ["src/registry.py"]
+    shown = before.rules(dev.call("card", {"task": card}))
+    assert any("src/registry.py" in line for line in shown)
+    assert any("APPEND" in line for line in shown)  # what a worker must DO about it
+
+    dev.call("update", {"milestone": stone, "union_files": []})
+    assert dev.call("card", {"task": card})["milestone"]["union_files"] == []
 
 
 def _merging(tree: Path) -> bool:

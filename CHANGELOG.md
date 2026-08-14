@@ -5,6 +5,25 @@ here, never written twice.
 
 ## Unreleased — the forge enrols the team; GitHub is the owner's, and nobody else's
 
+- **A milestone may DECLARE its seam files, and sibling appends to them stop
+  being conflicts.** Three conflicts in one real wave were the same mechanical
+  thing: sibling cards each appending their own entry to one shared registry
+  file. That is not judgment, it is git's built-in `union` driver. So
+  `taskops_plan union_files=[…]` (and `taskops_update milestone= union_files=[…]`,
+  the whole list, like `rules`) records the paths on the CHAPTER, they are folded
+  per read (`core/chapters.py`) and ride on the card and board payloads with no
+  second copy, and `taskops_merge` hands them to the catch-up merge. Only those
+  paths union; every other conflict aborts and refuses exactly as before, and a
+  chapter that declares nothing runs a byte-identical merge. The mechanism is
+  EPHEMERAL and lives outside the repository — a temp file passed as
+  `git -c core.attributesFile=…` for that one process, deleted in a `finally`
+  whether the merge landed or aborted. Never a committed `.gitattributes`, and
+  never `$GIT_DIR/info/attributes`, which every linked worktree of this repo
+  SHARES (measured) and which a crash would leave enabled repo-wide. A committed
+  attribute still wins on precedence, so the dashboard bundle's `-merge` cannot
+  be overridden by a declaration. The worker is told: the take prints the seam
+  files under the chapter's rules, with the only edit shape a union can fold —
+  APPEND, never restructure. (`gitwork/catchup.py`, `mcp/integrate.py`.)
 - **A STALLED row says how its holder went quiet, not just that it did.** A
   session limit took five workers at once and every stalled row read "quiet for
   1h", so deciding resume-vs-reassign meant opening each card. Stalled rows now

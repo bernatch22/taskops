@@ -137,6 +137,9 @@ def _milestone(
             criteria=_args.strings(args, "criteria"),
             # A default for the chapter's cards, not a rule: per-card wins.
             reviews=_args.flag(args, "reviews"),
+            # The seam files sibling cards all append to — union-merged during
+            # catch-up, never resolved for them anywhere else.
+            union_files=_args.strings(args, "union_files"),
             # Computed ONCE and stored. Renaming the milestone later cannot move
             # the branch under the worktrees that already live on it.
             branch=f"ms/{slugify(given)}",

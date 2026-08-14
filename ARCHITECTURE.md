@@ -214,7 +214,8 @@ flowchart TB
         wire["_wire — one POST, one envelope: the decoder both clients share"]
     end
     subgraph L1["1 · core (PURE — no I/O)"]
-        types["types — Card/Milestone/Event/Lease, KINDS registry"]
+        types["types — Card/Milestone/Event/Lease (re-exports KINDS and the actor grammar)"]
+        kindsm["kinds — the event-kind registry: replayed? required body keys"]
         actors["actors — presence, folded from events"]
         event["event — construct + hash"]
         replay["replay — fold(events) → State"]
@@ -253,7 +254,7 @@ flowchart TB
         board["board.py — LocalBoard | RemoteBoard, routing decided ONCE"]
         run["gitwork/run"]; trees["gitwork/trees — worktrees: the GEOMETRY"]
         landing["gitwork/landing — the MERGES: card→chapter, chapter→trunk"]
-        catchup["gitwork/catchup — one worktree, up to date with a branch"]
+        catchup["gitwork/catchup — one worktree, up to date with a branch; the chapter's declared union_files fold, everything else still aborts"]
         trailer["gitwork/trailer"]; bind["gitwork/bind"]
         install["gitwork/install — what GIT needs: hooks, gitignore, the address"]
         claudef["gitwork/claudefiles — what CLAUDE reads: .mcp.json, settings.json"]
@@ -768,7 +769,7 @@ sequenceDiagram
     Dev->>Board: taskops_board
     Board-->>Dev: group MERGE: [tk-a1]
     Dev->>Board: taskops_merge task=tk-a1  (or tasks=[tk-a1, tk-b2] / done=true — the same path per card, in order, stopping at the first failure)
-    Board->>Git: trees.behind() — if tk-a1 lacks the ms/* head, catchup.catch_up() merges ms/* IN tk-a1's own worktree (dirty or missing: refused, untouched; conflict: aborted clean, git's files + the count)
+    Board->>Git: trees.behind() — if tk-a1 lacks the ms/* head, catchup.catch_up() merges ms/* IN tk-a1's own worktree, with the chapter's union_files (from the dossier already loaded) applied as merge=union through an EPHEMERAL core.attributesFile outside the repo (dirty or missing: refused, untouched; conflict in anything undeclared: aborted clean, git's files + the count)
     Board->>Git: merge_card() --no-ff into ms/<milestone>, in the integration worktree
     Git-->>Board: sha (or refused, conflict files named, ms/* untouched)
     Board-->>Dev: merged
@@ -846,6 +847,7 @@ nobody has touched yet.
 | a SILENT `taskops join` over a local board | the local history stayed on disk byte for byte and nothing ever looked at it again or said so — a command about connecting is what made it invisible | `cli/commands.py::_keep_or_archive` refuses naming `taskops board push` and `--discard-local` (which archives, never deletes); `tests/test_topology.py::test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out` |
 | GitHub as a CREDENTIAL — v1's GitHub login: a stored token, a call to GitHub on every sign-in | three costs, and §19 is the whole argument: a token that travels (worth stealing for reasons unrelated to the board), a network dependency at every login (GitHub down = nobody signs in), and a SECOND identity system beside the keys, with its own enrolment, expiry and revocation to keep in step. The convenience is kept and the costs are not: GitHub is asked ONCE, by the owner, and what persists is an ssh key | the only module that speaks to GitHub is `cli/github.py`, on the owner's machine; the host takes principals and key lines (`http/members.py`) and no token reaches it. `tests/test_topology.py::test_the_owners_token_is_spent_on_ONE_endpoint_and_written_nowhere` greps the host tree AND the checkout with a positive control, and `…::test_no_flag_on_join_takes_a_token_and_none_ever_will` holds the parser to "never a flag value". There is one `members.enroll` row in `core/scope.py` — a ROLE rule — and no second credential type anywhere |
 | a GitHub door on the DEV's side — `POST /<board>/join/github`, a `--github` flag, a token discovered at join time (2026-08-11) | it made every dev's own credential travel to a host that has no business seeing one, to prove a fact the OWNER already holds; and it asked for an ssh key from people who, having push over ssh, had published one already. Deleted the day after it shipped — §19.1 | there is no route, no flag and no client function: `grep -r 'join/github\|by_github' src tests` is empty, and `test_no_flag_on_join_takes_a_token_and_none_ever_will` asserts the ABSENCE from `join --help`. The replacement is one command on the owner's side and `taskops join`, bare, on the dev's (`…::test_the_dev_whose_key_the_sync_published_joins_with_two_words`) |
+| a COMMITTED `.gitattributes` (or a written `$GIT_DIR/info/attributes`) as the union-merge mechanism | a milestone's `union_files` is one chapter's convenience, and both of those are repo-wide and outlive the merge. Measured in this repo: `git rev-parse --git-path info/attributes` inside a LINKED worktree answers the COMMON dir, so writing there hands one card's declaration to every sibling merging at the same moment, and a crash between write and delete leaves it enabled for the whole repository, invisibly. A committed file is worse still: it makes the chapter's convenience permanent and reviewable as if it were a repo decision | `gitwork/catchup.py::_attributes` writes a temp file OUTSIDE the repository and passes it as `git -c core.attributesFile=…` for that one process, deleted in a `finally` on both paths. The precedence is deliberate: an in-tree `.gitattributes` BEATS `core.attributesFile`, so the dashboard bundle's `-merge` cannot be overridden by a declaration. `tests/test_git.py::test_no_attributes_file_survives_a_merge_that_worked` and `…_that_aborted` assert nothing is left in the temp dir, in the tree, or at `info/attributes` |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
 | a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/sections/actors.tsx` asserts the words `free`, `slot` and `capacity` appear nowhere in that markup ("actors: NO WORKER SLOTS, under that name or any other") |

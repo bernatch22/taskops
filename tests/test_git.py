@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from typing import Any
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from taskops.gitwork import (
     patch,
     trees,
     remote,
+    catchup,
     install,
     landing,
     trailer,
@@ -775,3 +777,134 @@ def test_a_path_filter_narrows_the_patch_and_is_never_an_option(tmp_path: Path) 
     written = tmp_path / "tk-d50e0a-pwned"
     hostile, _ = patch.patch(root, *found, path=f"--output={written}")
     assert hostile == "" and not written.exists()
+
+
+# ── the union seam (gitwork/catchup.py) ─────────────────────────────────────
+
+
+def seam(tmp_path: Path) -> tuple[Path, Path]:
+    """Two card worktrees of one chapter, each APPENDING its own line to the
+    same registry file — the exact shape three conflicts of one real wave had.
+
+    Returns (the chapter's tree, the card's tree). The card is one commit behind
+    the chapter, and the two appends are distinct hunks of the same file.
+    """
+    root = repo(tmp_path)
+    (root / "registry.py").write_text("ROUTES = []\n", encoding="utf-8")
+    (root / "models.py").write_text("BASE = 0\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "the seam exists", cwd=root)
+
+    chapter = trees.ensure_milestone(root, "ms/mvp")
+    card = trees.ensure_card(root, "tk-a11111", "tk-a11111", "ms/mvp")
+    return chapter, card
+
+
+def append(tree: Path, name: str, line: str, message: str) -> None:
+    path = tree / name
+    path.write_text(path.read_text(encoding="utf-8") + line + "\n", encoding="utf-8")
+    run.must("add", "-A", cwd=tree)
+    run.must("commit", "-q", "--no-verify", "-m", message, cwd=tree)
+
+
+def leaked() -> list[Path]:
+    """Every ephemeral attributes file this process could have left behind."""
+    return sorted(Path(tempfile.gettempdir()).glob("taskops-union-*.attributes"))
+
+
+def test_a_declared_seam_file_unions_sibling_appends(tmp_path: Path) -> None:
+    """Criterion 1: two cards append distinct hunks to a declared file and the
+    catch-up completes — no conflict, no refusal, and BOTH entries survive."""
+    chapter, card = seam(tmp_path)
+    append(chapter, "registry.py", "ROUTES.append('sibling')", "the sibling's entry")
+    append(card, "registry.py", "ROUTES.append('mine')", "my entry")
+
+    got = catchup.catch_up(card, "ms/mvp", ["registry.py"])
+
+    assert got.sha and not got.conflicts and not got.blocked
+    kept = (card / "registry.py").read_text(encoding="utf-8")
+    assert "ROUTES.append('sibling')" in kept and "ROUTES.append('mine')" in kept
+    assert "<<<<<<<" not in kept  # a union is a fold, never a marker left in place
+    assert run.git("status", "--porcelain", cwd=card).out == ""
+
+
+def test_the_same_two_appends_without_the_declaration_still_conflict(tmp_path: Path) -> None:
+    """Criterion 4: `union=()` is byte-for-byte what this did before the feature
+    — the SAME fixture, one argument apart, still aborts with the tree as it was."""
+    chapter, card = seam(tmp_path)
+    append(chapter, "registry.py", "ROUTES.append('sibling')", "the sibling's entry")
+    append(card, "registry.py", "ROUTES.append('mine')", "my entry")
+    before = run.must("rev-parse", "HEAD", cwd=card)
+
+    got = catchup.catch_up(card, "ms/mvp")
+
+    assert got.conflicts == ["registry.py"] and not got.sha
+    assert run.must("rev-parse", "HEAD", cwd=card) == before
+    assert not (card / ".git").exists() or not (card / "MERGE_HEAD").exists()
+    assert run.git("status", "--porcelain", cwd=card).out == ""
+
+
+def test_a_declaration_rescues_only_what_it_names(tmp_path: Path) -> None:
+    """Criterion 2: the seam is declared AND conflicting, and so is a file that
+    is not — the undeclared one still aborts the whole merge, tree untouched.
+    Union merging is a narrowing of the refusal, never a replacement for it."""
+    chapter, card = seam(tmp_path)
+    append(chapter, "registry.py", "ROUTES.append('sibling')", "sibling registry")
+    append(chapter, "models.py", "BASE = 21", "sibling model")
+    append(card, "registry.py", "ROUTES.append('mine')", "my registry")
+    append(card, "models.py", "BASE = 10", "my model")
+    before = run.must("rev-parse", "HEAD", cwd=card)
+
+    got = catchup.catch_up(card, "ms/mvp", ["registry.py"])
+
+    assert got.conflicts == ["models.py"] and not got.sha  # registry folded, models did not
+    assert run.must("rev-parse", "HEAD", cwd=card) == before
+    assert run.git("status", "--porcelain", cwd=card).out == ""
+
+
+def test_no_attributes_file_survives_a_merge_that_worked(tmp_path: Path) -> None:
+    """Criterion 3, the happy path. The declaration is EPHEMERAL: a temp file
+    outside the repository, deleted whatever happened, and nothing in the tree —
+    never a committed `.gitattributes` and never `$GIT_DIR/info/attributes`,
+    which every linked worktree of this repo would have shared."""
+    chapter, card = seam(tmp_path)
+    append(chapter, "registry.py", "ROUTES.append('sibling')", "the sibling's entry")
+    append(card, "registry.py", "ROUTES.append('mine')", "my entry")
+    before = leaked()
+
+    assert catchup.catch_up(card, "ms/mvp", ["registry.py"]).sha
+
+    assert leaked() == before  # the temp file is gone
+    assert not (card / ".gitattributes").exists()
+    assert not Path(run.must("rev-parse", "--git-path", "info/attributes", cwd=card)).exists()
+    assert run.git("status", "--porcelain", cwd=card).out == ""
+
+
+def test_no_attributes_file_survives_a_merge_that_aborted(tmp_path: Path) -> None:
+    """Criterion 3, the failing path — the one a `finally` exists for. An
+    aborted merge must leave the declaration behind no more than a clean one."""
+    chapter, card = seam(tmp_path)
+    append(chapter, "models.py", "BASE = 21", "sibling model")
+    append(card, "models.py", "BASE = 10", "my model")
+    before = leaked()
+
+    assert catchup.catch_up(card, "ms/mvp", ["registry.py"]).conflicts == ["models.py"]
+
+    assert leaked() == before
+    assert not (card / ".gitattributes").exists()
+    assert not Path(run.must("rev-parse", "--git-path", "info/attributes", cwd=card)).exists()
+
+
+def test_a_chapter_that_declares_nothing_writes_no_attributes_file_at_all(
+    tmp_path: Path,
+) -> None:
+    """Not the same as writing an empty one: "declared no seam" and "behaves as
+    it always did" have to be the same instruction stream."""
+    chapter, card = seam(tmp_path)
+    append(chapter, "registry.py", "ROUTES.append('sibling')", "the sibling's entry")
+    before = leaked()
+
+    assert catchup.catch_up(card, "ms/mvp", []).sha
+    assert catchup.catch_up(card, "ms/mvp", ["   ", ""]).sha is not None
+
+    assert leaked() == before
