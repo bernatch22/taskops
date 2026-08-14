@@ -1946,6 +1946,38 @@ invite-only again. It is a server-scope OWNER operation beside `board.visibility
 in `http/admin.py::REGISTRY` — same table, same role gate, no second door — and
 since 2026-08-11 that same command SYNCS the repo's team into the host (§19.1).
 
+### And how anybody else finds out
+
+Declaring it wrote an event on the host and nothing else — correctly, since a
+forge is a fact about the BOARD and a committed file would be a second place the
+truth lives. But for one chapter the READ side had the same hole the write side
+never did: the fact was in the log, `forge()` read it, the door acted on it, and
+it was in no payload. An agent with full board access could not tell that this
+board is one whose repo team the owner can sync in, and the dashboard could not
+draw what it could not read. **Discovery was by bumping into a closed door.**
+
+It now rides on the `board` payload beside `visibility`, which is the same move
+for the same reason (`verbs/pulse.py`, `verbs/project.py`): derived per read
+from `project.forge(stores)`, one log, one fold, one reader — the payload simply
+stopped hiding it. That is also what makes the line above true, that neither
+`board.visibility` nor `board.forge` needs a `get` half.
+
+**A board that declared no forge sends NO KEY** — not `null`, not `{}`. The
+splat in `pulse.py` is what enforces it, and it is not a nicety: `None` would be
+a third state (absent / null / a fact) for every consumer to learn, when
+`core/forge.py` spent a whole module collapsing absent, cleared and
+unintelligible into ONE answer. Proved rather than assumed — a forge-less
+board's whole payload is byte-identical across this change, and
+`tests/test_verbs.py::test_a_cleared_forge_takes_the_key_out_of_the_payload_again`
+pins that clearing a forge returns the payload to exactly the key set it had.
+
+The dashboard draws it as one line under the board's own identity in the header
+— `github.com/cloudacio/Axion · push` — text and not an anchor, because
+`ui/src/links.tsx` owns every forge URL the dashboard emits and keys them off
+`BoardPayload.repo`, a DIFFERENT fact that may name a different repo. The
+command a reader would need is the line's `title`
+(`ui/src/components/chrome/Header.tsx`, `ui/smoke/sections/forge-opens-the-board.tsx`).
+
 ### 19.1 The introduction moved to the OWNER (2026-08-11)
 
 The half of the chapter that deleted the other half. Everything below shipped a

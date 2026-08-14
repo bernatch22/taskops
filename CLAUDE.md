@@ -102,6 +102,11 @@ survived the flag is the rule about the TOKEN (`cli/github.py::token`: `gh auth
 token`, else `$GITHUB_TOKEN`, else a hidden prompt — **never a flag value**, the
 shell writes those into the history file before the process starts).
 
+And the board SAYS which forge opens it: the declared fact rides on the `board`
+payload, derived per read exactly as `visibility` is, so a reader finds the door
+instead of bumping into it. **A board with no forge sends no key at all** —
+never `null`.
+
 ## Layers — imports only point DOWN
 
 ```

@@ -50,7 +50,8 @@ markers of the draft it replaced) and `DATE_PANES` (tk-36b550 — the SECOND
 redesign of what a dev opens into: a pane per calendar day with an hour that
 folds open, which retired the lane-per-agent drawing and the hours bar panel
 whole: see `RETIRED_TIMESHEET`) and `PROSE` (tk-382948 — the one markdown renderer) and
-`REPORTS` (tk-535807 — the Reports tab and the sandboxed frame). Every list is
+`REPORTS` (tk-535807 — the Reports tab and the sandboxed frame) and `FORGE_SAID`
+(tk-5c64d5 — the one line saying which forge opens this board). Every list is
 the check that the bundle is the CURRENT source's output and not the previous
 wave's: none of those strings existed in the bundle its chapter-close replaced,
 so a close that forgot to run `node build.mjs` fails here.
@@ -399,6 +400,28 @@ REPORTS = (
 )
 
 
+#: One card, one marker (tk-5c64d5): a board SAYS which forge opens it.
+#:
+#: `board-forge` is the header line under the board's own identity, drawn from
+#: `BoardPayload.forge` — the key `verbs/pulse.py` derives per read and sends
+#: ONLY when a forge was declared. Until it existed the fact was visible to the
+#: owner who declared it and to the stranger the door refused, and to nobody
+#: else; the dashboard could not draw what it could not read.
+#:
+#: The testid is `board-forge` and not `forge` because `"forge"` is ALREADY in
+#: the committed bundle — it is a step name in the diff cascade
+#: (`card/Patch.tsx`) — so a marker called that would assert nothing about this
+#: card and would have been green against the bundle it was written over. It was
+#: checked the way every row here is: `grep -c '"board-forge"'` against
+#: `git show HEAD:src/taskops/ui/app.js` before this list was written. Zero.
+#:
+#: It is a single string rather than a tuple of two because the second half of
+#: this card's screen — that an invite-only board draws NO such line — cannot be
+#: an assertion about bytes: absence of a testid in the bundle is what a missing
+#: feature looks like too. That half is pinned on the rendered markup, where it
+#: means something (`ui/smoke/sections/forge-opens-the-board.tsx`).
+FORGE_SAID = ("board-forge",)  # what opens this board, under who we are
+
 #: A chapter goal with real markdown in it — the bug this chapter exists for.
 #:
 #: NOT invented: it is an excerpt of the goal the migrated axion board actually
@@ -735,6 +758,13 @@ def a_board(root: Path) -> dict[str, Any]:
             },
         )
 
+    # What OPENS this board, through the board's own write door like everything
+    # else here (`verbs/project.py`, `op=forge`). The header draws it off the
+    # payload key `pulse.py` derives; a fixture that hand-wrote that key would
+    # prove the dashboard renders a shape the server may never send, which is
+    # the one thing this file exists not to do.
+    dev.call("project", {"op": "forge", "repo": "cloudacio/Axion", "need": "admin"})
+
     fixture: dict[str, Any] = {
         # `window=` is what makes `hours` exist at all (verbs/pulse.py::run), and
         # `useBoard` passes it on every call so Throughput draws real bars.
@@ -827,7 +857,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE + REPORTS + TREE_INWARD
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE + REPORTS + FORGE_SAID + TREE_INWARD
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     for testid in RETIRED + RETIRED_TIMESHEET:

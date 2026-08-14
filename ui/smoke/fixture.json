@@ -1,6 +1,11 @@
 {
  "board": {
   "done_total": 0,
+  "forge": {
+   "host": "github.com",
+   "need": "admin",
+   "repo": "cloudacio/Axion"
+  },
   "groups": {
    "blocked": [
     {
@@ -349,6 +354,11 @@
  },
  "board_landed": {
   "done_total": 0,
+  "forge": {
+   "host": "github.com",
+   "need": "admin",
+   "repo": "cloudacio/Axion"
+  },
   "groups": {
    "blocked": [],
    "changes": [],

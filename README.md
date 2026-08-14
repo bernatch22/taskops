@@ -208,6 +208,15 @@ fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
 until an owner records it and cleared again with `--clear`. A board that was
 never opted in is invite-only, exactly as before.
 
+**The board says so out loud.** The declared forge rides on the `board` payload
+— derived per read from the one event that declared it, never a second copy —
+so anybody who can read the board can see what opens it, and the dashboard
+draws it under the board's own identity as
+`github.com/<owner>/<repo> · push`. Before that, the only two parties who knew
+were the owner who typed the command and the stranger the sync had not enrolled.
+A board with no forge sends no such key at all, which is what keeps every older
+reader working unchanged.
+
 **And declaring it SYNCS the team, in the same command.** `taskops board forge
 <owner>/<repo>` lists that repo's collaborators with the declared access (one
 authenticated call to GitHub, paginated, with the owner's own token — `gh auth
