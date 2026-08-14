@@ -112,7 +112,8 @@ def catch_up_or_refuse(repo: Path, branch: str, card_branch: str, task: str) -> 
         + "\n".join(f"  {f}" for f in got.conflicts)
         + f"\n  (merge aborted — {trees.card_tree(repo, task)} is exactly as it was)"
         + f"\n  git said: {got.said}"
-        + "\n  → only the worker can resolve this, in its own worktree:\n"
+        + "\n  → whoever is integrating — orchestrator or worker — resolves it in the card's"
+        + f" worktree, {trees.card_tree(repo, task)}:\n"
         + _by_hand(repo, branch, task)
     )
 
