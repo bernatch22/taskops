@@ -559,6 +559,27 @@ def test_a_catch_up_that_conflicts_names_both_the_distance_and_gits_own_words(
     assert run.git("status", "--porcelain", cwd=tree).out == ""
 
 
+def test_a_conflict_refusal_names_the_worktree_not_a_departed_worker(
+    repo: Path, boards: Any
+) -> None:
+    """It used to say "only the worker can resolve this, in its own worktree" —
+    and by the time a card is done and its chapter has moved on, the worker is
+    gone: the ORCHESTRATOR is the one holding the refusal. The move is the same
+    either way, so the text names the PLACE (the card's worktree) and both roles
+    instead of an actor who is usually not there."""
+    dev, card, stone_branch, _branch, _tree = behind_by_one(
+        repo, boards, card_file="shared.py"
+    )
+
+    with pytest.raises(Refused) as refusal:
+        call(dev, repo, "taskops_merge", task=card)
+
+    said = str(refusal.value)
+    assert "only the worker" not in said
+    assert str(trees.card_tree(repo, card)) in said
+    assert "orchestrator or worker" in said
+
+
 def _merging(tree: Path) -> bool:
     return run.git("rev-parse", "--verify", "--quiet", "MERGE_HEAD", cwd=tree).ok
 
@@ -1188,11 +1209,11 @@ class TestOneCallIntegratesTheChapter:
 
         assert f"{ids[0]}  merged " in out
         # the refusal VERBATIM inside the report — head, git's own conflict file
-        # and the tail that names the only person who can resolve it
+        # and the tail that names where it gets resolved
         assert f"{ids[1]}  stopped: {ids[1]} is " in out
         assert f"behind {stone_branch}, and catching it up conflicts in:" in out
         assert "shared.py" in out
-        assert "only the worker can resolve this" in out
+        assert "orchestrator or worker" in out
         assert f"{ids[2]}  not reached" in out
         assert "1 of 3 integrated" in out
         integration = trees.integration_tree(repo, stone_branch)
