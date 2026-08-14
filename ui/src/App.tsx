@@ -52,6 +52,7 @@ import { DEFAULT_HOURS_CHOICE, windowFor } from "./hoursWindow";
 import type { HoursChoice } from "./hoursWindow";
 import { THROUGHPUT_WINDOW } from "./components/monitor/panels";
 import { useBoard } from "./useBoard";
+import { useEvents } from "./useEvents";
 
 const shell: React.CSSProperties = {
   minHeight: "100vh",
@@ -136,6 +137,15 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     milestone,
     tab === "actors" ? windowFor(hours) : THROUGHPUT_WINDOW,
   );
+
+  /* THE LOG, read once. `useBoard` owns the board snapshot; this is the second
+   * and only other read in the dashboard, and it lives HERE for the same reason
+   * `useBoard` does — there are now two surfaces that need it (the Event stream
+   * pane, and the comment toasts that derive their news from `feed.head`), and
+   * two calls would be two clocks asking one verb. `board` is the signal: a new
+   * object on every answer the one fetcher receives, so a change frame resets
+   * the log to page one for free. The whole argument is in `useEvents.ts`. */
+  const feed = useEvents(client, board);
 
   /* Opening a tree opens its CARD, through the one door the drawer uses. A
    * worktree has no identity apart from its card, so the diff page shows that
@@ -235,7 +245,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 board={board}
                 openCard={openCard}
                 now={Date.now() / 1000}
-                client={client}
+                feed={feed}
                 /* The SAME setter the header picker gets, not a second one: the
                    Chapter pane's `focus` action and the pill are one state. */
                 onFocusChapter={setMilestone}
