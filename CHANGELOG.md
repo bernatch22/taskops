@@ -54,6 +54,14 @@ here, never written twice.
   `milestone` is: still one fetcher, one coalesced refetch, one snapshot every
   pane reads. A board one version behind sends no `window` key and the old
   day-bucket sentence is still drawn — a degradation, not a blank.
+- **The smoke index is ordered by SLUG, not by filename.** `-` (0x2d) sorts
+  before `.` (0x2e), so the first section whose slug prefixed another's —
+  `actors-window-filter.tsx` beside `actors.tsx` — landed in an order the index's
+  own list of names contradicted, and `tests/test_ui.py` said so. A page and its
+  detail are the normal way sections get named; the slug is the identity
+  everywhere else in that generator (the import path, the index key, the
+  duplicate check), so it is now the identity the order is over too
+  (`ui/smoke/sections.mjs`).
 - **A milestone may DECLARE its seam files, and sibling appends to them stop
   being conflicts.** Three conflicts in one real wave were the same mechanical
   thing: sibling cards each appending their own entry to one shared registry
