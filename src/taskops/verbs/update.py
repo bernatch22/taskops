@@ -22,12 +22,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import _args, _facts, _context
+from . import _args, _facts, _chapter, _context
 from .. import _clock
 from ..core import graph, machine
 from .._errors import Refused, NotFound, BadRequest
 from ..core.event import make
-from ..core.types import PROJECT, EDITABLE, LIST_FIELDS, Card, Event, role_of
+from ..core.types import EDITABLE, LIST_FIELDS, Card, Event, role_of
 from ..store.stores import Stores
 
 # The plain fields; `after`, `milestone` and `assignee` have their own paths.
@@ -37,7 +37,7 @@ FIELDS = tuple(f for f in EDITABLE if f not in ("after", "milestone", "assignee"
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     now = _clock.now()
     if not args.get("task") and args.get("milestone"):
-        return _milestone(stores, actor, args, now)
+        return _chapter.run(stores, actor, args, now)
 
     card = _facts.find(stores, _args.ident(args, "task"))
     comment = _args.text(args, "comment", default="")
@@ -161,42 +161,3 @@ def _transition(
         body["no_code"] = True
     stores.live.release(card["id"], actor)  # closing or reopening ends the claim
     return [make(card["id"], actor, "status", body, now)]
-
-
-def _milestone(stores: Stores, actor: str, args: _args.Args, now: float) -> dict[str, Any]:
-    """Close or retitle a chapter. The branch never moves — it was stored at birth."""
-    ident = _args.text(args, "milestone")
-    stone = stores.state()["milestones"].get(ident)
-    if stone is None:
-        raise NotFound(f"milestone {ident} does not exist")
-    body: dict[str, Any] = {"id": ident}
-    status = _args.text(args, "status", default="")
-    if status:
-        if status not in ("open", "done", "dropped"):
-            raise BadRequest("a milestone is open, done or dropped")
-        body.update({"op": "status", "to": status})
-    else:
-        body["op"] = "edit"
-        for field in ("title", "goal"):
-            if field in args:
-                body[field] = _args.text(args, field)
-        if "rules" in args:
-            body["rules"] = _args.strings(args, "rules")  # the whole list, never appended to
-        if "criteria" in args:
-            body["criteria"] = _args.strings(args, "criteria")  # same shape as rules
-        if "union_files" in args:
-            body["union_files"] = _args.strings(args, "union_files")  # the whole list
-        if "reviews" in args:
-            body["reviews"] = _args.flag(args, "reviews")
-        if len(body) == 2:
-            raise BadRequest(
-                "nothing to change: pass status=, title=, goal=, rules=, criteria=, "
-                "union_files= or reviews="
-            )
-    seq = stores.write([make(PROJECT, actor, "milestone", body, now)])
-    stores.live.renew(actor, now)
-    return {
-        "milestone": stores.state()["milestones"][ident],
-        "seq": seq,
-        "pulse": _context.pulse(stores, actor, now, ident),
-    }
