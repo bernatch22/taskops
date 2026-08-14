@@ -95,8 +95,9 @@ export function onTab(next: TabId): { tab: TabId; tree: string | null; report: s
  *  section no way to reach it (useBoard's effects never fire under SSR, so the
  *  whole App renders its loading panel and nothing else). The rule it pins:
  *  `story` non-null — the chapter in focus is complete AND its `activity`
- *  answer has arrived — draws the timeline; null, including "complete but still
- *  in flight", draws the columns unchanged. `ui/smoke/sections/chapter-story-timeline.tsx`. */
+ *  answer has arrived — draws the chapter grid; null, including "complete but
+ *  still in flight", draws the columns unchanged.
+ *  `ui/smoke/sections/chapter-story-grid.tsx`. */
 export function boardView(story: ActivityPayload | null): "story" | "columns" {
   return story ? "story" : "columns";
 }

@@ -1,5 +1,5 @@
-/* Pins the landing-timeline — `components/story/ChapterStory.tsx` and the pure
- * folds under it (`components/story/stats.ts`), plus App's swap decision
+/* Pins the landed chapter's GRID — `components/story/ChapterStory.tsx` and the
+ * pure folds under it (`components/story/stats.ts`), plus App's swap decision
  * (`App.tsx::boardView`). The fixture ActivityPayload is built BY HAND on
  * purpose, like chapter-completion-derivation's boards: this section needs the
  * exact boundary cases — the summary fallback chain, a null-numstat binary, a
@@ -21,7 +21,7 @@ const STONE: Milestone = {
   title: "A finished chapter",
   goal: "reads as a story, with `activity` on the wire",
   rules: [],
-  criteria: ["the timeline replaces the columns"],
+  criteria: ["the grid replaces the columns"],
   branch: "ms/story",
   status: "landed",
   created: NOW - 86_400,
@@ -37,7 +37,7 @@ const PULSE: Pulse = {
 function story(id: string, over: Partial<CardStory>): CardStory {
   return {
     id,
-    title: `Station ${id}`,
+    title: `Card ${id}`,
     priority: 2,
     assignee: "agent:berna/w1",
     holder: null,
@@ -127,7 +127,7 @@ export async function run(fixture: Fixture, check: Check, _h: Harness): Promise<
 
   const order = landingOrder(CARDS).map((c) => c.id);
   check(
-    "stations sort ascending by since — landing order",
+    "cards sort ascending by since — landing order",
     order.join(",") === "tk-first,tk-second,tk-third,tk-gone",
     order.join(","),
   );
@@ -164,36 +164,66 @@ export async function run(fixture: Fixture, check: Check, _h: Harness): Promise<
   const opened: string[] = [];
   const markup = renderToStaticMarkup(<ChapterStory story={STORY} openCard={(id) => opened.push(id)} />);
 
-  check("the timeline renders", markup.includes('data-testid="chapter-story"'));
+  check("the chapter renders", markup.includes('data-testid="chapter-story"'));
+  check(
+    "the cards sit in a responsive grid that collapses to one column",
+    markup.includes('data-testid="story-grid"') &&
+      markup.includes("grid-template-columns:repeat(auto-fill, minmax(300px, 1fr))"),
+  );
   check("the header celebrates the landed chapter", markup.includes("chapter landed"));
   check("the goal renders as markdown, backticks read", markup.includes("<code") && !markup.includes("`activity`"));
-  check("the chapter's criteria are listed", markup.includes("the timeline replaces the columns"));
+  check("the chapter's criteria are listed", markup.includes("the grid replaces the columns"));
+  /* the grid reads left to right, top to bottom, so DOM order IS landing
+   * order — the one thing the two-dimensional layout cannot say on its own,
+   * which is why each tile also carries its ordinal. */
+  const tiles = [...markup.matchAll(/data-card="(tk-[a-z]+)"/g)].map((m) => m[1]);
   check(
-    "the stations appear in landing order in the markup",
-    markup.indexOf("tk-first") < markup.indexOf("tk-second") &&
-      markup.indexOf("tk-second") < markup.indexOf("tk-third") &&
-      markup.indexOf("tk-third") < markup.indexOf("tk-gone"),
+    "the tiles appear in landing order, one per card",
+    tiles.join(",") === "tk-first,tk-second,tk-third,tk-gone",
+    tiles.join(","),
   );
-  check("the dropped card is a muted station, not omitted", markup.includes('data-dropped="true"') && markup.includes("dropped"));
+  const ordinals = [...markup.matchAll(/data-testid="ordinal"[^>]*>(\d+)</g)].map((m) => m[1]);
+  check(
+    "each tile carries its landing ordinal, 1..n in order",
+    ordinals.join(",") === "1,2,3,4",
+    ordinals.join(","),
+  );
+
+  /* The WHOLE tile is the interactive element — the complaint that produced
+   * this redesign was a click target the size of a title. Under SSR the
+   * handler cannot fire, so the wiring is pinned where it is decidable: the
+   * component took `openCard`, and the element carrying each card's id is
+   * itself the <button>, which is therefore both mouse- and keyboard-
+   * activatable (a button is in the tab order and fires on Enter/Space). */
+  const buttons = [...markup.matchAll(/<button[^>]*data-testid="story-tile"[^>]*data-card="(tk-[a-z]+)"/g)];
+  check(
+    "every tile IS the button — the whole tile opens the drawer, not a title link",
+    buttons.length === 4 && buttons.map((m) => m[1]).join(",") === tiles.join(","),
+    `${buttons.length}`,
+  );
+  check("no tile fired during a static render", opened.length === 0);
+
+  check(
+    "the dropped card is muted and marked, not omitted",
+    markup.includes('data-card="tk-gone"') &&
+      markup.includes('data-dropped="true"') &&
+      markup.includes('data-testid="dropped-chip"'),
+  );
   check("the binary shows its chip", markup.includes('data-testid="bin-chip"'));
   check("worked time and commit count are chips", markup.includes("60m worked") && markup.includes("2 commits"));
-  check("every station title is a button into the drawer", (markup.match(/data-testid="station-title"/g) ?? []).length === 4);
-
-  /* sqrt scaling: tk-first (120 lines) is the max at 100%; tk-third (5 lines)
-   * draws at sqrt(5/120) ≈ 20%, not the 4% a linear scale would flatten it to. */
-  // lazy [^>]*? so the FIRST `width:` in the style wins, not max-width's
-  const widths = [...markup.matchAll(/data-testid="diff-bar"[^>]*?width:([\d.]+)%/g)].map((m) => Number(m[1]));
   check(
-    "diff bars are sqrt-scaled against the chapter's max",
-    widths.length === 3 && Math.max(...widths) === 100 && widths.some((w) => w > 15 && w < 25),
-    JSON.stringify(widths),
+    "the diff numbers are drawn per tile, three of the four cards having one",
+    (markup.match(/data-testid="diff"/g) ?? []).length === 3 && markup.includes("+100") && markup.includes("−20"),
+  );
+  check(
+    "the summary line is drawn for every card that has one",
+    (markup.match(/data-testid="story-summary"/g) ?? []).length === 4 &&
+      markup.includes("verdict line wins") &&
+      !markup.includes("second line never drawn"),
   );
 
-  /* clicking a title opens the EXISTING drawer — under SSR the handler cannot
-   * fire, so the wiring is pinned by the prop's effect being reachable: the
-   * component took `openCard` and every station is a button (above). The board
-   * page's swap is App's, pinned pure: */
-  check("story != null draws the timeline", boardView(STORY) === "story");
+  /* The board page's swap is App's, pinned pure: */
+  check("story != null draws the grid", boardView(STORY) === "story");
   check("story == null draws the columns — no spinner state", boardView(null) === "columns");
   const columns = renderToStaticMarkup(<Board board={fixture.board} openCard={() => {}} />);
   check("and the columns are still the columns", columns.includes('data-testid="board"'));
