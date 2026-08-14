@@ -72,6 +72,11 @@ export function devCards(row: DevRow): number {
 export interface DevPanelProps {
   row: DevRow;
   report: ReportPayload | null;
+  /** What the figures MEASURE, in the payload's own words
+   *  (`ReportPayload.window.label` — "August 2026"). `null`/absent when the
+   *  board did not say, and then the panel keeps its older, vaguer sentence
+   *  rather than naming a span nothing sent. */
+  window?: string | null;
   /** card id → title, for the cards the board can name right now. A session on a
    *  card nobody holds is drawn as its id alone rather than a guess. */
   titles?: Readonly<Record<string, string>> | undefined;
@@ -104,6 +109,7 @@ export function DevDetail({
   row,
   report,
   titles,
+  window,
   onOpen,
   onClose,
 }: DevPanelProps): React.JSX.Element {
@@ -166,6 +172,7 @@ export function DevDetail({
           data-testid="dev-figures"
         >
           <Figure value={row.worked ?? DASH} label="worked" />
+          <Figure value={row.closed === null ? DASH : String(row.closed)} label="closed" />
           <Figure value={row.commits === null ? DASH : String(row.commits)} label="commits" />
           <Figure value={String(devCards(row))} label="cards" />
           <Figure
@@ -176,11 +183,12 @@ export function DevDetail({
         {row.partial ? (
           <div style={{ ...label, marginBottom: "16px" }} data-testid="dev-partial">
             One member of this dev could not say one of its figures, so nothing above is a sum:
-            each figure is this dev&apos;s own, and its agents&apos; are not folded into it.
+            each figure is this dev&apos;s own over {window ?? "the report\u2019s window"}, and its
+            agents&apos; are not folded into it.
           </div>
         ) : (
           <div style={{ ...label, marginBottom: "16px" }} data-testid="dev-sum">
-            Every figure above is this dev and its agents together, over the report&apos;s window.
+            Every figure above is this dev and its agents together, over {window ?? "the report\u2019s window"}.
           </div>
         )}
 
