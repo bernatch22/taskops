@@ -28,6 +28,7 @@ import type { BoardPayload, BoardRow } from "../types";
 import { Column } from "../components/board/Column";
 import type { Chip, Tone } from "../components/board/CardTile";
 import { CardTile } from "../components/board/CardTile";
+import { useFlip } from "../components/board/useFlip";
 import { shortActor } from "../format";
 
 export interface BoardProps {
@@ -191,6 +192,13 @@ const rail: React.CSSProperties = {
 export function Board({ board, openCard }: BoardProps): React.JSX.Element {
   const cols = columns(board);
   const chapters = chapterLabels(board, cols);
+  /* The board MOVES. Every tile hands its element over by card id, and after
+     each commit the hook plays the ones that changed place from where they were
+     to where the payload put them (`components/board/flip.ts` argues it, and
+     holds every part of it that can be decided without a browser).
+     Read-only still: this animates what the server said, it does not move a
+     card and there is no drag handle. */
+  const flip = useFlip();
   return (
     <div style={scroll} data-testid="board">
       <div style={rail}>
@@ -205,6 +213,7 @@ export function Board({ board, openCard }: BoardProps): React.JSX.Element {
                 note={tile.note}
                 waitingOn={tile.waitingOn}
                 chapter={chapters.get(tile.row.id)}
+                tileRef={flip.register(tile.row.id)}
                 onOpen={openCard}
               />
             ))}

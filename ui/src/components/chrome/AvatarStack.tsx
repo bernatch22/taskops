@@ -13,30 +13,14 @@
  *
  * The colour is DERIVED from the actor's own name, never assigned: two renders of
  * the same board must give the same person the same disc, and there is nowhere to
- * store an assignment. The palette is four token pairs — a literal colour here
- * would be the one thing tokens.css exists to forbid. */
-import { initials, ownerOf, shortActor } from "../../format";
+ * store an assignment. The derivation, the glyphs and the disc itself all live in
+ * `shared/Avatar.tsx` now — this row used to own a four-tone palette of its own,
+ * which collided the moment a board ran more than four people and disagreed with
+ * the disc a card tile drew for the very same actor. What is left here is the
+ * FOLD, which is this component's actual idea. */
+import { ownerOf, shortActor } from "../../format";
+import { Avatar } from "../shared/Avatar";
 import type { TeamMember } from "../../types";
-
-/* The glyphs come from `initials()` in format.ts: the TAIL of the actor string,
- * which is the person — the head is the role. Up to three glyphs, not one: with
- * `agent:berna/w1` … `agent:berna/w8` on the board a single leading letter draws
- * eight identical "W" discs, and two would still collide `w1` with `w10` — see
- * the argument in format.ts. The upcasing is this disc's own presentation and
- * lives in `disc` below, with the rest of its typography. */
-
-const TONES = [
-  { bg: "var(--accent-soft)", fg: "var(--accent-hi)" },
-  { bg: "var(--ok-soft)", fg: "var(--ok)" },
-  { bg: "var(--warn-soft)", fg: "var(--warn)" },
-  { bg: "var(--danger-soft)", fg: "var(--danger)" },
-] as const;
-
-function tone(actor: string): { bg: string; fg: string } {
-  let hash = 0;
-  for (const ch of actor) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return TONES[hash % TONES.length] ?? TONES[0];
-}
 
 export interface Person {
   /** The dev, e.g. `dev:berna`. */
@@ -62,19 +46,11 @@ export function people(team: TeamMember[]): Person[] {
   return [...by.values()].sort((a, b) => a.ago - b.ago);
 }
 
-const disc: React.CSSProperties = {
-  width: "28px",
-  height: "28px",
-  borderRadius: "50%",
+/** What the ROW adds to a plain disc: the overlap, and a ring in the canvas
+ *  colour so the one underneath is cut cleanly rather than smudged. */
+const stacked: React.CSSProperties = {
   border: "2px solid var(--canvas)",
   marginLeft: "-9px",
-  fontSize: "10.5px",
-  fontWeight: 500,
-  display: "grid",
-  placeItems: "center",
-  letterSpacing: "-0.02em",
-  textTransform: "uppercase",
-  position: "relative",
 };
 
 /** The count of live agents, on the disc's shoulder. Without it the fold would
@@ -103,7 +79,6 @@ export function AvatarStack({ team }: { team: TeamMember[] }): React.JSX.Element
   return (
     <div style={{ display: "flex", alignItems: "center" }} data-testid="avatars">
       {people(team).map((person) => {
-        const { bg, fg } = tone(person.actor);
         const title =
           person.agents.length > 0
             ? `${person.actor} · ${person.agents.length} agents: ${person.agents
@@ -111,16 +86,9 @@ export function AvatarStack({ team }: { team: TeamMember[] }): React.JSX.Element
                 .join(", ")}`
             : person.actor;
         return (
-          <div
-            key={person.actor}
-            title={title}
-            data-actor={person.actor}
-            data-agents={person.agents.length}
-            style={{ ...disc, background: bg, color: fg }}
-          >
-            {initials(person.actor)}
+          <Avatar key={person.actor} actor={person.actor} size={28} title={title} style={stacked}>
             {person.agents.length > 0 ? <span style={badge}>{person.agents.length}</span> : null}
-          </div>
+          </Avatar>
         );
       })}
     </div>
