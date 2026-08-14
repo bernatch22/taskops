@@ -3,7 +3,7 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
-## 0.4.0 — the board comes alive: the forge enrols the team, hours stop lying, comments become visible
+## 0.4.1 — the board comes alive: the forge enrols the team, hours stop lying, comments become visible
 
 - **A comment now SAYS so, on every open dashboard.** The UI's one write was
   invisible to everyone but its author: somebody commented and no other
