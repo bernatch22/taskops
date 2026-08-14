@@ -74,6 +74,12 @@ export interface BoardProps {
   openCard: (id: string) => void;
   /** the remembered `columns | flow` choice; the real `localStorage` in the app */
   store?: ViewStore | undefined;
+  /** Cards a comment landed on moments ago — `toasts/useToasts.ts::pulsing`,
+   *  derived from the live toast stack and passed straight through to the tile.
+   *  Nothing is stored, nothing is counted, and an empty set (the default, and
+   *  what a reader who asked for less motion always gets) draws the board
+   *  exactly as it drew before this existed. */
+  recent?: ReadonlySet<string> | undefined;
 }
 
 /** A row, plus everything the tile must show that the row alone does not say —
@@ -236,7 +242,7 @@ const rail: React.CSSProperties = {
  *  this alone and asserts the Board's markup CONTAINS it, character for
  *  character. A second way to read the board must not cost the first one a
  *  pixel. */
-export function BoardColumns({ board, openCard }: BoardProps): React.JSX.Element {
+export function BoardColumns({ board, openCard, recent }: BoardProps): React.JSX.Element {
   const cols = columns(board);
   const chapters = chapterLabels(board, cols);
   /* The board MOVES. Every tile hands its element over by card id, and after
@@ -261,6 +267,7 @@ export function BoardColumns({ board, openCard }: BoardProps): React.JSX.Element
                 waitingOn={tile.waitingOn}
                 chapter={chapters.get(tile.row.id)}
                 tileRef={flip.register(tile.row.id)}
+                recentComment={recent?.has(tile.row.id) ?? false}
                 onOpen={openCard}
               />
             ))}
@@ -282,7 +289,7 @@ const shell: React.CSSProperties = {
  *  There is no second fetch and no second derivation — the flow folds the SAME
  *  nine groups (`components/flow/layout.ts`), so the two views cannot disagree
  *  about what the board says, only about how it reads. */
-export function Board({ board, openCard, store }: BoardProps): React.JSX.Element {
+export function Board({ board, openCard, store, recent }: BoardProps): React.JSX.Element {
   const [view, setView] = useState<BoardView>(() =>
     rememberedView(store ?? (typeof window === "undefined" ? undefined : window.localStorage)),
   );
@@ -305,7 +312,7 @@ export function Board({ board, openCard, store }: BoardProps): React.JSX.Element
       {view === "flow" ? (
         <FlowView board={board} openCard={openCard} />
       ) : (
-        <BoardColumns board={board} openCard={openCard} />
+        <BoardColumns board={board} openCard={openCard} recent={recent} />
       )}
     </div>
   );

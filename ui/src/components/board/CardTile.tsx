@@ -71,6 +71,19 @@ export interface CardTileProps {
    *  exactly one caller. The tile itself still knows nothing about motion — it
    *  hands over a node and never reads it. */
   tileRef?: ((el: HTMLElement | null) => void) | undefined;
+  /** A comment landed on this card moments ago.
+   *
+   *  DERIVED, never stored and never counted: `toasts/useToasts.ts::pulsing`
+   *  answers it from the live toast stack, so the tile lights because a message
+   *  about it is younger than the window and goes dark by arithmetic. There is
+   *  no badge and no unread number here on purpose — this board has no
+   *  read-receipts and must not grow one through the back door of a UI that
+   *  remembers what you looked at.
+   *
+   *  The tile does not decide it, exactly as it does not decide `chip` or
+   *  `chapter`: the answer is about the whole page (which cards were commented
+   *  on), and a tile can only see itself. */
+  recentComment?: boolean | undefined;
   onOpen: (id: string) => void;
 }
 
@@ -133,7 +146,7 @@ const pill: React.CSSProperties = {
 };
 
 export function CardTile(props: CardTileProps): React.JSX.Element {
-  const { row, chip, marker, note, waitingOn, chapter, tileRef, onOpen } = props;
+  const { row, chip, marker, note, waitingOn, chapter, tileRef, recentComment, onOpen } = props;
   const [lift, setLift] = useState(false);
   const [ring, setRing] = useState(false);
   const when = meta(row);
@@ -155,6 +168,20 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
     ...(lift
       ? { boxShadow: "0 0 0 3px var(--accent-soft)", transform: "translateY(-2px)" }
       : {}),
+    /* JUST COMMENTED. The same glow the hover uses, one ring wider and without
+     * the rise: the reader is not pointing at this card, the board is pointing
+     * at it for them. It is the hover's vocabulary on purpose — a board with
+     * two ways of saying "look here" reads as two boards — and it decays
+     * through the tile's own 150ms transition when the flag goes false, which
+     * is why there is no keyframe and nothing to replay.
+     *
+     * The BORDER is untouched, hover or pulse: a tile whose edge recolours was
+     * the complaint this file's hover comment records, and a second feature
+     * doing it would be that bug again under a new name.
+     *
+     * After the lift, so a card under the cursor reads as hovered — one
+     * affordance at a time, and the cursor's is the one the reader caused. */
+    ...(recentComment && !lift ? { boxShadow: "0 0 0 5px var(--accent-soft)" } : {}),
     /* The marker owns the left side, always — hover or not, there is no longer
      * anything competing for it. */
     ...(marker ? { borderLeftWidth: "3px", borderLeftColor: TONE_FG[marker] } : {}),
