@@ -51,7 +51,10 @@ import { applyTheme, readTheme, type Theme } from "./theme/theme";
 import { DEFAULT_HOURS_CHOICE, windowFor } from "./hoursWindow";
 import type { HoursChoice } from "./hoursWindow";
 import { THROUGHPUT_WINDOW } from "./components/monitor/panels";
+import { ToastStack } from "./components/toasts/ToastStack";
+import { useToasts } from "./components/toasts/useToasts";
 import { useBoard } from "./useBoard";
+import { useEvents } from "./useEvents";
 
 const shell: React.CSSProperties = {
   minHeight: "100vh",
@@ -136,6 +139,24 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     milestone,
     tab === "actors" ? windowFor(hours) : THROUGHPUT_WINDOW,
   );
+
+  /* THE LOG, read once. `useBoard` owns the board snapshot; this is the second
+   * and only other read in the dashboard, and it lives HERE for the same reason
+   * `useBoard` does — there are now two surfaces that need it (the Event stream
+   * pane, and the comment toasts that derive their news from `feed.head`), and
+   * two calls would be two clocks asking one verb. `board` is the signal: a new
+   * object on every answer the one fetcher receives, so a change frame resets
+   * the log to page one for free. The whole argument is in `useEvents.ts`. */
+  const feed = useEvents(client, board);
+
+  /* THE NEWS, from that same read. No second fetch, no socket and no clock of
+   * its own beyond the one that retires a toast — the hook is handed the feed
+   * above and derives everything else (`components/toasts/useToasts.ts`). It
+   * lives here because both halves of the feature hang off it: the stack, drawn
+   * once over whichever page is on, and the tiles that light up on the Board.
+   * `pulse.actor` goes in so the reader's own comment does not echo back at
+   * them as a notification. */
+  const toasts = useToasts(feed, board?.groups, board?.pulse.actor);
 
   /* Opening a tree opens its CARD, through the one door the drawer uses. A
    * worktree has no identity apart from its card, so the diff page shows that
@@ -235,7 +256,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 board={board}
                 openCard={openCard}
                 now={Date.now() / 1000}
-                client={client}
+                feed={feed}
                 /* The SAME setter the header picker gets, not a second one: the
                    Chapter pane's `focus` action and the pill are one state. */
                 onFocusChapter={setMilestone}
@@ -250,7 +271,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
               boardView(story) === "story" && story ? (
                 <ChapterStory story={story} openCard={openCard} />
               ) : (
-                <Board board={board} openCard={openCard} />
+                <Board board={board} openCard={openCard} recent={toasts.recent} />
               ),
             /* The fourth view. It is handed the same four slices Monitor's own
                panes read plus `board.hours` — the same snapshot Throughput
@@ -334,6 +355,19 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           }}
         />
       ) : null}
+
+      {/* The stack sits OVER every page, once, for the same reason the drawer
+          does: a comment lands on the board, not on the tab you happen to be
+          reading, and a per-page stack would be five stacks with five clocks.
+          Its `open` affordance is the very same `openCard` the tiles use — one
+          door into the drawer, from anywhere. */}
+      <ToastStack
+        toasts={toasts.stack}
+        onExpand={toasts.expand}
+        onDismiss={toasts.dismiss}
+        onOpen={openCard}
+        reduced={toasts.reduced}
+      />
     </div>
   );
 }

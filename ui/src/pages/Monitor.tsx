@@ -39,18 +39,21 @@ import { Mentions } from "../components/monitor/Mentions";
 import { Swarm } from "../components/monitor/Swarm";
 import { Throughput } from "../components/monitor/Throughput";
 import type { BoardPayload } from "../types";
-import type { Client } from "../client";
+import { EMPTY_FEED } from "../useEvents";
+import type { EventFeed } from "../useEvents";
 
 export interface MonitorProps {
   board: BoardPayload;
   openCard: (id: string) => void;
   /** epoch seconds. Passed in so every pane shares one clock (panels.ts). */
   now: number;
-  /** ONLY the Event stream uses it, and only because the log is not part of the
-   *  board snapshot (see the pane below). Optional on purpose: the smoke
-   *  harness renders this page with no wire at all, and a page that demanded a
-   *  client would be a page that cannot be tested headlessly. */
-  client?: Client | null;
+  /** The log, already read. ONLY the Event stream uses it, and only because the
+   *  log is not part of the board snapshot (see the pane below). App owns the
+   *  one `useEvents` call and hands the feed down — this page holds no fetch,
+   *  exactly as it holds no board fetch. Optional on purpose: the smoke harness
+   *  renders this page with no wire at all, so it falls back to `EMPTY_FEED`
+   *  and the pane says nothing asked for the log. */
+  feed?: EventFeed;
   /** The header picker's own `onSelect`, handed straight through to the Chapter
    *  pane so its `focus` action and the picker are ONE state (`App.tsx`). This
    *  page still holds nothing: it passes a prop it was given, exactly as it
@@ -98,7 +101,7 @@ export function Monitor({
   board,
   openCard,
   now,
-  client,
+  feed,
   onFocusChapter,
 }: MonitorProps): React.JSX.Element {
   const g = board.groups;
@@ -187,12 +190,12 @@ export function Monitor({
           />
           <Mentions mentions={g.mentions} now={now} onOpen={openCard} />
           {/* The one pane that reads the LOG and not the board snapshot, so it
-              is the one pane handed the client: it pages `events` itself
-              (useEvents.ts), resets to page one whenever `board` changes
-              identity, and opens no socket of its own. `client` is optional and
-              `null` draws the empty state — the headless harness renders this
-              page with no wire. */}
-          <EventStreamPane client={client ?? null} signal={board} now={now} />
+              is the one pane handed the feed. App calls `useEvents` once
+              (useEvents.ts) — it resets to page one whenever `board` changes
+              identity and opens no socket — and this page passes the answer
+              through. `feed` is optional and `EMPTY_FEED` draws the empty state:
+              the headless harness renders this page with no wire. */}
+          <EventStreamPane feed={feed ?? EMPTY_FEED} now={now} />
         </div>
       </div>
     </div>
