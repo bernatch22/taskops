@@ -41,7 +41,14 @@
  *  error instead of a 400 nobody sees.
  *
  *  @source the subset of `verbs/__init__.py::REGISTRY` this client speaks */
-export type RpcVerb = "board" | "card" | "report" | "mentions" | "update" | "events";
+export type RpcVerb =
+  | "board"
+  | "card"
+  | "report"
+  | "mentions"
+  | "update"
+  | "events"
+  | "activity";
 
 /* ── the stored rows (core/types.py) ─────────────────────────────────────── */
 
@@ -687,4 +694,67 @@ export interface EventPage {
   total: number;
   /** the board's sequence at the moment of the read (`store/cache.py::head`) */
   head: number;
+}
+
+/* ── activity (verbs/activity.py::run → verbs/_stories.py::story) ────────── */
+
+/** One card's whole STORY inside an `activity` answer — the `board` row as the
+ *  spine, with what a row cannot say folded in beside it.
+ *
+ *  It is `BoardRow` WITHOUT `files` at headline depth — `_stories.py::story`
+ *  pops the key on purpose (the edit surface is `board`'s business, and 10 KB
+ *  of the 76-card budget) — which the type models honestly as
+ *  `Omit<BoardRow, "files">` plus an optional `files`, present only at
+ *  `depth=full`.
+ *
+ *  `commits` and `thread` are CAPPED lists travelling with their honest totals
+ *  (`_stories.COMMITS_SHOWN`, `_stories.THREAD_HEADLINE` — the latter is 0 at
+ *  headline, so `thread` is empty there and `thread_total` says how much talk
+ *  is behind the card). `spec`/`criteria` are the prose `depth=full` adds.
+ *
+ *  @source `verbs/_stories.py::story` */
+export type CardStory = Omit<BoardRow, "files"> & {
+  /** the edit surface — only at `depth=full`; headline pops it */
+  files?: string[];
+  state: CardState;
+  status: string; // open | done | dropped — the stored one, beside the derived
+  after: string[];
+  parent: string | null;
+  review: boolean;
+  /** The three pointers into git — the whole of "no diffs, ever". */
+  branch: string;
+  merged_into: string; // the branch it landed on, "" if it has not
+  commits: CommitRef[]; // newest LAST, capped at `_stories.COMMITS_SHOWN`
+  commits_total: number;
+  standing: Standing | null;
+  resume: string; // the previous worker's released note, "" if there is none
+  seconds: number; // how long the card was WORKED, a floor
+  thread: Event[]; // empty at headline (`THREAD_HEADLINE` = 0); whole at full
+  thread_total: number;
+  /** @source `verbs/_stories.py::story`, only when `depth=full` */
+  spec?: string;
+  /** @source `verbs/_stories.py::story`, only when `depth=full` */
+  criteria?: string[];
+};
+
+/** The whole story of a chapter (or a named set of cards) in ONE read.
+ *
+ *  `cards_total` is what the scope HAS against what `cards` carries: with
+ *  `since=` they differ, and that is the point — cards with nothing past the
+ *  cursor drop out of the list while the total still counts them.
+ *
+ *  @source `verbs/activity.py::run` */
+export interface ActivityPayload {
+  /** The chapter whole — sent ONCE instead of once per card. `null` when the
+   *  named cards span chapters (or the set shares none). */
+  milestone: Milestone | null;
+  reports: FiledReport[];
+  reports_total: number;
+  depth: string; // "headline" | "full" — `_stories.DEPTHS`
+  since: number; // the cursor this call was asked from, 0 for "everything"
+  /** the cursor to send back next time (`stores.head()`), never the last story's */
+  seq: number;
+  cards: CardStory[];
+  cards_total: number;
+  pulse: Pulse;
 }
