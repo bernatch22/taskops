@@ -56,12 +56,12 @@ importable leaves commits un-stamped, silently.
 
 ```
 taskops init                              a local board in this repo
-taskops join [<name>] [--invite|--github] join a board, install the hooks
+taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
 taskops board create|ls|push|pull|rm      the boards on a host
-taskops board visibility|forge            who may read one · who GitHub lets in
+taskops board visibility|forge            who may read one · which repo's team is enrolled
 taskops invite <who>                      a single-use link
 taskops revoke --key|--invite             a key or an invite stops working
 taskops tidy                              remove worktrees whose work is in the trunk
@@ -80,7 +80,6 @@ and the key is discovered the way ssh discovers one:
 
 ```sh
 taskops join                              # a clone: board.json carries the address, done
-taskops join --github                     # same clone, first time: GitHub vouches for you
 taskops join my-project --invite <id>     # first time by invite: it enrols your key too
 taskops remote add https://host:8787      # no carried address? record the host once…
 taskops join my-project                   # …and name the board
@@ -94,13 +93,11 @@ discovered key · `--as <actor>` when your unix user is not the principal's name
 full-URL form (`taskops join "<url>?token=…"`) keeps working — boards joined
 before keys existed never rot.
 
-**`--github` works only on a board that declared a forge** (below), and only for
-the first join: having `push` on that repo stands in for an invite, your ssh key
-is enrolled, and every call after it is the ordinary signed session — GitHub is
-the introduction, never the credential. The token is used for one server-side
-call and stored nowhere, which is why it is **not** a flag value: `--github`
-takes none, and the token comes from `gh auth token`, else `$GITHUB_TOKEN`, else
-a hidden prompt.
+**A dev never types anything about GitHub.** On a board that declared a forge
+(below), the owner's `taskops board forge` has already enrolled the team from
+their published ssh keys, so the bare `taskops join` above finds your key, signs
+a challenge with it and is in. No token of yours travels anywhere — there is no
+flag that would carry one.
 
 **Restart your Claude Code session after either** — MCP servers load once, at
 session start, from `.mcp.json`.
@@ -188,7 +185,7 @@ And the admin surface for any board on that host, from anywhere:
 taskops board ls
 taskops board visibility <name> public|private     # owner only
 taskops board rm <name>                            # owner only — see below
-taskops board forge <owner>/<repo> [--need push|admin]   # owner only: GitHub opens it
+taskops board forge <owner>/<repo> [--need push|admin]   # owner only: declare AND sync the team
 taskops board forge --clear                        # invite-only again
 taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>      # a GitHub-enrolled key too
@@ -206,58 +203,83 @@ taskops board rm <name> --discard-history    # destroys it anyway
 There is no `--force` and there will not be one: a flag that does not name what
 it overrides is how somebody destroys a history they meant to keep.
 
-**Declaring the forge** — the repo whose membership opens a board — is a board
+**Declaring the forge** — the repo whose team works on a board — is a board
 fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
-until an owner records it and cleared again with `--clear`. Only a board that
-has been opted in answers `--github` at all; every other one is invite-only,
-exactly as before.
+until an owner records it and cleared again with `--clear`. A board that was
+never opted in is invite-only, exactly as before.
+
+**And declaring it SYNCS the team, in the same command.** `taskops board forge
+<owner>/<repo>` lists that repo's collaborators with the declared access (one
+authenticated call to GitHub, paginated, with the owner's own token — `gh auth
+token`, else `$GITHUB_TOKEN`, else a hidden prompt), reads each one's published
+ssh keys from the PUBLIC `https://github.com/<login>.keys`, and enrols them all
+in one batch. Re-run it to re-sync; a run that changes nothing writes nothing.
+
+```
+bernatch22/taskops — 4 collaborator(s) with push
+  enrolled  ana, dan, leo
+  keys      3 added
+  no ssh key published on GitHub — 1, not enrolled:
+    mia            github.com/mia.keys is empty — taskops invite mia
+  on this host but NOT a collaborator any more — 1, nothing revoked:
+    tomas          taskops revoke --key SHA256:…
+    a principal introduced by invite belongs here legitimately — revoking is yours
+```
+
+It **adds only**. Somebody who lost push is reported with the exact `revoke`
+command and nothing else happens: a principal introduced by an invite is not a
+GitHub login and a pruning sync would retire them for existing. The owner is
+never in that list. The token is spent on the collaborator pages and on nothing
+else — it never reaches the taskops host, which receives principals and ssh key
+lines and does not know what GitHub is.
 
 ### The whole flow, and why cloning is not enough
 
 Cloning the repo gives you the board's ADDRESS — `.taskops/board.json` is
 committed and travels with the code — but the host has never seen you: it is a
-different server from GitHub, sharing no session and no cookie with it. So one
-command — `taskops join --github`, no URL: the clone already carries it —
-introduces you, once per checkout, and after that GitHub is not in the picture
-at all.
+different server from GitHub, sharing no session and no cookie with it. The
+owner's sync is what closes that gap, before you ever type anything, and then
+`taskops join` — no URL, no flag, no token — is the whole of your side.
 
 ```
         GitHub                                the board HOST
    <owner>/<repo>, private                principals + allowed_signers
           |                                          |
+ 0. taskops board forge <owner>/<repo>   ← the OWNER, once, from their laptop
+    |                                                |
+    |-- their own token (gh auth token, else $GITHUB_TOKEN, else a hidden
+    |   prompt — never a flag value: the shell writes those into
+    |   ~/.zsh_history before the process starts) lists the collaborators
+    |   with <need>, and github.com/<login>.keys — PUBLIC — gives their keys
+    |                                                |
+    |-- POST /rpc members.enroll ------------------->|
+    |      { members: [{principal, keys}, …] }       |
+    |                                    it writes two rows per person:
+    |                                      principals:      <them>, member
+    |                                      allowed_signers: <them> ssh-ed25519 …
+    |
+    the token dies with that command. It reaches neither disk nor the host.
+          |                                          |
  1. git clone  ->  the code, and .taskops/board.json (the address).
                    remote.json is 0600 and gitignored: no credential travels.
           |                                          |
- 2. taskops join --github   (the carried address)    |
+ 2. taskops join   (the carried address, and the key ssh already discovered)
     |                                                |
-    |-- the CLI finds YOUR token: `gh auth token`, else $GITHUB_TOKEN,
-    |   else a hidden prompt. Never a flag value — the shell writes those
-    |   into ~/.zsh_history before the process starts.
-    |                                                |
-    |-- POST /<board>/join/github ------------------>|
-    |      { github_token, principal, pubkey }       |
-    |                                                |
-    |          the host asks GitHub ONCE, with your token:
-    |          "does this user have <need> on <owner>/<repo>?"
-    |                                                |
-    |          yes -> it writes exactly two rows:    |
-    |                   principals:      <you>, member
-    |                   allowed_signers: <you> ssh-ed25519 AAAA...
-    |          no  -> refused, without saying whether the repo exists
-    |                                                |
- 3. the GitHub token dies with that request. It is on neither disk.
+    |-- POST /login: your key signs a challenge ---->|
+    |                            checked against allowed_signers -> 12h session
 
-    from here on GitHub never participates again:
+    from here on GitHub never participates again, and it never saw you join:
 
     every session:  your key signs a challenge  ->  the host checks it
                     (~/.ssh/id_ed25519)             against allowed_signers
                                                     -> a 12h session
 ```
 
-The alternative — re-checking GitHub on every request — would mean the host
-holding somebody else's token, or being handed one on each call. That is the
-whole category of problem this removes: there is no token to steal because
-there is none stored.
+The alternative — the host re-checking GitHub, or each dev POSTing their own
+token to be verified at the door — would mean somebody's credential travelling
+for a fact the owner already holds. That is the whole category of problem this
+removes: there is no token to steal because there is none stored, and now none
+that leaves the owner's machine either.
 
 **One consequence, stated plainly: access is granted automatically and taken
 back by hand.** Losing push on the repo does not close the board, because the

@@ -35,7 +35,7 @@ import argparse
 from typing import Any
 from pathlib import Path
 
-from . import commands
+from . import team, commands
 from .. import _wire, _clock, identity
 from .._json import as_object
 from ..board import find_root, read_config
@@ -101,25 +101,28 @@ def _visibility(args: argparse.Namespace, target: str, wanted: str) -> int:
 def _forge(args: argparse.Namespace, target: str, repo: str) -> int:
     """`taskops board forge [<host>/<board>] <owner>/<repo> [--need push|admin]`.
 
-    The command the `/join/github` refusal names, and until it existed the whole
-    GitHub chapter was reachable only by hand-writing `{"op": "forge", …}` — an
-    opt-in nobody can perform is an opt-in nobody performs.
+    The board's whole GitHub surface, and the OWNER's alone. Until this command
+    existed the opt-in was reachable only by hand-writing `{"op": "forge", …}`,
+    and a door on the other side had each dev prove their own membership with
+    their own token. That door is gone: the question is asked once, here, by the
+    person who already has the answer.
 
-    ONE positional is the REPO and not the board, which is the reading the
-    refusal teaches and the common case (one checkout, one board, recorded).
-    `board visibility` disambiguates its bare form against a closed pair; here
-    the rule is simpler and needs no vocabulary: a repo is always given, so a
-    lone argument can only be it. `--clear` is the way BACK — opting in is
-    reversible or it is a trap — and it is a flag rather than the word "none"
-    so that no repository can ever be named it.
+    **It declares AND syncs, in that order** (`cli/team.py` owns the second half
+    and every word of why). The sync runs on the fact RE-READ out of the answer,
+    never on this argv — so `--clear`, an empty fact, asks GitHub nothing.
+
+    ONE positional is the REPO and not the board: a repo is always given, so a
+    lone argument can only be it (`board visibility` disambiguates its bare form
+    against a closed pair; this rule needs no vocabulary). `--clear` is the way
+    BACK — opting in is reversible or it is a trap — and it is a flag rather
+    than the word "none" so no repository can ever be named it.
 
     **This half owns none of the vocabulary and holds no default of its own**:
     `need` travels EMPTY and comes back decided (`verbs/project.py::_forged`
     falls back to `push`, `core/forge.py` says which words exist and refuses a
-    typo loudly, by name), and the forge host is never sent at all. So what is
-    printed is read out of the answer — a command that echoed its own argv
-    would agree with itself while the board said something else, and a `push`
-    spelled here would be a second default to keep in step with the first.
+    typo by name), and the forge host is never sent. So what is printed is read
+    out of the answer — a command echoing its own argv would agree with itself
+    while the board said something else.
     """
     if not repo and not args.clear:
         target, repo = "", target  # one positional: it can only be the repo
@@ -129,16 +132,17 @@ def _forge(args: argparse.Namespace, target: str, repo: str) -> int:
             "GitHub membership opens this board; `--clear` (alone) takes it back to invite-only"
         )
     host, name = named(target)
+    token = signed_in(host, args)
     sent = {"board": name, "repo": repo, "need": _flag(args, "need")}
-    out = call(host, "board.forge", sent, signed_in(host, args))
+    out = call(host, "board.forge", sent, token)
     fact = as_object(out.get("forge"))
     moved = "already" if not out.get("recorded") else "now"
     if not fact:
         print(f"{out['board']} on {host} is {moved} invite-only — no forge (by {out.get('by', '?')})")
         return 0
     print(f"{out['board']} on {host} is {moved} opened by {fact['host']}/{fact['repo']}")
-    print(f"  anyone with {fact['need']} on it joins with: taskops join {out['board']} --github")
-    print("  they become a member; the token they use is read once and stored nowhere")
+    print(f"  everyone with {fact['need']} on it is enrolled below; they join with: taskops join")
+    team.sync(fact, lambda verb, sending: call(host, verb, sending, token))
     return 0
 
 

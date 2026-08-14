@@ -1,7 +1,7 @@
 """The CLI, which behaves like git: it connects, it never manages.
 
     taskops init            a local board in this repo
-    taskops join <url>      join one (?token=, ?invite= or --github), install the hooks
+    taskops join <url>      join one (bare, ?token= or --invite), install the hooks
     taskops remote add <url>  the host this checkout operates, like git's origin
     taskops serve           host boards — an events API, no dashboard
     taskops server init     bootstrap THIS host: its owner and their ssh key
@@ -14,7 +14,8 @@
     taskops board rm        take a board OFF a host — refuses to destroy a history
                             this checkout does not hold (--discard-history says so)
     taskops board visibility <host>/<name> public|private   owner only
-    taskops board forge <owner>/<repo> [--need push|admin]  owner only — GitHub opens it
+    taskops board forge <owner>/<repo> [--need push|admin]  owner only — declares the
+                            repo AND enrols its collaborators from their published keys
     taskops board forge --clear                             invite-only again
     taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
     taskops tidy            remove worktrees whose work is already in the trunk
@@ -75,7 +76,6 @@ def _run(args: argparse.Namespace) -> int:
             str(args.key),
             bool(args.discard_local),
             str(args.invite),
-            bool(args.github),
         )
     if args.command == "remote":
         return remote.remote(args)

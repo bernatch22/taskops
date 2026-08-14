@@ -14,10 +14,13 @@ the MCP layer, three times, each a place to get it subtly wrong. Here exactly
 one thing changed: where tokens COME FROM. They stop being a string a human
 copies out of a terminal and become an artifact a key mints.
 
-A THIRD door (`github.py`, `POST /<board>/join/github`) enrols a key too, and
-it is deliberately not here: it mints nothing. GitHub's answer replaces the
-invite as the PROOF, `register()` below is the shared effect, and what the
-caller does next is the ordinary `/login` above with the key it just enrolled.
+`register()` below is the shared effect of every enrolment: the invite door
+above burns a link for it, and `members.enroll` — the OWNER's batch, filled
+from GitHub by `cli/team.py` — reaches the same function from the other side.
+GitHub had a door of its own beside these for a day — a stranger's own token in
+a body, verified against the repo — and it is gone: the owner already knows who
+works on the repo, so nobody has to prove it at this host's door. Whatever
+enrolled a key, what the holder does next is the ordinary `/login` above.
 
 The legacy flow is untouched and stays legacy on purpose (milestone rule 3:
 production has four boards with minted bearer tokens). `invite/redeem` answers
@@ -147,10 +150,11 @@ def register(host: Host, who: str, keyline: str, now: float) -> str:
     """Register the joiner's key — AFTER the invite was burned, so an unredeemed
     body can never enrol anybody.
 
-    THE enrolment, shared rather than copied: `github.py` calls it too, once
-    GitHub has said yes, so there is one description of what joining does to
-    this host's store and one place where that description can change. What
-    differs between the doors is the PROOF that precedes it, never the effect.
+    THE enrolment, shared rather than copied: `members.py` calls it too, once
+    per person in the owner's batch, so there is one description of what joining
+    does to this host's store and one place where that description can change.
+    What differs between the doors is the PROOF that precedes it — a burned
+    invite here, the owner's own authority there — never the effect.
 
     `enroll` is not called blindly: it is an INSERT OR REPLACE on `principals`,
     so calling it for a name this host already knows would silently rewrite that

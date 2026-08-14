@@ -42,28 +42,19 @@ ORPHAN = (
 )
 
 
-BOTH = (
-    "--invite and --github are two ways to be introduced to the same host, and running "
-    "both would burn the invite for nothing. Pick one: --invite <id> if somebody minted "
-    "you a link, --github if you have push on the repo the board declared."
-)
-
-
-def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
+def join(
     here: Path,
     target: str,
     given: str,
     key: str = "",
     discard: bool = False,
     invite: str = "",
-    github: bool = False,
 ) -> int:
     """Connect this repo to a board. Bare like every other verb: the address is
     CARRIED by the clone, the key is discovered, and the recorded remote is the
     fallback for a checkout that carries nothing:
 
         taskops join                                a clone: board.json travels, done
-        taskops join --github                       same clone, first time: GitHub vouches
         taskops join my-project --invite <id>       first time by invite: enrols the key
         taskops remote add https://host:8787        no carried address? record the host…
         taskops join my-project                     …and name the board
@@ -82,13 +73,17 @@ def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
     archives (never deletes) before proceeding.
 
     With an invite, the invite and the PUBKEY travel in the same call: the server
-    burns the invite and enrols the key in one act. `--github` is the same shape
-    with a different proof — a token the CLI already has instead of a link
-    somebody minted (`enrol.by_github`), and it takes no value on purpose. Either
-    way the key then signs in ON THE SPOT and what lands in remote.json is a
-    SESSION with an expiry — never a standing token to copy around, and never the
-    GitHub one, which this process has already forgotten by the time it writes.
-    Keys exist so tokens do not travel.
+    burns the invite and enrols the key in one act. The key then signs in ON THE
+    SPOT and what lands in remote.json is a SESSION with an expiry — never a
+    standing token to copy around. Keys exist so tokens do not travel.
+
+    **There is no GitHub branch here any more, and there must not be one again.**
+    The flag that was here posted the joiner's own GitHub token to the host to be
+    verified, which made every dev's credential travel for a fact the OWNER
+    already holds. `taskops board forge` enrols the team from the owner's laptop
+    instead, so a dev whose key that sync published arrives at the `bare and
+    found` branch below: the plain `taskops join`, nothing to prove, nothing to
+    type, and no token of theirs anywhere.
     """
     from . import remote as remote_cli
 
@@ -109,11 +104,6 @@ def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
     base = target.partition("?")[0]
     params = query(target)
     invite = invite or params.get("invite", "")
-    # Before `_keep_or_archive`, which is the first thing here that MOVES anything:
-    # a refusal that had already renamed the local board would be the worse order,
-    # and the invite in a pasted `?invite=` link counts exactly as the flag does.
-    if invite and github:
-        raise TaskopsError(BOTH)
     _keep_or_archive(root, base, discard)
     who = given or actor()
     name = who.partition(":")[2] or "me"
@@ -123,13 +113,6 @@ def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
         token, who = enrol.redeem(base, invite, name, enrol.pubkey(str(found) if found else ""))
         if found:
             door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
-    elif github:
-        # The door mints NOTHING (`http/github.py`), so there is no token to keep
-        # here: the enrolled key is the credential from the next line onwards.
-        vouched = enrol.by_github(base, name, enrol.pubkey(str(found) if found else ""))
-        who = vouched["actor"]
-        door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
-        print(f"  GitHub: you have {vouched['need']} on {vouched['repo']} — key enrolled")
     elif bare and found:
         # No invite and no token: the KEY is the whole credential. Proved against
         # the host BEFORE anything is written — a refused sign-in must not leave
