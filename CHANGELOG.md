@@ -29,6 +29,19 @@ here, never written twice.
   A dev in a fresh clone now types **`taskops join`**, bare: their key was
   enrolled before they ever typed anything. Invites are unchanged, and a board
   that declared no forge is invite-only exactly as before.
+- **The board says which forge opens it.** The declared forge rides on the
+  `board` payload beside `visibility` — derived per read from the one event that
+  declared it — and the dashboard draws it under the board's identity as
+  `github.com/<owner>/<repo> · push`. A board with no forge sends no key at all,
+  so every older reader works unchanged.
+- **The clock stops deciding who is alive: a card is handed over, not expired.**
+  `taskops_assign` now hands over a card even while its lease is still live
+  (`verbs/assign.py`, `store/handover.py`) — the lease's only heartbeat is MCP
+  traffic, so expiry could not tell a dead worker from one editing quietly.
+  `stalled` is a report, never a mechanism; the orchestrator that spawned the
+  process is the authority, and the card goes to a NAMED replacement in the same
+  call. The worker's brief says so (`mcp/brief.py`). Still not a `recover`:
+  nothing is resurrected, and nothing is taken by the passage of time.
 
 ## 0.3.3 — a clone joins with two words
 

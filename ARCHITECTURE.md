@@ -1204,8 +1204,12 @@ files that answer it:
   constant and not a prop, so no caller can ask for a laxer frame. Everything
   else (forms, popups, top navigation, modals, downloads) stays withheld, and
   the frame carries `referrerpolicy="no-referrer"` and an empty `allow`. A
-  `text/plain` report is NOT framed: `srcdoc` parses as HTML, so it goes into a
-  `<pre>` as a React text node — escaped, whitespace intact, and no
+  `.md` report is answered `content_type: text/markdown` and drawn by the
+  shared markdown renderer (`ui/src/markdown.ts` →
+  `components/shared/Markdown.tsx`) with no frame and no sandbox — the renderer
+  builds React elements and emits no HTML. Only unrecognised types fall to the
+  `<pre>`: a `text/plain` report is NOT framed — `srcdoc` parses as HTML, so it
+  goes into a `<pre>` as a React text node — escaped, whitespace intact, and no
   `dangerouslySetInnerHTML` exists anywhere in this dashboard. It is pinned
   headlessly in `ui/smoke/sections/report-sandbox.tsx` against a report the
   fixture commits WITH a hostile `<script>` in it
@@ -1222,8 +1226,11 @@ Nova section, and an "Hours" tab, which in Nova is the Throughput panel *inside*
 Monitor.
 
 **The board points at the code** (`ui/src/links.tsx`): given a slug, a sha is an
-anchor to `…/commit/<sha>`, a card offers its PR-style `…/compare/<base>...<head>`
-and a chapter compares against the forge's own default branch — the trunk's name
+anchor to `…/commit/<sha>`, and a chapter compares against the forge's own
+default branch. The card dossier's Worktree block opens the dashboard's own
+worktree diff view (reading the local clone, no forge slug needed); forge
+`…/compare/<base>...<head>` links remain on the Worktrees index rows, the
+WorktreeDiff header and the chapter compare (the `compareUrl` consumers) — the trunk's name
 is not on the board, and a `main` in one of these URLs would be the UI guessing.
 The host is a VALUE (`BY_HOST`), not a second code path: GitLab differs by
 `/-/commit/` and nothing else. And it shows the diff ITSELF when the host it is
@@ -1394,7 +1401,9 @@ clone, exactly as a patch does: `diff.resolve` for the rev, then `git show
 <sha>:<path>` through `gitwork/patch.py::show`, capped on the same `CAP` and
 flagged the same way (`capped()` is one function so the two answers cannot
 disagree about what `truncated` means). It answers the same JSON envelope, so
-`content_type` (`text/html` only for a literal `.html`) is a FIELD and never
+`content_type` — one of three values decided by extension: `text/html` for a
+literal `.html`, `text/markdown` for `.md`, `text/plain` for everything else
+(`gitdoor.py::_kind`) — is a FIELD and never
 this response's header — the token lives in this origin, so no file can make it
 serve HTML, and deciding what to do with `text/html` is the READER's job. It is
 done in one place, `ui/src/components/reports/ReportFrame.tsx`: an `<iframe

@@ -416,7 +416,10 @@ The rules that shape it, each of them the reason a step exists:
   never beside `allow-same-origin`, which together are not two permissions but
   the absence of the sandbox. The frame gets an opaque origin: no parent, no
   `localStorage`, no cookie. The dashboard's token is in that origin, so this is
-  a boundary and not a preference. A `text/plain` report is not framed at all.
+  a boundary and not a preference. A Markdown report is served as
+  `text/markdown` and rendered by the dashboard's own markdown renderer
+  (`ui/src/markdown.ts`) — it emits no HTML, so it cannot run anything and
+  needs no frame. A `text/plain` report is not framed at all.
 * **The list is a fold, never a table.** "Which reports does this chapter have"
   is answered from the `report` events on every read, newest first, capped with
   the honest total beside it.
