@@ -41,6 +41,16 @@ def rules(data: dict[str, Any]) -> list[str]:
             *[f"- {line}" for line in lines],
             "",
         ]
+    seams = as_strings(stone.get("union_files"))
+    if seams:
+        # A worker who knows a file union-merges writes an APPEND and not a
+        # restructure — which is the only edit shape the union driver can fold.
+        out += [
+            "## Seam files of this chapter — they union-merge, so APPEND, never restructure",
+            "",
+            *[f"- {path}" for path in seams],
+            "",
+        ]
     goals = as_strings(stone.get("criteria"))
     if goals:
         out += [

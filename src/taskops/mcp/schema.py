@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any
 
 from .fields import (
-    CARD,
     ACTOR,
     LABELS,
     CRITERIA,
@@ -22,9 +21,12 @@ from .fields import (
     _text,
     _object,
 )
-from .gitmoves import MERGE_SCHEMA
+from .orders import DEV_SCHEMAS
 
 SCHEMAS: dict[str, dict[str, Any]] = {
+    # The orchestrator's three, kept whole in `orders.py` — same registry, one
+    # file each side of the role line the server already draws.
+    **DEV_SCHEMAS,
     "taskops_board": _object(
         {
             "milestone": _text("ms-… to focus one chapter; default: the open one"),
@@ -64,37 +66,6 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         },
         ["path", "title", "sha"],
     ),
-    "taskops_plan": _object(
-        {
-            "milestone": _text("a title to open a chapter, or an existing ms-… id"),
-            "goal": _text("WHY this milestone exists — it travels into every take"),
-            "rules": _list(
-                "what holds for EVERY card of this chapter, e.g. "
-                '["Decimal, never float", "no migrations in this milestone"]. Shown above '
-                "the spec in every take: a rule read after building is a rewrite."
-            ),
-            "criteria": _list(
-                "what the CHAPTER is accepted against — every card can be green while the "
-                "milestone is not. Shown at taskops_merge milestone=, refused until answered."
-            ),
-            "reviews": _flag(
-                "chapter default: cards get review=true — OPTIONAL; a per-card review= wins"
-            ),
-            "tasks": {"type": "array", "description": "the cards, in order", "items": CARD},
-        },
-        ["tasks"],
-    ),
-    "taskops_assign": _object(
-        {
-            "tasks": _list("the cards to hand out"),
-            "workers": _list("names for them; default w1, w2, … (the free ones)"),
-            "worktrees": _flag("cut one worktree per card (default true)"),
-        },
-        ["tasks"],
-    ),
-    # taskops_merge's schema lives beside its dispatch (gitmoves.MERGE_SCHEMA) —
-    # the split schema.py took when it hit the 200-line budget.
-    "taskops_merge": MERGE_SCHEMA,
     "taskops_take": _object(
         {
             "task": _text("tk-… — yours; empty takes what is assigned to you"),
@@ -162,6 +133,9 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             "labels": LABELS,
             "goal": _text("with milestone= and no task=: rewrite the goal"),
             "rules": _list("with milestone= and no task=: replace the chapter's rules, whole"),
+            "union_files": _list(
+                "with milestone= and no task=: replace the chapter's union seam files, whole"
+            ),
             "reviews": _flag(
                 "with milestone= and no task=: change the chapter's review DEFAULT — it "
                 "applies to cards planned after it, never retro-flags one"

@@ -5,19 +5,16 @@ no ORM layer and no hand-written encoder/decoder pair. v1 used plain classes
 for `recover` and needed an encoder, a decoder and a Protocol in the renderer
 to carry the same three fields.
 
-`KINDS` is the single registry of event kinds. v1 spread the same facts across
-four hand-maintained tuples (`REPLAYED`, `SAYS_STATUS`, `LOCAL_ONLY_KINDS`,
-`WORK`) and they drifted. There is deliberately no `LOCAL_ONLY_KINDS` here:
-every event lives wherever the log lives.
-
-The actor grammar lives in `actors.py` and is re-exported here, so `types`
-stays the one name a caller has to know.
+`KINDS` — the single registry of event kinds — lives in `kinds.py` and the
+actor grammar in `actors.py`; both are re-exported here, so `types` stays the
+one name a caller has to know.
 """
 
 from __future__ import annotations
 
-from typing import Any, TypedDict, NamedTuple, NotRequired
+from typing import Any, TypedDict, NotRequired
 
+from .kinds import KINDS, Kind
 from .actors import (
     ANON,
     SYSTEM,
@@ -120,6 +117,19 @@ class Milestone(TypedDict):
     """Cards planned into this chapter default to `review=True` unless the card
     says otherwise. A default, not a rule: the per-card flag always wins."""
 
+    union_files: NotRequired[list[str]]
+    """The chapter's SEAM files: paths whose sibling conflicts are additive by
+    construction — a registry, a table, an index every card appends its own row
+    to. During a card's catch-up merge those paths get git's built-in `union`
+    driver (`gitwork/catchup.py`); every other conflict aborts and refuses
+    exactly as before. Absent — the state every chapter is born in — nothing
+    changes at all.
+
+    A DECLARATION, not a resolution strategy for the repo: it is a fact of one
+    chapter, it never becomes a committed `.gitattributes`, and the paths are
+    git pathspec patterns read per merge. Empty or missing means no path unions.
+    """
+
     branch: str  # "ms/<slug>", computed ONCE at creation and STORED.
     #              Never re-derived from a mutable title (v1's ghost branches).
     status: str  # open | done | dropped
@@ -152,35 +162,6 @@ CLOSED = ("done", "dropped")
 LEASE_TTL = 900.0  # 15 min; every MCP call renews it
 PROJECT = "project"  # the `task` of board-level events
 
-
-class Kind(NamedTuple):
-    replayed: bool  # does replay fold it into state, or is it history only?
-    body_keys: tuple[str, ...]  # required keys; extras are allowed and kept
-
-
-KINDS: dict[str, Kind] = {
-    "created": Kind(True, ("card",)),
-    "edited": Kind(True, ("field", "to")),
-    "claimed": Kind(True, ("branch",)),
-    "released": Kind(True, ("note",)),
-    "status": Kind(True, ("to",)),
-    "comment": Kind(False, ("text",)),
-    "commit": Kind(False, ("sha", "subject")),
-    "merged": Kind(False, ("into", "sha")),
-    "milestone": Kind(True, ("op",)),
-    # A fact about the REPO, not about any card: `task` is PROJECT and the fold
-    # keeps the newest per `op`. Same shape as `milestone` on purpose — an `op`
-    # is how a family of board-level facts grows without a new kind each time.
-    "project": Kind(True, ("op",)),
-    # Review is derived from the thread, exactly like a pending mention: both
-    # kinds are history-only, and `core/review.py` folds them into a Standing.
-    "submitted": Kind(False, ("note",)),  # the worker says it is finished
-    "reviewed": Kind(False, ("verdict", "note")),  # verdict: "pass" | "changes"
-    # A narration that is a committed FILE. The body is a POINTER, never the
-    # bytes; `task` is PROJECT because a report is about a CHAPTER; the list per
-    # chapter is a fold. `core/reports.py` carries the argument and `path`'s rule.
-    "report": Kind(False, ("path", "title", "milestone", "sha")),
-}
 
 # Fields of a Card that `edited` may target. Anything else is a BadRequest, so
 # a typo cannot invent a column that only exists in one board's history.
