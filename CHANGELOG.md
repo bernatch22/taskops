@@ -5,6 +5,45 @@ here, never written twice.
 
 ## Unreleased — the forge enrols the team; GitHub is the owner's, and nobody else's
 
+- **The feed heals itself — the header no longer sticks on "offline".** The
+  dashboard's live channel had two dead ends and both are removed
+  (`ui/src/client.ts::subscribe`): a WebSocket that had opened and then dropped
+  retried **exactly once** after 500ms and, if that single attempt did not open,
+  fell back to SSE permanently; and the EventSource error handler only reported
+  `onLive(false)`, so an EventSource that died fatally (`readyState` CLOSED — a
+  non-200 while the server restarts) was **never retried by anything**. The page
+  was then permanently offline and stale until a manual refresh. There is now one
+  reconnect loop with no terminal state but `stop()`: WS retries with capped
+  exponential backoff (500ms doubling to 8s), a fatally-closed SSE hands itself
+  back to that loop, and coming back live pokes exactly one refetch — the
+  transports' own `hello` frame — so staleness heals with the connection and
+  never double-fetches. `subscribe` takes an injectable `Env`, and the state
+  machine, including both removed dead ends, is pinned headlessly in
+  `ui/smoke/sections/feed-reconnect.tsx`.
+- **The board is animated, and says WHO is on each card.** When a refetch moves a
+  tile to another column it now travels there instead of teleporting — FLIP
+  (measure, invert, play) in `ui/src/components/board/flip.ts` + `useFlip.ts`,
+  CSS transitions only, no animation library and no timers beyond the transition;
+  `prefers-reduced-motion` skips the play, never the layout. And a card being
+  worked shows its holder: **one** `shared/Avatar.tsx` disc now serves both the
+  header presence row and the card tile, which previously coloured the same agent
+  two different ways (four hash tones in the header, accent-vs-grey by role on the
+  tile). The disc has two independent axes — the hue is derived from the actor
+  string over 24 steps, because eight agents into four tones is a guaranteed
+  collision, and `live` (the lease actually being held) is the emphasis, not the
+  colour. The avatar travels with the tile in the animation.
+- **A FLOW view beside the columns.** The Board page gains a `columns | flow`
+  segmented control (`components/board/ViewToggle.tsx`, state on the page and in
+  `localStorage` — not a route, and not a sixth tab: the flow IS the board, drawn
+  differently). Flow draws the dependency graph left to right, agents on the
+  nodes, with the geometry decided without a DOM (`components/flow/layout.ts`;
+  `FlowView.tsx` measures and paints, and decides nothing). **Every edge ends on a
+  blocked node**, and that is honesty rather than a shortcut: a `BoardRow` carries
+  no `after`, and the one dependency fact the board payload holds is `waiting_on`,
+  which `verbs/pulse.py` attaches to the BLOCKED group alone from
+  `core/graph.py::blockers` — which filters to dependencies that have not closed.
+  So bands come from a floor per state (done · in flight · waiting) raised by the
+  longest open-blocker chain, never from the edges alone.
 - **A finished chapter reads as a story, not a graveyard column.** Focusing a
   landed or fully-closed chapter in the dashboard now replaces the six kanban
   columns with a landing-timeline: cards in the order they landed, each with its
