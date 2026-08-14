@@ -6,7 +6,10 @@ import { devRows } from "../../src/pages/Actors";
 import {
   DEFAULT_HOURS_CHOICE,
   HOURS_CHOICES,
+  LEGACY_DEFAULT_HOURS_CHOICE,
+  choicesFor,
   lastMonth,
+  snapped,
   windowFor,
 } from "../../src/hoursWindow";
 import type { HoursChoice } from "../../src/hoursWindow";
@@ -184,5 +187,80 @@ export async function run(_fixture: Fixture, check: Check, h: Harness): Promise<
     renderToStaticMarkup(
       <DevDetail row={dev} report={report} onOpen={() => {}} onClose={() => {}} />,
     ).includes("over the report’s window"),
+  );
+
+  /* ── A PRE-CALENDAR HOST: the payload's shape is the feature detection ──
+   *
+   * A 0.3.1 host's `days()` reads `Nd` and nothing else, and answers an unknown
+   * spelling with a SILENT 7d — so shipping "month" there shrank a reader's
+   * window from the old always-14d without a word. The absence of `window` on
+   * the payload is what says so; nothing here reads a version. */
+
+  const legacy = older as ReportPayload;
+
+  check(
+    "actors window: a payload with NO window offers the Nd set only, defaulting to 14d",
+    choicesFor(legacy).map((c) => c.id).join(" ") === "7d 14d 30d 90d" &&
+      LEGACY_DEFAULT_HOURS_CHOICE === "14d" &&
+      windowFor(LEGACY_DEFAULT_HOURS_CHOICE) === "14d",
+    choicesFor(legacy).map((c) => c.id).join(" "),
+  );
+  /* The label is the CLIENT's here, and honest about what it is — the one case
+   * it may speak, because an old host says nothing about the span it read. */
+  check(
+    "actors window: the degraded options say last N days, in the client's own words",
+    choicesFor(legacy).map((c) => c.name).join(" · ") ===
+      "last 7 days · last 14 days · last 30 days · last 90 days",
+    choicesFor(legacy).map((c) => c.name).join(" · "),
+  );
+  /* …and a payload WITH window restores the calendar set exactly as shipped. */
+  check(
+    "actors window: a payload WITH window answers the calendar set, unchanged",
+    choicesFor(report) === HOURS_CHOICES &&
+      choicesFor(report).map((c) => c.id).join(" ") === "7d month last total",
+    choicesFor(report).map((c) => c.id).join(" "),
+  );
+  /* FIRST PAINT is deterministic: nothing has come back, so the set that holds
+   * the current selection is drawn — the pressed option is never absent from
+   * its own control — and with nothing selected, the calendar set the page is
+   * born in. */
+  check(
+    "actors window: on first paint the set follows the selection, calendar when none",
+    choicesFor(null).map((c) => c.id).join(" ") === "7d month last total" &&
+      choicesFor(null, "month").map((c) => c.id).join(" ") === "7d month last total" &&
+      choicesFor(null, "30d").map((c) => c.id).join(" ") === "7d 14d 30d 90d" &&
+      choicesFor(undefined, "7d").map((c) => c.id).join(" ") === "7d month last total",
+    choicesFor(null, "30d").map((c) => c.id).join(" "),
+  );
+  /* THE SNAP, ONCE. A calendar choice meets a legacy answer and moves to 14d;
+   * everything already in the answered set stays exactly where it is, which is
+   * what stops the refetch from asking for a third window. */
+  check(
+    "actors window: month snaps to 14d on a legacy answer, and nothing else moves",
+    snapped(legacy, "month") === "14d" &&
+      snapped(legacy, "last") === "14d" &&
+      snapped(legacy, "14d") === "14d" &&
+      snapped(legacy, "7d") === "7d" &&
+      snapped(report, "month") === "month" &&
+      snapped(report, "30d") === "month" &&
+      snapped(null, "month") === "month" &&
+      snapped(null, "30d") === "30d",
+    [snapped(legacy, "month"), snapped(legacy, "7d"), snapped(report, "30d")].join(" "),
+  );
+  /* And on screen: the degraded control draws the four Nd options and presses
+   * the one the snap settled on, with no calendar spelling anywhere in it. */
+  const degraded = renderToStaticMarkup(
+    <Actors {...props} report={legacy} choice="month" onChoice={() => {}} />,
+  );
+  check(
+    "actors window: against a legacy payload the control draws 7d·14d·30d·90d, 14d pressed",
+    (["7d", "14d", "30d", "90d"] as HoursChoice[]).every((id) =>
+      degraded.includes(`data-window="${id}"`),
+    ) &&
+      !degraded.includes('data-window="month"') &&
+      !degraded.includes('data-window="total"') &&
+      /data-window="14d" aria-pressed="true"/.test(degraded) &&
+      degraded.includes("last 14 days"),
+    degraded.match(/data-window="[^"]+"/g)?.join(" "),
   );
 }

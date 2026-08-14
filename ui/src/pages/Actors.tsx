@@ -68,11 +68,11 @@
  * name so two renders of one payload agree. Agents inside a dev keep
  * `actorRows()`' rank — a live work lease, then a live review lease, then a
  * lapsed assignment, then history, most recently seen first within each. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { PaneRow } from "../components/monitor/Pane";
 import { Segmented } from "../components/shared/Segmented";
-import { DEFAULT_HOURS_CHOICE, HOURS_CHOICES } from "../hoursWindow";
+import { DEFAULT_HOURS_CHOICE, choicesFor, snapped } from "../hoursWindow";
 import { DevPanel } from "../components/actors/DevPanel";
 import { span } from "../components/actors/Daysheet";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
@@ -470,6 +470,18 @@ export function Actors(props: ActorsProps): React.JSX.Element {
      filter says what was ASKED, the sentence says what came BACK. */
   const choice = props.choice ?? DEFAULT_HOURS_CHOICE;
   const onChoice = props.onChoice;
+  /* WHICH FILTER THIS HOST CAN HONOUR. The options are the payload's own shape
+     (hoursWindow.ts::choicesFor), so against a pre-calendar host the control
+     offers only `Nd` spellings — the client never speaks a word that host has
+     not confirmed, because its parser answers an unknown one with a silent 7d.
+     And if the selection is not in the set the answer revealed, it moves ONCE:
+     `snapped()` returns the choice untouched in every other case, so the
+     refetch that follows cannot ask for a third. */
+  const options = choicesFor(props.report, choice);
+  const settled = snapped(props.report, choice);
+  useEffect(() => {
+    if (settled !== choice) onChoice?.(settled);
+  }, [settled, choice, onChoice]);
 
   return (
     <div style={page} data-testid="actors">
@@ -484,8 +496,8 @@ export function Actors(props: ActorsProps): React.JSX.Element {
           <Segmented
             testid="actors-window-filter"
             name="window"
-            options={HOURS_CHOICES}
-            active={choice}
+            options={options}
+            active={settled}
             onSelect={(next) => onChoice?.(next)}
           />
         </div>
