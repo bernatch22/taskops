@@ -269,6 +269,26 @@ def test_the_state_shown_comes_from_who_holds_the_lease() -> None:
     assert graph.ready(cards, {}) == []  # still not up for grabs: it has an owner
 
 
+def test_a_closed_card_derives_done_and_can_never_read_stalled() -> None:
+    """An operator saw a `stalled` row beside a landed `done` and read it as a
+    derivation bug. It cannot be one: the stored status is answered FIRST, above
+    every live fact, so the instant the done event is in the log the card reads
+    `done` — with an owner, with no holder, with a lease that lapsed an hour ago.
+    A stalled row next to a landed done means the read happened before the write,
+    not that the two disagree."""
+    cards = _two()
+    card = cards["tk-aaaaaa"]
+    card["assignee"] = "agent:berna/w1"
+    assert graph.derived(cards, card, {}) == "stalled"  # exactly the shape, still open
+
+    card["status"] = "done"  # the lapsed-lease close of core/machine.py lands
+    assert graph.derived(cards, card, {}) == "done"
+    assert graph.derived(cards, card, {"tk-aaaaaa": "agent:berna/w1"}) == "done"
+    assert graph.mine(cards, "agent:berna/w1", {}) == []
+    card["status"] = "dropped"
+    assert graph.derived(cards, card, {}) == "dropped"
+
+
 def test_a_card_nobody_owns_is_ready() -> None:
     cards = _two()
     assert graph.derived(cards, cards["tk-aaaaaa"], {}) == "ready"
