@@ -262,6 +262,22 @@ def test_mentions_are_ranked_above_the_card_that_went_quiet(repo: Path, boards: 
     assert text.index("MENTIONS —") < text.index("STALLED —")
 
 
+def test_a_stalled_line_says_what_the_holder_last_did_and_what_is_on_the_branch(
+    repo: Path, boards: Any
+) -> None:
+    """The payload keys are only half of it: the orchestrator reads this TEXT,
+    and "quiet for 1h" alone is what made resume-vs-reassign an investigation.
+
+    Nothing changes for any other group — only a STALLED row carries the keys
+    (`verbs/_rows.py::forensics`), so `_group` renders them where they exist."""
+    dev, cards = seeded(boards)
+    dev.call("assign", {"tasks": [cards[0]["id"]]})
+    boards(W1).call("bind", {"task": cards[0]["id"], "sha": "a1b2c3", "subject": "feat: model"})
+
+    stalled = call(dev, repo, "taskops_board").split("STALLED —")[1].split("TAKE —")[0]
+    assert "last commit" in stalled and "1 commit" in stalled
+
+
 def test_with_two_chapters_open_the_board_names_both(repo: Path, boards: Any) -> None:
     """Picking one would be a coin toss — v1 answered it differently in three places."""
     dev, _ = seeded(boards)

@@ -438,6 +438,72 @@ def test_a_dead_workers_card_comes_back_by_itself(
     assert call(stores, "take", W1, task=card)["state"] == "doing"
 
 
+def test_a_stalled_row_says_what_its_holder_last_did_and_how_long_ago(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Five workers died at once and every stalled row read only "quiet for 1h".
+
+    Took-then-nothing and commented-then-nothing are different diagnoses, and
+    `quiet_for` cannot tell them apart. The row carries the LAST event's kind and
+    its age, derived from the thread on the read — nothing is stored, and nothing
+    claims to know WHY the holder stopped (ARCHITECTURE §12), only what it said.
+    """
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)  # claimed out of the pool, then silence
+
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    assert row["last_event"]["kind"] == "claimed"
+    assert row["last_event"]["ago"] >= LEASE_TTL
+
+    # and it MOVES with the thread: a comment then silence is the other diagnosis
+    call(stores, "update", W1, task=card, comment="halfway through the parser")
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    assert row["last_event"]["kind"] == "comment"
+    assert LEASE_TTL <= row["last_event"]["ago"] < 2 * LEASE_TTL + 240
+
+
+def test_a_stalled_row_counts_the_commits_bound_to_the_card(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Whether there is work on the branch is the resume-vs-reassign decision,
+    and the COUNT is free over the same list a boolean would fold."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "assign", BERNA, tasks=[card])
+    call(stores, "take", W1, task=card)
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    # Taking a card already assigned to you writes NO event (`verbs/take.py`:
+    # being on it is the lease's answer), so the dispatch itself is the last
+    # word — which reads exactly as "handed over, never heard from".
+    assert row["commits"] == 0 and row["last_event"]["kind"] == "edited"
+
+    call(stores, "take", W1, task=card)  # the worker came back, committed, died again
+    call(stores, "bind", W1, task=card, sha="a1b2c3", subject="feat: parser")
+    call(stores, "bind", W1, task=card, sha="d4e5f6", subject="test: parser")
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    assert row["commits"] == 2 and row["last_event"]["kind"] == "commit"
+
+
+def test_only_a_stalled_row_carries_the_forensics_keys(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """They ride on the stalled group the way `waiting_on` rides on blocked: a
+    doing or blocked row is byte-identical to what it always was, and no row
+    outside STALLED pays for the extra thread read."""
+    cards = planned(stores)["cards"]
+    call(stores, "take", W1, task=cards[0]["id"])
+    clock(60)
+    board = call(stores, "board", BERNA)
+
+    doing = board["groups"]["doing"][0]
+    assert "last_event" not in doing and "commits" not in doing
+    for row in board["groups"]["blocked"] + board["groups"]["take"]:
+        assert "last_event" not in row and "commits" not in row
+
+
 def test_a_stalled_card_is_handed_over_with_the_verb_that_already_existed(
     stores: Stores, clock: Callable[[float], None]
 ) -> None:

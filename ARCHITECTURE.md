@@ -887,6 +887,25 @@ passage of time, and a displaced worker still does not lose what it built —
 Pinned by `tests/test_verbs.py::test_the_orchestrator_hands_over_a_card_whose_lease_is_still_live`
 and `…::test_handing_a_card_to_the_worker_that_holds_it_leaves_its_lease_alone`.
 
+**And a report has to be readable.** `quiet_for` alone was not: a session limit
+took five workers at once and every STALLED row said the same "quiet for 1h", so
+resume-vs-reassign became an investigation per card. A stalled row now also
+carries `last_event = {kind, ago}` — the last thing on the card's thread — and
+`commits`, how many commit events are bound to it (`verbs/_rows.py::forensics`,
+attached by `pulse.py::run` to the stalled group ALONE, exactly as `waiting_on`
+is attached to blocked; every other row is byte-identical to what it was, and no
+other row pays for the thread read). Dispatched-and-never-heard-from
+(`edited`), claimed-then-silent (`claimed`), thinking-out-loud-then-gone
+(`comment`) and work-on-the-branch (`commit`, with a count) are four different
+moves, and they are now four different lines. Still derived per read, still
+nothing stored, and still no cause of death: the lease's only heartbeat is MCP
+traffic, so the board can say WHAT was last said and never WHY it stopped.
+Rendered on the MCP board by `mcp/boardview.py::_group`; pinned by
+`tests/test_verbs.py::test_a_stalled_row_says_what_its_holder_last_did_and_how_long_ago`,
+`…::test_a_stalled_row_counts_the_commits_bound_to_the_card`,
+`…::test_only_a_stalled_row_carries_the_forensics_keys` and
+`tests/test_mcp.py::test_a_stalled_line_says_what_the_holder_last_did_and_what_is_on_the_branch`.
+
 The remaining "recover" mentions (`core/types.py`, `verbs/assign.py`,
 `mcp/tools.py`, `gitwork/run.py`, `core/mentions.py`, `store/live.py`) are
 intentional: each one explains why the
