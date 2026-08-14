@@ -71,8 +71,11 @@ One Claude hook exists and it only DELIVERS (a pending mention, and the
 MERGE/REVIEW/STALLED counts to a `dev:`). It may never decide, store or write.
 
 Reading and commenting are open to everyone; only taking, closing and releasing
-are the owner's. Any agent may `taskops_comment` on ANY open card — that
-asymmetry is the whole communication channel between parallel agents.
+are the owner's. Any agent may `taskops_comment` on ANY card — that asymmetry is
+the whole communication channel between parallel agents. **A CLOSED card is
+included**: the log is append-only, so a postscript is accepted and does not
+reopen it. Only DELIVERY stops at the close — a `mentions=` written on a closed
+card pages nobody, silently (`verbs/_facts.py::pending_mentions` argues why).
 
 **ONE introduction per side, ONE credential** (2026-08-11, ARCHITECTURE §19).
 A key gets enrolled either by burning an invite (`POST /<board>/invite/redeem`)

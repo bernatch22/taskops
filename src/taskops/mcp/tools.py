@@ -72,7 +72,9 @@ def _comment(board: Board, repo: Path, args: Args, now: float) -> str:
     to a card after it exists, which is the lesson v1 paid for), two tools on
     top: an agent that wants to talk should not be reading about `no_code` and
     `after` to find out how. The board's own asymmetry is what this surfaces —
-    ANY open card can be written on, while taking and closing are the owner's.
+    ANY card can be written on — a closed one included, since the log is
+    append-only and a postscript is not a reopening — while taking and closing
+    are the owner's. Only DELIVERY stops at the close (`verbs/_facts.py`).
     """
     args["comment"] = args.pop("text", "")
     return render.plain(board.call("update", args))
@@ -177,8 +179,10 @@ TOOLS: list[Tool] = [
     ),
     _tool(
         "taskops_comment",
-        "Say something on ANY open card — including one somebody else holds, on another team. "
-        "mentions=[…] addresses it to them and reaches them on their very next call. THE channel "
+        "Say something on ANY card — including one somebody else holds, on another team, and a "
+        "closed one (the log is append-only; a postscript is welcome, and it does not reopen it). "
+        "mentions=[…] addresses it to them and reaches them on their very next call — on an OPEN "
+        "card: a closed card delivers nothing, so address the living card instead. THE channel "
         "between agents in parallel: when your files meet theirs, say so on their card.",
         _comment,
     ),
