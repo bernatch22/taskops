@@ -51,7 +51,7 @@ export interface ChapterStats {
   deleted: number;
   /** total worked, a floor (each card's `seconds` already is one) */
   seconds: number;
-  /** first station's `since` → last station's — 0/0 when there are no cards */
+  /** first card's `since` → last card's — 0/0 when there are no cards */
   from: number;
   to: number;
 }
@@ -87,7 +87,7 @@ export function chapterStats(cards: readonly CardStory[]): ChapterStats {
   return out;
 }
 
-/** The stations, in LANDING order — ascending `since`, the closest thing the
+/** The cards, in LANDING order — ascending `since`, the closest thing the
  *  payload has to merge order: a closed card's `since` is its `updated` (no
  *  lease survives closing, `verbs/pulse.py::_row`), and the last update of a
  *  done card is the close itself. The sort is stable, so ties keep the
@@ -97,10 +97,10 @@ export function landingOrder(cards: readonly CardStory[]): CardStory[] {
   return [...cards].sort((a, b) => a.since - b.since);
 }
 
-/** ONE summary line per station, first of: the reviewer's words
+/** ONE summary line per card, first of: the reviewer's words
  *  (`standing.note`, only when a verdict was actually given), the released
  *  note (`resume`), the LAST commit's subject (`commits` is newest LAST), or
- *  nothing. First line only — these are prose fields and a station is a line. */
+ *  nothing. First line only — these are prose fields and a tile has one line. */
 export function summaryOf(card: CardStory): string {
   const verdict = card.standing?.verdict ? card.standing.note : "";
   const text = verdict || card.resume || card.commits[card.commits.length - 1]?.subject || "";

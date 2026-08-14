@@ -1,18 +1,27 @@
-/* The landing-timeline — what the Board page becomes when the chapter is DONE.
+/* The landed chapter — what the Board page becomes when the chapter is DONE.
  *
  * A finished chapter in six kanban columns is one wall of identical done tiles:
  * the shape that answers "what needs a move?" has nothing to say when the
  * answer is "nothing, we finished". So this view replaces the columns for that
  * state only (App.tsx swaps on `story != null`) with the chapter told as a
- * story: a celebration header, then ONE vertical rail, each done card a
- * station on it in landing order, saying at a glance what it did.
+ * result: a celebration header, then the cards themselves, SIDE BY SIDE in a
+ * responsive grid, in landing order — left to right, top to bottom.
  *
- * Read-only exactly like Board.tsx: every station title is a button into the
- * existing drawer (`openCard`), no write verb, no fetch — the `activity`
- * payload arrives whole through useBoard's one fetch path. The arithmetic
- * (landing order, per-card diff, the header strip) lives in `stats.ts`, pure,
- * so it is pinned headlessly; this file only decides what each number looks
- * like, in tokens. */
+ * It was a vertical rail for one day (2026-08-14) and that was the wrong read:
+ * one card per row, a disc and a spine, everything narrow and stacked, and the
+ * only clickable thing was the title. A chapter is a body of work, not a
+ * procession; a grid puts it on one screen and lets the eye compare. The WHOLE
+ * tile is the target now, hover-lifted and tab-reachable, because "it did not
+ * look clickable" was half of the complaint and "only the title was" the other.
+ *
+ * Read-only exactly like Board.tsx: every tile opens the EXISTING drawer
+ * (`openCard` → App.tsx mounts `Drawer` over any page), no write verb, no
+ * fetch — the `activity` payload arrives whole through useBoard's one fetch
+ * path. The arithmetic (landing order, per-card diff, the header strip) lives
+ * in `stats.ts`, pure, so it is pinned headlessly; this file only decides what
+ * each number looks like, in tokens. */
+import { useState } from "react";
+
 import { ago } from "../../format";
 import { Markdown } from "../shared/Markdown";
 import type { ActivityPayload, CardStory } from "../../types";
@@ -26,13 +35,16 @@ export interface ChapterStoryProps {
 const page: React.CSSProperties = {
   height: "100%",
   overflowY: "auto",
-  padding: "0 24px 26px",
+  padding: "0 24px 30px",
 };
 
-/** One centered measure for header and rail — a timeline is read down, not
- *  across, and full-width prose under a 1600px window is unreadable. */
-const measure: React.CSSProperties = {
-  maxWidth: "760px",
+/** Two measures, on purpose. Prose is read down a column and 1600px of goal
+ *  text is unreadable, so the header keeps the narrow one; the grid wants every
+ *  pixel it can get, since each extra column is one more card on screen. */
+const proseMeasure: React.CSSProperties = { maxWidth: "620px", margin: "0 auto" };
+
+const gridMeasure: React.CSSProperties = {
+  maxWidth: "1180px",
   margin: "0 auto",
   animation: "tk-lift 300ms cubic-bezier(0.2, 0.8, 0.2, 1)",
 };
@@ -76,7 +88,7 @@ function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats 
   const stone = story.milestone;
   if (!stone) return <></>;
   return (
-    <header data-testid="story-header" style={{ padding: "26px 0 30px", textAlign: "center" }}>
+    <header data-testid="story-header" style={{ padding: "26px 0 24px", textAlign: "center" }}>
       {/* The completion mark: a laurel-toned disc with a check, drawn in the
           `ok` tone — the palette's own green, no emoji, no confetti. */}
       <div
@@ -104,7 +116,7 @@ function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats 
         {stone.title}
       </h1>
       {stone.goal ? (
-        <div style={{ color: "var(--text-2)", fontSize: "14px", maxWidth: "560px", margin: "0 auto", textAlign: "left" }}>
+        <div style={{ ...proseMeasure, color: "var(--text-2)", fontSize: "14px", textAlign: "left" }}>
           <Markdown text={stone.goal} />
         </div>
       ) : null}
@@ -112,10 +124,10 @@ function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats 
         <ul
           data-testid="story-criteria"
           style={{
+            ...proseMeasure,
             listStyle: "none",
-            margin: "16px auto 0",
+            marginTop: "16px",
             padding: 0,
-            maxWidth: "560px",
             textAlign: "left",
             display: "grid",
             gap: "6px",
@@ -136,7 +148,7 @@ function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats 
           justifyContent: "center",
           gap: "30px",
           flexWrap: "wrap",
-          marginTop: "24px",
+          marginTop: "22px",
           padding: "16px 20px",
           borderRadius: "16px",
           background: "var(--pane)",
@@ -151,38 +163,21 @@ function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats 
   );
 }
 
-/* ── one station ────────────────────────────────────────────────────────── */
+/* ── one tile ───────────────────────────────────────────────────────────── */
 
-/** The diff bar: green added over red deleted, the WIDTH sqrt-scaled against
- *  the chapter's biggest card so one giant diff does not flatten the rest into
- *  hairlines — the eye reads area-ish, not linearly. The split inside the bar
- *  stays linear: it says "mostly additions", and sqrt there would lie. */
-function DiffBar({ card, max }: { card: CardStory; max: number }): React.JSX.Element | null {
+/** The diff, as NUMBERS. The rail drew a sqrt-scaled bar whose width compared
+ *  one card against the chapter's biggest; in a grid that comparison is a lie
+ *  the eye cannot make anyway — tiles sit in different columns and rows, and a
+ *  bar there reads as decoration. So the counts are the fact, coloured in the
+ *  same two tones, and `bin` still says "git could not count this file" rather
+ *  than letting a binary vanish into a 0. */
+function Diff({ card }: { card: CardStory }): React.JSX.Element | null {
   const diff = diffOf(card);
-  const total = diff.added + diff.deleted;
-  if (total === 0 && !diff.binary) return null;
-  const width = max > 0 && total > 0 ? Math.max(4, (Math.sqrt(total) / Math.sqrt(max)) * 100) : 0;
+  if (diff.added === 0 && diff.deleted === 0 && !diff.binary) return null;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "7px" }}>
-      {total > 0 ? (
-        <>
-          <div
-            data-testid="diff-bar"
-            title={`+${diff.added} −${diff.deleted}`}
-            style={{ display: "flex", height: "5px", borderRadius: "3px", overflow: "hidden", width: `${width}%`, maxWidth: "100%" }}
-          >
-            {diff.added > 0 ? (
-              <span style={{ background: "var(--ok)", flexGrow: diff.added, minWidth: "2px" }} />
-            ) : null}
-            {diff.deleted > 0 ? (
-              <span style={{ background: "var(--danger)", flexGrow: diff.deleted, minWidth: "2px" }} />
-            ) : null}
-          </div>
-          <span className="num mono" style={{ fontSize: "10.5px", color: "var(--text-3)", flex: "none" }}>
-            +{diff.added} −{diff.deleted}
-          </span>
-        </>
-      ) : null}
+    <div data-testid="diff" className="num mono" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px" }}>
+      <span style={{ color: "var(--ok)" }}>+{diff.added}</span>
+      <span style={{ color: "var(--danger)" }}>−{diff.deleted}</span>
       {diff.binary ? (
         <span data-testid="bin-chip" style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>
           bin
@@ -192,139 +187,180 @@ function DiffBar({ card, max }: { card: CardStory; max: number }): React.JSX.Ele
   );
 }
 
-function Station({
+/** The whole tile is the button — the same idiom as `board/CardTile.tsx`: same
+ *  radius, hairline, pane background, chip geometry and type scale, and the
+ *  same affordance (a 2px rise plus the accent glow, never a recoloured
+ *  border) so this page reads as the dashboard and not as a second design
+ *  system. `all: unset` takes the focus ring with it, so it is re-added: a
+ *  chapter you can tab through is why this is a button and not a div. */
+function Tile({
   card,
-  max,
+  ordinal,
   openCard,
 }: {
   card: CardStory;
-  max: number;
+  ordinal: number;
   openCard: (id: string) => void;
 }): React.JSX.Element {
+  const [lift, setLift] = useState(false);
+  const [ring, setRing] = useState(false);
   const dropped = card.status === "dropped";
   const summary = summaryOf(card);
+  const style: React.CSSProperties = {
+    all: "unset",
+    boxSizing: "border-box",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    gap: "9px",
+    height: "100%",
+    background: "var(--pane)",
+    borderStyle: "solid",
+    borderWidth: "1px",
+    borderColor: "var(--hair)",
+    borderRadius: "13px",
+    padding: "13px 15px",
+    transition: "all 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+    /* Dropped is muted, never shouted: it stays fully legible, one notch back
+       in the page's own ink, and says so on a chip. */
+    opacity: dropped ? 0.62 : 1,
+    ...(lift ? { boxShadow: "0 0 0 3px var(--accent-soft)", transform: "translateY(-2px)", opacity: 1 } : {}),
+    ...(ring ? { outline: "2px solid var(--accent)", outlineOffset: "2px" } : {}),
+  };
   return (
-    <li
-      data-testid="station"
+    <button
+      type="button"
+      style={style}
+      data-testid="story-tile"
       data-card={card.id}
       data-dropped={dropped ? "true" : undefined}
-      style={{ display: "grid", gridTemplateColumns: "34px 1fr", gap: "14px", opacity: dropped ? 0.55 : 1 }}
+      title={card.title}
+      onClick={() => openCard(card.id)}
+      onMouseEnter={() => setLift(true)}
+      onMouseLeave={() => setLift(false)}
+      onFocus={() => {
+        setLift(true);
+        setRing(true);
+      }}
+      onBlur={() => {
+        setLift(false);
+        setRing(false);
+      }}
     >
-      {/* the disc on the rail: a check for a landed card, a strike for a
-          dropped one — part of the story, told in a lower voice */}
-      <div style={{ display: "grid", justifyItems: "center" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        {/* The ordinal is the one thing a grid loses that the rail had: reading
+            order is landing order, and a two-dimensional layout cannot say so
+            on its own. Small, mono, in the faintest ink that is still legible. */}
         <span
-          aria-hidden
+          data-testid="ordinal"
+          className="num mono"
           style={{
-            width: "22px",
-            height: "22px",
-            borderRadius: "50%",
-            display: "grid",
-            placeItems: "center",
-            fontSize: "11px",
-            background: dropped ? "var(--pane-3)" : "var(--ok-soft)",
-            border: `1px solid ${dropped ? "var(--hair-2)" : "var(--ok)"}`,
+            fontSize: "10px",
             color: dropped ? "var(--text-3)" : "var(--ok)",
+            background: dropped ? "var(--pane-3)" : "var(--ok-soft)",
+            borderRadius: "6px",
+            padding: "2px 6px",
+            flex: "none",
           }}
         >
-          {dropped ? "—" : "✓"}
+          {ordinal}
         </span>
+        <span className="mono" style={{ fontSize: "10.5px", color: "var(--text-3)" }}>
+          {card.id}
+        </span>
+        <span style={{ flex: 1 }} />
+        <Diff card={card} />
       </div>
+
+      {/* Two lines, CLAMPED — a card title is a sentence and a 300px column
+          would end it after four words if this were a single ellipsised line. */}
       <div
         style={{
-          background: "var(--pane)",
-          border: "1px solid var(--hair)",
-          borderRadius: "13px",
-          padding: "13px 15px",
-          marginBottom: "14px",
-          minWidth: 0,
+          fontSize: "14px",
+          fontWeight: 450,
+          letterSpacing: "-0.025em",
+          lineHeight: 1.35,
+          color: "var(--text)",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          textDecoration: dropped ? "line-through" : "none",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "baseline" }}>
-          <button
-            type="button"
-            data-testid="station-title"
-            onClick={() => openCard(card.id)}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 450,
-              letterSpacing: "-0.025em",
-              lineHeight: 1.35,
-              color: "var(--text)",
-              textDecoration: dropped ? "line-through" : "none",
-            }}
-          >
-            {card.title}
-          </button>
-          <span className="mono" style={{ fontSize: "10.5px", color: "var(--text-3)", flex: "none" }}>
-            {card.id}
-          </span>
-        </div>
-        {summary ? (
-          <div style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "6px" }}>
-            <Markdown text={summary} inline />
-          </div>
-        ) : null}
-        <DiffBar card={card} max={max} />
-        <div style={{ display: "flex", gap: "5px", marginTop: "9px", flexWrap: "wrap" }}>
-          {dropped ? (
-            <span style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>dropped</span>
-          ) : null}
-          {card.seconds > 0 ? (
-            <span data-testid="worked" style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>
-              {ago(card.seconds)} worked
-            </span>
-          ) : null}
-          {card.commits_total > 0 ? (
-            <span data-testid="commit-count" style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>
-              {card.commits_total} commit{card.commits_total === 1 ? "" : "s"}
-            </span>
-          ) : null}
-        </div>
+        {card.title}
       </div>
-    </li>
+
+      {summary ? (
+        <div
+          data-testid="story-summary"
+          style={{
+            fontSize: "11.5px",
+            color: "var(--text-2)",
+            lineHeight: 1.45,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {/* INLINE: these are commit subjects and reviewer notes — they quote
+              calls and paths, so backticks must read as code, but a heading or
+              a fence has no business inside a tile. */}
+          <Markdown text={summary} inline />
+        </div>
+      ) : null}
+
+      {/* The chips sit at the BOTTOM of every tile, whatever the title's
+          height — that is what `marginTop: auto` under a column flex buys, and
+          it is what makes a row of tiles scan as a row. */}
+      <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginTop: "auto", paddingTop: "3px" }}>
+        {dropped ? (
+          <span data-testid="dropped-chip" style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>
+            dropped
+          </span>
+        ) : null}
+        {card.seconds > 0 ? (
+          <span data-testid="worked" style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>
+            {ago(card.seconds)} worked
+          </span>
+        ) : null}
+        {card.commits_total > 0 ? (
+          <span data-testid="commit-count" style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>
+            {card.commits_total} commit{card.commits_total === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </div>
+    </button>
   );
 }
 
 /* ── the page ───────────────────────────────────────────────────────────── */
 
 export function ChapterStory({ story, openCard }: ChapterStoryProps): React.JSX.Element {
-  const stations = landingOrder(story.cards);
+  const cards = landingOrder(story.cards);
   const stats = chapterStats(story.cards);
-  const max = Math.max(0, ...stations.map((c) => {
-    const d = diffOf(c);
-    return d.added + d.deleted;
-  }));
   return (
     <div style={page} data-testid="chapter-story">
-      <div style={measure}>
+      <div style={gridMeasure}>
         <Header story={story} stats={stats} />
-        <ol
+        {/* `auto-fill` + `minmax(300px, 1fr)` is the whole responsive rule: as
+            many columns as fit at 300px each, one column below that. No media
+            query, no breakpoint list, and it works inside the drawer-narrowed
+            pane as well as at 1600px. */}
+        <div
+          data-testid="story-grid"
           style={{
-            listStyle: "none",
-            margin: 0,
-            padding: 0,
-            position: "relative",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: "14px",
+            alignItems: "stretch",
           }}
         >
-          {/* the rail itself: one hairline behind the discs, top to bottom */}
-          <div
-            aria-hidden
-            style={{
-              position: "absolute",
-              left: "16px",
-              top: "10px",
-              bottom: "24px",
-              width: "2px",
-              background: "var(--hair-2)",
-            }}
-          />
-          {stations.map((card) => (
-            <Station key={card.id} card={card} max={max} openCard={openCard} />
+          {cards.map((card, i) => (
+            <Tile key={card.id} card={card} ordinal={i + 1} openCard={openCard} />
           ))}
-        </ol>
+        </div>
       </div>
     </div>
   );
