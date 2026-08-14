@@ -72,6 +72,10 @@ def derived(
     and a card whose flag is off must derive exactly as it did before the
     feature existed — otherwise the flag is not one you can turn off.
 
+    The STORED status is answered FIRST, above every live fact — so a closed
+    card reads `done` or `dropped` and can never derive `stalled`, however long
+    its lease has been gone. `stalled` lives on the open branch alone.
+
     Two placements that are deliberate: `review` sits ABOVE `doing` (a
     submitted card whose worker still holds its lease is waiting for a
     reviewer, and that is the move to show), and `changes` sits BELOW `doing`

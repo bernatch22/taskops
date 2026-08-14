@@ -10,6 +10,12 @@ the next worker is shown verbatim. Silence is the only outcome that is refused.
 `comment=… mentions=[…]` addresses that comment to somebody: they see it in the
 pulse line of their very next call, whatever they call, and it clears itself
 the moment they touch the card. There is no verb to mark it read.
+
+A CLOSED card can still be commented on — no guard below, and never one
+(2026-08-14: reported as a refusal, not reproduced): the log is append-only, so
+a postscript on shipped work is how it stays honest. What it does NOT do is
+deliver — `_facts.pending_mentions` skips closed cards, so a `mentions=` written
+after the close pages nobody, silently. Deliberate, argued at that site.
 """
 
 from __future__ import annotations

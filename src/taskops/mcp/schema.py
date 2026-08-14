@@ -94,7 +94,10 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     ),
     "taskops_comment": _object(
         {
-            "task": _text("tk-… — ANY open card, including one somebody else holds"),
+            "task": _text(
+                "tk-… — ANY card, including one somebody else holds and a closed one "
+                "(only mentions= need an OPEN card to be delivered)"
+            ),
             "text": _text("what you want to say. The thread is never truncated."),
             "mentions": _list(
                 "address it to somebody: dev:<name> or agent:<dev>/<name>. They see it in the "

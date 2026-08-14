@@ -335,8 +335,9 @@ taskops_update     change the CARD: close, hand in for review, hand back, drop,
                    retitle, re-spec, re-prioritise, declare a dependency
 taskops_review     the verifier's one door: claim a submitted card, then
                    verdict=pass|changes note=…
-taskops_comment    say something on ANY open card, including one somebody else
-                   holds. mentions=[…] addresses it to them
+taskops_comment    say something on ANY card, including one somebody else holds
+                   and a closed one. mentions=[…] addresses it to them — on an
+                   OPEN card: a closed thread delivers nothing
 taskops_activity   a whole chapter's story in ONE read: every card's standing,
                    commits with numstat, where it merged, the reports filed on
                    it. since=<seq> returns only what moved; depth=full adds each

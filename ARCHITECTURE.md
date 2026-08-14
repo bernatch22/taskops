@@ -697,7 +697,7 @@ flowchart LR
     dispatch_t -->|"assign + cut worktree"| verbA["verb: assign"] --> gitA["gitwork/trees.ensure_card"]
     take_t -->|"acquire lease"| verbT["verb: take"] --> liveT["live.sqlite INSERT OR IGNORE"]
     update_t -->|"close / release / drop / rewrite"| verbU["verb: update"]
-    comment_t -->|"say something on ANY open card (+mentions)"| verbU
+    comment_t -->|"say something on ANY card, closed included (+mentions)"| verbU
     review_t -->|"task= claims · verdict= judges"| verbR["verb: review"] --> liveR["live.sqlite — the REVIEW lease"]
     merge_t -->|"--no-ff in integration worktree"| gitM["gitwork/landing.merge_card"] --> verbM["verb: merged"]
     activity_t -->|"a chapter's story, capped, no diffs"| verbAc["verb: activity — a READ"]
@@ -888,6 +888,26 @@ passage of time, and a displaced worker still does not lose what it built —
 `core/machine.py::_not_somebody_elses` asks about the ASSIGNEE, never the clock.
 Pinned by `tests/test_verbs.py::test_the_orchestrator_hands_over_a_card_whose_lease_is_still_live`
 and `…::test_handing_a_card_to_the_worker_that_holds_it_leaves_its_lease_alone`.
+
+**So a lapsed lease never blocks the owner's own close** (2026-08-14, asked by an
+operator who watched a resumed worker's `done` land after its lease had expired).
+It is accepted, deliberately: `core/machine.py::_not_somebody_elses` refuses only
+a LIVE holder who is somebody else, so with no new holder the worker that did the
+work still closes it — the same argument as above, read from the other end. A
+close that demanded a live lease would punish exactly the twenty quiet minutes of
+editing that the clock cannot see, and it would do it at the one moment the work
+is finished. Pinned by
+`tests/test_core.py::test_a_lapsed_lease_does_not_cost_you_your_own_card`.
+
+**And a done card can never read `stalled`.** The same operator reported seeing
+both at once. That is not a state the derivation can produce:
+`core/graph.py::derived` answers the STORED status first, above every live fact,
+so the instant the done event is in the log the card reads `done` — owner or no
+owner, holder or no holder, however long the lease has been gone. `stalled`
+belongs to the open branch alone. A stalled row beside a landed done is a read
+that happened before the write (or a different copy of the board), never a
+disagreement between the two. Pinned by
+`tests/test_core.py::test_a_closed_card_derives_done_and_can_never_read_stalled`.
 
 **And a report has to be readable.** `quiet_for` alone was not: a session limit
 took five workers at once and every STALLED row said the same "quiet for 1h", so

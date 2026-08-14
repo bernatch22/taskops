@@ -123,6 +123,14 @@ def pending_mentions(stores: Stores, actor: str) -> list[mentions.Mention]:
     Board-wide on purpose, never per milestone: a mention addresses a PERSON,
     and missing one because you were reading another chapter is exactly the
     miss this exists to prevent.
+
+    CLOSED cards are excluded and that cuts BOTH ways (2026-08-14): closing
+    clears the mentions written before it — the point — and a mention written
+    AFTER the close is undeliverable, in silence. The comment itself is still
+    accepted, so the postscript reaches the thread; only the address is dropped.
+    Kept: a closed card owes nobody a reply, and this set is what bounds the
+    scan to work in flight — the log is replayed forever. Pinned by
+    `test_a_mention_written_on_an_already_closed_card_is_undeliverable`.
     """
     cards = stores.state()["cards"]
     closed = {ident for ident, card in cards.items() if card["status"] in CLOSED}
