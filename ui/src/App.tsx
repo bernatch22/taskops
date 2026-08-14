@@ -40,7 +40,9 @@ import { Header } from "./components/chrome/Header";
 import { KpiRail } from "./components/chrome/KpiRail";
 import { TABS, TabNav, type TabId } from "./components/chrome/TabNav";
 import type { Client } from "./client";
+import type { ActivityPayload } from "./types";
 import { Actors } from "./pages/Actors";
+import { ChapterStory } from "./components/story/ChapterStory";
 import { Board } from "./pages/Board";
 import { Monitor } from "./pages/Monitor";
 import { Reports } from "./pages/Reports";
@@ -88,6 +90,17 @@ export function onTab(next: TabId): { tab: TabId; tree: string | null; report: s
   return { tab: next, tree: null, report: null };
 }
 
+/** Which shape the Board tab draws — pure and exported for the reason `onTab`
+ *  is: the decision lives inside App's render, where `react-dom/server` gives a
+ *  section no way to reach it (useBoard's effects never fire under SSR, so the
+ *  whole App renders its loading panel and nothing else). The rule it pins:
+ *  `story` non-null — the chapter in focus is complete AND its `activity`
+ *  answer has arrived — draws the timeline; null, including "complete but still
+ *  in flight", draws the columns unchanged. `ui/smoke/sections/chapter-story-timeline.tsx`. */
+export function boardView(story: ActivityPayload | null): "story" | "columns" {
+  return story ? "story" : "columns";
+}
+
 export function App({ client }: { client: Client }): React.JSX.Element {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [tab, setTab] = useState<TabId>("monitor");
@@ -107,7 +120,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
   // The chapter in focus lives HERE, next to the tab, for the same reason: it is
   // view state that decides an ARGUMENT to the one fetch, never a second fetch.
   const [milestone, setMilestone] = useState("");
-  const { board, card, live, error, loading, openCard, openId, comment } = useBoard(
+  const { board, card, story, live, error, loading, openCard, openId, comment } = useBoard(
     client,
     milestone,
   );
@@ -216,7 +229,17 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 onFocusChapter={setMilestone}
               />
             ),
-            board: () => <Board board={board} openCard={openCard} />,
+            /* A COMPLETE chapter reads as a story, not as six columns of done
+               tiles: `story` is non-null exactly when the chapter in focus is
+               complete AND its `activity` answer has arrived (useBoard.ts).
+               While it is still in flight — or for any open chapter — the
+               columns render unchanged; there is no spinner state on purpose. */
+            board: () =>
+              boardView(story) === "story" && story ? (
+                <ChapterStory story={story} openCard={openCard} />
+              ) : (
+                <Board board={board} openCard={openCard} />
+              ),
             /* The fourth view. It is handed the same four slices Monitor's own
                panes read plus `board.hours` — the same snapshot Throughput
                draws from, because there is one fetcher (useBoard.ts). */
