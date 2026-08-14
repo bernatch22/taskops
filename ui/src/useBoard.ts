@@ -12,8 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RpcError, type Client } from "./client";
+import { chapterComplete } from "./completed";
 import { THROUGHPUT_WINDOW } from "./components/monitor/panels";
-import type { BoardPayload, CardPayload } from "./types";
+import type { ActivityPayload, BoardPayload, CardPayload } from "./types";
 
 /** One window for a burst of writes. Long enough that an orchestrator's
  *  plan-of-nine is one refetch, short enough to read as instant. */
@@ -73,6 +74,13 @@ function browserZone(): string {
 export interface Board {
   board: BoardPayload | null;
   card: CardPayload | null;
+  /** The chapter's STORY — the `activity` answer for the milestone in focus,
+   *  fetched by the same `fetchAll` as everything else, and only when the
+   *  chapter is complete (`completed.ts::chapterComplete`). `null` the rest of
+   *  the time: an open chapter has columns, not a story. Headline depth on
+   *  purpose — the 76-card budget in `verbs/activity.py`'s docstring is why
+   *  `depth=full` is never asked for here. */
+  story: ActivityPayload | null;
   /** The feed is connected. False means the page may be stale. */
   live: boolean;
   /** Open a card's dossier, or null to close it. */
@@ -96,6 +104,7 @@ export interface Board {
 export function useBoard(client: Client, milestone: string = ""): Board {
   const [board, setBoard] = useState<BoardPayload | null>(null);
   const [card, setCard] = useState<CardPayload | null>(null);
+  const [story, setStory] = useState<ActivityPayload | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [error, setError] = useState<RpcError | null>(null);
@@ -114,6 +123,18 @@ export function useBoard(client: Client, milestone: string = ""): Board {
       if (!alive.current) return;
       setBoard(next);
       setError(null);
+      // The chapter story rides the SAME fetch path — one owner, one clock. It
+      // is asked for only when a milestone is in focus and reads as complete;
+      // otherwise the story is null and no `activity` call is made at all.
+      if (next.milestone && chapterComplete(next)) {
+        const tale = await client.rpc<ActivityPayload>("activity", {
+          milestone: next.milestone.id,
+        });
+        if (!alive.current) return;
+        setStory(tale);
+      } else {
+        setStory(null);
+      }
       const task = open.current;
       if (task) {
         const dossier = await client.rpc<CardPayload>("card", { task });
@@ -182,8 +203,8 @@ export function useBoard(client: Client, milestone: string = ""): Board {
   );
 
   return useMemo(
-    () => ({ board, card, live, openCard, openId, error, loading, comment, refresh: poke }),
-    [board, card, live, openCard, openId, error, loading, comment, poke],
+    () => ({ board, card, story, live, openCard, openId, error, loading, comment, refresh: poke }),
+    [board, card, story, live, openCard, openId, error, loading, comment, poke],
   );
 }
 
