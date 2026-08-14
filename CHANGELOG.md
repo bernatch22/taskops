@@ -3,8 +3,26 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
-## Unreleased — the forge enrols the team; seam files fold; the board says how a worker went quiet; hours stop moving backwards
+## Unreleased — the forge enrols the team; seam files fold; the board says how a worker went quiet; hours stop moving backwards; comments become visible
 
+- **A comment now SAYS so, on every open dashboard.** The UI's one write was
+  invisible to everyone but its author: somebody commented and no other
+  session's screen changed. A minimal notification stack now sits bottom-right
+  over every tab (`ui/src/components/toasts/`) — the author's avatar, the card's
+  title and the trimmed text; clicking the bubble expands it IN PLACE to the
+  whole message, and a separate affordance opens the card dossier through the
+  same `openCard`. The commented card's tile answers with a brief, subtle pulse
+  and returns to rest. **Nothing is stored and no server changed**: there is no
+  Python diff behind this, no new verb, no second socket and no read-receipt —
+  the toasts are derived client-side from the same events feed the Event pane
+  already reads, and "new" is a head delta plus an id set (a toast is shown
+  once, by event id, ever; the first load is silent, because a page of history
+  toasted on mount would be fifty notifications about yesterday). Every
+  timing, trimming and stacking decision lives in a pure module with its clock
+  injected, so `ui/smoke/sections/comment-toasts-model.tsx` and `…-stack.tsx`
+  pin it under `react-dom/server` with no timers and no jsdom. Colour comes from
+  `theme/tokens.css` alone, and `prefers-reduced-motion` suppresses every
+  animation.
 - **Hours stop falling when a chapter closes: an interval now belongs to the
   window its CLOSING stamp is in.** No event was ever lost — `events.jsonl` only
   grows — but `core/hours.py::sessions` counted an interval only when BOTH of its
