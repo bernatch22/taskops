@@ -214,7 +214,8 @@ flowchart TB
         wire["_wire — one POST, one envelope: the decoder both clients share"]
     end
     subgraph L1["1 · core (PURE — no I/O)"]
-        types["types — Card/Milestone/Event/Lease, KINDS registry"]
+        types["types — Card/Milestone/Event/Lease (re-exports KINDS and the actor grammar)"]
+        kindsm["kinds — the event-kind registry: replayed? required body keys"]
         actors["actors — presence, folded from events"]
         event["event — construct + hash"]
         replay["replay — fold(events) → State"]
@@ -228,6 +229,7 @@ flowchart TB
         reportsm["reports — is this a report PATH, and the chapter's list as a fold"]
         holdingm["holding — 'is this history held here?', by event id: board pull + board rm"]
         forgem["forge — the forge vocabulary: which host can be asked, what access counts, owner/name"]
+        seamsm["seams — which ready cards name the same CONCEPT, from the specs alone"]
         hours["hours — working-time math"]
     end
     subgraph L2["2 · store (the ONLY SQL)"]
@@ -246,14 +248,14 @@ flowchart TB
         mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
         projectv["project — board-level facts: op=remote, op=visibility, op=forge"]
-        helpersv["_args _cards _context _facts _rows — the helpers; the _ says 'not a verb'"]
+        helpersv["_args _cards _chapter _context _facts _rows _stories — the helpers; the _ says 'not a verb'"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
     subgraph L4["4 · board.py + gitwork (the ONLY git, client-side)"]
         board["board.py — LocalBoard | RemoteBoard, routing decided ONCE"]
         run["gitwork/run"]; trees["gitwork/trees — worktrees: the GEOMETRY"]
         landing["gitwork/landing — the MERGES: card→chapter, chapter→trunk"]
-        catchup["gitwork/catchup — one worktree, up to date with a branch"]
+        catchup["gitwork/catchup — one worktree, up to date with a branch; the chapter's declared union_files fold, everything else still aborts"]
         trailer["gitwork/trailer"]; bind["gitwork/bind"]
         install["gitwork/install — what GIT needs: hooks, gitignore, the address"]
         claudef["gitwork/claudefiles — what CLAUDE reads: .mcp.json, settings.json"]
@@ -265,7 +267,7 @@ flowchart TB
         identitym["identity.py — WHO signs in, with WHICH key: discover, establish"]
     end
     subgraph L5["5 · transports"]
-        mcpsrv["mcp/server, hello, tools, gitmoves, integrate, dossier, before, render, brief, schema, thread, boards, fields"]
+        mcpsrv["mcp/server, hello, tools, gitmoves (assign + merge dispatch), integrate (a CARD lands), chapter (a MILESTONE lands: gate, catch-up, record), dossier, before, render, brief, activity, boardview, schema, orders, thread, boards, fields"]
         httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, removal, auth, login, members (the owner's enrol BATCH), feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
@@ -290,8 +292,8 @@ instead of an arbitrary one.
 **A leading `_` marks plumbing for the layer above, and it is a three-zone
 convention**: the package root (`_errors _ids _clock _json _locate _version
 _wire` are level 0; `board.py`, `session.py` and `identity.py` are that layer's
-doors), and `verbs/` (`_args _cards _context _facts _mentions _rows _waiting`
-are helpers — the un-prefixed files are the registry's entries, one per verb).
+doors), and `verbs/` (`_args _cards _chapter _context _facts _mentions _rows
+_stories _waiting` are helpers — the un-prefixed files are the registry's entries, one per verb).
 Nowhere else carries it, because every module under `core/ store/ gitwork/
 http/ mcp/ cli/` is internal to its layer and there is nothing to distinguish;
 `import taskops` exposes five errors and a version, so module names are a
@@ -696,7 +698,7 @@ flowchart LR
     dispatch_t -->|"assign + cut worktree"| verbA["verb: assign"] --> gitA["gitwork/trees.ensure_card"]
     take_t -->|"acquire lease"| verbT["verb: take"] --> liveT["live.sqlite INSERT OR IGNORE"]
     update_t -->|"close / release / drop / rewrite"| verbU["verb: update"]
-    comment_t -->|"say something on ANY open card (+mentions)"| verbU
+    comment_t -->|"say something on ANY card, closed included (+mentions)"| verbU
     review_t -->|"task= claims · verdict= judges"| verbR["verb: review"] --> liveR["live.sqlite — the REVIEW lease"]
     merge_t -->|"--no-ff in integration worktree"| gitM["gitwork/landing.merge_card"] --> verbM["verb: merged"]
     activity_t -->|"a chapter's story, capped, no diffs"| verbAc["verb: activity — a READ"]
@@ -768,7 +770,7 @@ sequenceDiagram
     Dev->>Board: taskops_board
     Board-->>Dev: group MERGE: [tk-a1]
     Dev->>Board: taskops_merge task=tk-a1  (or tasks=[tk-a1, tk-b2] / done=true — the same path per card, in order, stopping at the first failure)
-    Board->>Git: trees.behind() — if tk-a1 lacks the ms/* head, catchup.catch_up() merges ms/* IN tk-a1's own worktree (dirty or missing: refused, untouched; conflict: aborted clean, git's files + the count)
+    Board->>Git: trees.behind() — if tk-a1 lacks the ms/* head, catchup.catch_up() merges ms/* IN tk-a1's own worktree, with the chapter's union_files (from the dossier already loaded) applied as merge=union through an EPHEMERAL core.attributesFile outside the repo (dirty or missing: refused, untouched; conflict in anything undeclared: aborted clean, git's files + the count)
     Board->>Git: merge_card() --no-ff into ms/<milestone>, in the integration worktree
     Git-->>Board: sha (or refused, conflict files named, ms/* untouched)
     Board-->>Dev: merged
@@ -846,6 +848,7 @@ nobody has touched yet.
 | a SILENT `taskops join` over a local board | the local history stayed on disk byte for byte and nothing ever looked at it again or said so — a command about connecting is what made it invisible | `cli/commands.py::_keep_or_archive` refuses naming `taskops board push` and `--discard-local` (which archives, never deletes); `tests/test_topology.py::test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out` |
 | GitHub as a CREDENTIAL — v1's GitHub login: a stored token, a call to GitHub on every sign-in | three costs, and §19 is the whole argument: a token that travels (worth stealing for reasons unrelated to the board), a network dependency at every login (GitHub down = nobody signs in), and a SECOND identity system beside the keys, with its own enrolment, expiry and revocation to keep in step. The convenience is kept and the costs are not: GitHub is asked ONCE, by the owner, and what persists is an ssh key | the only module that speaks to GitHub is `cli/github.py`, on the owner's machine; the host takes principals and key lines (`http/members.py`) and no token reaches it. `tests/test_topology.py::test_the_owners_token_is_spent_on_ONE_endpoint_and_written_nowhere` greps the host tree AND the checkout with a positive control, and `…::test_no_flag_on_join_takes_a_token_and_none_ever_will` holds the parser to "never a flag value". There is one `members.enroll` row in `core/scope.py` — a ROLE rule — and no second credential type anywhere |
 | a GitHub door on the DEV's side — `POST /<board>/join/github`, a `--github` flag, a token discovered at join time (2026-08-11) | it made every dev's own credential travel to a host that has no business seeing one, to prove a fact the OWNER already holds; and it asked for an ssh key from people who, having push over ssh, had published one already. Deleted the day after it shipped — §19.1 | there is no route, no flag and no client function: `grep -r 'join/github\|by_github' src tests` is empty, and `test_no_flag_on_join_takes_a_token_and_none_ever_will` asserts the ABSENCE from `join --help`. The replacement is one command on the owner's side and `taskops join`, bare, on the dev's (`…::test_the_dev_whose_key_the_sync_published_joins_with_two_words`) |
+| a COMMITTED `.gitattributes` (or a written `$GIT_DIR/info/attributes`) as the union-merge mechanism | a milestone's `union_files` is one chapter's convenience, and both of those are repo-wide and outlive the merge. Measured in this repo: `git rev-parse --git-path info/attributes` inside a LINKED worktree answers the COMMON dir, so writing there hands one card's declaration to every sibling merging at the same moment, and a crash between write and delete leaves it enabled for the whole repository, invisibly. A committed file is worse still: it makes the chapter's convenience permanent and reviewable as if it were a repo decision | `gitwork/catchup.py::_attributes` writes a temp file OUTSIDE the repository and passes it as `git -c core.attributesFile=…` for that one process, deleted in a `finally` on both paths. The precedence is deliberate: an in-tree `.gitattributes` BEATS `core.attributesFile`, so the dashboard bundle's `-merge` cannot be overridden by a declaration. `tests/test_git.py::test_no_attributes_file_survives_a_merge_that_worked` and `…_that_aborted` assert nothing is left in the temp dir, in the tree, or at `info/attributes` |
 | a slug in a branch name that isn't the milestone's | a renamed milestone orphaned its branch (ghost branches) | `Milestone.branch` computed once at creation, stored, never re-derived |
 | a stored `doing` | a dead worker's card claimed to be worked on forever | `CARD_STATUSES = ("open", "done", "dropped")` — `"doing"` raises `BadRequest` if ever passed to `status=` |
 | a worker-SLOT roster (held / free / lapsed as a pool) | taskops allocates no worker: `workers=[…]` is a label chosen at the call, sub-agents are ephemeral, and an actor is a name bound to the RUN of a card — a roster with capacity would be a fiction the board could never make true | the Actors view draws DEVS with their agents as lines inside them instead (`ui/src/pages/Actors.tsx`, `components/monitor/panels.ts` — both carry the post-mortem); an agent with no card is HISTORY, never "free", and `ui/smoke/sections/actors.tsx` asserts the words `free`, `slot` and `capacity` appear nowhere in that markup ("actors: NO WORKER SLOTS, under that name or any other") |
@@ -887,6 +890,45 @@ passage of time, and a displaced worker still does not lose what it built —
 Pinned by `tests/test_verbs.py::test_the_orchestrator_hands_over_a_card_whose_lease_is_still_live`
 and `…::test_handing_a_card_to_the_worker_that_holds_it_leaves_its_lease_alone`.
 
+**So a lapsed lease never blocks the owner's own close** (2026-08-14, asked by an
+operator who watched a resumed worker's `done` land after its lease had expired).
+It is accepted, deliberately: `core/machine.py::_not_somebody_elses` refuses only
+a LIVE holder who is somebody else, so with no new holder the worker that did the
+work still closes it — the same argument as above, read from the other end. A
+close that demanded a live lease would punish exactly the twenty quiet minutes of
+editing that the clock cannot see, and it would do it at the one moment the work
+is finished. Pinned by
+`tests/test_core.py::test_a_lapsed_lease_does_not_cost_you_your_own_card`.
+
+**And a done card can never read `stalled`.** The same operator reported seeing
+both at once. That is not a state the derivation can produce:
+`core/graph.py::derived` answers the STORED status first, above every live fact,
+so the instant the done event is in the log the card reads `done` — owner or no
+owner, holder or no holder, however long the lease has been gone. `stalled`
+belongs to the open branch alone. A stalled row beside a landed done is a read
+that happened before the write (or a different copy of the board), never a
+disagreement between the two. Pinned by
+`tests/test_core.py::test_a_closed_card_derives_done_and_can_never_read_stalled`.
+
+**And a report has to be readable.** `quiet_for` alone was not: a session limit
+took five workers at once and every STALLED row said the same "quiet for 1h", so
+resume-vs-reassign became an investigation per card. A stalled row now also
+carries `last_event = {kind, ago}` — the last thing on the card's thread — and
+`commits`, how many commit events are bound to it (`verbs/_rows.py::forensics`,
+attached by `pulse.py::run` to the stalled group ALONE, exactly as `waiting_on`
+is attached to blocked; every other row is byte-identical to what it was, and no
+other row pays for the thread read). Dispatched-and-never-heard-from
+(`edited`), claimed-then-silent (`claimed`), thinking-out-loud-then-gone
+(`comment`) and work-on-the-branch (`commit`, with a count) are four different
+moves, and they are now four different lines. Still derived per read, still
+nothing stored, and still no cause of death: the lease's only heartbeat is MCP
+traffic, so the board can say WHAT was last said and never WHY it stopped.
+Rendered on the MCP board by `mcp/boardview.py::_group`; pinned by
+`tests/test_verbs.py::test_a_stalled_row_says_what_its_holder_last_did_and_how_long_ago`,
+`…::test_a_stalled_row_counts_the_commits_bound_to_the_card`,
+`…::test_only_a_stalled_row_carries_the_forensics_keys` and
+`tests/test_mcp.py::test_a_stalled_line_says_what_the_holder_last_did_and_what_is_on_the_branch`.
+
 The remaining "recover" mentions (`core/types.py`, `verbs/assign.py`,
 `mcp/tools.py`, `gitwork/run.py`, `core/mentions.py`, `store/live.py`) are
 intentional: each one explains why the
@@ -908,9 +950,38 @@ Milestone, next to `rules`. Both are implemented (tk-097cae, 2026-08-07): the
 ordering rule is one sentence in `mcp/server.py::INSTRUCTIONS`, delivered at
 the handshake inside `hello.py`'s budget; `Milestone.criteria` travels into
 every take like `rules` and is SHOWN at `taskops_merge milestone=`, which
-refuses until the human answers `criteria_met=true` — recorded in the `landed`
-event, never judged by the machine. §10 of that post-mortem was the map from each
+refuses until the human answers — `criteria_met=true`, or `criteria_met=false`
+with a MANDATORY `note=` (2026-08-14, tk-d65ad3: some criteria are structurally
+post-landing — "seven days of live rows" for code that only deploys FROM the
+trunk — and a gate that took only `true` deadlocked the chapter or invited a
+lie). Both answers, and the note, are recorded in the `landed` event and never
+judged by the machine; `false` in silence is the one refused outcome, in the
+gate (`mcp/chapter.py::land`, before any git runs) and again in the write
+(`verbs/record.py::merged`). §10 of that post-mortem was the map from each
 adoption to its test.
+
+**And the seam files a chapter declares are a chapter's field, not a repo's**
+(2026-08-14, tk-6882a1). Three conflicts in one real wave were the same shape —
+sibling cards each APPENDING to a registry, a changelog, a barrel file — and git
+already folds that shape with its built-in `union` driver. So a milestone
+DECLARES the paths: `taskops_plan union_files=[…]` at creation, or
+`taskops_update milestone=… union_files=[…]` afterwards, replaced WHOLE like
+`rules` and `criteria` (`verbs/_chapter.py::LISTS`, `core/chapters.py`) — the
+un-declare is `union_files=[]`, because an append-only log has no un-declare
+event. It is SCOPED twice over. In space: only the declared paths get
+`merge=union`; everything undeclared conflicts, aborts and refuses byte for
+byte as before, and an in-tree `.gitattributes` still WINS over the ephemeral
+file, so the dashboard bundle's `-merge` cannot be overridden by a declaration.
+In time and in place: it is applied on the CARD's catch-up alone
+(`mcp/integrate.py` reads it off the dossier it already loaded and passes it to
+`gitwork/catchup.py::catch_up`); the chapter→trunk catch-up
+(`mcp/chapter.py::_catch_up_to_trunk`) passes nothing, because a chapter meeting
+a moved trunk is the human's merge, not a sibling's append. Why the mechanism is
+an EPHEMERAL `core.attributesFile` outside the repo rather than a committed
+`.gitattributes` or `info/attributes` is argued in §11's table — in one line,
+both of those are repo-wide and outlive the merge, and inside a linked worktree
+`info/attributes` resolves to the COMMON dir, which would hand one card's
+declaration to every sibling merging at that moment.
 
 ---
 
@@ -1342,7 +1413,7 @@ Three mechanisms, all client-side, all in the layers that already had git:
 | # | mechanism | where |
 |---|---|---|
 | 1 | a commit event carries `numstat` — `+/-` per file, `null` for a file git could not count (a binary, never a `0`) | `gitwork/bind.py` → `verbs/record.py`; drawn by `ui/src/links.tsx` on the dossier's commit list and on the Event stream |
-| 2 | branches reach `origin` by **best-effort pushes** at the three lifecycle moments that already exist — done, integrate, land | `gitwork/remote.py::push`, called from `gitwork/trees.py` / `mcp/gitmoves.py`. `trees.py`'s `merge_trunk` is the precedent and its comment is the contract: *best effort; local still landed*. Never a gate, never in a commit hook, never a board fact |
+| 2 | branches reach `origin` by **best-effort pushes** at the three lifecycle moments that already exist — done, integrate, land | `gitwork/remote.py::push`, called from `mcp/gitmoves.py` (done) and `gitwork/landing.py` (integrate, land). `landing.py`'s comment is the contract: *best effort; local still landed*. Never a gate, never in a commit hook, never a board fact |
 | 3 | the repo's forge slug is recorded ONCE, by the side that HAS the repo (`init`/`join`), as `{host, slug, url}`, and rides on the board payload | `gitwork/remote.py::remember` → `verbs/project.py`; consumed by `ui/src/links.tsx` |
 
 **The switch for all of it is `git remote get-url origin`, never a

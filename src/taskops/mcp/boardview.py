@@ -24,7 +24,7 @@ def board(data: dict[str, Any], now: float) -> str:
     out += _group("MERGE — done, not integrated → taskops_merge", groups.get("merge"), now)
     out += _mentions(groups.get("mentions"), now)
     out += _group(
-        "REVIEW — handed in, nobody checking → spawn a verifier (taskops_review task=…)",
+        "REVIEW — handed in, nobody checking → review it yourself: taskops_review task=…",
         groups.get("review"),
         now,
     )
@@ -109,6 +109,15 @@ def _group(title: str, rows: object, now: float, extra: list[str] | None = None)
             # STALLED says how long since its owner said ANYTHING. Not a guess
             # about why — a fact you can act on.
             tail += f" · quiet for {human(float(quiet))}"
+        # STALLED alone carries these (`verbs/_rows.py::forensics`), so the test
+        # is the key's presence and not the group's name: what the holder LAST
+        # said and what is on the branch is the resume-vs-reassign decision.
+        last = _obj(row.get("last_event"))
+        age = last.get("ago")
+        if last and isinstance(age, (int, float)):
+            tail += f" · last {last.get('kind')} {ago(float(age))}"
+        if isinstance(row.get("commits"), int):
+            tail += f" · {row['commits']} commit{'' if row['commits'] == 1 else 's'}"
         line = f"  {row.get('id')}  {row.get('title')}  {who}{when}{tail}".rstrip()
         if row.get("text"):
             # A CHANGES row carries the reviewer's words the way a MENTIONS row

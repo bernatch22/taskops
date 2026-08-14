@@ -438,6 +438,72 @@ def test_a_dead_workers_card_comes_back_by_itself(
     assert call(stores, "take", W1, task=card)["state"] == "doing"
 
 
+def test_a_stalled_row_says_what_its_holder_last_did_and_how_long_ago(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Five workers died at once and every stalled row read only "quiet for 1h".
+
+    Took-then-nothing and commented-then-nothing are different diagnoses, and
+    `quiet_for` cannot tell them apart. The row carries the LAST event's kind and
+    its age, derived from the thread on the read — nothing is stored, and nothing
+    claims to know WHY the holder stopped (ARCHITECTURE §12), only what it said.
+    """
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)  # claimed out of the pool, then silence
+
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    assert row["last_event"]["kind"] == "claimed"
+    assert row["last_event"]["ago"] >= LEASE_TTL
+
+    # and it MOVES with the thread: a comment then silence is the other diagnosis
+    call(stores, "update", W1, task=card, comment="halfway through the parser")
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    assert row["last_event"]["kind"] == "comment"
+    assert LEASE_TTL <= row["last_event"]["ago"] < 2 * LEASE_TTL + 240
+
+
+def test_a_stalled_row_counts_the_commits_bound_to_the_card(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """Whether there is work on the branch is the resume-vs-reassign decision,
+    and the COUNT is free over the same list a boolean would fold."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "assign", BERNA, tasks=[card])
+    call(stores, "take", W1, task=card)
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    # Taking a card already assigned to you writes NO event (`verbs/take.py`:
+    # being on it is the lease's answer), so the dispatch itself is the last
+    # word — which reads exactly as "handed over, never heard from".
+    assert row["commits"] == 0 and row["last_event"]["kind"] == "edited"
+
+    call(stores, "take", W1, task=card)  # the worker came back, committed, died again
+    call(stores, "bind", W1, task=card, sha="a1b2c3", subject="feat: parser")
+    call(stores, "bind", W1, task=card, sha="d4e5f6", subject="test: parser")
+    clock(LEASE_TTL + 60)
+    row = call(stores, "board", BERNA)["groups"]["stalled"][0]
+    assert row["commits"] == 2 and row["last_event"]["kind"] == "commit"
+
+
+def test_only_a_stalled_row_carries_the_forensics_keys(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """They ride on the stalled group the way `waiting_on` rides on blocked: a
+    doing or blocked row is byte-identical to what it always was, and no row
+    outside STALLED pays for the extra thread read."""
+    cards = planned(stores)["cards"]
+    call(stores, "take", W1, task=cards[0]["id"])
+    clock(60)
+    board = call(stores, "board", BERNA)
+
+    doing = board["groups"]["doing"][0]
+    assert "last_event" not in doing and "commits" not in doing
+    for row in board["groups"]["blocked"] + board["groups"]["take"]:
+        assert "last_event" not in row and "commits" not in row
+
+
 def test_a_stalled_card_is_handed_over_with_the_verb_that_already_existed(
     stores: Stores, clock: Callable[[float], None]
 ) -> None:
@@ -616,6 +682,52 @@ def test_a_mention_on_a_closed_card_stops_asking(
     assert call(stores, "board", BERNA)["pulse"]["mentions"] == 1
     call(stores, "update", W1, task=card, status="done", no_code=True, comment="shipped")
     assert call(stores, "board", BERNA)["pulse"]["mentions"] == 0
+
+
+def test_a_comment_on_a_closed_card_is_accepted_and_lands_in_the_thread(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """A postscript completes an append-only log; it never reopens the card.
+
+    Reported from a real wave as a REFUSAL and it does not reproduce: `update`
+    has no CLOSED guard on the comment path, by design. The thread outlives the
+    work — a reviewer saying what they found on a card that shipped yesterday is
+    the whole reason the log is append-only — so this is the contract, not an
+    oversight, and adding that guard has to break a named test.
+    """
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(stores, "update", W1, task=card, status="done", no_code=True, comment="shipped")
+    clock(60)
+
+    out = call(stores, "update", W2, task=card, comment="postscript: the rounding was wrong")
+
+    assert out["card"]["status"] == "done"  # saying something never reopens it
+    said = [e for e in stores.events(card) if e["kind"] == "comment"]
+    assert [e["body"]["text"] for e in said] == ["postscript: the rounding was wrong"]
+
+
+def test_a_mention_written_on_an_already_closed_card_is_undeliverable(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """The other half of the pin above: the comment lands, the ADDRESS does not.
+
+    `core/mentions.pending` skips closed cards wholesale, so a mention written
+    after the close pages nobody — and the writer is told nothing. Deliberate
+    (a closed thread owes no reply, and it is what bounds the pending scan), and
+    pinned here so changing it is a decision somebody makes on purpose.
+    """
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(stores, "update", W1, task=card, status="done", no_code=True, comment="shipped")
+    clock(60)
+
+    call(stores, "update", W2, task=card, comment="this needed a second look", mentions=[BERNA])
+
+    assert call(stores, "board", BERNA)["pulse"]["mentions"] == 0
+    # …and nothing was lost: the address is in the log, only not delivered.
+    said = [e for e in stores.events(card) if e["body"].get("mentions")]
+    assert [e["body"]["mentions"] for e in said] == [[BERNA]]
 
 
 def test_the_mention_count_rides_on_every_answer_not_only_the_board(

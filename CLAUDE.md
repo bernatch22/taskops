@@ -71,8 +71,11 @@ One Claude hook exists and it only DELIVERS (a pending mention, and the
 MERGE/REVIEW/STALLED counts to a `dev:`). It may never decide, store or write.
 
 Reading and commenting are open to everyone; only taking, closing and releasing
-are the owner's. Any agent may `taskops_comment` on ANY open card — that
-asymmetry is the whole communication channel between parallel agents.
+are the owner's. Any agent may `taskops_comment` on ANY card — that asymmetry is
+the whole communication channel between parallel agents. **A CLOSED card is
+included**: the log is append-only, so a postscript is accepted and does not
+reopen it. Only DELIVERY stops at the close — a `mentions=` written on a closed
+card pages nobody, silently (`verbs/_facts.py::pending_mentions` argues why).
 
 **ONE introduction per side, ONE credential** (2026-08-11, ARCHITECTURE §19).
 A key gets enrolled either by burning an invite (`POST /<board>/invite/redeem`)
@@ -133,8 +136,8 @@ find src/taskops -name '*.py' -exec wc -l {} + | awk '$2!="total" && $1>=190' | 
 **A leading `_` means "plumbing for the layer above", not "private"** — a
 three-zone convention. The package ROOT (`_errors _ids _clock _json _locate
 _version _wire` are level 0; `board.py`, `session.py`, `identity.py` are that
-layer's doors) and `verbs/` (`_args _cards _context _facts _mentions _rows
-_stories _waiting` are helpers — the un-prefixed files are the registry's entries, one
+layer's doors) and `verbs/` (`_args _cards _chapter _context _facts _mentions
+_rows _stories _waiting` are helpers — the un-prefixed files are the registry's entries, one
 per verb). Nowhere else carries it: every module under `core/ store/ gitwork/
 http/ mcp/ cli/` is internal to its layer, and `import taskops` exposes five
 errors and a version, so module names are a contract with nobody. Do NOT rename

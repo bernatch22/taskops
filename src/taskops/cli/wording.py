@@ -30,8 +30,8 @@ board is one call away."""
 CALLS = {
     "merge": "◆ taskops: {n} done, not in the trunk — one taskops_merge task= each: {ids}",
     "review": (
-        "◆ taskops: {n} handed in, nobody checking — spawn a verifier per card"
-        " (its one tool is taskops_review task=): {ids}"
+        "◆ taskops: {n} handed in, nobody checking — review them yourself, in this"
+        " session (taskops_review task= claims, verdict= judges): {ids}"
     ),
     "stalled": (
         "◆ taskops: {n} owned, nobody running them — taskops_assign tasks=[…]"

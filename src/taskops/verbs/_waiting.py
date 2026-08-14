@@ -10,7 +10,7 @@ grown back by the side door. So this is the same derivation with the heartbeat
 removed, exactly as `mentions` is for the ✉ group.
 
     merge    done, not integrated yet  → taskops_merge task=…
-    review   handed in, nobody on it   → spawn a verifier
+    review   handed in, nobody on it   → taskops_review (review it yourself)
     stalled  owned, nobody running it  → taskops_assign (hand it over)
 
 The board's own ranking, and only the three a `dev:` can act on. TAKE is not

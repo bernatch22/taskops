@@ -28,11 +28,38 @@ while other callers say their own thing. One outcome type, three states:
     blocked    a guard said do not touch this tree at all: "missing" (never
                conjure a worktree) or "dirty" (somebody may be mid-thought in
                it even though the card is done)
+
+THE UNION SEAM (`union=`). Three conflicts in one real wave were the same
+mechanical thing: sibling cards each APPENDING their own entry to one shared
+registry file. That is not judgment, it is git's built-in `union` driver. So a
+milestone may DECLARE those paths (`Milestone.union_files`) and they — only they
+— get `merge=union` for the duration of this one merge. Everything else
+conflicts, aborts and refuses exactly as before, byte for byte, and `union=()`
+(the default, and what every chapter that declared nothing passes) does not even
+write the file.
+
+WHY `core.attributesFile` AND NOT `$GIT_DIR/info/attributes`. Measured in this
+repo: `git rev-parse --git-path info/attributes` inside a LINKED worktree
+answers the COMMON dir — `.git/info/attributes`, one file shared by every card
+worktree at once. Writing there would hand one card's declaration to every
+sibling merging concurrently, and a crash between write and delete would leave
+it enabled for the whole repo, invisibly. `core.attributesFile` is passed as a
+`-c` override for ONE process and points at a temp file OUTSIDE the repository:
+nothing to leak into the tree, nothing for `git status` to see, and if the
+process dies the next merge simply does not pass the flag. It is deleted in a
+`finally` either way — the merge succeeding or aborting is not its business.
+
+The precedence is the other half of the argument. An in-tree `.gitattributes`
+BEATS `core.attributesFile`, so this can never override a committed rule: the
+repo's own `-merge` on the built dashboard bundle keeps refusing to text-merge
+even if a chapter names it, which is exactly the right way round — a committed
+attribute is a repo-wide decision, a declaration is one chapter's convenience.
 """
 
 from __future__ import annotations
 
-from typing import NamedTuple
+import tempfile
+from typing import Sequence, NamedTuple
 from pathlib import Path
 
 from . import run
@@ -45,15 +72,43 @@ class CatchUp(NamedTuple):
     said: str = ""
 
 
-def catch_up(tree: Path, branch: str) -> CatchUp:
-    """Merge `branch` into whatever is checked out in `tree`. Never raises."""
+def catch_up(tree: Path, branch: str, union: Sequence[str] = ()) -> CatchUp:
+    """Merge `branch` into whatever is checked out in `tree`. Never raises.
+
+    `union` is the declared seam paths; empty means today's behaviour exactly.
+    """
     if not tree.is_dir():
         return CatchUp(blocked="missing")
     if run.dirty(tree):
         return CatchUp(blocked="dirty")
-    result = run.git("merge", "--no-edit", branch, cwd=tree)
+    attrs = _attributes(union)
+    try:
+        prefix = ("-c", f"core.attributesFile={attrs}") if attrs else ()
+        result = run.git(*prefix, "merge", "--no-edit", branch, cwd=tree)
+    finally:
+        if attrs:
+            attrs.unlink(missing_ok=True)
     if not result.ok:
         conflicts = run.git("diff", "--name-only", "--diff-filter=U", cwd=tree).out
         run.git("merge", "--abort", cwd=tree)
         return CatchUp(conflicts=conflicts.splitlines(), said=result.err or result.out)
     return CatchUp(sha=run.must("rev-parse", "HEAD", cwd=tree))
+
+
+def _attributes(union: Sequence[str]) -> Path | None:
+    """The ephemeral attributes file, in the system temp dir — never in the repo.
+
+    None when nothing is declared, and the caller then passes no `-c` at all:
+    "this chapter declared no seam" and "this merge behaves as it always did"
+    have to be the same instruction stream, not the same instruction stream plus
+    an empty override.
+    """
+    paths = [p.strip() for p in union if p.strip()]
+    if not paths:
+        return None
+    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 — closed on the next line
+        "w", prefix="taskops-union-", suffix=".attributes", delete=False, encoding="utf-8"
+    )
+    with handle:
+        handle.write("".join(f"{path} merge=union\n" for path in paths))
+    return Path(handle.name)

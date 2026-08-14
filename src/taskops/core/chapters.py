@@ -28,6 +28,7 @@ def fold(milestones: dict[str, Milestone], event: Event) -> None:
                 rules=[str(r) for r in body.get("rules", []) if r],
                 criteria=[str(c) for c in body.get("criteria", []) if c],
                 reviews=bool(body.get("reviews", False)),
+                union_files=[str(f) for f in body.get("union_files", []) if f],
                 branch=str(body.get("branch", "")),
                 status="open",
                 created=event["ts"],
@@ -61,6 +62,10 @@ def fold(milestones: dict[str, Milestone], event: Event) -> None:
         if "criteria" in body:
             # Same shape, same reason: the whole list or nothing.
             stone["criteria"] = [str(c) for c in body["criteria"] if c]
+        if "union_files" in body:
+            # The whole list, like `rules` and `criteria`: withdrawing a seam
+            # file is `union_files=[]`, and there is no un-declare event.
+            stone["union_files"] = [str(f) for f in body["union_files"] if f]
         if "reviews" in body:
             # Only a DEFAULT for cards planned after it: turning it on does not
             # retro-flag a card, and turning it off does not un-flag one. A card

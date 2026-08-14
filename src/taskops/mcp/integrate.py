@@ -32,11 +32,11 @@ it, so the re-run picks up exactly where it stopped.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 from pathlib import Path
 
 from . import render
-from .._json import as_rows, as_object
+from .._json import as_rows, as_object, as_strings
 from ..board import Board
 from .._errors import Refused, BadRequest, TaskopsError
 from ..gitwork import trees, catchup, landing
@@ -65,7 +65,11 @@ def one(board: Board, repo: Path, task: str) -> tuple[str, str]:
     if not branch:
         raise BadRequest(f"{task} belongs to no milestone, so there is no branch to integrate into")
     card_branch = str(dossier.get("branch", task))
-    catch_up_or_refuse(repo, branch, card_branch, task)
+    # The chapter's declared seam files ride on the milestone the dossier ALREADY
+    # carries (`verbs/_context.py` puts the whole Milestone on the card payload),
+    # so the declaration costs no second read and cannot be a second copy.
+    union = as_strings(as_object(dossier.get("milestone")).get("union_files"))
+    catch_up_or_refuse(repo, branch, card_branch, task, union)
     sha = landing.merge_card(repo, branch, card_branch, task)
     return sha, render.plain(board.call("merged", {"task": task, "into": branch, "sha": sha}))
 
@@ -82,7 +86,9 @@ def _by_hand(repo: Path, branch: str, task: str) -> str:
     return f"  cd {trees.card_tree(repo, task)} && git merge {branch}\nthen taskops_merge task={task} again"
 
 
-def catch_up_or_refuse(repo: Path, branch: str, card_branch: str, task: str) -> None:
+def catch_up_or_refuse(
+    repo: Path, branch: str, card_branch: str, task: str, union: Sequence[str] = ()
+) -> None:
     """A done card that is behind its chapter catches ITSELF up, when git says clean.
 
     This used to refuse and print the two commands; the human's next act was to
@@ -95,11 +101,15 @@ def catch_up_or_refuse(repo: Path, branch: str, card_branch: str, task: str) -> 
     or absent worktree is NEVER touched — today's message, verbatim, because
     nothing was attempted — and a conflict carries git's own words on top of the
     behind-count, because now the human genuinely is the only one who can decide.
+
+    `union` is the milestone's declared seam files (`Milestone.union_files`):
+    additive sibling hunks THERE fold instead of conflicting. It narrows what
+    reaches this refusal; it never widens it, and empty is today's behaviour.
     """
     count = landing.behind(repo, branch, card_branch)
     if not count:
         return  # not behind: from here on the path is byte-for-byte what it was
-    got = catchup.catch_up(trees.card_tree(repo, task), branch)
+    got = catchup.catch_up(trees.card_tree(repo, task), branch, union)
     if got.sha:
         return
     if got.blocked:
@@ -112,7 +122,8 @@ def catch_up_or_refuse(repo: Path, branch: str, card_branch: str, task: str) -> 
         + "\n".join(f"  {f}" for f in got.conflicts)
         + f"\n  (merge aborted — {trees.card_tree(repo, task)} is exactly as it was)"
         + f"\n  git said: {got.said}"
-        + "\n  → only the worker can resolve this, in its own worktree:\n"
+        + "\n  → whoever is integrating — orchestrator or worker — resolves it in the card's"
+        + f" worktree, {trees.card_tree(repo, task)}:\n"
         + _by_hand(repo, branch, task)
     )
 

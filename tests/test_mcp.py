@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from taskops import _clock
-from taskops.mcp import hello, tools, server
+from taskops.mcp import hello, tools, before, server, boardview
 from taskops.board import LocalBoard, RemoteBoard
 from tests.conftest import T0
 from tests.test_git import repo as git_repo
@@ -132,6 +132,23 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     # …and the whole handshake must fit UNDER the measured truncation, panorama
     # included: hello.CAP is the ceiling and the protocol may not eat all of it.
     assert len(text) + 300 + 2 <= hello.CAP, "INSTRUCTIONS grew past the cap — the panorama dies"
+
+
+def test_review_guidance_never_says_spawn_a_verifier() -> None:
+    """Berna's standing decision: a handed-in card is reviewed IN-SESSION by the
+    orchestrator, never by a spawned sub-agent. Both defaults a reader meets —
+    the MCP instructions and the REVIEW group on taskops_board — say the same
+    thing and name the working call, and neither carries the word `spawn` on it.
+    """
+    protocol = " ".join(server.INSTRUCTIONS.split())  # the source is hard-wrapped
+    review = protocol.split("review is optional per card", 1)[1].split("· you may NOT", 1)[0]
+    assert "spawn" not in review and "verifier" not in review
+    assert "reviewed by YOU, in this session — taskops_review" in review
+
+    screen = boardview.board({"groups": {"review": [{"id": "tk-1"}]}}, 0.0)
+    line = next(ln for ln in screen.splitlines() if ln.startswith("REVIEW"))
+    assert "spawn" not in line and "verifier" not in line
+    assert "review it yourself: taskops_review task=" in line
 
 
 # ── the dossier ─────────────────────────────────────────────────────────────
@@ -260,6 +277,22 @@ def test_mentions_are_ranked_above_the_card_that_went_quiet(repo: Path, boards: 
     worker.call("update", {"task": cards[2]["id"], "comment": "which rate?", "mentions": [BERNA]})
     text = call(dev, repo, "taskops_board")
     assert text.index("MENTIONS —") < text.index("STALLED —")
+
+
+def test_a_stalled_line_says_what_the_holder_last_did_and_what_is_on_the_branch(
+    repo: Path, boards: Any
+) -> None:
+    """The payload keys are only half of it: the orchestrator reads this TEXT,
+    and "quiet for 1h" alone is what made resume-vs-reassign an investigation.
+
+    Nothing changes for any other group — only a STALLED row carries the keys
+    (`verbs/_rows.py::forensics`), so `_group` renders them where they exist."""
+    dev, cards = seeded(boards)
+    dev.call("assign", {"tasks": [cards[0]["id"]]})
+    boards(W1).call("bind", {"task": cards[0]["id"], "sha": "a1b2c3", "subject": "feat: model"})
+
+    stalled = call(dev, repo, "taskops_board").split("STALLED —")[1].split("TAKE —")[0]
+    assert "last commit" in stalled and "1 commit" in stalled
 
 
 def test_with_two_chapters_open_the_board_names_both(repo: Path, boards: Any) -> None:
@@ -543,6 +576,73 @@ def test_a_catch_up_that_conflicts_names_both_the_distance_and_gits_own_words(
     assert run.git("status", "--porcelain", cwd=tree).out == ""
 
 
+def test_a_conflict_refusal_names_the_worktree_not_a_departed_worker(
+    repo: Path, boards: Any
+) -> None:
+    """It used to say "only the worker can resolve this, in its own worktree" —
+    and by the time a card is done and its chapter has moved on, the worker is
+    gone: the ORCHESTRATOR is the one holding the refusal. The move is the same
+    either way, so the text names the PLACE (the card's worktree) and both roles
+    instead of an actor who is usually not there."""
+    dev, card, stone_branch, _branch, _tree = behind_by_one(
+        repo, boards, card_file="shared.py"
+    )
+
+    with pytest.raises(Refused) as refusal:
+        call(dev, repo, "taskops_merge", task=card)
+
+    said = str(refusal.value)
+    assert "only the worker" not in said
+    assert str(trees.card_tree(repo, card)) in said
+    assert "orchestrator or worker" in said
+
+
+def test_a_declared_union_seam_turns_that_refusal_into_a_merge(
+    repo: Path, boards: Any
+) -> None:
+    """The declaration travels: `update milestone= union_files=[…]` is a
+    milestone FACT, folded per read like `rules`, riding on the card dossier the
+    integration already loads, and it reaches the catch-up merge.
+
+    Same fixture as the conflict refusal above, one declaration apart — the card
+    and the chapter both touched `shared.py`, and now it folds instead of
+    refusing. Nothing is resolved for anybody: only the named path unions.
+    """
+    dev, card, stone_branch, _branch, tree = behind_by_one(repo, boards, card_file="shared.py")
+    stone = str(dev.call("card", {"task": card})["milestone"]["id"])
+    dev.call("update", {"milestone": stone, "union_files": ["shared.py"]})
+
+    out = call(dev, repo, "taskops_merge", task=card)
+
+    assert stone_branch in out
+    kept = (tree / "shared.py").read_text(encoding="utf-8")
+    assert "VAT = 21" in kept and "VAT = 10" in kept  # both sides, no marker
+    assert "<<<<<<<" not in kept
+    assert run.git("status", "--porcelain", cwd=tree).out == ""
+
+
+def test_the_declaration_is_derived_per_read_and_reaches_every_reader(
+    repo: Path, boards: Any
+) -> None:
+    """Criterion 5. It is stored once, as a milestone event, and read from the
+    fold everywhere — the card payload, the board payload, and the take a worker
+    is shown. No second copy, and `union_files=[]` withdraws it whole."""
+    dev, cards = seeded(boards)
+    card = cards[0]["id"]
+    stone = str(dev.call("card", {"task": card})["milestone"]["id"])
+
+    dev.call("update", {"milestone": stone, "union_files": ["src/registry.py", ""]})
+
+    assert dev.call("card", {"task": card})["milestone"]["union_files"] == ["src/registry.py"]
+    assert dev.call("board", {})["milestone"]["union_files"] == ["src/registry.py"]
+    shown = before.rules(dev.call("card", {"task": card}))
+    assert any("src/registry.py" in line for line in shown)
+    assert any("APPEND" in line for line in shown)  # what a worker must DO about it
+
+    dev.call("update", {"milestone": stone, "union_files": []})
+    assert dev.call("card", {"task": card})["milestone"]["union_files"] == []
+
+
 def _merging(tree: Path) -> bool:
     return run.git("rev-parse", "--verify", "--quiet", "MERGE_HEAD", cwd=tree).ok
 
@@ -660,6 +760,81 @@ def test_landing_shows_the_chapters_criteria_and_the_human_answers_out_loud(
     call(dev, repo, "taskops_merge", milestone=stone, criteria_met=True)
     landed = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"]
     assert landed and landed[-1]["body"].get("criteria_met") is True  # on the record
+
+
+def _chapter_with_criteria(repo: Path, boards: Any, dev: Any) -> str:
+    """A chapter with one criterion and nothing left open — ready for the gate."""
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "MVP",
+            "goal": "invoice a bank CSV",
+            "criteria": ["seven days of live rows"],
+            "tasks": [{"title": "VAT", "spec": "the whole tax"}],
+        },
+    )
+    stone, card = out["milestone"]["id"], out["cards"][0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+    w1.call("update", {"task": card, "status": "dropped", "comment": "not needed after all"})
+    return str(stone)
+
+
+def test_criteria_met_false_lands_with_a_mandatory_note_on_the_record(
+    repo: Path, boards: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A criterion that can only be checked AFTER the trunk moves ("seven days of
+    live rows" for code that deploys FROM the trunk) used to deadlock the chapter:
+    the gate only accepted true. `false` lands — and the note is what keeps it
+    honest, so it is mandatory and lands beside the answer in the `landed` event."""
+    dev = boards(BERNA)
+    stone = _chapter_with_criteria(repo, boards, dev)
+
+    # absent is still absent: refused as before, now naming BOTH spellings
+    with pytest.raises(Refused, match="criteria_met=true") as absent:
+        call(dev, repo, "taskops_merge", milestone=stone)
+    assert "seven days of live rows" in str(absent.value)  # shown, not summarised
+    assert "criteria_met=false" in str(absent.value) and "note=" in str(absent.value)
+    assert not (repo / ".taskops" / "trees").exists()  # refused before git ran
+
+    # false with nothing said is the one dishonest outcome — refused, note named
+    with pytest.raises(Refused, match="note=") as silent:
+        call(dev, repo, "taskops_merge", milestone=stone, criteria_met=False)
+    assert "criteria_met=false" in str(silent.value)
+    assert not (repo / ".taskops" / "trees").exists()  # still no git
+
+    monkeypatch.setattr(landing, "land_milestone", lambda repo_, branch: ("main", "abc123"))
+    text = call(
+        dev,
+        repo,
+        "taskops_merge",
+        milestone=stone,
+        criteria_met=False,
+        note="rows start accruing once this is on the trunk",
+    )
+    assert "rows start accruing once this is on the trunk" in text  # visible, not swallowed
+    body = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"][-1]["body"]
+    assert body.get("criteria_met") is False
+    assert body.get("note") == "rows start accruing once this is on the trunk"
+    assert dev.stores.state()["milestones"][stone]["status"] == "landed"
+
+
+def test_the_verb_itself_refuses_a_silent_false_not_only_the_gate(
+    repo: Path, boards: Any
+) -> None:
+    """`merged` is the write; the MCP gate is a client. A `criteria_met=false`
+    arriving at the verb with no note is refused there too, so the record can
+    never hold an unexplained one."""
+    dev = boards(BERNA)
+    stone = _chapter_with_criteria(repo, boards, dev)
+    with pytest.raises(Refused, match="note="):
+        dev.call(
+            "merged",
+            {"milestone": stone, "into": "main", "sha": "abc123", "criteria_met": False},
+        )
+    landed = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"]
+    assert not landed  # nothing written
 
 
 def test_a_tool_bug_is_an_error_result_not_a_dead_server(
@@ -1172,11 +1347,11 @@ class TestOneCallIntegratesTheChapter:
 
         assert f"{ids[0]}  merged " in out
         # the refusal VERBATIM inside the report — head, git's own conflict file
-        # and the tail that names the only person who can resolve it
+        # and the tail that names where it gets resolved
         assert f"{ids[1]}  stopped: {ids[1]} is " in out
         assert f"behind {stone_branch}, and catching it up conflicts in:" in out
         assert "shared.py" in out
-        assert "only the worker can resolve this" in out
+        assert "orchestrator or worker" in out
         assert f"{ids[2]}  not reached" in out
         assert "1 of 3 integrated" in out
         integration = trees.integration_tree(repo, stone_branch)
@@ -1280,7 +1455,7 @@ def chapter_ready_to_land(
 
 
 class TestAChapterLandsOverAMovedTrunk:
-    """`gitmoves._land` — the landing gate catches the chapter up to a trunk that
+    """`chapter.land` — the landing gate catches the chapter up to a trunk that
     moved while it was in flight, on the same `catchup.catch_up` the single-card
     path uses. Gate first, catch-up second, land third."""
 
