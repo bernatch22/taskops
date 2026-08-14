@@ -42,6 +42,17 @@
   --term-accent: #b5abfc;
   --term-warn: #dda45f;
   --grid: rgba(145, 132, 217, 0.06);
+  /* The avatar disc. Its HUE is derived per actor and is the one colour channel
+     this file does not own (components/shared/Avatar.tsx hashes the actor name
+     — there is nowhere to store an assignment, so it has to be computed). What
+     stays here is everything that makes the disc belong to the THEME: the
+     saturation and lightness that hue is dressed in. A raw `hsl(h 100% 50%)`
+     would be the neon this palette exists to forbid; these numbers are what
+     keep 24 different hues reading as one family. */
+  --disc-s: 42%;
+  --disc-l: 62%;
+  --disc-bg-a: 0.2;
+  --disc-fg-l: 79%;
 }
 
 [data-tk="light"] {
@@ -75,6 +86,12 @@
   --term-accent: #5b4fc4;
   --term-warn: #9a6512;
   --grid: rgba(91, 79, 196, 0.05);
+  /* Same four, inverted for paper: the ink goes dark and the wash goes light,
+     so the SAME derived hue reads at the same strength under both themes. */
+  --disc-s: 48%;
+  --disc-l: 48%;
+  --disc-bg-a: 0.15;
+  --disc-fg-l: 33%;
 }
 
 html,

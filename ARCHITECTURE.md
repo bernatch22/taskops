@@ -1007,6 +1007,23 @@ dashboard on a machine with no node. React is bundled, never fetched from a
 CDN, so it also serves offline. It is a *client of the same HTTP contracts*
 described in §10 and imports nothing from the Python tree.
 
+Its live channel (`ui/src/client.ts::subscribe`) is **one reconnect loop with no
+terminal state but `stop()`**. It had two dead ends and neither survives: a
+WebSocket that had opened and dropped retried exactly ONCE after 500ms and then
+fell back to SSE permanently, and the SSE error handler only reported
+`onLive(false)` — so an `EventSource` that died fatally (`readyState` CLOSED, a
+non-200 while the server restarts) was retried by nothing at all, and the header
+sat on "offline" with a stale board until somebody pressed reload. Now WS retries
+with capped exponential backoff (500ms doubling to 8s: a laptop that slept
+through the night must not wait minutes after the lid opens), a fatally-closed
+SSE hands itself back to the same loop, and every failure path ends in `retry()`
+or in a transport that will. Regaining the feed pokes exactly ONE refetch — the
+transports' own `hello` frame, counted by `frame()`, never a second signal on
+`open` — so staleness heals with the connection and one recovery is one fetch.
+`subscribe` takes an injectable `Env` (`WebSocket`, `EventSource`, `setTimeout`,
+`clearTimeout`), which is what lets `ui/smoke/sections/feed-reconnect.tsx` drive
+the whole state machine headlessly, both removed dead ends included.
+
 What it shows, at this commit — the section is written to be re-read against
 `ui/src/App.tsx` and `ui/src/components/chrome/TabNav.tsx`, which are the two
 files that answer it:
@@ -1077,6 +1094,43 @@ files that answer it:
   verb, no stored status — the data is the existing `activity` verb through
   `useBoard`, and the view is read-only like the columns it replaces: a tile
   opens the same card drawer.
+  An open chapter is read **two ways**, chosen by a `columns | flow` segmented
+  control (`components/board/ViewToggle.tsx`) whose state lives on the page and
+  in `localStorage`. Not a route and not a sixth tab: the flow IS the board drawn
+  differently, and a tab would file it beside Monitor and Actors as another page
+  with another payload. **Flow** draws the dependency graph left to right, agents
+  on the nodes; all of its geometry is decided without a DOM in
+  `components/flow/layout.ts`, and `FlowView.tsx` measures and paints and decides
+  nothing. **Every edge it can draw ends on a BLOCKED node**, which is the
+  payload read honestly rather than a shortcut: a `BoardRow` (`verbs/pulse.py::_row`)
+  carries no `after` — the card's whole dependency list is sent only on the CARD
+  read — and the one dependency fact on the board payload is `waiting_on`, which
+  `pulse.py::run` attaches to the blocked group alone from `core/graph.py::blockers`,
+  already filtered to the dependencies that have NOT closed. That is "closing a
+  blocker frees its dependents by definition" reaching the drawing. The bands
+  therefore cannot come from the edges — a done card with no surviving edge would
+  sit beside a running one — so each state has a FLOOR (done 0 · in flight 1 ·
+  waiting 2) that a longest-path over open blockers may raise and never lower.
+  A blocker the payload does not carry as a row yields no edge: a line to a node
+  that is not on screen is a line to nowhere.
+  In BOTH views a tile that changes column **moves** rather than teleporting
+  (`components/board/flip.ts` + `useFlip.ts`): First/Last/Invert/Play, one
+  `requestAnimationFrame`, CSS transitions and no animation library. The old
+  rects are cached at the END of every commit rather than measured on the way in,
+  because the payload arrives through `useBoard` several components up and a
+  refetch is not the only thing that re-lays the page out. Exits are NOT
+  choreographed — a tile the board no longer says exists would be a second source
+  of truth about what is on the board, for a quarter second of decoration — and
+  `prefers-reduced-motion` skips the play, never the layout, which is exactly the
+  behaviour that came before. The holder rides along: `shared/Avatar.tsx` is now
+  the ONE disc, serving both the header presence row and the card tile, which
+  disagreed before (four hash tones in the header, accent-vs-grey by role on the
+  tile — one agent, two colours, which reads as two agents). It has two
+  independent axes: the HUE is derived from the actor string over 24 steps
+  because this board runs eight agents in a wave and four tones is a guaranteed
+  collision, and `live` — the lease actually held — is the emphasis. Neither is a
+  literal colour: saturation, lightness and the wash's alpha are `--disc-*`
+  tokens declared once per theme.
 * **Actors** — the fourth view (`ui/src/pages/Actors.tsx`), and the one that
   answers "who has been on this board, what did they carry, and for how long".
   **It is a page about DEVS, and an agent is a LINE inside one.** It shipped
