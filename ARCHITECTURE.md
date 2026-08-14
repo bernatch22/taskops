@@ -248,7 +248,7 @@ flowchart TB
         mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
         projectv["project — board-level facts: op=remote, op=visibility, op=forge"]
-        helpersv["_args _cards _chapter _context _facts _rows _stories — the helpers; the _ says 'not a verb'"]
+        helpersv["_args _cards _chapter _context _facts _rows _stories _windows — the helpers; the _ says 'not a verb'"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
     subgraph L4["4 · board.py + gitwork (the ONLY git, client-side)"]
@@ -293,7 +293,7 @@ instead of an arbitrary one.
 convention**: the package root (`_errors _ids _clock _json _locate _version
 _wire` are level 0; `board.py`, `session.py` and `identity.py` are that layer's
 doors), and `verbs/` (`_args _cards _chapter _context _facts _mentions _rows
-_stories _waiting` are helpers — the un-prefixed files are the registry's entries, one per verb).
+_stories _waiting _windows` are helpers — the un-prefixed files are the registry's entries, one per verb).
 Nowhere else carries it, because every module under `core/ store/ gitwork/
 http/ mcp/ cli/` is internal to its layer and there is nothing to distinguish;
 `import taskops` exposes five errors and a version, so module names are a

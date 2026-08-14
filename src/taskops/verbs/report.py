@@ -1,4 +1,4 @@
-"""report — hours and what moved, over calendar days.
+"""report — hours and what moved, over a calendar window.
 
 The signal is the timestamps of the events themselves, and since every call
 reaches the board, the signal is where the arithmetic is. v1 measured with
@@ -14,13 +14,17 @@ interval can reach in. The keeping is `sessions(since=start)`'s decision, once.
 The counts beside the hours (`closed`, `commits`, `cards`) stay strictly
 inside the window: they count EVENTS, not intervals, so the pre-roll is not
 theirs to see.
+
+Which span a `window=` spelling names — `7d`, `month`, `YYYY-MM`, `total` — is
+`_windows.py`'s question, and the resolved `Span` rides on the answer so the
+payload says what it measured instead of leaving a reader to infer it.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from . import _args
+from . import _args, _windows
 from .. import _clock
 from ..core import hours
 from ..core.types import Event
@@ -31,33 +35,55 @@ from ..store.stores import Stores
 #: single answer, not a stream. `sessions_total` always says the real number.
 SESSIONS = 240
 
+#: How many day buckets one answer carries. A named month is 28-31 and a 90d
+#: window is 90, so neither reaches it; `days_total` says the real number.
+BUCKETS = 92
+
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     now = _clock.now()
     stores.live.renew(actor, now)
-    return summary(stores, now, days(_args.text(args, "window", default="7d")), _zone(args))
+    return summary(stores, now, _args.text(args, "window", default="7d"), _zone(args))
 
 
-def summary(stores: Stores, now: float, span: int, tz: str) -> dict[str, Any]:
-    spans = hours.windows(now, tz, span)
-    start, end = spans[0][1], spans[-1][2]
-    events = _fetch(stores, start, end)
+def summary(stores: Stores, now: float, window: str, tz: str) -> dict[str, Any]:
+    """The fold over one span, plus the span's own description.
+
+    The answer SAYS what it measured: `window` carries the spelling asked, the
+    kind, a printable label and both edges, so a screen titles itself "August
+    2026" instead of inferring a month from two epoch floats. What each spelling
+    means is `_windows.parse`'s business, not this module's.
+    """
+    span = _windows.parse(window, now, tz)
+    spans = _buckets(span, tz, BUCKETS)
+    events = _fetch(stores, span.start, span.end)
     return {
-        "from": start,
-        "to": end,
+        "from": span.start,
+        "to": span.end,
+        "window": span._asdict(),
         "days": [_day(stores, label, lo, hi) for label, lo, hi in spans],
-        "by_actor": _by_actor(events, start),
+        "days_total": len(_buckets(span, tz, 100_000)),
+        "by_actor": _by_actor(events, span.start),
         "total": {
-            "seconds": sum(hours.total(p, start) for p in _stamps(events).values()),
-            "closed": sum(1 for e in events if e["ts"] >= start and _closed(e)),
+            "seconds": sum(hours.total(p, span.start) for p in _stamps(events).values()),
+            "closed": sum(1 for e in events if e["ts"] >= span.start and _closed(e)),
         },
     }
 
 
-def days(window: str) -> int:
-    """`7d`, `7`, `1d` → an integer number of calendar days, 1..90."""
-    text = window.strip().lower().removesuffix("d") or "7"
-    return max(1, min(90, int(text))) if text.isdigit() else 7
+def _buckets(span: _windows.Span, tz: str, cap: int) -> list[tuple[str, float, float]]:
+    """The day buckets an answer carries — and `total` carries NONE.
+
+    A month is 28-31 buckets and a `90d` window is 90: both bounded by the
+    calendar, and each one costs its own fold. The whole log is not bounded by
+    anything — it grows by a bucket a day forever, most of them empty — and
+    `total` exists to be the one figure that only GROWS, read against the
+    sliding ones. So it answers the sum and `days_total: 0`, rather than
+    shipping a truncated tail a reader would mistake for the span.
+    """
+    if span.kind == "total":
+        return []
+    return hours.buckets(span.start, span.end, tz, cap)
 
 
 def _zone(args: _args.Args) -> str:
