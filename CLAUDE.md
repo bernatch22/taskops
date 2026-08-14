@@ -136,8 +136,8 @@ find src/taskops -name '*.py' -exec wc -l {} + | awk '$2!="total" && $1>=190' | 
 **A leading `_` means "plumbing for the layer above", not "private"** — a
 three-zone convention. The package ROOT (`_errors _ids _clock _json _locate
 _version _wire` are level 0; `board.py`, `session.py`, `identity.py` are that
-layer's doors) and `verbs/` (`_args _cards _context _facts _mentions _rows
-_stories _waiting` are helpers — the un-prefixed files are the registry's entries, one
+layer's doors) and `verbs/` (`_args _cards _chapter _context _facts _mentions
+_rows _stories _waiting` are helpers — the un-prefixed files are the registry's entries, one
 per verb). Nowhere else carries it: every module under `core/ store/ gitwork/
 http/ mcp/ cli/` is internal to its layer, and `import taskops` exposes five
 errors and a version, so module names are a contract with nobody. Do NOT rename
