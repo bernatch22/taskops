@@ -7,8 +7,15 @@
  * differently, and a tab would put it beside Monitor and Actors as if it were
  * another page with another payload.
  *
+ * The geometry itself now lives in `shared/Segmented.tsx`, because the Actors
+ * page needed the same gesture for its hours window. This file kept what is
+ * ITS decision — the two views, their names, and the `data-view` hook — and
+ * nothing was restyled: same testid, same attributes, same pills.
+ *
  * It is not a router either — the choice is state on the page (`Board.tsx`),
  * remembered in `localStorage` and nowhere else. */
+
+import { Segmented } from "../shared/Segmented";
 
 export type BoardView = "columns" | "flow";
 
@@ -17,28 +24,6 @@ export const VIEWS: ReadonlyArray<{ id: BoardView; name: string }> = [
   { id: "flow", name: "Flow" },
 ];
 
-const bar: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "3px",
-  padding: "3px",
-  borderRadius: "10px",
-  background: "var(--pane)",
-  border: "1px solid var(--hair)",
-};
-
-const base: React.CSSProperties = {
-  all: "unset",
-  boxSizing: "border-box",
-  cursor: "pointer",
-  padding: "5px 12px",
-  borderRadius: "7px",
-  fontSize: "12px",
-  fontWeight: 450,
-  letterSpacing: "-0.02em",
-  whiteSpace: "nowrap",
-};
-
 export interface ViewToggleProps {
   active: BoardView;
   onSelect: (view: BoardView) => void;
@@ -46,26 +31,12 @@ export interface ViewToggleProps {
 
 export function ViewToggle({ active, onSelect }: ViewToggleProps): React.JSX.Element {
   return (
-    <div style={bar} data-testid="board-view-toggle" role="group">
-      {VIEWS.map((view) => {
-        const on = view.id === active;
-        return (
-          <button
-            key={view.id}
-            type="button"
-            data-view={view.id}
-            aria-pressed={on}
-            onClick={() => onSelect(view.id)}
-            style={{
-              ...base,
-              color: on ? "var(--text)" : "var(--text-2)",
-              background: on ? "var(--pane-3)" : "transparent",
-            }}
-          >
-            {view.name}
-          </button>
-        );
-      })}
-    </div>
+    <Segmented
+      testid="board-view-toggle"
+      name="view"
+      options={VIEWS}
+      active={active}
+      onSelect={onSelect}
+    />
   );
 }
