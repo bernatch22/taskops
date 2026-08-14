@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from taskops import _clock
-from taskops.mcp import hello, tools, server
+from taskops.mcp import hello, tools, server, boardview
 from taskops.board import LocalBoard, RemoteBoard
 from tests.conftest import T0
 from tests.test_git import repo as git_repo
@@ -132,6 +132,23 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     # …and the whole handshake must fit UNDER the measured truncation, panorama
     # included: hello.CAP is the ceiling and the protocol may not eat all of it.
     assert len(text) + 300 + 2 <= hello.CAP, "INSTRUCTIONS grew past the cap — the panorama dies"
+
+
+def test_review_guidance_never_says_spawn_a_verifier() -> None:
+    """Berna's standing decision: a handed-in card is reviewed IN-SESSION by the
+    orchestrator, never by a spawned sub-agent. Both defaults a reader meets —
+    the MCP instructions and the REVIEW group on taskops_board — say the same
+    thing and name the working call, and neither carries the word `spawn` on it.
+    """
+    protocol = " ".join(server.INSTRUCTIONS.split())  # the source is hard-wrapped
+    review = protocol.split("review is optional per card", 1)[1].split("· you may NOT", 1)[0]
+    assert "spawn" not in review and "verifier" not in review
+    assert "reviewed by YOU, in this session — taskops_review" in review
+
+    screen = boardview.board({"groups": {"review": [{"id": "tk-1"}]}}, 0.0)
+    line = next(ln for ln in screen.splitlines() if ln.startswith("REVIEW"))
+    assert "spawn" not in line and "verifier" not in line
+    assert "review it yourself: taskops_review task=" in line
 
 
 # ── the dossier ─────────────────────────────────────────────────────────────

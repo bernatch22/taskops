@@ -24,7 +24,7 @@ def board(data: dict[str, Any], now: float) -> str:
     out += _group("MERGE — done, not integrated → taskops_merge", groups.get("merge"), now)
     out += _mentions(groups.get("mentions"), now)
     out += _group(
-        "REVIEW — handed in, nobody checking → spawn a verifier (taskops_review task=…)",
+        "REVIEW — handed in, nobody checking → review it yourself: taskops_review task=…",
         groups.get("review"),
         now,
     )

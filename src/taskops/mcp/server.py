@@ -37,8 +37,8 @@ conflicts by construction · dispatch with taskops_assign,
 then spawn one sub-agent per brief, all in one message · integrate a done card
 with taskops_merge task= · land a FINISHED milestone with taskops_merge
 milestone= — NEVER raw git in the shared checkout · review is optional per
-card (review=true / reviews=true): a submitted card needs a verifier whose one
-tool is taskops_review (task= claims, verdict=pass|changes note= judges); pass
+card (review=true / reviews=true): a submitted card is reviewed by YOU, in this
+session — taskops_review (task= claims, verdict=pass|changes note= judges); pass
 → YOU close it, changes → resume your worker with the note · you may NOT hold
 a card.
 

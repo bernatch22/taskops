@@ -190,7 +190,11 @@ def test_the_orchestrator_is_told_the_three_groups_it_is_sitting_on(
         "◆ taskops: 1 owned, nobody running them",
     ]
     assert "one taskops_merge task= each: " + ready[0] in lines[0]
-    assert "taskops_review task=): " + ready[1] in lines[1]
+    # the REVIEW line sends the reader to review it HERE — Berna's standing
+    # decision — so it names taskops_review's two halves and never says `spawn`.
+    assert "review them yourself, in this session" in lines[1]
+    assert "spawn" not in lines[1] and "verifier" not in lines[1]
+    assert "(taskops_review task= claims, verdict= judges): " + ready[1] in lines[1]
     assert "taskops_assign tasks=[…]" in lines[2] and stalled in lines[2]
 
 
