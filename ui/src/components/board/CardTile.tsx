@@ -12,7 +12,8 @@
  * write verb on this page and no drag handle: the UI does not move cards. */
 import { useState } from "react";
 
-import { ago, initials } from "../../format";
+import { ago } from "../../format";
+import { Avatar } from "../shared/Avatar";
 import { Markdown } from "../shared/Markdown";
 import type { BoardRow } from "../../types";
 
@@ -63,6 +64,13 @@ export interface CardTileProps {
    *  the normal case (a chapter in focus), and the line is then not drawn at all
    *  rather than drawn empty — the tile keeps its height. */
   chapter?: string | undefined;
+  /** Hands the tile's element to whoever is animating the page (`useFlip`).
+   *
+   *  A plain callback prop and not `forwardRef`: the tile is not a generic
+   *  primitive somebody composes, it is this board's tile, and the ref goes to
+   *  exactly one caller. The tile itself still knows nothing about motion — it
+   *  hands over a node and never reads it. */
+  tileRef?: ((el: HTMLElement | null) => void) | undefined;
   onOpen: (id: string) => void;
 }
 
@@ -125,7 +133,7 @@ const pill: React.CSSProperties = {
 };
 
 export function CardTile(props: CardTileProps): React.JSX.Element {
-  const { row, chip, marker, note, waitingOn, chapter, onOpen } = props;
+  const { row, chip, marker, note, waitingOn, chapter, tileRef, onOpen } = props;
   const [lift, setLift] = useState(false);
   const [ring, setRing] = useState(false);
   const when = meta(row);
@@ -156,6 +164,7 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
   return (
     <button
       type="button"
+      ref={tileRef}
       style={style}
       data-testid="tile"
       data-card={row.id}
@@ -278,26 +287,21 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
             </span>
           ) : null}
         </div>
-        {who ? (
-          <span
-            title={who}
-            style={{
-              width: "23px",
-              height: "23px",
-              borderRadius: "50%",
-              flex: "none",
-              display: "grid",
-              placeItems: "center",
-              fontSize: "9.5px",
-              /* The disc upcases; `initials()` returns the actor's own case. */
-              textTransform: "uppercase",
-              background: row.holder ? "var(--accent-soft)" : "var(--pane-3)",
-              color: row.holder ? "var(--accent-hi)" : "var(--text-3)",
-            }}
-          >
-            {initials(who)}
-          </span>
-        ) : null}
+        {/* WHO is on this card — the same disc the header's presence row draws,
+            in the same actor's colour (`shared/Avatar.tsx`). It used to be a
+            hand-rolled span here whose colour meant the ROLE, so one agent was
+            purple in the header and grey on its own tile.
+
+            `row.holder` is the LIVE lease and `row.assignee` is who it was
+            handed to (`verbs/_rows.py::row`) — the first when there is one, and
+            it is `holder` ALONE that decides `live`: a stalled card carries the
+            second and not the first, and the ghosted disc is that group saying
+            "this is whose card it is, and nobody is running it".
+
+            The disc is INSIDE the tile, so a card crossing to another column
+            carries its agent across with it — that is the whole of "you can see
+            which agent is working the card" while it moves. */}
+        {who ? <Avatar actor={who} live={row.holder !== null} /> : null}
       </div>
     </button>
   );
