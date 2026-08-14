@@ -71,6 +71,8 @@ def team(stores: Stores, now: float) -> list[dict[str, Any]]:
 
 
 def hours(stores: Stores, args: _args.Args, now: float, window: str) -> dict[str, Any]:
-    """`window="7d"` folds the report into the same read — one call, one picture."""
+    """`window="7d"` folds the report into the same read — one call, one picture.
+    The spelling is `report.parse`'s business, not this one's: `7d`, `month`,
+    `YYYY-MM` and `total` all arrive here as the same string."""
     tz = _args.text(args, "tz", default="UTC") or "UTC"
-    return report.summary(stores, now, report.days(window), tz)
+    return report.summary(stores, now, window, tz)

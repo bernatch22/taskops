@@ -8,7 +8,9 @@ Two pieces of arithmetic bought with blood in v1:
   answer: nobody knows what happened in that hour.
 * **Calendar windows use both midnights of the same computation**, never
   `start + 86400`. A DST day is 23 or 25 hours long and adding a constant
-  silently shifts every subsequent day of the report.
+  silently shifts every subsequent day of the report. A calendar MONTH
+  (`month_edges`) inherits the rule whole — it is 28 to 31 days and, twice a
+  year, one of those days is not 24 hours.
 * **An interval belongs to the window its CLOSING stamp is in** (`since=`).
   v2 handed `sessions()` only the events inside `[start, end)`, so an interval
   straddling the leading edge lost its opener and was counted by NOBODY: a
@@ -114,9 +116,60 @@ def windows(now: float, tz: str, days: int) -> list[tuple[str, float, float]]:
     """The last `days` calendar days, oldest first: (YYYY-MM-DD, start, end)."""
     zone = ZoneInfo(tz)
     today = datetime.fromtimestamp(now, zone).date()
+    return _run(today - timedelta(days=days - 1), days, zone)
+
+
+def buckets(start: float, end: float, tz: str, cap: int) -> list[tuple[str, float, float]]:
+    """The calendar days a span touches, oldest first, at most `cap` of them —
+    and when it has to cut, it keeps the LAST `cap`, because the recent end is
+    the one somebody is looking at. `end` is exclusive: a span that stops on a
+    midnight belongs to the day before it, not to the empty one after.
+
+    Same shape as `windows()` so a reader has one kind of bucket, and the same
+    guarantee: every edge is a `_midnights` of a calendar date, never an offset.
+    """
+    zone = ZoneInfo(tz)
+    first = datetime.fromtimestamp(start, zone).date()
+    last = datetime.fromtimestamp(max(start, end - 1), zone).date()
+    count = min((last - first).days + 1, cap)
+    return _run(last - timedelta(days=count - 1), count, zone)
+
+
+def month_of(when: float, tz: str) -> tuple[int, int]:
+    """(year, month) of `when` READ IN `tz` — the caller's calendar, not UTC's:
+    at 01:15 in Madrid on the 1st it is already the new month, and in UTC it is
+    still the old one. Every caller that names a month names it from here."""
+    local = datetime.fromtimestamp(when, ZoneInfo(tz))
+    return local.year, local.month
+
+
+def month_bounds(when: float, tz: str) -> tuple[float, float]:
+    """[first local midnight of that month, first of the next) around `when`."""
+    return month_edges(*month_of(when, tz), tz)
+
+
+def month_edges(year: int, month: int, tz: str) -> tuple[float, float]:
+    """A named calendar month, DST-correct on BOTH edges.
+
+    The two midnights come out of the same `datetime(..., tzinfo=zone)` walk, so
+    a month containing a transition (Europe/Madrid in March or October) is an
+    hour short or an hour long exactly where the calendar says it is. Adding
+    `86400 * days_in_month` to the opening stamp puts the closing edge an hour
+    off for every future read of that month — and a past month is a figure that
+    is supposed to never move again.
+    """
+    zone = ZoneInfo(tz)
+    nxt = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return (
+        datetime(year, month, 1, tzinfo=zone).timestamp(),
+        datetime(nxt.year, nxt.month, 1, tzinfo=zone).timestamp(),
+    )
+
+
+def _run(first: date, count: int, zone: ZoneInfo) -> list[tuple[str, float, float]]:
     out: list[tuple[str, float, float]] = []
-    for back in range(days - 1, -1, -1):
-        day = today - timedelta(days=back)
+    for step in range(count):
+        day = first + timedelta(days=step)
         start, end = _midnights(day, zone)
         out.append((day.isoformat(), start, end))
     return out

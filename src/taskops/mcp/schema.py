@@ -30,8 +30,11 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "taskops_board": _object(
         {
             "milestone": _text("ms-… to focus one chapter; default: the open one"),
-            "window": _text('hours over the last N calendar days, e.g. "7d"'),
-            "tz": _text("timezone for those days, e.g. Europe/Madrid (default UTC)"),
+            "window": _text(
+                'hours over "7d" (the last N calendar days), "month" (this month so '
+                'far), "2026-07" (that calendar month) or "total" (the whole log)'
+            ),
+            "tz": _text("timezone the days and months are cut in, e.g. Europe/Madrid (default UTC)"),
         }
     ),
     "taskops_card": _object(
