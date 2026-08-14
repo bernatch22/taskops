@@ -3,7 +3,7 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
-## Unreleased — the forge enrols the team; GitHub is the owner's, and nobody else's
+## Unreleased — the forge enrols the team; seam files fold; the board says how a worker went quiet
 
 - **A milestone may DECLARE its seam files, and sibling appends to them stop
   being conflicts.** Three conflicts in one real wave were the same mechanical
@@ -36,6 +36,39 @@ here, never written twice.
   cause of death is recorded — the lease's only heartbeat is MCP traffic — and
   every other board row is byte-identical to what it was. The MCP board prints
   them on the STALLED line (`mcp/boardview.py`).
+- **`criteria_met=false` lands a chapter, with a mandatory note on the record.**
+  The landing gate read the answer as a bool, so "absent" and "false" collapsed
+  into the same refusal and a criterion that is structurally post-landing —
+  "seven days of live rows" for code that only deploys FROM the trunk —
+  deadlocked the chapter or invited a lie. It is now THREE states: absent
+  refuses and shows the criteria, `true` lands, and `false` lands too, but never
+  in silence — `note=` saying which criteria are unmet and why landing is still
+  right is required, in the gate (`mcp/chapter.py::land`, before any git runs)
+  and again in the write (`verbs/record.py::merged`). Both the answer and the
+  note go into the `landed` event. The schema's own words hold: recorded, never
+  judged.
+- **Two refusals stopped naming the wrong actor and the wrong move.** A catch-up
+  conflict on integrate used to say only the worker could resolve it, in its own
+  worktree — but the orchestrator is usually the one integrating, and the path
+  it needs is the CARD's worktree, which it can `cd` into. It now names that
+  directory and says "whoever is integrating — orchestrator or worker"
+  (`mcp/integrate.py`). And the default REVIEW guidance no longer suggests
+  spawning a verifier sub-agent: reviews are done in-session, so the board and
+  the MCP instructions send the reader to `taskops_review task=` themselves
+  (`mcp/boardview.py`, `mcp/server.py`).
+- **Pinned: a comment on a CLOSED card is accepted; only the mention is
+  dropped.** Reported as a refusal, it never was one — the log is append-only,
+  so a postscript lands and does not reopen the card. What DOES stop at the
+  close is delivery: a `mentions=` written on a closed card pages nobody, and
+  silently. Both halves now have tests and the asymmetry is written down
+  (`verbs/_facts.py::pending_mentions`, CLAUDE.md).
+- **Documented: a lapsed lease still closes your own card, and a `done` can
+  never read `stalled`.** Both were reported as bugs and both are the design
+  read from the other end. `core/machine.py::_not_somebody_elses` refuses only a
+  LIVE holder who is somebody ELSE, so the worker that did the work still closes
+  it after twenty quiet minutes the clock cannot see; and `core/graph.py::derived`
+  answers the STORED status above every live fact, so `stalled` belongs to the
+  open branch alone. Pinned by tests and argued in ARCHITECTURE §12.
 
 - **The feed heals itself — the header no longer sticks on "offline".** The
   dashboard's live channel had two dead ends and both are removed

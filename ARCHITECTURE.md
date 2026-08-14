@@ -229,6 +229,7 @@ flowchart TB
         reportsm["reports — is this a report PATH, and the chapter's list as a fold"]
         holdingm["holding — 'is this history held here?', by event id: board pull + board rm"]
         forgem["forge — the forge vocabulary: which host can be asked, what access counts, owner/name"]
+        seamsm["seams — which ready cards name the same CONCEPT, from the specs alone"]
         hours["hours — working-time math"]
     end
     subgraph L2["2 · store (the ONLY SQL)"]
@@ -247,7 +248,7 @@ flowchart TB
         mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
         projectv["project — board-level facts: op=remote, op=visibility, op=forge"]
-        helpersv["_args _cards _context _facts _rows — the helpers; the _ says 'not a verb'"]
+        helpersv["_args _cards _chapter _context _facts _rows _stories — the helpers; the _ says 'not a verb'"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
     subgraph L4["4 · board.py + gitwork (the ONLY git, client-side)"]
@@ -266,7 +267,7 @@ flowchart TB
         identitym["identity.py — WHO signs in, with WHICH key: discover, establish"]
     end
     subgraph L5["5 · transports"]
-        mcpsrv["mcp/server, hello, tools, gitmoves, integrate, dossier, before, render, brief, schema, thread, boards, fields"]
+        mcpsrv["mcp/server, hello, tools, gitmoves (assign + merge dispatch), integrate (a CARD lands), chapter (a MILESTONE lands: gate, catch-up, record), dossier, before, render, brief, activity, boardview, schema, orders, thread, boards, fields"]
         httpsrv["http/server (lifecycle), handler (one method per door), mounts, watcher, rpc, admin, scoped, grants, ingest, removal, auth, login, members (the owner's enrol BATCH), feed, static, gitdoor, upstream"]
     end
     subgraph L6["6 · cli"]
@@ -291,8 +292,8 @@ instead of an arbitrary one.
 **A leading `_` marks plumbing for the layer above, and it is a three-zone
 convention**: the package root (`_errors _ids _clock _json _locate _version
 _wire` are level 0; `board.py`, `session.py` and `identity.py` are that layer's
-doors), and `verbs/` (`_args _cards _context _facts _mentions _rows _waiting`
-are helpers — the un-prefixed files are the registry's entries, one per verb).
+doors), and `verbs/` (`_args _cards _chapter _context _facts _mentions _rows
+_stories _waiting` are helpers — the un-prefixed files are the registry's entries, one per verb).
 Nowhere else carries it, because every module under `core/ store/ gitwork/
 http/ mcp/ cli/` is internal to its layer and there is nothing to distinguish;
 `import taskops` exposes five errors and a version, so module names are a
@@ -955,9 +956,32 @@ post-landing — "seven days of live rows" for code that only deploys FROM the
 trunk — and a gate that took only `true` deadlocked the chapter or invited a
 lie). Both answers, and the note, are recorded in the `landed` event and never
 judged by the machine; `false` in silence is the one refused outcome, in the
-gate (`mcp/gitmoves.py::_land`, before any git runs) and again in the write
+gate (`mcp/chapter.py::land`, before any git runs) and again in the write
 (`verbs/record.py::merged`). §10 of that post-mortem was the map from each
 adoption to its test.
+
+**And the seam files a chapter declares are a chapter's field, not a repo's**
+(2026-08-14, tk-6882a1). Three conflicts in one real wave were the same shape —
+sibling cards each APPENDING to a registry, a changelog, a barrel file — and git
+already folds that shape with its built-in `union` driver. So a milestone
+DECLARES the paths: `taskops_plan union_files=[…]` at creation, or
+`taskops_update milestone=… union_files=[…]` afterwards, replaced WHOLE like
+`rules` and `criteria` (`verbs/_chapter.py::LISTS`, `core/chapters.py`) — the
+un-declare is `union_files=[]`, because an append-only log has no un-declare
+event. It is SCOPED twice over. In space: only the declared paths get
+`merge=union`; everything undeclared conflicts, aborts and refuses byte for
+byte as before, and an in-tree `.gitattributes` still WINS over the ephemeral
+file, so the dashboard bundle's `-merge` cannot be overridden by a declaration.
+In time and in place: it is applied on the CARD's catch-up alone
+(`mcp/integrate.py` reads it off the dossier it already loaded and passes it to
+`gitwork/catchup.py::catch_up`); the chapter→trunk catch-up
+(`mcp/chapter.py::_catch_up_to_trunk`) passes nothing, because a chapter meeting
+a moved trunk is the human's merge, not a sibling's append. Why the mechanism is
+an EPHEMERAL `core.attributesFile` outside the repo rather than a committed
+`.gitattributes` or `info/attributes` is argued in §11's table — in one line,
+both of those are repo-wide and outlive the merge, and inside a linked worktree
+`info/attributes` resolves to the COMMON dir, which would hand one card's
+declaration to every sibling merging at that moment.
 
 ---
 
@@ -1389,7 +1413,7 @@ Three mechanisms, all client-side, all in the layers that already had git:
 | # | mechanism | where |
 |---|---|---|
 | 1 | a commit event carries `numstat` — `+/-` per file, `null` for a file git could not count (a binary, never a `0`) | `gitwork/bind.py` → `verbs/record.py`; drawn by `ui/src/links.tsx` on the dossier's commit list and on the Event stream |
-| 2 | branches reach `origin` by **best-effort pushes** at the three lifecycle moments that already exist — done, integrate, land | `gitwork/remote.py::push`, called from `gitwork/trees.py` / `mcp/gitmoves.py`. `trees.py`'s `merge_trunk` is the precedent and its comment is the contract: *best effort; local still landed*. Never a gate, never in a commit hook, never a board fact |
+| 2 | branches reach `origin` by **best-effort pushes** at the three lifecycle moments that already exist — done, integrate, land | `gitwork/remote.py::push`, called from `mcp/gitmoves.py` (done) and `gitwork/landing.py` (integrate, land). `landing.py`'s comment is the contract: *best effort; local still landed*. Never a gate, never in a commit hook, never a board fact |
 | 3 | the repo's forge slug is recorded ONCE, by the side that HAS the repo (`init`/`join`), as `{host, slug, url}`, and rides on the board payload | `gitwork/remote.py::remember` → `verbs/project.py`; consumed by `ui/src/links.tsx` |
 
 **The switch for all of it is `git remote get-url origin`, never a
