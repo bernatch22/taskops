@@ -12,9 +12,11 @@
  *     renders under `react-dom/server` with no browser and no wire, which is
  *     what lets the smoke harness prove the entry markup rather than only the
  *     empty state.
- *   · `EventStreamPane` is the container: it holds the client and `useEvents`,
- *     and it is the only part of this pane that cannot be rendered headlessly.
- *     `client={null}` is honest and supported — nothing to ask, nothing shown.
+ *   · `EventStreamPane` is the container: it takes the `EventFeed` App reads
+ *     (`useEvents` is called there, once — see that file) and adapts it to the
+ *     pure view. `EMPTY_FEED` is honest and supported: nothing asked, nothing
+ *     shown, and `total: null` is what makes the pane say so instead of
+ *     claiming an empty log.
  *
  * The pane pages by KEYSET on `seq`, never by `ts`, and the reason is written
  * where the SQL is (`store/cache.py::page`) and where the type is
@@ -41,8 +43,7 @@ import { ago, shortActor } from "../../format";
 import { DOT, oneLine } from "../card/Thread";
 import { TONE_BG, TONE_FG } from "../board/CardTile";
 import { Pane, PaneEmpty } from "./Pane";
-import { useEvents } from "../../useEvents";
-import type { Client } from "../../client";
+import type { EventFeed } from "../../useEvents";
 import type { Event } from "../../types";
 import type { EventStreamProps } from "./panels";
 
@@ -281,23 +282,22 @@ export function EventStream({
   );
 }
 
-/** The container: the client, the paging, and nothing drawn. Everything about
- *  WHY this second read exists and why it opens no socket is in `useEvents.ts`.
+/** The container: the paging state, and nothing drawn. Everything about WHY
+ *  this second read exists and why it opens no socket is in `useEvents.ts`.
  *
- *  `signal` is anything whose identity changes when the board moved — App hands
- *  it the board payload, which is a new object on every answer `useBoard`
- *  receives, so a change frame resets this pane to page one through the ONE
- *  feed that already exists. */
+ *  It no longer CALLS `useEvents` — App does, once, and hands the feed down.
+ *  The toast stack is the second reader of the same log, and two hooks would be
+ *  two clocks on one verb; that argument is written out in `useEvents.ts`. This
+ *  stays a component rather than being inlined because the split it exists for
+ *  is still true: `EventStream` is pure and testable, this one is the seam to
+ *  the wire. */
 export function EventStreamPane({
-  client,
-  signal,
+  feed,
   now,
 }: {
-  client: Client | null;
-  signal: unknown;
+  feed: EventFeed;
   now: number;
 }): React.JSX.Element {
-  const feed = useEvents(client, signal);
   return (
     <EventStream
       events={feed.events}

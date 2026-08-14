@@ -20,6 +20,14 @@
  *     second listener to keep alive, reconnect or tear down.
  *   · it never writes anything but its own rows. No board state, no card.
  *
+ * WHO CALLS IT: `App`, once, and nobody else. It lived inside `EventStreamPane`
+ * while the Event stream was its only reader; the moment a SECOND surface wanted
+ * the log (the comment toasts, which derive their news from `head`) that
+ * placement would have become two hooks on two independent clocks asking the
+ * same verb — the exact shape `useBoard`'s one-owner rule exists to forbid, one
+ * level down. So the hook is called in App and the `EventFeed` is passed as a
+ * prop, the same way the board payload is. The pane draws what it is handed.
+ *
  * Resetting to page one on every board answer is the deliberate behaviour, not
  * a limitation: the pane shows the NEWEST events, and a reader who has paged
  * back into history while the board is moving is reading a log that grew above
@@ -40,6 +48,14 @@ export interface EventFeed {
   events: readonly Event[];
   /** the LOG's length, `null` until the first answer */
   total: number | null;
+  /** The board's `seq` at the moment of the last PAGE-ONE answer, `null` until
+   *  there has been one. It is the cursor a second reader derives "what arrived
+   *  since I last looked" from, and it is deliberately NOT advanced by an older
+   *  page: paging back into history is not news arriving.
+   *
+   *  Why a head and not a seq per row is argued in `components/toasts/model.ts`
+   *  — `verbs/events.py:53` drops the rowid on the way out. */
+  head: number | null;
   /** an older page exists */
   more: boolean;
   loading: boolean;
@@ -51,9 +67,23 @@ interface Page {
   events: Event[];
   next: number | null;
   total: number | null;
+  head: number | null;
 }
 
-const EMPTY: Page = { events: [], next: null, total: null };
+const EMPTY: Page = { events: [], next: null, total: null, head: null };
+
+/** The feed a caller with no wire gets: nothing read, nothing claimed. `total`
+ *  is `null` rather than 0 because the pane draws that difference — a "0" there
+ *  would be a statement the board never made. Exported for the headless smoke
+ *  harness and for `Monitor`'s own default. */
+export const EMPTY_FEED: EventFeed = {
+  events: [],
+  total: null,
+  head: null,
+  more: false,
+  loading: false,
+  loadMore: () => {},
+};
 
 /** @param client `null` renders the pane with nothing and asks for nothing — the
  *  headless smoke harness and any caller without a wire get the empty state
@@ -86,6 +116,10 @@ export function useEvents(client: Client | null, signal: unknown): EventFeed {
           events: before === null ? answer.events : [...prev.events, ...answer.events],
           next: answer.next,
           total: answer.total,
+          // Only page one moves the cursor. An OLDER page is answered with the
+          // same `head` the board happens to be at, and taking it would make
+          // "read history" look identical to "news arrived".
+          head: before === null ? answer.head : prev.head,
         }));
       } catch {
         // The pane keeps the rows it has. A board that refuses or is unreachable
@@ -118,6 +152,7 @@ export function useEvents(client: Client | null, signal: unknown): EventFeed {
   return {
     events: page.events,
     total: page.total,
+    head: page.head,
     more: page.next !== null,
     loading,
     loadMore,
