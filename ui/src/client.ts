@@ -49,6 +49,7 @@ export interface Env {
   /** Where the board lives, e.g. "https://host". Defaults to location.origin. */
   origin?: string;
   setTimeout?: (fn: () => void, ms: number) => unknown;
+  clearTimeout?: (id: unknown) => void;
 }
 
 export interface Client {
@@ -78,6 +79,11 @@ export interface Client {
 }
 
 const RECONNECT_MS = 500;
+/* The backoff cap. Doubling forever would leave a laptop that slept through
+ * the night waiting minutes for its first retry after the lid opens; ~8s keeps
+ * "forever" polite to the server AND means the header heals within seconds of
+ * the network actually returning. */
+const RECONNECT_CAP_MS = 8_000;
 
 /** The envelope, read once for both doors. `ok:false` becomes an `RpcError`
  *  carrying the server's own code and words — /rpc and /git answer the same
@@ -165,8 +171,23 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
 
   function subscribe(onSignal: () => void, onLive: (live: boolean) => void): () => void {
     const later = env.setTimeout ?? globalThis.setTimeout;
+    const cancel = env.clearTimeout ?? (globalThis.clearTimeout as (id: unknown) => void);
     let stopped = false;
     let close: () => void = () => {};
+    let timer: unknown = undefined;
+    let attempt = 0;
+
+    /** The one way back into the loop. Capped exponential backoff, forever —
+     *  the loop has no terminal state except stop(). Every failure path ends
+     *  here or in a transport that will: that is the whole fix. The header
+     *  used to stick on "offline" because a dropped WS retried exactly once
+     *  and a fatally-closed EventSource retried never. */
+    function retry(): void {
+      if (stopped) return;
+      const wait = Math.min(RECONNECT_MS * 2 ** attempt, RECONNECT_CAP_MS);
+      attempt += 1;
+      timer = later(connect, wait);
+    }
 
     /** A frame is a poke. `hello` counts: it is the first one, and the board may
      *  have moved between the last fetch and the socket coming up. */
@@ -189,16 +210,20 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
       close = () => socket.close();
       socket.addEventListener("open", () => {
         opened = true;
+        attempt = 0; // the transport works again: the next failure starts small
         onLive(true);
+        // No poke here: the server's `hello` frame follows and frame() counts
+        // it as one — a second signal would be a double refetch per recovery.
       });
       socket.addEventListener("message", (e) => frame(String((e as MessageEvent).data)));
       socket.addEventListener("close", () => {
         onLive(false);
         if (stopped) return;
         // A socket that OPENED is a working transport that dropped: come back to
-        // it. One that never opened is a proxy eating the upgrade, and retrying
-        // it forever is how a page behind one stays dead — fall back to SSE.
-        if (opened) later(connect, RECONNECT_MS);
+        // it, with backoff. One that never opened is a proxy eating the upgrade
+        // (or a server mid-restart) — try SSE, which hands back to retry() if it
+        // dies too, so neither branch is a dead end any more.
+        if (opened) retry();
         else events();
       });
       socket.addEventListener("error", () => {
@@ -209,17 +234,35 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
     function events(): void {
       if (stopped) return;
       const Stream = env.EventSource ?? globalThis.EventSource;
-      if (!Stream) return;
+      if (!Stream) return retry(); // no SSE either: back to WS, later
       const source = new Stream(feedUrl("http"));
       close = () => source.close();
-      source.addEventListener("open", () => onLive(true));
+      source.addEventListener("open", () => {
+        attempt = 0;
+        onLive(true);
+        // No poke here, for the same reason WS open has none: the SSE door
+        // sends its own `hello` frame first (http/feed.py::_sse), and frame()
+        // counts it — a signal here would be a double refetch per recovery.
+      });
       source.addEventListener("message", (e) => frame(String((e as MessageEvent).data)));
-      source.addEventListener("error", () => onLive(false)); // EventSource retries itself
+      source.addEventListener("error", () => {
+        onLive(false);
+        if (stopped) return;
+        // CONNECTING means the browser is retrying this stream itself: leave
+        // it. CLOSED means it gave up for good (a non-200 while the server
+        // restarts) — the old code assumed "EventSource retries itself" and
+        // stayed offline forever. Close it and re-enter the outer loop.
+        if (source.readyState === 2 /* EventSource.CLOSED */) {
+          source.close();
+          retry();
+        }
+      });
     }
 
     connect();
     return () => {
       stopped = true;
+      if (timer !== undefined) cancel(timer);
       close();
       onLive(false);
     };
