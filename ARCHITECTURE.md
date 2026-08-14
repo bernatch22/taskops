@@ -1068,6 +1068,15 @@ files that answer it:
   columns (`ui/src/pages/Board.tsx`): Ready · In flight (`doing` + `stalled`,
   which carries a danger marker) · Review (`review` + `reviewing` + `changes`,
   three chips in one column) · Blocked · To merge · Done.
+  When the focused chapter is COMPLETE — landed, or every group but Done empty
+  with something done — the columns give way to the **chapter story**
+  (`ui/src/components/story/ChapterStory.tsx`): a single landing-timeline, one
+  tile per card in the order they landed, each with its closing line, diff-stat
+  and worked time, under a header of aggregate stats. Completion is DERIVED per
+  read from the board payload (`ui/src/components/story/stats.ts`) — no new
+  verb, no stored status — the data is the existing `activity` verb through
+  `useBoard`, and the view is read-only like the columns it replaces: a tile
+  opens the same card drawer.
 * **Actors** — the fourth view (`ui/src/pages/Actors.tsx`), and the one that
   answers "who has been on this board, what did they carry, and for how long".
   **It is a page about DEVS, and an agent is a LINE inside one.** It shipped

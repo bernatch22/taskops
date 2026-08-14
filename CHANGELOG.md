@@ -5,6 +5,13 @@ here, never written twice.
 
 ## Unreleased — the forge enrols the team; GitHub is the owner's, and nobody else's
 
+- **A finished chapter reads as a story, not a graveyard column.** Focusing a
+  landed or fully-closed chapter in the dashboard now replaces the six kanban
+  columns with a landing-timeline: cards in the order they landed, each with its
+  closing line, diff-stat and worked time, under a header of aggregate stats.
+  Completion is derived per read on the client from the board payload — no new
+  verb, no new stored status — and the view is read-only, fed by the existing
+  `activity` verb; an open chapter still shows the columns unchanged.
 - **`taskops board forge <owner>/<repo>` declares AND syncs.** It used to record
   a fact; it now records it and then enrols the team behind it: one authenticated,
   paginated `GET /repos/<owner>/<repo>/collaborators?permission=<need>` with the
