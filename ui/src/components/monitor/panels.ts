@@ -67,6 +67,7 @@ import type {
   TeamMember,
 } from "../../types";
 import type { Tone } from "../board/CardTile";
+import type { HoursChoice } from "../../hoursWindow";
 /** Type-only, and it is the door's client as `links.tsx` declares it —
  *  structurally, so this seam names the reader the cascade already takes rather
  *  than inventing a second spelling of it. */
@@ -754,6 +755,15 @@ export interface ActorsProps {
    *  (`useBoard` asks every `board` call for `window=`). `null` when the caller
    *  did not ask, and then no figure on the screen is drawn rather than zeroed. */
   report: ReportPayload | null;
+  /** WHICH span the page is reading, and the door to change it. The choice is
+   *  App's state because it decides an ARGUMENT to the one `board` call
+   *  (`useBoard.ts`); this page draws it and says what came back.
+   *
+   *  Optional so the page renders on its own — the default is the current
+   *  calendar month (`hoursWindow.ts::DEFAULT_HOURS_CHOICE`), the figure that
+   *  only grows, and a page with nobody to tell still shows the filter. */
+  choice?: HoursChoice;
+  onChoice?: (choice: HoursChoice) => void;
   now: number;
   /** Open a CARD's dossier — the same `openCard` every other view uses. The
    *  actor itself is not clickable: there is no actor page and nothing behind

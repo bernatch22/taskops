@@ -48,6 +48,9 @@ import { Monitor } from "./pages/Monitor";
 import { Reports } from "./pages/Reports";
 import { Worktrees } from "./pages/Worktrees";
 import { applyTheme, readTheme, type Theme } from "./theme/theme";
+import { DEFAULT_HOURS_CHOICE, windowFor } from "./hoursWindow";
+import type { HoursChoice } from "./hoursWindow";
+import { THROUGHPUT_WINDOW } from "./components/monitor/panels";
 import { useBoard } from "./useBoard";
 
 const shell: React.CSSProperties = {
@@ -121,9 +124,17 @@ export function App({ client }: { client: Client }): React.JSX.Element {
   // The chapter in focus lives HERE, next to the tab, for the same reason: it is
   // view state that decides an ARGUMENT to the one fetch, never a second fetch.
   const [milestone, setMilestone] = useState("");
+  /* WHICH HOURS WINDOW, and why it is here beside the tab. The Actors page
+   * anchors on a calendar month; Monitor's Throughput draws exactly
+   * THROUGHPUT_DAYS bars into a viewBox cut into that many slots. One `board`
+   * call carries one `window=`, so the page ON SCREEN is what decides it — and
+   * Throughput's number is never taken away from it. This is still ONE fetcher
+   * with one argument more (useBoard.ts), not a second fetch per tab. */
+  const [hours, setHours] = useState<HoursChoice>(DEFAULT_HOURS_CHOICE);
   const { board, card, story, live, error, loading, openCard, openId, comment } = useBoard(
     client,
     milestone,
+    tab === "actors" ? windowFor(hours) : THROUGHPUT_WINDOW,
   );
 
   /* Opening a tree opens its CARD, through the one door the drawer uses. A
@@ -251,6 +262,8 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 reviewing={board.groups.reviewing}
                 stalled={board.groups.stalled}
                 report={board.hours}
+                choice={hours}
+                onChoice={setHours}
                 now={Date.now() / 1000}
                 onOpen={openCard}
               />

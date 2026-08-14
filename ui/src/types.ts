@@ -655,11 +655,34 @@ export interface ReportDay {
   commits: number;
 }
 
+/** The span the answer MEASURED, in the server's own words — what was asked
+ *  (`7d` · `month` · `YYYY-MM` · `total`), which kind of span that is, and the
+ *  printable name of it. The screen prints `label` and never re-derives it: a
+ *  month named from two epoch floats in the browser's zone is a second calendar
+ *  implementation, in a different language, disagreeing on the boundary days.
+ *
+ *  @source `verbs/_windows.py::Span`, via `verbs/report.py::summary` (optional:
+ *  a board one version behind sends no `window` key at all, and then the view
+ *  falls back to counting the day buckets it did receive) */
+export interface ReportWindow {
+  window: string; // the spelling the caller asked with
+  kind: string; // "days" | "month" | "total"
+  label: string; // "August 2026", "7 days", "all time"
+  start: number;
+  end: number;
+}
+
 /** @source `verbs/report.py::summary` */
 export interface ReportPayload {
   from: number;
   to: number;
+  /** @source `verbs/report.py::summary` — the resolved span (optional above) */
+  window?: ReportWindow;
   days: ReportDay[];
+  /** How many day buckets the span really has — `days` is capped at
+   *  `verbs/report.py::BUCKETS`, and `total` carries NO buckets and says `0`.
+   *  @source `verbs/report.py::summary` (optional, same reason as `window`) */
+  days_total?: number;
   by_actor: Record<string, ActorHours>;
   total: { seconds: number; closed: number };
 }

@@ -8,7 +8,21 @@ Two pieces of arithmetic bought with blood in v1:
   answer: nobody knows what happened in that hour.
 * **Calendar windows use both midnights of the same computation**, never
   `start + 86400`. A DST day is 23 or 25 hours long and adding a constant
-  silently shifts every subsequent day of the report.
+  silently shifts every subsequent day of the report. A calendar MONTH
+  (`month_edges`) inherits the rule whole — it is 28 to 31 days and, twice a
+  year, one of those days is not 24 hours.
+* **An interval belongs to the window its CLOSING stamp is in** (`since=`).
+  v2 handed `sessions()` only the events inside `[start, end)`, so an interval
+  straddling the leading edge lost its opener and was counted by NOBODY: a
+  chapter-close burst aged out whole intervals at once and the sliding total
+  fell by more than the elapsed time — read on the dashboard as "hours being
+  deducted when chapters close". The edge rule lives HERE and not in the
+  feeding because `sessions()` is the one definition of what an interval is,
+  and the timesheet blocks and the total beside them must stay one pass: a
+  caller that filtered its own events would be a second definition, and the
+  blocks would disagree with the total the moment the two drifted. The caller
+  keeps one duty only — fetch from `start - GAP`, since nothing older than the
+  longest countable interval can pair into the window anyway.
 
 The signal is the timestamp of the events themselves. In v1 it was `activity`
 events that were local-only and never reached the server, so hours were
@@ -37,7 +51,7 @@ class Session(TypedDict):
     seconds: float
 
 
-def sessions(stamps: Sequence[tuple[float, str]]) -> list[Session]:
+def sessions(stamps: Sequence[tuple[float, str]], since: float | None = None) -> list[Session]:
     """One actor's timestamped events → the blocks of time that were COUNTED.
 
     THE one definition of what an interval is. `spent()` is a fold of this and
@@ -54,12 +68,17 @@ def sessions(stamps: Sequence[tuple[float, str]]) -> list[Session]:
     same card and touch end-to-start. A dropped gap breaks the run because the
     blocks stop touching; a change of card breaks it because the question a
     timesheet answers is "what was it working on at 15:40".
+
+    `since` is the window's leading edge: an interval is kept when the stamp
+    that CLOSES it is at or after it, whatever its opener. Feed the events from
+    `since - GAP` and the window's sum stops depending on where the edge cuts —
+    the header of this module says what the alternative cost.
     """
     out: list[Session] = []
     ordered = sorted(stamps)
     for (before, _), (after, task) in zip(ordered, ordered[1:], strict=False):
         delta = after - before
-        if not 0 < delta <= GAP:
+        if not 0 < delta <= GAP or (since is not None and after < since):
             continue
         last = out[-1] if out else None
         if last is not None and last["task"] == task and last["end"] == before:
@@ -70,20 +89,20 @@ def sessions(stamps: Sequence[tuple[float, str]]) -> list[Session]:
     return out
 
 
-def spent(stamps: Sequence[tuple[float, str]]) -> dict[str, float]:
+def spent(stamps: Sequence[tuple[float, str]], since: float | None = None) -> dict[str, float]:
     """Seconds per card, from one actor's timestamped events.
 
-    A fold of `sessions()` — see there for what an interval is and why this
-    function no longer decides it.
+    A fold of `sessions()` — see there for what an interval is, what `since`
+    means, and why this function no longer decides either.
     """
     totals: dict[str, float] = {}
-    for block in sessions(stamps):
+    for block in sessions(stamps, since):
         totals[block["task"]] = totals.get(block["task"], 0.0) + block["seconds"]
     return totals
 
 
-def total(stamps: Sequence[tuple[float, str]]) -> float:
-    return sum(spent(stamps).values())
+def total(stamps: Sequence[tuple[float, str]], since: float | None = None) -> float:
+    return sum(spent(stamps, since).values())
 
 
 def day_bounds(when: float, tz: str) -> tuple[float, float]:
@@ -97,9 +116,60 @@ def windows(now: float, tz: str, days: int) -> list[tuple[str, float, float]]:
     """The last `days` calendar days, oldest first: (YYYY-MM-DD, start, end)."""
     zone = ZoneInfo(tz)
     today = datetime.fromtimestamp(now, zone).date()
+    return _run(today - timedelta(days=days - 1), days, zone)
+
+
+def buckets(start: float, end: float, tz: str, cap: int) -> list[tuple[str, float, float]]:
+    """The calendar days a span touches, oldest first, at most `cap` of them —
+    and when it has to cut, it keeps the LAST `cap`, because the recent end is
+    the one somebody is looking at. `end` is exclusive: a span that stops on a
+    midnight belongs to the day before it, not to the empty one after.
+
+    Same shape as `windows()` so a reader has one kind of bucket, and the same
+    guarantee: every edge is a `_midnights` of a calendar date, never an offset.
+    """
+    zone = ZoneInfo(tz)
+    first = datetime.fromtimestamp(start, zone).date()
+    last = datetime.fromtimestamp(max(start, end - 1), zone).date()
+    count = min((last - first).days + 1, cap)
+    return _run(last - timedelta(days=count - 1), count, zone)
+
+
+def month_of(when: float, tz: str) -> tuple[int, int]:
+    """(year, month) of `when` READ IN `tz` — the caller's calendar, not UTC's:
+    at 01:15 in Madrid on the 1st it is already the new month, and in UTC it is
+    still the old one. Every caller that names a month names it from here."""
+    local = datetime.fromtimestamp(when, ZoneInfo(tz))
+    return local.year, local.month
+
+
+def month_bounds(when: float, tz: str) -> tuple[float, float]:
+    """[first local midnight of that month, first of the next) around `when`."""
+    return month_edges(*month_of(when, tz), tz)
+
+
+def month_edges(year: int, month: int, tz: str) -> tuple[float, float]:
+    """A named calendar month, DST-correct on BOTH edges.
+
+    The two midnights come out of the same `datetime(..., tzinfo=zone)` walk, so
+    a month containing a transition (Europe/Madrid in March or October) is an
+    hour short or an hour long exactly where the calendar says it is. Adding
+    `86400 * days_in_month` to the opening stamp puts the closing edge an hour
+    off for every future read of that month — and a past month is a figure that
+    is supposed to never move again.
+    """
+    zone = ZoneInfo(tz)
+    nxt = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return (
+        datetime(year, month, 1, tzinfo=zone).timestamp(),
+        datetime(nxt.year, nxt.month, 1, tzinfo=zone).timestamp(),
+    )
+
+
+def _run(first: date, count: int, zone: ZoneInfo) -> list[tuple[str, float, float]]:
     out: list[tuple[str, float, float]] = []
-    for back in range(days - 1, -1, -1):
-        day = today - timedelta(days=back)
+    for step in range(count):
+        day = first + timedelta(days=step)
         start, end = _midnights(day, zone)
         out.append((day.isoformat(), start, end))
     return out

@@ -51,14 +51,29 @@ const COALESCE_MS = 150;
  * calendar day between two local midnights, so a hardcoded UTC silently shifts
  * every bar. `""` from a runtime with no zone data falls back to the board's own
  * default rather than to a guess. */
+/* WHICH window is now the CALLER's, and that is the extension of the argument
+ * above rather than a break with it. The Actors page anchors on a calendar
+ * month and Throughput draws exactly THROUGHPUT_DAYS bars into a viewBox cut
+ * into that many slots; one number cannot be both. What did NOT change is the
+ * thing the paragraph above is about — there is still ONE fetcher, one
+ * coalesced refetch and one snapshot every pane reads. The window is an
+ * ARGUMENT to that one call, exactly as `milestone` is, and the default is
+ * THROUGHPUT_WINDOW so a caller that says nothing gets today's behaviour to the
+ * byte.
+ *
+ * The cost is honest and it is stated: changing the window refetches, and
+ * `App` moves it when the Actors tab is the one on screen, so switching to and
+ * from that tab costs one request. That is the price of two panes that measure
+ * different spans BY DESIGN — not the tab-dependent fetch the paragraph above
+ * refuses, which was a second fetcher per tab rather than a second argument. */
 /* `milestone` joins them for the same reason and by the same route: the chapter
  * in focus is an ARGUMENT to the one `board` call, held by App beside the tab and
  * carried by every refetch the socket triggers. It is OMITTED when empty rather
  * than sent as `""` — `verbs/pulse.py::_which` reads an absent milestone as
  * "resolve the open one yourself", which is exactly the unfiltered behaviour that
  * "all chapters" has to keep reaching. */
-function boardArgs(milestone: string): Record<string, unknown> {
-  const args: Record<string, unknown> = { window: THROUGHPUT_WINDOW, tz: browserZone() };
+function boardArgs(milestone: string, window: string): Record<string, unknown> {
+  const args: Record<string, unknown> = { window, tz: browserZone() };
   if (milestone) args["milestone"] = milestone;
   return args;
 }
@@ -100,8 +115,16 @@ export interface Board {
 
 /** @param milestone the chapter in focus, "" for all of them. Changing it makes a
  *  new `fetchAll`, which the mount effect depends on — so a pick refetches at
- *  once, and every later socket frame carries the same choice. */
-export function useBoard(client: Client, milestone: string = ""): Board {
+ *  once, and every later socket frame carries the same choice.
+ *  @param window the hours span, in the board's own spelling (`Nd` · `month` ·
+ *  `YYYY-MM` · `total`, `verbs/_windows.py::parse`). It rides the same call and
+ *  the same effect as `milestone`, for the same reason; the default is
+ *  Throughput's, so a caller that says nothing is unchanged. */
+export function useBoard(
+  client: Client,
+  milestone: string = "",
+  window: string = THROUGHPUT_WINDOW,
+): Board {
   const [board, setBoard] = useState<BoardPayload | null>(null);
   const [card, setCard] = useState<CardPayload | null>(null);
   const [story, setStory] = useState<ActivityPayload | null>(null);
@@ -119,7 +142,7 @@ export function useBoard(client: Client, milestone: string = ""): Board {
 
   const fetchAll = useCallback(async () => {
     try {
-      const next = await client.rpc<BoardPayload>("board", boardArgs(milestone));
+      const next = await client.rpc<BoardPayload>("board", boardArgs(milestone, window));
       if (!alive.current) return;
       setBoard(next);
       setError(null);
@@ -147,7 +170,7 @@ export function useBoard(client: Client, milestone: string = ""): Board {
     } finally {
       if (alive.current) setLoading(false);
     }
-  }, [client, milestone]);
+  }, [client, milestone, window]);
 
   /** Every reason to refetch goes through here, so N reasons in one window are
    *  one request. Criterion 1: a frame arrives → exactly one refetch. */

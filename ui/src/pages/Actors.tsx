@@ -71,6 +71,8 @@
 import { useState } from "react";
 
 import { PaneRow } from "../components/monitor/Pane";
+import { Segmented } from "../components/shared/Segmented";
+import { DEFAULT_HOURS_CHOICE, HOURS_CHOICES } from "../hoursWindow";
 import { DevPanel } from "../components/actors/DevPanel";
 import { span } from "../components/actors/Daysheet";
 import { TONE_BG, TONE_FG } from "../components/board/CardTile";
@@ -83,7 +85,7 @@ import type {
   DevRow,
   Tone,
 } from "../components/monitor/panels";
-import type { ActorHours } from "../types";
+import type { ActorHours, ReportPayload } from "../types";
 
 export type { ActorsProps };
 
@@ -263,6 +265,26 @@ export function cardTitles(props: ActorsProps): Record<string, string> {
   return out;
 }
 
+/** WHAT THE FIGURES MEASURE, in the payload's own words.
+ *
+ *  The page opens on the current calendar month, so the qualifier has to name a
+ *  month — and the name comes back on `report.window.label` ("August 2026"),
+ *  never from a client that re-derives a month from `from`/`to`. Two calendars
+ *  in two languages disagree on the boundary days, and the one that owns this
+ *  vocabulary is `verbs/_windows.py`.
+ *
+ *  A board one version behind sends no `window` at all (types.ts). Then the old
+ *  sentence is still true and still drawn — the day buckets it DID send — which
+ *  is what keeps this a degradation and not a blank. */
+export function windowSaid(report: ReportPayload | null, devs: number): string {
+  const who = `${devs} ${devs === 1 ? "dev" : "devs"} · an agent is a line inside its dev`;
+  const span = report?.window?.label;
+  if (span) return `${who} · closed and commits are over ${span}`;
+  const days = report?.days.length ?? 0;
+  if (days === 0) return `${devs} ${devs === 1 ? "dev" : "devs"} · the answer carried no hours, so no figure is drawn`;
+  return `${who} · closed and commits are over the last ${days} ${days === 1 ? "day" : "days"}`;
+}
+
 /* ── the drawing ──────────────────────────────────────────────────────────── */
 
 const page: React.CSSProperties = {
@@ -440,9 +462,14 @@ function Dev({
 
 export function Actors(props: ActorsProps): React.JSX.Element {
   const rows = devRows(props);
-  const days = props.report?.days.length ?? 0;
   const [open, setOpen] = useState<string | null>(null);
   const opened = rows.find((r) => r.dev === open) ?? null;
+  /* The choice is App's state — it decides the `window=` of the ONE board call —
+     and the page opens on the current month whether or not anybody is listening.
+     The label under it is the payload's, so the two can never disagree: the
+     filter says what was ASKED, the sentence says what came BACK. */
+  const choice = props.choice ?? DEFAULT_HOURS_CHOICE;
+  const onChoice = props.onChoice;
 
   return (
     <div style={page} data-testid="actors">
@@ -450,9 +477,18 @@ export function Actors(props: ActorsProps): React.JSX.Element {
         <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 500, letterSpacing: "-0.035em" }}>
           Actors
         </h2>
-        <span style={{ fontSize: "12.5px", color: "var(--text-3)" }}>
-          A name bound to a card, not a person
-        </span>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <span style={{ fontSize: "12.5px", color: "var(--text-3)" }}>
+            A name bound to a card, not a person
+          </span>
+          <Segmented
+            testid="actors-window-filter"
+            name="window"
+            options={HOURS_CHOICES}
+            active={choice}
+            onSelect={(next) => onChoice?.(next)}
+          />
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -467,9 +503,7 @@ export function Actors(props: ActorsProps): React.JSX.Element {
             data-testid="actors-window"
             style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "12px" }}
           >
-            {days > 0
-              ? `${rows.length} ${rows.length === 1 ? "dev" : "devs"} · an agent is a line inside its dev · closed and commits are over the last ${days} ${days === 1 ? "day" : "days"}`
-              : `${rows.length} ${rows.length === 1 ? "dev" : "devs"} · the answer carried no hours, so no figure is drawn`}
+            {windowSaid(props.report, rows.length)}
           </div>
           <div style={grid}>
             {rows.map((row) => (
@@ -483,6 +517,7 @@ export function Actors(props: ActorsProps): React.JSX.Element {
         <DevPanel
           row={opened}
           report={props.report}
+          window={props.report?.window?.label ?? null}
           titles={cardTitles(props)}
           onOpen={props.onOpen}
           onClose={() => setOpen(null)}

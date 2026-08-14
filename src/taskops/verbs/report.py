@@ -1,4 +1,4 @@
-"""report — hours and what moved, over calendar days.
+"""report — hours and what moved, over a calendar window.
 
 The signal is the timestamps of the events themselves, and since every call
 reaches the board, the signal is where the arithmetic is. v1 measured with
@@ -6,14 +6,25 @@ reaches the board, the signal is where the arithmetic is. v1 measured with
 came out systematically low and changed after every rebuild.
 
 The arithmetic itself lives in `core/hours.py`: a gap longer than 30 minutes
-is dropped, never capped.
+is dropped, never capped, and an interval belongs to the window its CLOSING
+stamp is in. This module's whole part in that second rule is the FETCH — every
+window is read from `start - hours.GAP`, so an opener just before the edge is
+still in hand to pair with, and nothing older than the longest countable
+interval can reach in. The keeping is `sessions(since=start)`'s decision, once.
+The counts beside the hours (`closed`, `commits`, `cards`) stay strictly
+inside the window: they count EVENTS, not intervals, so the pre-roll is not
+theirs to see.
+
+Which span a `window=` spelling names — `7d`, `month`, `YYYY-MM`, `total` — is
+`_windows.py`'s question, and the resolved `Span` rides on the answer so the
+payload says what it measured instead of leaving a reader to infer it.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from . import _args
+from . import _args, _windows
 from .. import _clock
 from ..core import hours
 from ..core.types import Event
@@ -24,56 +35,89 @@ from ..store.stores import Stores
 #: single answer, not a stream. `sessions_total` always says the real number.
 SESSIONS = 240
 
+#: How many day buckets one answer carries. A named month is 28-31 and a 90d
+#: window is 90, so neither reaches it; `days_total` says the real number.
+BUCKETS = 92
+
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
     now = _clock.now()
     stores.live.renew(actor, now)
-    return summary(stores, now, days(_args.text(args, "window", default="7d")), _zone(args))
+    return summary(stores, now, _args.text(args, "window", default="7d"), _zone(args))
 
 
-def summary(stores: Stores, now: float, span: int, tz: str) -> dict[str, Any]:
-    spans = hours.windows(now, tz, span)
-    start, end = spans[0][1], spans[-1][2]
-    events = stores.cache.window(start, end)
+def summary(stores: Stores, now: float, window: str, tz: str) -> dict[str, Any]:
+    """The fold over one span, plus the span's own description.
+
+    The answer SAYS what it measured: `window` carries the spelling asked, the
+    kind, a printable label and both edges, so a screen titles itself "August
+    2026" instead of inferring a month from two epoch floats. What each spelling
+    means is `_windows.parse`'s business, not this module's.
+    """
+    span = _windows.parse(window, now, tz)
+    spans = _buckets(span, tz, BUCKETS)
+    events = _fetch(stores, span.start, span.end)
     return {
-        "from": start,
-        "to": end,
+        "from": span.start,
+        "to": span.end,
+        "window": span._asdict(),
         "days": [_day(stores, label, lo, hi) for label, lo, hi in spans],
-        "by_actor": _by_actor(events),
+        "days_total": len(_buckets(span, tz, 100_000)),
+        "by_actor": _by_actor(events, span.start),
         "total": {
-            "seconds": sum(hours.total(p) for p in _stamps(events).values()),
-            "closed": sum(1 for e in events if _closed(e)),
+            "seconds": sum(hours.total(p, span.start) for p in _stamps(events).values()),
+            "closed": sum(1 for e in events if e["ts"] >= span.start and _closed(e)),
         },
     }
 
 
-def days(window: str) -> int:
-    """`7d`, `7`, `1d` → an integer number of calendar days, 1..90."""
-    text = window.strip().lower().removesuffix("d") or "7"
-    return max(1, min(90, int(text))) if text.isdigit() else 7
+def _buckets(span: _windows.Span, tz: str, cap: int) -> list[tuple[str, float, float]]:
+    """The day buckets an answer carries — and `total` carries NONE.
+
+    A month is 28-31 buckets and a `90d` window is 90: both bounded by the
+    calendar, and each one costs its own fold. The whole log is not bounded by
+    anything — it grows by a bucket a day forever, most of them empty — and
+    `total` exists to be the one figure that only GROWS, read against the
+    sliding ones. So it answers the sum and `days_total: 0`, rather than
+    shipping a truncated tail a reader would mistake for the span.
+    """
+    if span.kind == "total":
+        return []
+    return hours.buckets(span.start, span.end, tz, cap)
 
 
 def _zone(args: _args.Args) -> str:
     return _args.text(args, "tz", default="UTC") or "UTC"
 
 
+def _fetch(stores: Stores, start: float, end: float) -> list[Event]:
+    """The window's events, plus GAP of pre-roll so an interval straddling the
+    leading edge still has its opener. Never widen `start` itself: the pre-roll
+    exists to be PAIRED with, and `sessions(since=start)` is what decides which
+    of those pairs the window keeps."""
+    return stores.cache.window(start - hours.GAP, end)
+
+
 def _day(stores: Stores, label: str, start: float, end: float) -> dict[str, Any]:
-    events = stores.cache.window(start, end)
+    events = _fetch(stores, start, end)
+    inside = [e for e in events if e["ts"] >= start]
     return {
         "day": label,
-        "by_actor": _by_actor(events),
-        "closed": sorted({e["task"] for e in events if _closed(e)}),
-        "commits": sum(1 for e in events if e["kind"] == "commit"),
+        "by_actor": _by_actor(events, start),
+        "closed": sorted({e["task"] for e in inside if _closed(e)}),
+        "commits": sum(1 for e in inside if e["kind"] == "commit"),
     }
 
 
-def _by_actor(events: list[Event]) -> dict[str, dict[str, Any]]:
+def _by_actor(events: list[Event], since: float) -> dict[str, dict[str, Any]]:
     """Everything an actor did INSIDE THE WINDOW — hours, cards touched, cards
     closed, commits, and the SESSIONS the hours are made of. All of it is the
     same pass over the same events: `closed` and `commits` are counts of events
     already in hand, never a stored figure and never a lifetime one. The screen
     says "today" or "7 days" beside them because that is exactly what they
-    measure.
+    measure. `events` arrives with GAP of pre-roll in front of `since`: it is
+    there so `sessions()` can pair an interval across the edge, and only the
+    hours may see it — every count below is folded over `within`.
 
     `sessions` is not a second computation — `core/hours.py::sessions` is what
     `spent()` itself folds, so the blocks a timesheet draws and the total beside
@@ -81,10 +125,12 @@ def _by_actor(events: list[Event]) -> dict[str, dict[str, Any]]:
     (`done_total`'s pattern): a fortnight of a busy actor is unbounded, and a
     truncated list that does not say so is a screen that quietly loses time.
     """
-    closed, commits = _counts(events)
+    within = [e for e in events if e["ts"] >= since]
+    inside, padded = _stamps(within), _stamps(events)
+    closed, commits = _counts(within)
     out: dict[str, dict[str, Any]] = {}
-    for actor, points in _stamps(events).items():
-        blocks = hours.sessions(points)
+    for actor, points in inside.items():
+        blocks = hours.sessions(padded[actor], since)
         seconds = sum(b["seconds"] for b in blocks)
         out[actor] = {
             "seconds": seconds,

@@ -448,6 +448,55 @@ def test_spent_is_a_fold_of_sessions_and_nothing_else() -> None:
     assert hours.total(stamps) == sum(s["seconds"] for s in hours.sessions(stamps))
 
 
+def test_a_window_sum_is_stable_when_its_leading_edge_slides() -> None:
+    """The bug Berna saw as "hours deducted on chapter close": one fixed log,
+    two adjacent window positions a day apart. The older window's total minus
+    the newer's must be exactly the seconds that genuinely CLOSED before the
+    newer start — never a whole interval whose opener merely crossed the edge.
+    """
+    day = 86_400.0
+    stamps = [
+        (0.0, "tk-b"),
+        (300.0, "tk-b"),  # 300s, closed a whole day before the newer edge
+        (day - 60.0, "tk-a"),  # opens just BEFORE the newer edge...
+        (day + 120.0, "tk-a"),  # ...and closes just after it: 180s, kept whole
+        (day + 3600.0, "tk-c"),
+        (day + 3900.0, "tk-c"),  # 300s, wholly inside both windows
+    ]
+    older = hours.total(stamps, since=0.0)
+    newer = hours.total(stamps, since=day)
+    assert older == 780.0
+    assert newer == 480.0  # the straddling 180s survived, plus tk-c's 300s
+    assert older - newer == 300.0  # only tk-b's interval aged out
+
+
+def test_an_interval_is_counted_by_the_window_its_closing_stamp_is_in() -> None:
+    """Opening within GAP before the edge and closing inside: counted. Closing
+    before the edge: not — whatever its opener did."""
+    edge = 10_000.0
+    straddles = [(edge - hours.GAP + 5.0, "tk-a"), (edge + 5.0, "tk-a")]
+    assert hours.spent(straddles, since=edge) == {"tk-a": hours.GAP}
+    before = [(edge - 300.0, "tk-b"), (edge - 1.0, "tk-b")]
+    assert hours.spent(before, since=edge) == {}
+    # Exactly ON the edge closes INSIDE: one window owns it, never both.
+    on_edge = [(edge - 300.0, "tk-c"), (edge, "tk-c")]
+    assert hours.spent(on_edge, since=edge) == {"tk-c": 300.0}
+
+
+def test_a_window_containing_the_whole_log_reports_todays_totals() -> None:
+    """`since` before everything must be indistinguishable from no `since`."""
+    stamps = [(0.0, "tk-a"), (600.0, "tk-a"), (100_000.0, "tk-b"), (100_300.0, "tk-b")]
+    assert (
+        hours.spent(stamps, since=-1.0)
+        == hours.spent(stamps)
+        == {
+            "tk-a": 600.0,
+            "tk-b": 300.0,
+        }
+    )
+    assert hours.sessions(stamps, since=-1.0) == hours.sessions(stamps)
+
+
 def test_a_dst_day_is_not_24_hours() -> None:
     tz = "Europe/Madrid"
     when = datetime(2026, 3, 30, 12, 0, tzinfo=ZoneInfo(tz)).timestamp()
@@ -662,8 +711,12 @@ def test_a_project_fact_is_newest_wins_however_the_log_arrives() -> None:
     order is arrival order — an older event written by another clone arrives
     after the newer one it must not resurrect. A single `fold` sorts by ts and
     would never notice."""
-    old = ev.make("project", "dev:berna", "project", {"op": "remote", "value": {"slug": "a/b"}}, 1000.0)
-    new = ev.make("project", "dev:berna", "project", {"op": "remote", "value": {"slug": "c/d"}}, 2000.0)
+    old = ev.make(
+        "project", "dev:berna", "project", {"op": "remote", "value": {"slug": "a/b"}}, 1000.0
+    )
+    new = ev.make(
+        "project", "dev:berna", "project", {"op": "remote", "value": {"slug": "c/d"}}, 2000.0
+    )
     state = replay.fold([new])
     replay.fold([old], state)  # a second pass, the way Stores.state() applies it
     assert state["project"]["remote"] == {"slug": "c/d"}
@@ -673,7 +726,9 @@ def test_a_project_fact_is_newest_wins_however_the_log_arrives() -> None:
 def test_a_project_fact_never_lands_on_a_card() -> None:
     """It is board-level by construction: nothing in `cards` moves, and a board
     that never recorded one has an empty dict, not a missing key."""
-    state = replay.fold([ev.make("project", "dev:berna", "project", {"op": "remote", "value": None}, 1000.0)])
+    state = replay.fold(
+        [ev.make("project", "dev:berna", "project", {"op": "remote", "value": None}, 1000.0)]
+    )
     assert state["cards"] == {} and state["project"] == {"remote": None}
     assert replay.empty()["project"] == {}
 
@@ -777,8 +832,13 @@ def test_a_row_whose_path_stopped_being_a_report_path_is_dropped() -> None:
     """History is replayed forever, so a rule that tightened must not resurrect
     what it now refuses — and a fold over foreign rows must not raise."""
     events = [
-        ev.make("project", "dev:berna", "report",
-                {"path": "notes/old.md", "title": "t", "milestone": "ms-1", "sha": "a"}, 1000.0),
+        ev.make(
+            "project",
+            "dev:berna",
+            "report",
+            {"path": "notes/old.md", "title": "t", "milestone": "ms-1", "sha": "a"},
+            1000.0,
+        ),
         report_event(".taskops/reports/one.md", 1100.0),
     ]
     assert [r["path"] for r in reports.of(events)] == [".taskops/reports/one.md"]
@@ -793,10 +853,14 @@ def test_two_reports_in_the_same_instant_do_not_swap_between_reads() -> None:
         report_event(".taskops/reports/second.md", 1000.0),
     ]
     once = [r["path"] for r in reports.of(events)]
-    assert once == [r["path"] for r in reports.of(events)] == [
-        ".taskops/reports/first.md",
-        ".taskops/reports/second.md",
-    ]
+    assert (
+        once
+        == [r["path"] for r in reports.of(events)]
+        == [
+            ".taskops/reports/first.md",
+            ".taskops/reports/second.md",
+        ]
+    )
 
 
 # ── holding ─────────────────────────────────────────────────────────────────

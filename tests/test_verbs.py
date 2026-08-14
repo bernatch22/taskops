@@ -367,7 +367,9 @@ def test_the_landed_chapters_are_capped_newest_first(
     start = _clock.now()
     for n in range(_facts.LANDED_SHOWN + 2):
         clock(start + n * 86400)  # a chapter is days apart, never the same instant
-        out = call(stores, "plan", BERNA, milestone=f"chapter {n}", goal="g", tasks=[{"title": "t"}])
+        out = call(
+            stores, "plan", BERNA, milestone=f"chapter {n}", goal="g", tasks=[{"title": "t"}]
+        )
         landed.append(out["milestone"]["id"])
         call(stores, "merged", BERNA, milestone=landed[-1], into="main", sha="9c2f")
 
@@ -400,7 +402,9 @@ def test_focusing_a_chapter_raises_the_done_cap(stores: Stores) -> None:
         call(stores, "merged", BERNA, task=card["id"], sha="9c2f")
 
     stone = plan["milestone"]["id"]
-    assert len(call(stores, "board", BERNA, milestone=stone)["groups"]["done"]) == len(plan["cards"])
+    assert len(call(stores, "board", BERNA, milestone=stone)["groups"]["done"]) == len(
+        plan["cards"]
+    )
     # The board-wide read keeps the tight cap: there, `done` is history without end.
     call(stores, "merged", BERNA, milestone=stone, into="main", sha="9c2f")
     wide = call(stores, "board", BERNA)
@@ -627,6 +631,118 @@ def test_report_carries_the_sessions_the_hours_are_made_of(
     assert sum(b["seconds"] for b in blocks) == out["by_actor"][W1]["seconds"]
     # The same fold per calendar day is what the timesheet reads, day by day.
     assert out["days"][-1]["by_actor"][W1]["sessions"] == blocks
+
+
+def test_report_counts_an_interval_that_straddles_the_window_edge(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """The feeding half of the edge rule: `summary` fetches from `start - GAP`,
+    so an interval whose OPENER is on the far side of the leading edge still
+    has something to pair with and is counted whole by the window it closes in.
+    Drop the pre-roll and the whole 120s vanishes — the "hours deducted on
+    chapter close" report."""
+    midnight = 1_769_990_400.0  # 2026-02-02 00:00 UTC
+    _clock.set_now(midnight - 60.0)
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    clock(120.0)  # now 00:01 — the interval opened yesterday, closed today
+    call(stores, "update", W1, task=card, comment="halfway")
+    out = call(stores, "report", BERNA, window="1d")
+    assert out["from"] == midnight
+    assert out["by_actor"][W1]["seconds"] == 120.0
+    assert out["by_actor"][W1]["sessions_total"] == 1
+    # The day buckets use the same rule, so they still sum to the window total.
+    assert sum(d["by_actor"].get(W1, {}).get("seconds", 0.0) for d in out["days"]) == 120.0
+    # The pre-roll is for pairing only: the counts stay strictly inside.
+    assert out["by_actor"][W1]["commits"] == 0
+
+
+MADRID = "Europe/Madrid"  # a DST zone, and an hour off UTC even in winter
+
+
+def _ten_minutes(stores: Stores, clock: Callable[[float], None]) -> str:
+    """One counted interval of 600s on one card, opened at the current clock."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    clock(600)
+    call(stores, "update", W1, task=card, comment="halfway")
+    return card
+
+
+def test_report_month_starts_at_the_first_midnight_in_the_callers_tz(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """23:15 UTC on 31 August is already 01:15 on 1 September in Madrid, so the
+    two callers are in different months at the same instant. The window edge
+    follows the tz that was ASKED, and the answer says which month it means."""
+    _clock.set_now(1_788_218_100.0)  # 2026-08-31 23:15 UTC
+    _ten_minutes(stores, clock)
+    out = call(stores, "report", BERNA, window="month", tz=MADRID)
+    assert out["window"]["label"] == "September 2026"
+    assert out["window"]["kind"] == "month"
+    assert out["from"] == 1_788_213_600.0  # 2026-09-01 00:00 +02:00, not UTC's
+    assert out["to"] == 1_788_300_000.0  # the next Madrid midnight — today, whole
+    assert out["by_actor"][W1]["seconds"] == 600.0  # the interval that closed A MOMENT AGO
+    assert out["days_total"] == 1 and out["days"][0]["day"] == "2026-09-01"
+    assert call(stores, "report", BERNA, window="month")["window"]["label"] == "August 2026"
+
+
+def test_report_a_named_month_is_closed_on_both_edges_across_a_dst_change(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """March 2026 in Madrid is 31 days MINUS an hour: the clocks go forward on
+    the 29th. Both edges come from the same zoneinfo walk, so the closing one
+    lands on 1 April midnight local — `start + 86400 * 31` would miss it by the
+    hour that never existed, and a past month is a figure that never moves."""
+    _clock.set_now(1_774_000_000.0)  # 2026-03-20, inside the month asked for
+    _ten_minutes(stores, clock)
+    out = call(stores, "report", BERNA, window="2026-03", tz=MADRID)
+    assert (out["from"], out["to"]) == (1_772_319_600.0, 1_774_994_400.0)
+    assert out["to"] - out["from"] == 31 * 86400 - 3600
+    assert out["window"] == {
+        "window": "2026-03",
+        "kind": "month",
+        "label": "March 2026",
+        "start": 1_772_319_600.0,
+        "end": 1_774_994_400.0,
+    }
+    assert out["days_total"] == 31 and len(out["days"]) == 31
+    assert out["by_actor"][W1]["seconds"] == 600.0
+    # And it is CLOSED: the same month asked from far in the future is unchanged.
+    _clock.set_now(1_790_000_000.0)
+    assert call(stores, "report", BERNA, window="2026-03", tz=MADRID)["to"] == out["to"]
+
+
+def test_report_total_folds_the_whole_log_and_buckets_none_of_it(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """`total` is the figure that only grows: work from months ago is still in
+    it when every sliding window has aged past it. It answers the SUM and no day
+    buckets — the whole log has no bounded number of days."""
+    _clock.set_now(1_772_400_000.0)  # early March
+    _ten_minutes(stores, clock)
+    _clock.set_now(1_788_218_100.0)  # five months later
+    card = call(stores, "board", BERNA)["groups"]["take"][0]["id"]
+    call(stores, "take", W2, task=card)
+    clock(300)
+    call(stores, "update", W2, task=card, comment="on it")
+    recent = call(stores, "report", BERNA, window="1d", tz=MADRID)
+    whole = call(stores, "report", BERNA, window="total", tz=MADRID)
+    assert W1 not in recent["by_actor"]  # March has slid out of the sliding window
+    assert whole["by_actor"][W1]["seconds"] == 600.0  # ...and is still in the whole log
+    assert whole["by_actor"][W2]["seconds"] == 300.0
+    assert whole["total"]["seconds"] == sum(a["seconds"] for a in whole["by_actor"].values())
+    assert whole["window"]["label"] == "all time"
+    assert (whole["from"], whole["to"]) == (0.0, recent["to"])  # from the epoch to today
+    assert (whole["days"], whole["days_total"]) == ([], 0)
+
+
+def test_report_refuses_a_window_it_cannot_read_and_names_the_forms(stores: Stores) -> None:
+    """A spelling nobody parses used to fall back to seven days in silence —
+    which is how `7dd` becomes a number somebody trusts."""
+    with pytest.raises(Refused, match=r"month.*YYYY-MM.*total") as refused:
+        call(stores, "report", BERNA, window="last month")
+    assert "7d" in str(refused.value)
 
 
 # ── mentions ────────────────────────────────────────────────────────────────
@@ -1117,8 +1233,13 @@ def test_the_boards_repo_travels_in_the_board_payload(stores: Stores) -> None:
     planned(stores)
     assert call(stores, "board", BERNA)["repo"] is None
     call(
-        stores, "project", BERNA,
-        op="remote", host="github.com", slug="bernatch22/taskops", url="https://github.com/bernatch22/taskops",
+        stores,
+        "project",
+        BERNA,
+        op="remote",
+        host="github.com",
+        slug="bernatch22/taskops",
+        url="https://github.com/bernatch22/taskops",
     )
     assert call(stores, "board", BERNA)["repo"] == {
         "host": "github.com",
@@ -1147,7 +1268,11 @@ def test_a_changed_origin_wins_by_being_later(
     clock(60)
     call(stores, "project", BERNA, op="remote", host="gitlab.com", slug="team/sub/c")
     repo = call(stores, "board", BERNA)["repo"]
-    assert repo == {"host": "gitlab.com", "slug": "team/sub/c", "url": "https://gitlab.com/team/sub/c"}
+    assert repo == {
+        "host": "gitlab.com",
+        "slug": "team/sub/c",
+        "url": "https://gitlab.com/team/sub/c",
+    }
 
 
 def test_an_unknown_project_fact_is_refused_by_name(stores: Stores) -> None:
@@ -1723,7 +1848,9 @@ def test_activity_caps_the_thread_and_says_how_long_it_really_is(stores: Stores)
     real = len(stores.events(card))
     assert real > _stories.THREAD_HEADLINE  # there IS something being capped
 
-    head = next(c for c in call(stores, "activity", BERNA, milestone=stone)["cards"] if c["id"] == card)
+    head = next(
+        c for c in call(stores, "activity", BERNA, milestone=stone)["cards"] if c["id"] == card
+    )
     assert len(head["thread"]) == _stories.THREAD_HEADLINE
     assert len(head["thread"]) < head["thread_total"] == real  # capped, and it SAYS so
     assert "spec" not in head and "criteria" not in head and "files" not in head
