@@ -5,6 +5,19 @@ here, never written twice.
 
 ## Unreleased — the forge enrols the team; GitHub is the owner's, and nobody else's
 
+- **A STALLED row says how its holder went quiet, not just that it did.** A
+  session limit took five workers at once and every stalled row read "quiet for
+  1h", so deciding resume-vs-reassign meant opening each card. Stalled rows now
+  carry `last_event = {kind, ago}` — the last event on the card's thread — and
+  `commits`, the number of commits bound to the card, so "handed over and never
+  heard from" (`edited`), "claimed then silent" (`claimed`), "said one thing then
+  gone" (`comment`) and "three commits on the branch" are four different lines.
+  Both are DERIVED per read (`verbs/_rows.py::forensics`) and ride on the stalled
+  group alone, the way `waiting_on` rides on blocked: nothing new is stored, no
+  cause of death is recorded — the lease's only heartbeat is MCP traffic — and
+  every other board row is byte-identical to what it was. The MCP board prints
+  them on the STALLED line (`mcp/boardview.py`).
+
 - **The feed heals itself — the header no longer sticks on "offline".** The
   dashboard's live channel had two dead ends and both are removed
   (`ui/src/client.ts::subscribe`): a WebSocket that had opened and then dropped
