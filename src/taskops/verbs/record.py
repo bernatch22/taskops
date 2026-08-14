@@ -58,16 +58,33 @@ def merged(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
             raise Refused(f"milestone {stone_id} does not exist")
         body: dict[str, Any] = {"op": "landed", "id": stone_id, "into": _args.text(args, "into"),
                                 "sha": _args.text(args, "sha")}
-        if _args.flag(args, "criteria_met"):
+        answer: dict[str, Any] = {"milestone": stores.state()["milestones"][stone_id],
+                                  "into": body["into"], "sha": body["sha"]}
+        if "criteria_met" in args:
             # The human's out-loud answer to the chapter's criteria, recorded —
             # never judged here (the board records, the
-            # human decides).
-            body["criteria_met"] = True
+            # human decides). BOTH answers are recordable: `false` is a chapter
+            # landed with something still unmet, and it may not be silent, so
+            # the note travels with it and is the second half of the record.
+            met = _args.flag(args, "criteria_met")
+            note = _args.text(args, "note", default="").strip()
+            if not met and not note:
+                raise Refused(
+                    "criteria_met=false is recorded, never judged — but never in silence: "
+                    'add note="<which criteria are unmet, and why landing is still right>"'
+                )
+            body["criteria_met"] = met
+            if note:
+                body["note"] = note
+                if not met:
+                    # `render.plain` prints notes= as its own block: a chapter that
+                    # landed unmet says so in the answer, not only in the log.
+                    answer["notes"] = [f"landed with criteria_met=false — {note}"]
         seq = stores.write([make(PROJECT, actor, "milestone", body, now)])
         stores.live.renew(actor, now)
-        return {"milestone": stores.state()["milestones"][stone_id],
-                "into": body["into"], "sha": body["sha"], "seq": seq,
-                "pulse": _context.pulse(stores, actor, now, stone_id)}
+        answer["seq"] = seq
+        answer["pulse"] = _context.pulse(stores, actor, now, stone_id)
+        return answer
     card = _facts.find(stores, _args.ident(args, "task"))
     if card["status"] != "done":
         raise Refused(

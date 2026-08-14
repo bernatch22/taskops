@@ -927,8 +927,14 @@ Milestone, next to `rules`. Both are implemented (tk-097cae, 2026-08-07): the
 ordering rule is one sentence in `mcp/server.py::INSTRUCTIONS`, delivered at
 the handshake inside `hello.py`'s budget; `Milestone.criteria` travels into
 every take like `rules` and is SHOWN at `taskops_merge milestone=`, which
-refuses until the human answers `criteria_met=true` — recorded in the `landed`
-event, never judged by the machine. §10 of that post-mortem was the map from each
+refuses until the human answers — `criteria_met=true`, or `criteria_met=false`
+with a MANDATORY `note=` (2026-08-14, tk-d65ad3: some criteria are structurally
+post-landing — "seven days of live rows" for code that only deploys FROM the
+trunk — and a gate that took only `true` deadlocked the chapter or invited a
+lie). Both answers, and the note, are recorded in the `landed` event and never
+judged by the machine; `false` in silence is the one refused outcome, in the
+gate (`mcp/gitmoves.py::_land`, before any git runs) and again in the write
+(`verbs/record.py::merged`). §10 of that post-mortem was the map from each
 adoption to its test.
 
 ---
