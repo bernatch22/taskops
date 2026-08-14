@@ -17,9 +17,43 @@ from pathlib import Path
 from . import brief, chapter, integrate
 from .._json import as_rows, as_object
 from ..board import Board
+from .fields import _flag, _list, _text, _object
 from ..gitwork import trees, remote
 
 Args = dict[str, Any]
+
+MERGE_SCHEMA: dict[str, Any] = _object(
+    {
+        "task": _text("a DONE card → into its milestone branch"),
+        "tasks": _list(
+            "integrate exactly these DONE cards, in the order given — each through the "
+            "same single-card path. Stops at the first failure and reports per card."
+        ),
+        "done": _flag(
+            "integrate every card the board groups under MERGE (done, not integrated), "
+            "in that group's order. Re-run it after a stop: it continues where it left off."
+        ),
+        "milestone": _text(
+            "ms-… → land the WHOLE milestone into the trunk. Refused while any card "
+            "of it is open or unintegrated. The human's call — never do this with "
+            "raw git in the shared checkout; the board must record the landing."
+        ),
+        "criteria_met": _flag(
+            "with milestone=: the human's answer to its criteria — recorded, never "
+            "judged. true, or false with note= saying which are unmet and why landing "
+            "is still right (a criterion that can only be checked after the trunk "
+            "moves). Omitted, a chapter with criteria is refused and shown them."
+        ),
+        "note": _text(
+            "with milestone= criteria_met=false: REQUIRED — which criteria are unmet "
+            "and why landing is still right. It lands on the record beside the answer."
+        ),
+    }
+)
+"""taskops_merge's argument schema — beside the dispatch that answers it, the
+way each verbs/ file is its own registry entry. Moved here when schema.py hit
+the 200-line budget: the split follows the tool's owner, never the line count
+alone."""
 
 
 def after_update(repo: Path, args: Args, data: Args) -> None:
