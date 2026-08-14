@@ -168,7 +168,12 @@ export async function run(_fixture: Fixture, check: Check, _h: Harness): Promise
     nth(r.sockets, 0).drop();
     check("b: a never-opened WS falls to SSE with no timer", r.streams.length === 1 && r.pending().length === 0);
     nth(r.streams, 0).open();
-    check("b: the SSE open goes live and pokes once", r.live.at(-1) === true && r.signals() === 1);
+    check("b: the SSE open goes live without poking", r.live.at(-1) === true && r.signals() === 0);
+    // The real SSE door sends `hello` first (http/feed.py) — THAT is the one
+    // poke per recovery, same division of labour as the WS side. An extra
+    // signal in the open handler would make every recovery a double refetch.
+    nth(r.streams, 0).message('{"type":"hello"}');
+    check("b: the SSE hello is the one poke per recovery", r.signals() === 1);
     r.stop();
   }
 

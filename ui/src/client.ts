@@ -240,9 +240,9 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
       source.addEventListener("open", () => {
         attempt = 0;
         onLive(true);
-        // The SSE equivalent of the WS `hello`: the board may have moved while
-        // the feed was down, so coming up IS a poke — exactly one per recovery.
-        onSignal();
+        // No poke here, for the same reason WS open has none: the SSE door
+        // sends its own `hello` frame first (http/feed.py::_sse), and frame()
+        // counts it — a signal here would be a double refetch per recovery.
       });
       source.addEventListener("message", (e) => frame(String((e as MessageEvent).data)));
       source.addEventListener("error", () => {
