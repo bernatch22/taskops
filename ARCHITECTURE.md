@@ -1363,6 +1363,33 @@ files that answer it:
   carries the UI's ONE write, the comment box with its mention picker
   . The header's milestone picker scopes every tab at once.
 
+* **the comment toasts**, a stack bottom-right over every tab
+  (`ui/src/components/toasts/`), because the UI's one write was invisible to
+  everyone but its author: a comment landed and no other session's screen said
+  so. Everything is DERIVED client-side from the feed the Event pane already
+  reads — nothing is stored, no verb changed and there is no Python diff behind
+  it. `model.ts` is the whole of the decision-making and it is a plain module
+  with no React, no timers and no clock of its own: which comments are new, what
+  the preview trims to, how deep the stack goes and when a toast leaves are all
+  functions taking their clock and cursor as ARGUMENTS, which is what lets
+  `ui/smoke/sections/comment-toasts-model.tsx` and `…-stack.tsx` pin them under
+  `react-dom/server` with no jsdom and no stopwatch. "New" is a HEAD DELTA plus
+  an id set, not a per-event seq — `verbs/events.py` drops the rowid on the way
+  out, so the client derives the arrival count from `head - lastHead` against a
+  newest-first page one, and the id set catches the one case that arithmetic
+  over-counts (a burst larger than `EVENT_PAGE`). A toast is shown once, by
+  event id, ever, and the first load is SILENT: a page of history toasted on
+  mount would be fifty notifications about yesterday. "Already toasted" is a set
+  in memory and never a read-receipt — there is no mark-as-read verb on this
+  board and there must not be one (§11). A toast carries the author's avatar,
+  the card's title and the trimmed text; clicking it expands in place to the
+  whole message, and a SEPARATE affordance opens the card dossier through the
+  same `openCard`. The commented card's tile answers with a short-lived pulse
+  that returns to rest — the BORDER untouched, `components/board/CardTile.tsx`
+  argues why. No literal colour anywhere in it (`theme/tokens.css` only), and
+  `prefers-reduced-motion` suppresses every animation through the query helper
+  `components/board/flip.ts` already exported.
+
 Removed on purpose and not to be rebuilt: an "Attention" screen, which is in no
 Nova section, and an "Hours" tab, which in Nova is the Throughput panel *inside*
 Monitor.
