@@ -144,7 +144,16 @@ def drain(board: Caller, repo: Path) -> int:
 
 
 def push_card(repo: Path, branch: str) -> bool:
-    """Publish the card's branch so a PR (or the orchestrator) can see it."""
+    """Publish the card's branch so a PR (or the orchestrator) can see it.
+
+    BOTH sides of the refspec, for the reason `remote.push` carries in full: a
+    one-sided `origin <branch>` is resolved through `push.default`, and under
+    `upstream` that is the tracked branch and not this one. Here the tracking is
+    also what `--set-upstream` is about to write, so the wrong destination and
+    the record of it would agree with each other.
+    """
     if not trailer.card_of(branch):
         return False
-    return run.git("push", "--set-upstream", "origin", branch, cwd=repo).ok
+    return run.git(
+        "push", "--set-upstream", "origin", f"{branch}:refs/heads/{branch}", cwd=repo
+    ).ok

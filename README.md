@@ -35,8 +35,9 @@ can be misread:
   into it exactly once, to install it and register your key.
 * **A board**: one directory on that host. Created from your laptop with
   `taskops board create`.
-* **A repo**: joined to one board. `taskops remote add` once per checkout, then
-  every command runs bare.
+* **A repo**: joined to one board. A clone carries the board's address
+  (`.taskops/board.json`, committed), so `taskops join` is the whole step;
+  `taskops remote add` covers a checkout that carries none.
 * **Your agents**: they never touch any of this — they talk to the board through
   the eleven MCP tools.
 
@@ -55,12 +56,12 @@ importable leaves commits un-stamped, silently.
 
 ```
 taskops init                              a local board in this repo
-taskops join [<name>] [--invite|--github] join a board, install the hooks
+taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
 taskops serve                             host boards — an events API, no dashboard
 taskops server init                       bootstrap THIS host: its owner and their ssh key
-taskops board create|ls|push              the boards on a host
-taskops board visibility|forge            who may read one · who GitHub lets in
+taskops board create|ls|push|pull|rm      the boards on a host
+taskops board visibility|forge            who may read one · which repo's team is enrolled
 taskops invite <who>                      a single-use link
 taskops revoke --key|--invite             a key or an invite stops working
 taskops tidy                              remove worktrees whose work is in the trunk
@@ -78,10 +79,10 @@ Joining a hosted one is bare, like every other verb — the host is recorded onc
 and the key is discovered the way ssh discovers one:
 
 ```sh
-taskops remote add https://host:8787      # once per checkout
-taskops join my-project                   # your key is registered: that is the credential
-taskops join my-project --invite <id>     # first time: the invite enrols your key too
-taskops join my-project --github          # first time, no invite: GitHub vouches for you
+taskops join                              # a clone: board.json carries the address, done
+taskops join my-project --invite <id>     # first time by invite: it enrols your key too
+taskops remote add https://host:8787      # no carried address? record the host once…
+taskops join my-project                   # …and name the board
 taskops join my-project                   # no key + public board: read-only window
 ```
 
@@ -92,13 +93,11 @@ discovered key · `--as <actor>` when your unix user is not the principal's name
 full-URL form (`taskops join "<url>?token=…"`) keeps working — boards joined
 before keys existed never rot.
 
-**`--github` works only on a board that declared a forge** (below), and only for
-the first join: having `push` on that repo stands in for an invite, your ssh key
-is enrolled, and every call after it is the ordinary signed session — GitHub is
-the introduction, never the credential. The token is used for one server-side
-call and stored nowhere, which is why it is **not** a flag value: `--github`
-takes none, and the token comes from `gh auth token`, else `$GITHUB_TOKEN`, else
-a hidden prompt.
+**A dev never types anything about GitHub.** On a board that declared a forge
+(below), the owner's `taskops board forge` has already enrolled the team from
+their published ssh keys, so the bare `taskops join` above finds your key, signs
+a challenge with it and is in. No token of yours travels anywhere — there is no
+flag that would carry one.
 
 **Restart your Claude Code session after either** — MCP servers load once, at
 session start, from `.mcp.json`.
@@ -153,32 +152,149 @@ taskops remote add https://host:8787 [--replace]   # once per checkout
 taskops board create [<name>]                      # defaults to the directory's name
 taskops board push                                 # this repo's LOCAL board becomes that one
 taskops join <name>                                # or: a teammate connects to an existing one
+taskops board pull [<name>]                        # the reverse: it comes back down, verified by id
 ```
+
+### A board's whole life, and what each step destroys
+
+```
+  taskops init         board create+push       board pull            board rm
+ ┌──────────┐        ┌──────────────┐       ┌──────────────┐      ┌──────────────┐
+ │ a LOCAL  │  ───▶  │ LIVE on the  │  ───▶ │ a SNAPSHOT   │ ───▶ │ off the host │
+ │  board   │        │     host     │       │ back in here │      │  altogether  │
+ └──────────┘        └──────────────┘       └──────────────┘      └──────────────┘
+  destroys            destroys nothing:      destroys nothing:     DESTROYS the host's
+  nothing             the local board is     the host keeps its    board — the only step
+                      RENAMED to .taskops/   board byte for byte   that destroys anything,
+                      board.local-<date>     and goes on moving    and it says so in the
+                                                                   name of its own flag
+```
+
+Both transfers flip this checkout's config **last**: stream the history, prove
+every event id arrived, then change what the repo reads. A failure above that
+leaves the repo as it was and the command is simply run again.
+
+What a pull leaves you is a **snapshot that stops moving** — nothing syncs
+afterwards, so a card taken on the host a second later never appears here, and
+the command prints that sentence itself every time. `remote.json` keeps its
+login, so `board create` and `board push` still go to the same server.
 
 And the admin surface for any board on that host, from anywhere:
 
 ```sh
 taskops board ls
 taskops board visibility <name> public|private     # owner only
-taskops board forge <owner>/<repo> [--need push|admin]   # owner only: GitHub opens it
+taskops board rm <name>                            # owner only — see below
+taskops board forge <owner>/<repo> [--need push|admin]   # owner only: declare AND sync the team
 taskops board forge --clear                        # invite-only again
 taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>      # a GitHub-enrolled key too
 ```
 
-**Declaring the forge** — the repo whose membership opens a board — is a board
+`board rm` **refuses** unless this checkout already holds that history, and names
+both ways out — take the history down first, or say out loud that you are
+destroying it. The judgement is the host's, against the board's real event ids:
+
+```sh
+taskops board rm <name>                      # refused: 402 of the host's 402 events are not here
+taskops board rm <name> --discard-history    # destroys it anyway
+```
+
+There is no `--force` and there will not be one: a flag that does not name what
+it overrides is how somebody destroys a history they meant to keep.
+
+**Declaring the forge** — the repo whose team works on a board — is a board
 fact, `op=forge` with `{host, repo: <owner>/<name>, need: push|admin}`, absent
-until an owner records it and cleared again by recording `repo=""`. A board that
-never recorded one is invite-only and its `/join/github` door does not exist.
+until an owner records it and cleared again with `--clear`. A board that was
+never opted in is invite-only, exactly as before.
 
 **The board says so out loud.** The declared forge rides on the `board` payload
 — derived per read from the one event that declared it, never a second copy —
 so anybody who can read the board can see what opens it, and the dashboard
 draws it under the board's own identity as
 `github.com/<owner>/<repo> · push`. Before that, the only two parties who knew
-were the owner who typed the command and the stranger the door refused. A board
-with no forge sends no such key at all, which is what keeps every older reader
-working unchanged.
+were the owner who typed the command and the stranger the sync had not enrolled.
+A board with no forge sends no such key at all, which is what keeps every older
+reader working unchanged.
+
+**And declaring it SYNCS the team, in the same command.** `taskops board forge
+<owner>/<repo>` lists that repo's collaborators with the declared access (one
+authenticated call to GitHub, paginated, with the owner's own token — `gh auth
+token`, else `$GITHUB_TOKEN`, else a hidden prompt), reads each one's published
+ssh keys from the PUBLIC `https://github.com/<login>.keys`, and enrols them all
+in one batch. Re-run it to re-sync; a run that changes nothing writes nothing.
+
+```
+bernatch22/taskops — 4 collaborator(s) with push
+  enrolled  ana, dan, leo
+  keys      3 added
+  no ssh key published on GitHub — 1, not enrolled:
+    mia            github.com/mia.keys is empty — taskops invite mia
+  on this host but NOT a collaborator any more — 1, nothing revoked:
+    tomas          taskops revoke --key SHA256:…
+    a principal introduced by invite belongs here legitimately — revoking is yours
+```
+
+It **adds only**. Somebody who lost push is reported with the exact `revoke`
+command and nothing else happens: a principal introduced by an invite is not a
+GitHub login and a pruning sync would retire them for existing. The owner is
+never in that list. The token is spent on the collaborator pages and on nothing
+else — it never reaches the taskops host, which receives principals and ssh key
+lines and does not know what GitHub is.
+
+### The whole flow, and why cloning is not enough
+
+Cloning the repo gives you the board's ADDRESS — `.taskops/board.json` is
+committed and travels with the code — but the host has never seen you: it is a
+different server from GitHub, sharing no session and no cookie with it. The
+owner's sync is what closes that gap, before you ever type anything, and then
+`taskops join` — no URL, no flag, no token — is the whole of your side.
+
+```
+        GitHub                                the board HOST
+   <owner>/<repo>, private                principals + allowed_signers
+          |                                          |
+ 0. taskops board forge <owner>/<repo>   ← the OWNER, once, from their laptop
+    |                                                |
+    |-- their own token (gh auth token, else $GITHUB_TOKEN, else a hidden
+    |   prompt — never a flag value: the shell writes those into
+    |   ~/.zsh_history before the process starts) lists the collaborators
+    |   with <need>, and github.com/<login>.keys — PUBLIC — gives their keys
+    |                                                |
+    |-- POST /rpc members.enroll ------------------->|
+    |      { members: [{principal, keys}, …] }       |
+    |                                    it writes two rows per person:
+    |                                      principals:      <them>, member
+    |                                      allowed_signers: <them> ssh-ed25519 …
+    |
+    the token dies with that command. It reaches neither disk nor the host.
+          |                                          |
+ 1. git clone  ->  the code, and .taskops/board.json (the address).
+                   remote.json is 0600 and gitignored: no credential travels.
+          |                                          |
+ 2. taskops join   (the carried address, and the key ssh already discovered)
+    |                                                |
+    |-- POST /login: your key signs a challenge ---->|
+    |                            checked against allowed_signers -> 12h session
+
+    from here on GitHub never participates again, and it never saw you join:
+
+    every session:  your key signs a challenge  ->  the host checks it
+                    (~/.ssh/id_ed25519)             against allowed_signers
+                                                    -> a 12h session
+```
+
+The alternative — the host re-checking GitHub, or each dev POSTing their own
+token to be verified at the door — would mean somebody's credential travelling
+for a fact the owner already holds. That is the whole category of problem this
+removes: there is no token to steal because there is none stored, and now none
+that leaves the owner's machine either.
+
+**One consequence, stated plainly: access is granted automatically and taken
+back by hand.** Losing push on the repo does not close the board, because the
+credential is no longer GitHub — it is the enrolled key. Remove it with
+`taskops revoke --key SHA256:…`, which is the same verb an invite-enrolled key
+takes.
 
 No URL and no `--key` after `remote add`: the host is recorded in the checkout,
 `board create` records the name, and the key is **discovered** the way ssh
@@ -196,10 +312,9 @@ for the day the server is down or the owner's key is lost.
 registered key, no third state. Anyone may then `taskops join <url>` with no
 invite — a read-only join that mints nothing and registers no key.
 
-**After a verified push there is exactly ONE source.** The config flips only once
-the server has the history and the counts agree, and `.taskops/board/` is RENAMED
-to `.taskops/board.local-<date>` — a dead archive nothing reads again. There is no
-`--force`, ever.
+**After a verified push there is exactly ONE source** — `.taskops/board/` is
+renamed to `.taskops/board.local-<date>`, a dead archive nothing reads again, and
+there is no `--force` on a push either.
 
 ## The eleven MCP tools
 
@@ -258,6 +373,31 @@ Then `taskops ui` lists it under the chapter's **Reports** tab and renders it
 full width, read out of **your own clone** at that sha — the dashboard never
 asks the server for the bytes, and there is nothing to serve: a host running
 `taskops serve` answers `/git` with a 404, whole.
+
+**Reading one, from the other side.** Everything above is the author's half; a
+reader needs no ceremony at all. Three doors onto the same bytes:
+
+```sh
+taskops ui                             # the Reports tab: the chapter's list, rendered
+```
+```
+taskops_activity milestone=ms-…        # the same list as data: {path, title, sha}
+                                       # newest first, with the honest total beside it
+```
+```sh
+git pull && $EDITOR .taskops/reports/<name>.md    # it is a committed file, nothing more
+```
+
+Which one you want depends on what you are: a human wants the tab, an agent
+wants `activity` and then opens the file in its own worktree. There is no
+`read_report` tool and there is not going to be one — the bytes are already in
+the clone, and a tool that returned them would be a second way to do what
+opening a file does, with the whole chapter's prose pushed through context.
+
+The one failure worth naming: **the report renders blank or 404s when your
+clone does not have that sha yet** — the pointer is fine, your git is behind.
+`git fetch --all` and reload. The board deliberately cannot help you here; it
+never had the bytes.
 
 The rules that shape it, each of them the reason a step exists:
 

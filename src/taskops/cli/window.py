@@ -104,7 +104,7 @@ def holder(folder: Path, checkout: Path) -> str:
                 f"ctrl-c in its terminal, or wait ~{int(IDLE_SECONDS / 60)} minutes: "
                 "a window with no open tab retires itself"
             )
-        return f"http://127.0.0.1:{port}/board/ui/?token={token}"
+        return f"http://127.0.0.1:{port}/?token={token}"
     raise TaskopsError(
         f"something holds {folder / LOCK} but no window answers on port {port or '?'} — "
         "it may be starting (run this again) or wedged: find it with "

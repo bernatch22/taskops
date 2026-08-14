@@ -563,7 +563,10 @@ export interface GitDiff {
  *  be made to serve HTML. Deciding what to do with `text/html` is therefore the
  *  READER'S job, and it is done in exactly one place
  *  (`components/reports/ReportFrame.tsx`). A type this door does not know
- *  degrades to `text/plain`, which no renderer executes.
+ *  degrades to `text/plain`, which no renderer executes. `text/markdown` is
+ *  the third and it is NOT a third security case: it is drawn by the
+ *  dashboard's own renderer, which builds React elements and emits no HTML —
+ *  the frame is for bytes that are a page, and prose never becomes one.
  *
  *  `truncated` + `cap` is `GitDiff`'s vocabulary on purpose: the door reuses it
  *  so one renderer can say "this was cut at N bytes" about a patch and about a
@@ -571,7 +574,7 @@ export interface GitDiff {
 export interface GitFile {
   path: string; // repo-relative, always under `.taskops/reports/`
   rev: string; // 40-hex — the rev asked for, RESOLVED
-  content_type: "text/html" | "text/plain";
+  content_type: "text/html" | "text/markdown" | "text/plain";
   text: string;
   truncated: boolean;
   cap: number; // bytes; `gitwork/patch.py::CAP`

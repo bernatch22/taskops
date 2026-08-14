@@ -43,6 +43,11 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
           onClose={() => {}}
           onComment={async () => {}}
           repo={payload.repo}
+          /* The Worktree block draws its control only when there is somewhere to
+             send the reader (`Sections.tsx::Body`), so the harness has to be
+             that somewhere — the same shape App passes. Without it the absence
+             of the row would look like the feature working. */
+          onOpenTree={() => {}}
         />
       </>,
     );
@@ -81,9 +86,7 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check("no slug: not one anchor is rendered", !noSlug.includes("<a "));
   check(
     "no slug: no compare offered anywhere",
-    !noSlug.includes("card-compare") &&
-      !noSlug.includes("chapter-compare") &&
-      !noSlug.includes("worktree-compare"),
+    !noSlug.includes("chapter-compare") && !noSlug.includes("worktree-compare"),
   );
   // The layout does not depend on the slug either. This used to assert the
   // five-column grid string, which pinned a table that no longer exists; what it
@@ -101,9 +104,19 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
 
   check("a sha links to the commit page", slug.includes(`https://github.com/owner/repo/commit/${sha}`));
   check("the thread's sha is a link too", slug.includes('data-testid="thread-commit-link"'));
+  /* The card modal's Worktree block used to offer a forge compare here, and
+     this check asserted its URL shape. It offers the WORKTREE now — the view in
+     this dashboard, reading this clone — so the claim worth pinning inverted:
+     not "the link is built right" but "there is no such link to build", with or
+     without a slug. The card's diff did not go anywhere; it is the Files
+     changed section, read from the clone (`OWN_CLONE` in tests/test_ui.py). */
   check(
-    "the card offers its PR-diff view against the chapter branch",
-    slug.includes('data-testid="card-compare"') && /compare\/ms[^"]*\.\.\.tk-/.test(slug),
+    "the card sends the reader to its worktree, in this dashboard",
+    slug.includes('data-testid="card-open-tree"'),
+  );
+  check(
+    "and offers no forge compare of its own, slug or no slug",
+    !slug.includes('data-testid="card-compare"') && !noSlug.includes('data-testid="card-compare"'),
   );
   // …with NO base in the URL: the trunk is not on the board, so the forge's own
   // default branch answers. A `main` appearing here is the UI guessing.

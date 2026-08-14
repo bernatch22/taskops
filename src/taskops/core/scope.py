@@ -65,6 +65,14 @@ OPERATIONS: dict[str, Operation] = {
         OWNER,
         "publishing a board — or taking it private again — is the server OWNER's move",
     ),
+    # The only operation on this host that DESTROYS, and the same wall as
+    # `board.create` for the mirrored reason: a member holds a key to a board,
+    # never the right to end it. The guardrail in front of it (does anybody else
+    # still hold this history?) is a second, separate question — `http/removal.py`.
+    "board.remove": Operation(
+        OWNER,
+        "removing a board — and the history inside it — is the server OWNER's move",
+    ),
     # Declaring the forge is the same wall again, one notch sharper: this fact
     # says WHOSE GitHub membership opens the board, so whoever may set it may
     # hand the board to a repo full of strangers. Clearing it is the same move
@@ -86,6 +94,15 @@ OPERATIONS: dict[str, Operation] = {
     "key.add": Operation(
         OWNER,
         "registering a key is the server OWNER's move",
+    ),
+    # A batch of principals and the keys that speak for them — `key.add`'s wall,
+    # and not a softer one because it arrives as a list: whoever may run it
+    # decides who exists on this host. It ADDS only (revoking stays a separate
+    # act, `key.revoke` below), which is why the OWNER row is the whole rule.
+    "members.enroll": Operation(
+        OWNER,
+        "enrolling members — a principal and the keys that speak for it — is the "
+        "server OWNER's move",
     ),
     "key.revoke": Operation(
         OWNER,

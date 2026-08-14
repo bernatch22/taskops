@@ -3,6 +3,99 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## Unreleased — the forge enrols the team; GitHub is the owner's, and nobody else's
+
+- **`taskops board forge <owner>/<repo>` declares AND syncs.** It used to record
+  a fact; it now records it and then enrols the team behind it: one authenticated,
+  paginated `GET /repos/<owner>/<repo>/collaborators?permission=<need>` with the
+  owner's own token, then the PUBLIC `github.com/<login>.keys` per person, then a
+  single `members.enroll` over `/rpc` carrying principals and key lines. **No
+  GitHub token ever reaches a taskops host, and none is stored on either side** —
+  it is a header on the owner's outgoing request and dies with the command.
+  Re-running it re-syncs, and a run that changes nothing writes nothing.
+- **The sync ADDS ONLY, and reports the rest.** A principal the batch did not
+  name is printed as drift with the exact `taskops revoke --key SHA256:…` beside
+  it, and nothing revokes itself: a principal enrolled by invite is not a GitHub
+  login, and a pruning sync would retire them for existing. The owner is never in
+  that list. A collaborator whose GitHub account publishes no ssh key is NAMED
+  with `taskops invite <login>`, never skipped in silence. A key another
+  principal already holds, or one that was revoked here, is reported and not
+  written — a batch may not move a key off somebody who is not in it.
+- **The dev's GitHub door is DELETED.** `POST /<board>/join/github`, the
+  `--github` flag and the token discovery inside `join` are gone — not deprecated,
+  not answering 410. It made every dev's own credential travel to a host that has
+  no business seeing one, to prove a fact the owner already holds, and it asked
+  for an ssh key from people who, having push over ssh, had published one already.
+  A dev in a fresh clone now types **`taskops join`**, bare: their key was
+  enrolled before they ever typed anything. Invites are unchanged, and a board
+  that declared no forge is invite-only exactly as before.
+
+## 0.3.3 — a clone joins with two words
+
+- **`taskops join` reads the address the clone already carries.** v2 committed
+  `.taskops/board.json` exactly as v1 did — and never read it back: a bare join
+  resolved through the per-machine recorded remote, so a fresh clone died on
+  "which host?" while holding the answer in its tree. Restored: inside a clone,
+  `taskops join` (or `taskops join --github`, first time) is the whole
+  onboarding. `taskops remote add` remains for a checkout that carries no
+  address, or a join onto a different board.
+
+## 0.3.2 — the window's address, prose that reads as prose, and a link that stays inside
+
+- **`taskops ui` opens `http://127.0.0.1:<port>/`.** It used to hand out
+  `/board/ui/?token=…`, which leaked two implementation details into the one URL
+  a human types — `board` is only the name a window mounts its single board
+  under, and `/ui/` was a door on a HOST, which has served no page since the
+  dashboard moved to the binary. Worse, the page then rewrote the address bar to
+  a path recomputed from that mount, so a refresh landed on `/` and got a JSON
+  404. The board's own routes are unchanged and still hang off `/board`.
+- **A markdown report is rendered as markdown.** `.md` reports — the ones written
+  to be read — were served as their own source, hashes and pipes and all: the
+  door typed them `text/plain` and the reader dropped them in a `<pre>`. The door
+  now answers `text/markdown` and the dashboard draws them with the same renderer
+  a card spec and a close note use. It needs no sandbox and gets none: that
+  renderer builds React elements and emits no HTML, so raw markup inside a report
+  is drawn as the characters it is. A self-contained HTML report still goes in
+  the `allow-scripts`-only frame, and an unrecognised type still degrades to
+  plain text.
+- **The card's Worktree block opens the worktree, in the dashboard.** It offered
+  a forge `compare ↗` — two branches on somebody else's website, rendered for a
+  clone that may not be yours. It now opens the worktree diff view, reading your
+  own clone, with the card's thread beside it. It needs no forge slug, so a board
+  with no GitHub at all has it too.
+- The chapter goal pane got a taller clamp — a long goal scrolls less.
+
+## 0.3.1 — three chapters: reports, GitHub as an introduction, and the whole lifecycle
+
+- **Reports.** A milestone's narration becomes part of the board: `taskops_activity`
+  reads the whole story of N cards at once, `taskops_filed` records a report as
+  `{path, title, milestone, sha}` — the CONTENT stays a file in `.taskops/reports/`
+  and the list is a fold over the log, never a table. The dashboard lists a
+  milestone's reports and renders one in a sandboxed iframe, served by a read-only
+  `/git` door that hands back a committed file at a rev.
+- **GitHub is the INTRODUCTION, never the credential.** `taskops join <board>
+  --github` enrols your ssh key when you have push on the repo the board declared.
+  The token is asked for once, travels in one request body, and is stored nowhere;
+  what persists is a pubkey. A board opts in with `taskops board forge
+  <owner>/<repo>` and opts back out with `--clear` — owner only, both ways. Absent
+  a forge (how every board is born) that door does not exist.
+- **The lifecycle runs backwards too.** `taskops board pull` brings a hosted board
+  down as a snapshot — the same five steps as `push`, in reverse, over paging — and
+  `taskops board rm` takes one off a host. `rm` REFUSES to destroy a history this
+  checkout does not hold, judged on the host against the board's real event ids,
+  and says which of the two ways out you want. There is no `--force` and
+  `--discard-history` is not an alias for one.
+- **Fixed: the dashboard flooded a remote board with requests.** The forward
+  published a change frame on any answer carrying a `seq`, and every envelope
+  carries one — so every READ announced a change, the page refetched, and the loop
+  ran at coalesce speed. Reads no longer poke anybody.
+- **The `taskops ui` window is a lease, not a pidfile.** A `flock` that dies with
+  its holder, an identity check on `/healthz` before a browser is reopened, and a
+  server that retires itself when no tab has been open for thirty minutes.
+- **Fixed: a minted secret can no longer start with `-`**, which made roughly one
+  invite in 64 unusable as a CLI flag value.
+- A client that hangs up mid-response is no longer printed as a crash.
+
 ## 0.3.0 — the rewrite: derive, don't write
 
 A ground-up rewrite of taskops (v1 was ~340 files; this is ~110 under

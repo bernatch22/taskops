@@ -74,7 +74,26 @@
  * escapes it, there is no `dangerouslySetInnerHTML` anywhere in this file or
  * this dashboard, and a `<script>` inside a text report is drawn as the eight
  * characters it is.
+ *
+ * ── And why MARKDOWN is drawn in this origin, on purpose ───────────────────
+ *
+ * A `.md` report used to land in that same `<pre>`, which meant every report
+ * written as prose — the ones a human actually reads — was served as its own
+ * source: hashes, pipes and asterisks, unparsed. It is now drawn by the
+ * dashboard's own renderer, the same one the card spec and a close note use.
+ *
+ * That is a THIRD branch and not a second frame, and the boundary above is not
+ * bent by it: `Markdown` builds React ELEMENTS from a parse
+ * (`ui/src/markdown.ts` → headings, paragraphs, code, lists, tables, rules).
+ * It emits no HTML, so there is nothing for `dangerouslySetInnerHTML` to do
+ * and the file still contains none; raw HTML inside a report is not markup to
+ * that parser, so React draws it as the characters it is. The parser also has
+ * no link span at all — there is no `href` for a `javascript:` URL to reach.
+ * A markdown report therefore cannot run anything, which is exactly why it
+ * needs no sandbox: the frame exists for bytes that ARE a page, and this is
+ * prose that never becomes one.
  */
+import { Markdown } from "../shared/Markdown";
 import type { GitFile } from "../../types";
 
 /** The sandbox this dashboard gives a report, and the only one it can give.
@@ -117,6 +136,18 @@ const text: React.CSSProperties = {
   overflowX: "auto",
 };
 
+/** The reading pane for prose. Same box as the text one — a report is a report
+ *  — but no `pre` shape: the renderer brings its own blocks. */
+const prose: React.CSSProperties = {
+  padding: "18px 20px",
+  borderRadius: "13px",
+  border: "1px solid var(--hair)",
+  background: "var(--pane)",
+  color: "var(--text)",
+  lineHeight: 1.6,
+  overflowX: "auto",
+};
+
 const cut: React.CSSProperties = {
   fontSize: "11.5px",
   color: "var(--warn, var(--text-3))",
@@ -141,7 +172,11 @@ export function ReportFrame({ file, title }: ReportFrameProps): React.JSX.Elemen
           the whole of it is the file at {file.rev.slice(0, 12)}
         </div>
       ) : null}
-      {file.content_type === "text/html" ? (
+      {file.content_type === "text/markdown" ? (
+        <div data-testid="report-markdown" style={prose}>
+          <Markdown text={file.text} />
+        </div>
+      ) : file.content_type === "text/html" ? (
         <iframe
           data-testid="report-frame"
           title={title}

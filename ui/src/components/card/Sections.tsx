@@ -13,12 +13,12 @@
  * to agents. That is the hole `<Criteria>` closes, and the reason it is a section
  * of its own rather than a paragraph folded into the spec. */
 import { shortActor } from "../../format";
-import { Ext, Numstat, commitUrl, compareUrl, type GitReader, type Repo } from "../../links";
+import { Ext, Numstat, commitUrl, type GitReader, type Repo } from "../../links";
 import { TONE_FG } from "../board/CardTile";
 import { Markdown } from "../shared/Markdown";
 import { CommitPatch, FilesChanged } from "./Patch";
 import { Thread } from "./Thread";
-import { STATE, label, soft } from "./tokens";
+import { STATE, label, soft, treeLink } from "./tokens";
 import type { CardBrief, CardPayload, CardState } from "../../types";
 
 export function Section({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
@@ -92,9 +92,15 @@ export function Body({
   now,
   repo,
   reader,
+  onOpenTree,
 }: {
   dossier: CardPayload;
   now: number;
+  /** Open this card's WORKTREE — the view in this dashboard, reading this
+   *  clone. OPTIONAL, and its absence is what a caller with nowhere to go
+   *  looks like (the smoke harness renders the body alone): no row, rather
+   *  than a dead one. */
+  onOpenTree?: ((id: string) => void) | undefined;
   /** Where this repo lives on the web, or nothing — the whole GitHub switch
    *  (`links.tsx`). OPTIONAL so that a caller that has not been taught to pass
    *  it renders exactly the document this file rendered before. */
@@ -108,13 +114,6 @@ export function Body({
 }): React.JSX.Element {
   const { card } = dossier;
   const stood = dossier.standing;
-  /* The card AS A PULL REQUEST: base is the chapter's integration branch, head
-   * is the card's own. Both are already on this payload (`_context.py::dossier`
-   * sends `branch`, and `milestone` carries its own), so nothing is constructed
-   * and nothing is guessed — the day a branch is named differently the link
-   * follows it. `null` whenever any of the three facts is missing. */
-  const pr = compareUrl(repo, dossier.branch, dossier.milestone?.branch ?? "");
-
   return (
     <>
       {stood && stood.verdict === "changes" ? (
@@ -179,17 +178,25 @@ export function Body({
             <div style={{ color: "var(--text-2)", wordBreak: "break-all", marginTop: "3px" }}>
               {dossier.worktree || "—"}
             </div>
-            {/* No slug, no row: the line does not exist rather than existing
-                dead, so the block is the same height it always was. */}
-            {pr ? (
+            {/* INWARDS, not out. This used to be `compare ↗` to the forge, and
+                a forge compare is the wrong document to send a reader to from
+                here: it is two branches on a website, rendered by somebody
+                else, for a clone that may not be the reader's. The worktree
+                view is THIS dashboard reading THIS clone — the tree as it
+                actually is, with the card's own thread beside it.
+
+                No `repo` is needed for it and so no slug can withhold it: a
+                board with no forge at all still has worktrees. */}
+            {onOpenTree ? (
               <div style={{ marginTop: "7px" }}>
-                <Ext
-                  href={pr}
-                  title={`${dossier.milestone?.branch ?? "the trunk"}...${dossier.branch}`}
-                  style={{ color: "var(--accent)" }}
+                <button
+                  type="button"
+                  data-testid="card-open-tree"
+                  onClick={() => onOpenTree(card.id)}
+                  style={treeLink}
                 >
-                  <span data-testid="card-compare">compare ↗</span>
-                </Ext>
+                  open worktree →
+                </button>
               </div>
             ) : null}
           </div>
@@ -279,9 +286,13 @@ export function Body({
         </Section>
       ) : null}
 
-      {/* The card AS A PULL REQUEST, read from the clone instead of the forge:
-          the same two branches the `compare ↗` link above is built from. No
-          branch on either side, no section — there is no range to ask about. */}
+      {/* The card AS A PULL REQUEST, read from the clone instead of the forge —
+          the card's branch against its chapter's. This used to be described as
+          "the same two branches the `compare ↗` link above is built from", and
+          that link is gone: the Worktree block now opens the tree in this
+          dashboard instead of sending the reader to somebody else's rendering
+          of a range. The two branches are unchanged; only the sentence was
+          borrowing them. No branch on either side, no section. */}
       {dossier.commits.length > 0 && dossier.branch && dossier.milestone?.branch ? (
         <Section title="Files changed">
           <FilesChanged

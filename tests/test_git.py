@@ -269,6 +269,38 @@ def test_the_milestone_branch_and_the_card_both_reach_origin_on_a_merge(
     assert run.git("rev-parse", "--verify", "tk-a11111", cwd=bare).ok
 
 
+def test_a_push_lands_on_the_branch_it_names_and_never_on_its_upstream(
+    tmp_path: Path,
+) -> None:
+    """The one-sided refspec bug, pinned by the config that exposed it.
+
+    `git push origin <name>` reads as "push that branch there" and does not mean
+    it: with no colon, git resolves the destination through `push.default`, and
+    under `upstream` the destination is whatever the branch TRACKS. On
+    2026-08-10 this repo's own milestone branches still tracked `origin/main`
+    from v1, so the best-effort visibility push was quietly landing integration
+    branches on the trunk — inside a function that swallows every error, in a
+    tool whose central rule is that only the human lands anything there.
+    """
+    root = repo(tmp_path)
+    bare = origin_for(root, tmp_path / "origin.git")
+    remote.push(root, "main")
+    trunk = run.must("rev-parse", "main", cwd=bare)
+    run.must("config", "push.default", "upstream", cwd=root)
+    run.must("branch", "ms/mvp", cwd=root)
+    run.must("branch", "--set-upstream-to", "origin/main", "ms/mvp", cwd=root)
+    (root / "models.py").write_text("class Invoice: ...\n", encoding="utf-8")
+    run.must("add", "-A", cwd=root)
+    run.must("commit", "-q", "-m", "feat: model", cwd=root)
+    run.must("branch", "-f", "ms/mvp", "HEAD", cwd=root)
+
+    remote.push(root, "ms/mvp")
+    assert run.must("rev-parse", "ms/mvp", cwd=bare) == run.must(
+        "rev-parse", "ms/mvp", cwd=root
+    )
+    assert run.must("rev-parse", "main", cwd=bare) == trunk  # the trunk never moved
+
+
 # ── binding ─────────────────────────────────────────────────────────────────
 
 

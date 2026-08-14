@@ -43,3 +43,13 @@ export const label: React.CSSProperties = {
   color: "var(--text-3)",
   marginBottom: "9px",
 };
+
+/** The Worktree block's one control. `all: unset` is this design's button reset
+ *  (Pane.tsx); it reads exactly like the `compare ↗` anchor it replaced,
+ *  because it does that job — it just stays inside the dashboard. */
+export const treeLink: React.CSSProperties = {
+  all: "unset",
+  cursor: "pointer",
+  color: "var(--accent)",
+  fontSize: "11.5px",
+};

@@ -110,7 +110,7 @@ def ui(here: Path) -> int:
     port = httpd.server_address[1]
     (root / DIR / "ui.json").write_text(json.dumps({"port": port, "token": token}) + "\n")
     window.retire_when_idle(httpd.mounts, httpd)
-    _open(f"http://127.0.0.1:{port}/board/ui/?token={token}")
+    _open(f"http://127.0.0.1:{port}/?token={token}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

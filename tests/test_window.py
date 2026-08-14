@@ -72,7 +72,64 @@ def test_holder_returns_the_live_windows_url(
     folder = checkout / ".taskops"
     (folder / "ui.json").write_text(json.dumps({"port": port, "token": "tok"}))
     url = window.holder(folder, checkout)
-    assert url == f"http://127.0.0.1:{port}/board/ui/?token=tok"
+    # The ROOT, since 2026-08-10. This assertion used to read `/board/ui/`, and
+    # that was the CONTRACT changing, not a test bent to fit: `board` is only
+    # the name a window mounts its single board under and `/ui/` was a door on a
+    # host that serves no page, so neither had any business in the one URL a
+    # human types. The board's own routes still hang off `/board`, which is what
+    # `test_the_boards_own_routes_still_answer_under_board` next door pins.
+    assert url == f"http://127.0.0.1:{port}/?token=tok"
+
+
+def _get(port: int, path: str) -> bytes:
+    """A real request against a real window — the bundle under test is the
+    PACKAGED one (`mounts.ui`), not a fake, so this fails if the wheel ever
+    stops shipping a page."""
+    from urllib.error import HTTPError
+    from urllib.request import urlopen
+
+    try:
+        with urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as answer:  # noqa: S310
+            return bytes(answer.read())
+    except HTTPError as err:
+        return bytes(err.read())
+
+
+def test_the_window_serves_its_page_at_the_root(
+    own_window: tuple[BoardServer, Path, int],
+) -> None:
+    """`taskops ui` hands out `http://127.0.0.1:<port>/` and that has to BE the
+    page — the old address leaked two implementation details into the one URL a
+    human types."""
+    _, _, port = own_window
+    assert b"<!doctype html>" in _get(port, "/").lower()
+    assert b"taskops" in _get(port, "/").lower()
+    assert _get(port, "/app.js").startswith(b"(()") or b"function" in _get(port, "/app.js")
+
+
+def test_the_root_page_does_not_swallow_a_mistyped_path(
+    own_window: tuple[BoardServer, Path, int],
+) -> None:
+    """Deliberately NOT `static.resolve`, whose single-page fallback answers ANY
+    tail with the index: at the root that would turn every mistyped API path
+    into a page, and the API's honest 404 is worth more than a nicety."""
+    _, _, port = own_window
+    assert b"nothing at /nope" in _get(port, "/nope")
+
+
+def test_a_board_host_never_serves_a_page_at_its_root(tmp_path: Path) -> None:
+    """`repo is None` is the one switch — the same one /git and /healthz's
+    identity read — so a host cannot start serving a dashboard by any route."""
+    root = tmp_path / "boards"
+    root.mkdir()
+    httpd = serve(root, "127.0.0.1", 0)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert b"nothing at /" in _get(httpd.server_address[1], "/")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 def test_a_port_owned_by_another_checkouts_window_is_not_ours(

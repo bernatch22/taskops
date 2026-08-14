@@ -15,7 +15,7 @@ from pathlib import Path
 from . import enrol, watch
 from .. import session, identity
 from .._json import query
-from ..board import DIR, find_root, open_board
+from ..board import DIR, find_root, open_board, read_config
 from ..store import log
 from .._errors import TaskopsError
 from ..gitwork import remote, install, claudefiles
@@ -26,7 +26,7 @@ from ..gitwork import remote, install, claudefiles
 def init(here: Path) -> int:
     root = find_root(here)
     (root / DIR / "board").mkdir(parents=True, exist_ok=True)
-    (root / DIR / "board.json").write_text("{}\n", encoding="utf-8")
+    install.write_local(root)
     _wire(root, actor())
     print(f"local board in {root / DIR / 'board'} — the MCP tools are the way in")
     return 0
@@ -42,29 +42,22 @@ ORPHAN = (
 )
 
 
-BOTH = (
-    "--invite and --github are two ways to be introduced to the same host, and running "
-    "both would burn the invite for nothing. Pick one: --invite <id> if somebody minted "
-    "you a link, --github if you have push on the repo the board declared."
-)
-
-
-def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
+def join(
     here: Path,
     target: str,
     given: str,
     key: str = "",
     discard: bool = False,
     invite: str = "",
-    github: bool = False,
 ) -> int:
-    """Connect this repo to a board. Bare like every other verb since the host is
-    recorded and the key is discovered:
+    """Connect this repo to a board. Bare like every other verb: the address is
+    CARRIED by the clone, the key is discovered, and the recorded remote is the
+    fallback for a checkout that carries nothing:
 
-        taskops remote add https://host:8787        once per checkout
-        taskops join my-project                     registered key: signs in, done
-        taskops join my-project --invite <id>       first time: enrols the key too
-        taskops join my-project --github            first time, no invite: GitHub vouches
+        taskops join                                a clone: board.json travels, done
+        taskops join my-project --invite <id>       first time by invite: enrols the key
+        taskops remote add https://host:8787        no carried address? record the host…
+        taskops join my-project                     …and name the board
         taskops join my-project                     no key anywhere + public board: read-only
 
     The name defaults exactly as `board create`'s does (recorded name, else the
@@ -80,29 +73,37 @@ def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
     archives (never deletes) before proceeding.
 
     With an invite, the invite and the PUBKEY travel in the same call: the server
-    burns the invite and enrols the key in one act. `--github` is the same shape
-    with a different proof — a token the CLI already has instead of a link
-    somebody minted (`enrol.by_github`), and it takes no value on purpose. Either
-    way the key then signs in ON THE SPOT and what lands in remote.json is a
-    SESSION with an expiry — never a standing token to copy around, and never the
-    GitHub one, which this process has already forgotten by the time it writes.
-    Keys exist so tokens do not travel.
+    burns the invite and enrols the key in one act. The key then signs in ON THE
+    SPOT and what lands in remote.json is a SESSION with an expiry — never a
+    standing token to copy around. Keys exist so tokens do not travel.
+
+    **There is no GitHub branch here any more, and there must not be one again.**
+    The flag that was here posted the joiner's own GitHub token to the host to be
+    verified, which made every dev's credential travel for a fact the OWNER
+    already holds. `taskops board forge` enrols the team from the owner's laptop
+    instead, so a dev whose key that sync published arrives at the `bare and
+    found` branch below: the plain `taskops join`, nothing to prove, nothing to
+    type, and no token of theirs anywhere.
     """
     from . import remote as remote_cli
 
     root = find_root(here)
     bare = "://" not in target
     if bare:
-        host, name = remote_cli.named(target)
-        target = f"{host}/{name}"
+        # v1's whole ambition, restored (its join.py said it in one line: "a
+        # clone carries `.taskops/board.json`, so the second developer types
+        # two words"). The committed address is read FIRST, so a fresh clone
+        # joins with no URL and no `remote add` — the recorded remote is for
+        # the checkout that has no carried address, or a DIFFERENT board.
+        carried = str(read_config(root).get("url", ""))
+        if carried and target in ("", carried.rsplit("/", 1)[-1]):
+            target = carried
+        else:
+            host, name = remote_cli.named(target)
+            target = f"{host}/{name}"
     base = target.partition("?")[0]
     params = query(target)
     invite = invite or params.get("invite", "")
-    # Before `_keep_or_archive`, which is the first thing here that MOVES anything:
-    # a refusal that had already renamed the local board would be the worse order,
-    # and the invite in a pasted `?invite=` link counts exactly as the flag does.
-    if invite and github:
-        raise TaskopsError(BOTH)
     _keep_or_archive(root, base, discard)
     who = given or actor()
     name = who.partition(":")[2] or "me"
@@ -112,13 +113,6 @@ def join(  # noqa: PLR0913 — one command, one config; each flag is a way IN
         token, who = enrol.redeem(base, invite, name, enrol.pubkey(str(found) if found else ""))
         if found:
             door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
-    elif github:
-        # The door mints NOTHING (`http/github.py`), so there is no token to keep
-        # here: the enrolled key is the credential from the next line onwards.
-        vouched = enrol.by_github(base, name, enrol.pubkey(str(found) if found else ""))
-        who = vouched["actor"]
-        door = {"host": enrol.host_of(base), "principal": name, "key": str(found)}
-        print(f"  GitHub: you have {vouched['need']} on {vouched['repo']} — key enrolled")
     elif bare and found:
         # No invite and no token: the KEY is the whole credential. Proved against
         # the host BEFORE anything is written — a refused sign-in must not leave

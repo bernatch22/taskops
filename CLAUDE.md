@@ -31,13 +31,20 @@ Prefer a single test file over the whole suite while iterating:
 `changes` are all computed per read. A row survives the process that wrote it; a
 lease does not — which is why there is **no `recover` verb and must never be
 one**. Closing a blocker frees its dependents by definition; a dying worker
-releases its card by definition. A stalled card is handed over with
-`taskops_assign`.
+releases its card by definition. A card is handed over with `taskops_assign` —
+**including one whose lease is still live** (2026-08-11, ARCHITECTURE §12):
+the lease's only heartbeat is MCP traffic, so the clock cannot tell a dead
+worker from one that has been editing quietly for twenty minutes, and it was
+wrong in both directions at once. `stalled` is a report, never a mechanism;
+the orchestrator that spawned the process is the authority on whether it is
+alive, and the card goes to a NAMED replacement in the same call. Which is
+still not a `recover`: nothing is resurrected, and nothing is taken by the
+passage of time.
 
 **2. Branches are inhabited, not switched.** `git switch` appears nowhere.
 
 ```
-main ────────────────────────────▶ the HUMAN decides: a PR, or taskops_merge milestone=
+master ──────────────────────────▶ the HUMAN decides: a PR, or taskops_merge milestone=
   └─ ms/<slug> ──┬──────┬───────▶ the ORCHESTRATOR integrates, card by card
               tk-a11  tk-b22     ← one WORKER each, one worktree each
 ```
@@ -67,21 +74,38 @@ Reading and commenting are open to everyone; only taking, closing and releasing
 are the owner's. Any agent may `taskops_comment` on ANY open card — that
 asymmetry is the whole communication channel between parallel agents.
 
-**Two introductions, ONE credential** (2026-08-10, ARCHITECTURE §18). A key gets
-enrolled either by burning an invite (`POST /<board>/invite/redeem`) or by GitHub
-vouching for it (`POST /<board>/join/github`, `taskops join <board> --github`) —
-and both end in the same `login.register`, so what persists is a pubkey and an
-`allowed_signers` line, never a GitHub token. **GitHub is the INTRODUCTION, never
-the credential**: it is asked ONCE, server-side, with the caller's own token,
-which is a header on one outgoing request and is written nowhere. `--github` is a
-`store_true` and must stay one — a token in a flag value is in the shell history
-before the process starts. A board opts in with `op=forge` (`core/forge.py` owns
-the shape); absent — the state every board is born in — that door does not exist
-and the board is invite-only. The owner declares it with `taskops board forge
-<owner>/<repo> [--need push|admin]` (`--clear` takes it back), and the board SAYS
-so: the fact rides on the `board` payload, derived per read exactly as
-`visibility` is, so a reader finds the door instead of bumping into it. **A board
-with no forge sends no key at all** — never `null`.
+**ONE introduction per side, ONE credential** (2026-08-11, ARCHITECTURE §19).
+A key gets enrolled either by burning an invite (`POST /<board>/invite/redeem`)
+or by the OWNER's forge sync (`members.enroll`, a batch) — and both end in the
+same `login.register`, so what persists is a pubkey and an `allowed_signers`
+line, never a GitHub token. **GitHub is the INTRODUCTION, never the credential,
+and it is the OWNER's business alone**: `taskops board forge <owner>/<repo>`
+declares the repo AND syncs its team — collaborators with the declared access →
+their PUBLIC `github.com/<login>.keys` → one `members.enroll` batch.
+`cli/github.py` asks GitHub (the owner's token lives in ONE header, per page, and
+never reaches the host), `cli/team.py` runs the flow and prints the report. A
+board opts in with `op=forge` (`core/forge.py` owns the shape); absent — the
+state every board is born in — it is invite-only. `--clear` takes it back — the
+owner's move, both ways (`core/scope.py`).
+
+The sync **adds only**: a principal who lost access is named with the exact
+`taskops revoke --key`, never revoked, because an invite-enrolled principal is
+not a GitHub login. Nobody is dropped in silence — a collaborator with no
+published key is named with `taskops invite <login>`.
+
+**The DEV types `taskops join` and nothing about GitHub** (§19.1). There was a
+door on their side for one day — `POST /<board>/join/github`, a `--github` flag,
+a token discovered inside `join` — and it is DELETED: it made every dev's own
+credential travel for a fact the owner already holds. Their key was already
+enrolled by the sync, so the bare join signs a challenge with it and is in. What
+survived the flag is the rule about the TOKEN (`cli/github.py::token`: `gh auth
+token`, else `$GITHUB_TOKEN`, else a hidden prompt — **never a flag value**, the
+shell writes those into the history file before the process starts).
+
+And the board SAYS which forge opens it: the declared fact rides on the `board`
+payload, derived per read exactly as `visibility` is, so a reader finds the door
+instead of bumping into it. **A board with no forge sends no key at all** —
+never `null`.
 
 ## Layers — imports only point DOWN
 
@@ -131,6 +155,35 @@ Event ids are `sha256(canonical)[:32]`, so the log is idempotent. Replay sorts
 by `ts` with a STABLE sort — breaking ties by id reordered claims against
 releases. A board is created by an explicit act and never by being asked for.
 
+## The CLI surface — it connects, it never manages
+
+Eleven top-level commands, and `board` is the only one with actions of its own.
+Moving a card from the terminal does not exist: that is MCP. Re-derive both
+lists rather than trusting this paragraph — `--help` is the source:
+
+```sh
+uv run python -m taskops.cli --help | sed -n '/^usage/,/^$/p'   # the eleven
+uv run python -m taskops.cli board --help                       # its actions
+```
+
+`board` today: `create · ls · push · pull · rm · visibility · forge`. The four that move
+a whole history are one lifecycle, and each says what it destroys:
+
+```
+init ──▶ board create + push ──▶ board pull ──▶ board rm
+ —          the local board       nothing:       the host's board, and ONLY
+            is RENAMED, not       the host       with --discard-history if
+            deleted               keeps its      this checkout does not
+                                  copy           already hold that history
+```
+
+`push` and `pull` are the same five steps in opposite directions and both flip
+`board.json` LAST, so a failure anywhere above leaves the repo as it was and the
+command is re-run. `rm`'s guardrail is judged on the HOST against the board's
+real event ids (`core/holding.py`, one comparison, both callers) — a wall the
+client enforces is a convention. There is no `--force` on `push` or on `rm`, and
+`--discard-history` is not an alias for one. ARCHITECTURE.md §20 argues all of it.
+
 ## Working here
 
 - **Mutation-check every fix**: break it on purpose, watch the test fail, put it
@@ -176,11 +229,15 @@ what it exists to report, not a fault.
 
 Each has its line in ARCHITECTURE.md §11 saying what it cost and where it is
 enforced: a reviewer ROLE, a stored review STATUS, or automatic reviewer
-assignment · `land` or automatic merges to main · git replication between clones
+assignment · `land` or automatic merges to the trunk · a SECOND trunk (2026-08-10: `main` and `master` both existed, `trees.base_ref` cut every chapter from `origin/main`, and a one-sided push refspec was quietly landing card merges there — three facts that only became a bug together) · git replication between clones
 · Claude hooks **that decide or store** · a stored `doing` · a slug in a branch
 name · a `recover` · a mark-as-read/ack verb · per-request SIGNING · hand-rolled
-crypto or a pip crypto dependency · a `--force` on `board push` · a STORED
-GitHub token or a GitHub login as a second credential type · a report's CONTENT in
+crypto or a pip crypto dependency · a `--force` on `board push` **or on `board
+rm`** (nor a confirmation prompt in its place: a prompt asks whether you meant
+it, possession asks whether the history survives you) · a STORED GitHub token,
+a GitHub login as a second credential type, **or a GitHub door on the DEV's side**
+(a `/join/github`, a `--github`, a token discovered at join time: the owner
+already knows the team, so nobody else's credential has to travel) · a report's CONTENT in
 `events.jsonl` or a reports TABLE beside it (the log holds `{path, title,
 milestone, sha}` and the list is a fold) · `allow-scripts` **beside**
 `allow-same-origin` on the report frame, or a `sandbox` a caller can pass — that

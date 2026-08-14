@@ -41,6 +41,10 @@ export interface DrawerProps {
    *  nullable both: without it the diff panes fall through the cascade, which
    *  is a drawn state and not a missing feature (`links.tsx`). */
   reader?: GitReader | null | undefined;
+  /** Open this card's worktree — handed down from App, which is where the tab
+   *  and the open tree both live. Optional: a caller with nowhere to send the
+   *  reader draws no row rather than a dead one (`Sections.tsx::Body`). */
+  onOpenTree?: ((id: string) => void) | undefined;
   /** This window is watching a public board as `anon` — the comment box renders
    *  its refusal instead of a form (`CommentBox.tsx::watching`). Optional and
    *  defaulting to false: every existing caller is a reader with a credential. */
@@ -64,7 +68,8 @@ export function Drawer(props: DrawerProps): React.JSX.Element {
 }
 
 export function Dossier(props: DrawerProps): React.JSX.Element {
-  const { dossier, openId, team, now, onClose, onComment, repo, reader, readOnly } = props;
+  const { dossier, openId, team, now, onClose, onComment, repo, reader, readOnly, onOpenTree } =
+    props;
   const card = dossier?.card;
   const tone = dossier ? (STATE[dossier.state] ?? "neutral") : "neutral";
   const holder = dossier?.lease?.actor ?? "";
@@ -152,7 +157,9 @@ export function Dossier(props: DrawerProps): React.JSX.Element {
       </div>
 
       <div style={{ overflowY: "auto", padding: "22px 28px 26px", display: "flex", flexDirection: "column", gap: "22px" }}>
-        {dossier && card ? <Body dossier={dossier} now={now} repo={repo} reader={reader} /> : null}
+        {dossier && card ? (
+          <Body dossier={dossier} now={now} repo={repo} reader={reader} onOpenTree={onOpenTree} />
+        ) : null}
       </div>
 
       <CommentBox team={team} onSend={onComment} readOnly={readOnly} />

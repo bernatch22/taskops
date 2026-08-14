@@ -109,7 +109,16 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check("carrying the rev and the path, both encoded", route === `git/file/${first.sha}?path=${encodeURIComponent(first.path)}`, route);
   check(
     "the door types the content itself — a FIELD, never this origin's header",
-    door.content_type === "text/html" && fixture.git.text_file.content_type === "text/plain",
+    door.content_type === "text/html" && fixture.git.text_file.content_type === "text/markdown",
+  );
+  /* The fixture's non-HTML report is a `.md`, and it used to come back
+     `text/plain` because the door knew no markdown. It does now, and the claim
+     that matters is unchanged and asserted here in the form that carries it:
+     the type this origin must never be handed for a report it did not sandbox
+     is `text/html`, and prose is not it. */
+  check(
+    "and prose is emphatically not typed as HTML",
+    fixture.git.text_file.content_type !== "text/html",
   );
 
   /* ── 2 · the sandbox, on the constant and on the attribute ──────────────── */
@@ -160,16 +169,28 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     !framed.includes("<script") && framed.includes("taskops:"),
   );
 
-  /* ── a text report is TEXT, and no second renderer ──────────────────────── */
+  /* ── NOTHING but HTML is framed, and neither branch can execute ──────────
+   *
+   * This block used to draw the fixture's `.md` and assert one thing: that a
+   * non-HTML report lands in the raw text pane. Markdown has a renderer now
+   * (`sections/report-markdown.tsx` pins the parse), so the claim is stated in
+   * the form that survives it and covers BOTH: whatever is not `text/html`
+   * gets no frame, and its markup reaches the document as characters. Two
+   * renderers, one boundary — asserted on each. */
 
+  const prose = renderToStaticMarkup(<ReportFrame file={fixture.git.text_file} title="notes" />);
+  check("a markdown report is drawn by this dashboard's renderer", prose.includes('data-testid="report-markdown"'));
   const plain = renderToStaticMarkup(
-    <ReportFrame file={fixture.git.text_file} title="notes" />,
+    <ReportFrame file={{ ...fixture.git.text_file, content_type: "text/plain" }} title="notes" />,
   );
-  check("a text report is drawn as text", plain.includes('data-testid="report-text"'));
-  check("in no iframe at all", !plain.includes("<iframe"));
+  check("an unknown type still lands in the raw text pane", plain.includes('data-testid="report-text"'));
+  check("in no iframe at all, either way", !plain.includes("<iframe") && !prose.includes("<iframe"));
   check(
-    "its markup drawn as the characters it is",
-    plain.includes("&lt;script&gt;") && !plain.includes("<script"),
+    "its markup drawn as the characters it is, either way",
+    plain.includes("&lt;script&gt;") &&
+      !plain.includes("<script") &&
+      prose.includes("&lt;script&gt;") &&
+      !prose.includes("<script"),
   );
 
   const cut = renderToStaticMarkup(

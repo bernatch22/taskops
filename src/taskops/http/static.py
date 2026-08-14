@@ -84,6 +84,36 @@ def payload(root: Path, rest: str) -> tuple[bytes, str] | None:
     return (path.read_bytes(), content_type(path)) if path else None
 
 
+def at_root(root: Path | None, path: str) -> tuple[bytes, str] | None:
+    """The bundle served at the ROOT of a window — `/`, `/app.js`, `/style.css`.
+
+    `taskops ui` used to hand out `/board/ui/?token=…`, and that path is an
+    implementation detail leaking into the one URL a human types: `board` is
+    just the name a window mounts its single board under, and `/ui/` was the
+    door on a HOST that no longer serves a page at all. A window is a window;
+    its address is its port.
+
+    Deliberately NOT `resolve`: that one falls back to the index for any
+    unknown tail, which is right for a door mounted under `/<board>/ui/` and
+    wrong at the root, where it would swallow every mistyped API path and
+    answer a mistake with a page. Only real files, plus `/` for the index — so
+    `/nope` is still the honest 404 the API gives.
+
+    `root is None` IS the host switch and the only one there is: `Mounts` sets
+    `ui` from the same `repo is not None` that /git and /healthz's identity
+    read, so a board host cannot start serving a dashboard by any route,
+    including this one — there is no second condition to keep in step.
+    """
+    if root is None or not root.is_dir():
+        return None
+    rest = path.partition("?")[0].strip("/")
+    base = root.resolve()
+    target = (root / INDEX) if not rest else (root / rest).resolve()
+    if base != target and base not in target.parents:
+        return None  # `..%2f..` and symlinks have already collapsed
+    return (target.read_bytes(), content_type(target)) if target.is_file() else None
+
+
 def answer(root: Path | None, rest: str) -> tuple[int, bytes, str]:
     """The WHOLE /ui door: (status, body, content-type). `root is None` means
     this process is a board host — see the module docstring for why that is a
