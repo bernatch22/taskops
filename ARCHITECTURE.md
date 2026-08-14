@@ -696,7 +696,7 @@ flowchart LR
     dispatch_t -->|"assign + cut worktree"| verbA["verb: assign"] --> gitA["gitwork/trees.ensure_card"]
     take_t -->|"acquire lease"| verbT["verb: take"] --> liveT["live.sqlite INSERT OR IGNORE"]
     update_t -->|"close / release / drop / rewrite"| verbU["verb: update"]
-    comment_t -->|"say something on ANY open card (+mentions)"| verbU
+    comment_t -->|"say something on ANY card, closed included (+mentions)"| verbU
     review_t -->|"task= claims · verdict= judges"| verbR["verb: review"] --> liveR["live.sqlite — the REVIEW lease"]
     merge_t -->|"--no-ff in integration worktree"| gitM["gitwork/landing.merge_card"] --> verbM["verb: merged"]
     activity_t -->|"a chapter's story, capped, no diffs"| verbAc["verb: activity — a READ"]

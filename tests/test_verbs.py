@@ -684,6 +684,52 @@ def test_a_mention_on_a_closed_card_stops_asking(
     assert call(stores, "board", BERNA)["pulse"]["mentions"] == 0
 
 
+def test_a_comment_on_a_closed_card_is_accepted_and_lands_in_the_thread(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """A postscript completes an append-only log; it never reopens the card.
+
+    Reported from a real wave as a REFUSAL and it does not reproduce: `update`
+    has no CLOSED guard on the comment path, by design. The thread outlives the
+    work — a reviewer saying what they found on a card that shipped yesterday is
+    the whole reason the log is append-only — so this is the contract, not an
+    oversight, and adding that guard has to break a named test.
+    """
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(stores, "update", W1, task=card, status="done", no_code=True, comment="shipped")
+    clock(60)
+
+    out = call(stores, "update", W2, task=card, comment="postscript: the rounding was wrong")
+
+    assert out["card"]["status"] == "done"  # saying something never reopens it
+    said = [e for e in stores.events(card) if e["kind"] == "comment"]
+    assert [e["body"]["text"] for e in said] == ["postscript: the rounding was wrong"]
+
+
+def test_a_mention_written_on_an_already_closed_card_is_undeliverable(
+    stores: Stores, clock: Callable[[float], None]
+) -> None:
+    """The other half of the pin above: the comment lands, the ADDRESS does not.
+
+    `core/mentions.pending` skips closed cards wholesale, so a mention written
+    after the close pages nobody — and the writer is told nothing. Deliberate
+    (a closed thread owes no reply, and it is what bounds the pending scan), and
+    pinned here so changing it is a decision somebody makes on purpose.
+    """
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(stores, "update", W1, task=card, status="done", no_code=True, comment="shipped")
+    clock(60)
+
+    call(stores, "update", W2, task=card, comment="this needed a second look", mentions=[BERNA])
+
+    assert call(stores, "board", BERNA)["pulse"]["mentions"] == 0
+    # …and nothing was lost: the address is in the log, only not delivered.
+    said = [e for e in stores.events(card) if e["body"].get("mentions")]
+    assert [e["body"]["mentions"] for e in said] == [[BERNA]]
+
+
 def test_the_mention_count_rides_on_every_answer_not_only_the_board(
     stores: Stores, clock: Callable[[float], None]
 ) -> None:
