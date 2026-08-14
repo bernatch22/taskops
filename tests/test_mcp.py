@@ -279,6 +279,22 @@ def test_mentions_are_ranked_above_the_card_that_went_quiet(repo: Path, boards: 
     assert text.index("MENTIONS —") < text.index("STALLED —")
 
 
+def test_a_stalled_line_says_what_the_holder_last_did_and_what_is_on_the_branch(
+    repo: Path, boards: Any
+) -> None:
+    """The payload keys are only half of it: the orchestrator reads this TEXT,
+    and "quiet for 1h" alone is what made resume-vs-reassign an investigation.
+
+    Nothing changes for any other group — only a STALLED row carries the keys
+    (`verbs/_rows.py::forensics`), so `_group` renders them where they exist."""
+    dev, cards = seeded(boards)
+    dev.call("assign", {"tasks": [cards[0]["id"]]})
+    boards(W1).call("bind", {"task": cards[0]["id"], "sha": "a1b2c3", "subject": "feat: model"})
+
+    stalled = call(dev, repo, "taskops_board").split("STALLED —")[1].split("TAKE —")[0]
+    assert "last commit" in stalled and "1 commit" in stalled
+
+
 def test_with_two_chapters_open_the_board_names_both(repo: Path, boards: Any) -> None:
     """Picking one would be a coin toss — v1 answered it differently in three places."""
     dev, _ = seeded(boards)
@@ -558,6 +574,27 @@ def test_a_catch_up_that_conflicts_names_both_the_distance_and_gits_own_words(
     assert f"taskops_merge task={card} again" in said
     assert not _merging(tree)  # aborted clean
     assert run.git("status", "--porcelain", cwd=tree).out == ""
+
+
+def test_a_conflict_refusal_names_the_worktree_not_a_departed_worker(
+    repo: Path, boards: Any
+) -> None:
+    """It used to say "only the worker can resolve this, in its own worktree" —
+    and by the time a card is done and its chapter has moved on, the worker is
+    gone: the ORCHESTRATOR is the one holding the refusal. The move is the same
+    either way, so the text names the PLACE (the card's worktree) and both roles
+    instead of an actor who is usually not there."""
+    dev, card, stone_branch, _branch, _tree = behind_by_one(
+        repo, boards, card_file="shared.py"
+    )
+
+    with pytest.raises(Refused) as refusal:
+        call(dev, repo, "taskops_merge", task=card)
+
+    said = str(refusal.value)
+    assert "only the worker" not in said
+    assert str(trees.card_tree(repo, card)) in said
+    assert "orchestrator or worker" in said
 
 
 def _merging(tree: Path) -> bool:
@@ -1189,11 +1226,11 @@ class TestOneCallIntegratesTheChapter:
 
         assert f"{ids[0]}  merged " in out
         # the refusal VERBATIM inside the report — head, git's own conflict file
-        # and the tail that names the only person who can resolve it
+        # and the tail that names where it gets resolved
         assert f"{ids[1]}  stopped: {ids[1]} is " in out
         assert f"behind {stone_branch}, and catching it up conflicts in:" in out
         assert "shared.py" in out
-        assert "only the worker can resolve this" in out
+        assert "orchestrator or worker" in out
         assert f"{ids[2]}  not reached" in out
         assert "1 of 3 integrated" in out
         integration = trees.integration_tree(repo, stone_branch)

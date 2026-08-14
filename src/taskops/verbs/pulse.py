@@ -123,6 +123,10 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
                     "review_since": lease.acquired if lease else None,
                 }
             )
+        elif shown == "stalled":
+            # The only group that pays for its thread — enriched HERE and not in
+            # `_rows.row`, so no other row buys the read (`_rows.forensics`).
+            groups["stalled"].append(row | _rows.forensics(stores.events(card["id"]), now))
         elif shown == "ready":
             groups["take"].append(row)
         elif shown in groups:
