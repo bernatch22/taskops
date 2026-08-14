@@ -21,19 +21,59 @@
  * here, so both are on screen, and neither can be lost by a renderer that only
  * knows how to draw what it is handed.
  *
+ * TWO WAYS TO READ IT, one payload. A segmented control at the top switches
+ * between these columns and the FLOW (`components/flow/`), which draws the same
+ * nine groups as a dependency graph left to right. The columns say WHAT each
+ * card is; the flow says WHY — which card unblocks which. Columns is the
+ * default and stays byte-identical, which `BoardColumns` below exists to make
+ * provable; the choice is page state, remembered in one localStorage key, and
+ * NOT a tab (a tab would file the flow beside Monitor and Actors as if it were
+ * another page with another payload).
+ *
  * Read-only, absolutely: the tiles are buttons that open the drawer. No
  * drag-and-drop, no status control, no write verb reachable from this page —
  * the UI does not move cards (milestone rule 1). */
+import { useState } from "react";
+
 import type { BoardPayload, BoardRow } from "../types";
 import { Column } from "../components/board/Column";
 import type { Chip, Tone } from "../components/board/CardTile";
 import { CardTile } from "../components/board/CardTile";
 import { useFlip } from "../components/board/useFlip";
+import { ViewToggle } from "../components/board/ViewToggle";
+import type { BoardView } from "../components/board/ViewToggle";
+import { FlowView } from "../components/flow/FlowView";
 import { shortActor } from "../format";
+
+/** Where the choice of view is remembered. One key, and the same
+ *  `taskops:` prefix `theme.ts` and `client.ts` use. */
+export const VIEW_KEY = "taskops:board-view";
+
+/** The narrow slice of `localStorage` this page needs — injectable for the same
+ *  reason `client.ts::subscribe`'s Env is: the smoke renders headlessly and
+ *  must be able to drive both shapes without a browser. */
+export interface ViewStore {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+}
+
+/** Columns is the DEFAULT, and anything unreadable is columns too: a stored
+ *  value from a future version, a storage that throws (Safari private mode),
+ *  no storage at all. The flow is the second way to read the board and never
+ *  the one a reader lands on without having asked for it. */
+export function rememberedView(store: ViewStore | undefined): BoardView {
+  try {
+    return store?.getItem(VIEW_KEY) === "flow" ? "flow" : "columns";
+  } catch {
+    return "columns";
+  }
+}
 
 export interface BoardProps {
   board: BoardPayload;
   openCard: (id: string) => void;
+  /** the remembered `columns | flow` choice; the real `localStorage` in the app */
+  store?: ViewStore | undefined;
 }
 
 /** A row, plus everything the tile must show that the row alone does not say —
@@ -189,7 +229,14 @@ const rail: React.CSSProperties = {
   minHeight: "540px",
 };
 
-export function Board({ board, openCard }: BoardProps): React.JSX.Element {
+/** The kanban, whole and untouched by the toggle above it.
+ *
+ *  Extracted from `Board` rather than left inline so that "columns is
+ *  byte-identical when selected" is a claim a test can make: the smoke renders
+ *  this alone and asserts the Board's markup CONTAINS it, character for
+ *  character. A second way to read the board must not cost the first one a
+ *  pixel. */
+export function BoardColumns({ board, openCard }: BoardProps): React.JSX.Element {
   const cols = columns(board);
   const chapters = chapterLabels(board, cols);
   /* The board MOVES. Every tile hands its element over by card id, and after
@@ -220,6 +267,46 @@ export function Board({ board, openCard }: BoardProps): React.JSX.Element {
           </Column>
         ))}
       </div>
+    </div>
+  );
+}
+
+const shell: React.CSSProperties = {
+  height: "100%",
+  display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr)",
+};
+
+/** The page: one control, and one of two ways to read the same payload.
+ *
+ *  There is no second fetch and no second derivation — the flow folds the SAME
+ *  nine groups (`components/flow/layout.ts`), so the two views cannot disagree
+ *  about what the board says, only about how it reads. */
+export function Board({ board, openCard, store }: BoardProps): React.JSX.Element {
+  const [view, setView] = useState<BoardView>(() =>
+    rememberedView(store ?? (typeof window === "undefined" ? undefined : window.localStorage)),
+  );
+  const choose = (next: BoardView): void => {
+    setView(next);
+    try {
+      (store ?? (typeof window === "undefined" ? undefined : window.localStorage))?.setItem(
+        VIEW_KEY,
+        next,
+      );
+    } catch {
+      /* a storage that refuses to write is not a reason to refuse the view */
+    }
+  };
+  return (
+    <div style={shell}>
+      <div style={{ padding: "0 24px 12px" }}>
+        <ViewToggle active={view} onSelect={choose} />
+      </div>
+      {view === "flow" ? (
+        <FlowView board={board} openCard={openCard} />
+      ) : (
+        <BoardColumns board={board} openCard={openCard} />
+      )}
     </div>
   );
 }
