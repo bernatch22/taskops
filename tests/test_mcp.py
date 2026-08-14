@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from taskops import _clock
-from taskops.mcp import hello, tools, server
+from taskops.mcp import hello, tools, server, boardview
 from taskops.board import LocalBoard, RemoteBoard
 from tests.conftest import T0
 from tests.test_git import repo as git_repo
@@ -132,6 +132,23 @@ def test_the_instructions_carry_the_whole_protocol() -> None:
     # …and the whole handshake must fit UNDER the measured truncation, panorama
     # included: hello.CAP is the ceiling and the protocol may not eat all of it.
     assert len(text) + 300 + 2 <= hello.CAP, "INSTRUCTIONS grew past the cap — the panorama dies"
+
+
+def test_review_guidance_never_says_spawn_a_verifier() -> None:
+    """Berna's standing decision: a handed-in card is reviewed IN-SESSION by the
+    orchestrator, never by a spawned sub-agent. Both defaults a reader meets —
+    the MCP instructions and the REVIEW group on taskops_board — say the same
+    thing and name the working call, and neither carries the word `spawn` on it.
+    """
+    protocol = " ".join(server.INSTRUCTIONS.split())  # the source is hard-wrapped
+    review = protocol.split("review is optional per card", 1)[1].split("· you may NOT", 1)[0]
+    assert "spawn" not in review and "verifier" not in review
+    assert "reviewed by YOU, in this session — taskops_review" in review
+
+    screen = boardview.board({"groups": {"review": [{"id": "tk-1"}]}}, 0.0)
+    line = next(ln for ln in screen.splitlines() if ln.startswith("REVIEW"))
+    assert "spawn" not in line and "verifier" not in line
+    assert "review it yourself: taskops_review task=" in line
 
 
 # ── the dossier ─────────────────────────────────────────────────────────────
@@ -697,6 +714,81 @@ def test_landing_shows_the_chapters_criteria_and_the_human_answers_out_loud(
     call(dev, repo, "taskops_merge", milestone=stone, criteria_met=True)
     landed = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"]
     assert landed and landed[-1]["body"].get("criteria_met") is True  # on the record
+
+
+def _chapter_with_criteria(repo: Path, boards: Any, dev: Any) -> str:
+    """A chapter with one criterion and nothing left open — ready for the gate."""
+    out = dev.call(
+        "plan",
+        {
+            "milestone": "MVP",
+            "goal": "invoice a bank CSV",
+            "criteria": ["seven days of live rows"],
+            "tasks": [{"title": "VAT", "spec": "the whole tax"}],
+        },
+    )
+    stone, card = out["milestone"]["id"], out["cards"][0]["id"]
+    dev.call("assign", {"tasks": [card], "workers": ["w1"]})
+    w1 = boards(W1)
+    w1.call("take", {"task": card})
+    w1.call("update", {"task": card, "status": "dropped", "comment": "not needed after all"})
+    return str(stone)
+
+
+def test_criteria_met_false_lands_with_a_mandatory_note_on_the_record(
+    repo: Path, boards: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A criterion that can only be checked AFTER the trunk moves ("seven days of
+    live rows" for code that deploys FROM the trunk) used to deadlock the chapter:
+    the gate only accepted true. `false` lands — and the note is what keeps it
+    honest, so it is mandatory and lands beside the answer in the `landed` event."""
+    dev = boards(BERNA)
+    stone = _chapter_with_criteria(repo, boards, dev)
+
+    # absent is still absent: refused as before, now naming BOTH spellings
+    with pytest.raises(Refused, match="criteria_met=true") as absent:
+        call(dev, repo, "taskops_merge", milestone=stone)
+    assert "seven days of live rows" in str(absent.value)  # shown, not summarised
+    assert "criteria_met=false" in str(absent.value) and "note=" in str(absent.value)
+    assert not (repo / ".taskops" / "trees").exists()  # refused before git ran
+
+    # false with nothing said is the one dishonest outcome — refused, note named
+    with pytest.raises(Refused, match="note=") as silent:
+        call(dev, repo, "taskops_merge", milestone=stone, criteria_met=False)
+    assert "criteria_met=false" in str(silent.value)
+    assert not (repo / ".taskops" / "trees").exists()  # still no git
+
+    monkeypatch.setattr(landing, "land_milestone", lambda repo_, branch: ("main", "abc123"))
+    text = call(
+        dev,
+        repo,
+        "taskops_merge",
+        milestone=stone,
+        criteria_met=False,
+        note="rows start accruing once this is on the trunk",
+    )
+    assert "rows start accruing once this is on the trunk" in text  # visible, not swallowed
+    body = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"][-1]["body"]
+    assert body.get("criteria_met") is False
+    assert body.get("note") == "rows start accruing once this is on the trunk"
+    assert dev.stores.state()["milestones"][stone]["status"] == "landed"
+
+
+def test_the_verb_itself_refuses_a_silent_false_not_only_the_gate(
+    repo: Path, boards: Any
+) -> None:
+    """`merged` is the write; the MCP gate is a client. A `criteria_met=false`
+    arriving at the verb with no note is refused there too, so the record can
+    never hold an unexplained one."""
+    dev = boards(BERNA)
+    stone = _chapter_with_criteria(repo, boards, dev)
+    with pytest.raises(Refused, match="note="):
+        dev.call(
+            "merged",
+            {"milestone": stone, "into": "main", "sha": "abc123", "criteria_met": False},
+        )
+    landed = [e for e in dev.stores.events("project") if e["body"].get("op") == "landed"]
+    assert not landed  # nothing written
 
 
 def test_a_tool_bug_is_an_error_result_not_a_dead_server(
@@ -1317,7 +1409,7 @@ def chapter_ready_to_land(
 
 
 class TestAChapterLandsOverAMovedTrunk:
-    """`gitmoves._land` — the landing gate catches the chapter up to a trunk that
+    """`chapter.land` — the landing gate catches the chapter up to a trunk that
     moved while it was in flight, on the same `catchup.catch_up` the single-card
     path uses. Gate first, catch-up second, land third."""
 

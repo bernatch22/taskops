@@ -108,7 +108,14 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                 "raw git in the shared checkout; the board must record the landing."
             ),
             "criteria_met": _flag(
-                "with milestone=: the human's answer to its criteria — recorded, never judged"
+                "with milestone=: the human's answer to its criteria — recorded, never "
+                "judged. true, or false with note= saying which are unmet and why landing "
+                "is still right (a criterion that can only be checked after the trunk "
+                "moves). Omitted, a chapter with criteria is refused and shown them."
+            ),
+            "note": _text(
+                "with milestone= criteria_met=false: REQUIRED — which criteria are unmet "
+                "and why landing is still right. It lands on the record beside the answer."
             ),
         }
     ),
