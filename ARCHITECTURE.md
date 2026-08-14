@@ -230,7 +230,7 @@ flowchart TB
         holdingm["holding — 'is this history held here?', by event id: board pull + board rm"]
         forgem["forge — the forge vocabulary: which host can be asked, what access counts, owner/name"]
         seamsm["seams — which ready cards name the same CONCEPT, from the specs alone"]
-        hours["hours — working-time math"]
+        hours["hours — working-time math, and the calendar windows to report it over"]
     end
     subgraph L2["2 · store (the ONLY SQL)"]
         log["log.jsonl — append + fsync"]
@@ -248,7 +248,7 @@ flowchart TB
         mentionsv["_mentions — the ✉ read"]; waitingv["_waiting — the ◆ read"]; eventsv["events — the log, paged"]
         reviewv["review — claim a submitted card, or record the verdict"]
         projectv["project — board-level facts: op=remote, op=visibility, op=forge"]
-        helpersv["_args _cards _chapter _context _facts _rows _stories _windows — the helpers; the _ says 'not a verb'"]
+        helpersv["_args _cards _chapter _context _facts _rows _stories _windows — the helpers; the _ says 'not a verb'; _windows owns what a window= spelling MEANS"]
         registry["__init__ — Verb(fn, kind, roles, refusal)"]
     end
     subgraph L4["4 · board.py + gitwork (the ONLY git, client-side)"]
@@ -1221,6 +1221,14 @@ files that answer it:
   reads no verb and no new payload key: `team`, `doing`, `reviewing`, `stalled`
   and `board.hours` are four slices the board already sends, and
   `closed`/`commits` are counts over the SAME window, said once in the subtitle.
+  **Which window is a CHOICE, and it opens on the calendar month** — 7 days ·
+  This month · Last month · Total, a `Segmented` filter in the header
+  (`ui/src/hoursWindow.ts`), carried into the one board call as `window=` and
+  into the dev overlay unchanged. A sliding default is what read as "hours being
+  discounted when a chapter closes"; §21 has the whole diagnosis. The subtitle
+  says what came BACK, not what was asked: `windowSaid()` prints
+  `report.window.label` — the server's own "August 2026" — and falls back to the
+  day-bucket sentence for a board that sends no `window` at all.
   A figure the payload cannot say draws an em dash and never `0`, and a dev's
   totals are dev + agents — refused WHOLE when one member cannot say its own,
   because a sum over a subset presented as a total is the dishonesty this
@@ -2432,3 +2440,93 @@ reads the committed report back at its sha.
 `taskops` already has, and no chapter can dogfood one it introduced. Registering
 this report belongs to the session after `ms-b9bf00` puts master on the host and
 the tool on the laptop — the milestone that exists for exactly that.
+
+## 21. Hours you can trust — the edge rule, and calendar anchors (2026-08-14)
+
+Berna reported hours being "discounted" when chapters close. Diagnosed against
+the live log, not guessed: **no event is ever lost.** `events.jsonl` only grows
+and the land machinery refuses to touch a dirty board file. The complaint was
+true, and it was windowing arithmetic plus a missing anchor.
+
+### The artifact, exactly
+
+Every figure the dashboard drew was over one sliding window, and
+`core/hours.py::sessions` only counted an interval when BOTH of its stamps were
+inside it — `report.summary` handed it `cache.window(start, end)`, so an
+interval that straddled the leading edge arrived with its opener already
+filtered out and was counted by NOBODY. A chapter close produces a burst of
+events. Days later the window's leading edge crosses that burst and **whole
+intervals vanish at once**, so the total falls by more than the elapsed time.
+That is precisely what reads as "hours deducted when a chapter closes".
+
+### Half one — an interval belongs to the window its CLOSING stamp is in
+
+`sessions(stamps, since=)` keeps an interval when the stamp that CLOSES it is at
+or after the edge, whatever its opener. The caller's one duty is the FETCH:
+`report._fetch` reads from `start - hours.GAP`, because nothing older than the
+longest countable interval can pair into the window anyway. The keeping is
+`sessions()`'s decision, once.
+
+**The rule lives in `core/hours.py` and not in the feeding** because `sessions()`
+is the one definition of what an interval is, and the timesheet blocks and the
+total beside them must stay one pass — a caller that filtered its own events
+would be a second definition, and the blocks would disagree with the total the
+moment the two drifted. The counts beside the hours (`closed`, `commits`,
+`cards`) stay strictly inside the window: they count EVENTS, not intervals, so
+the pre-roll is not theirs to see. `tests/test_core.py` replays one log through
+two adjacent window positions and pins that the sum changes only by real aging.
+
+### Half two — the vocabulary, one place
+
+`verbs/_windows.py::parse` is the ONE decision of what a `window=` spelling
+means, and every form resolves through `core/hours.py` so the DST rule holds for
+all of them (both edges out of the same zoneinfo walk, never an opening stamp
+plus a count of seconds):
+
+```
+7d        the last N calendar days, 1..90 — the sliding figure
+month     this calendar month in the caller's tz, first midnight → today
+2026-07   that calendar month, closed on BOTH edges — a figure that never moves again
+total     the whole log, the figure that only grows
+```
+
+An unrecognised spelling is **REFUSED, and the refusal names all four.** The
+earlier `days()` fell back to 7 for anything it did not understand, which is how
+`7dd` or `august` becomes a plausible number nobody questions.
+
+Two edges are argued in the code and easy to get wrong. An OPEN-ended span
+(`month`, `total`) closes on the next local midnight, never on `now`: every edge
+here is half-open, and the event that closes the current interval is usually the
+one stamped `now` — ending there silently dropped the last block of work from
+the very window a person opens to see it. And `total` carries NO day buckets
+(`days_total: 0`): the whole log grows by a bucket a day forever, most of them
+empty, so a truncated tail would be mistaken for the span.
+
+The resolved `Span` rides on the answer (`window` in the payload: the spelling
+asked, the kind, a printable label, both edges), so a screen titles itself
+"August 2026" instead of inferring a month from two epoch floats.
+
+### Half three — the page anchors on a figure that only grows
+
+The Actors page opens on the CURRENT MONTH (`ui/src/hoursWindow.ts`,
+`DEFAULT_HOURS_CHOICE`) with a visible filter — 7 days · This month · Last month
+· Total — and the per-actor overlay carries the same span. A sliding window as
+the default is what read as hours being discounted.
+
+`hoursWindow.ts` maps four labelled options onto four server spellings and
+repeats none of the arithmetic; everything the screen prints about the span
+comes back on `ReportPayload.window`, because a client re-deriving "August 2026"
+from two epoch floats is a second calendar implementation in a second language
+and a second zone. ONE spelling is computed in the browser and has to be: `last`
+is "the month before the one the READER is in", emitted as a bare `YYYY-MM` —
+the form the server closes on both edges — and `lastMonth(now)` takes `now` as a
+parameter so the January case (`2026-00`) is testable.
+
+The window is an ARGUMENT to the one `board` call, exactly as `milestone` is
+(`ui/src/useBoard.ts`) — still ONE fetcher, one coalesced refetch, one snapshot
+every pane reads. It is not the per-tab fetcher §15 refuses. The cost is stated:
+Throughput draws exactly `THROUGHPUT_DAYS` bars into a viewBox cut into that
+many slots and Actors anchors on a calendar month, so one number cannot be both,
+and moving between those tabs costs one request. A board one version behind
+sends no `window` key at all, and `windowSaid()` falls back to the day-bucket
+sentence — a degradation, never a blank.

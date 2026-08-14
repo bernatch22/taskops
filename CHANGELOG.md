@@ -3,8 +3,65 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
-## Unreleased — the forge enrols the team; seam files fold; the board says how a worker went quiet
+## Unreleased — the forge enrols the team; seam files fold; the board says how a worker went quiet; hours stop moving backwards
 
+- **Hours stop falling when a chapter closes: an interval now belongs to the
+  window its CLOSING stamp is in.** No event was ever lost — `events.jsonl` only
+  grows — but `core/hours.py::sessions` counted an interval only when BOTH of its
+  stamps were inside the window, and `report` handed it exactly the events in
+  `[start, end)`. A chapter close produces a burst of events; days later the
+  sliding window's leading edge crossed that burst, every straddling interval
+  lost its opener and was counted by NOBODY, and WHOLE INTERVALS vanished at once
+  — the total dropping by more than the elapsed time, which is what Berna read as
+  "hours being deducted when chapters close". `sessions(since=)` now keeps an
+  interval when the stamp that CLOSES it is at or after the edge, whatever its
+  opener, and the caller's one duty is the fetch: `report._fetch` reads from
+  `start - hours.GAP`, since nothing older than the longest countable interval
+  can pair in anyway. The rule lives in `core/hours.py` and NOT in the feeding,
+  because `sessions()` is the one definition of what an interval is and the
+  timesheet blocks and the total beside them must stay one pass. The counts
+  (`closed`, `commits`, `cards`) still stay strictly inside the window: they
+  count events, not intervals, so the pre-roll is not theirs to see. Pinned by
+  replaying one log through two adjacent window positions and asserting the sum
+  changes only by real aging.
+- **`window=` speaks calendar, and an unrecognised spelling is REFUSED.** Four
+  forms, one vocabulary in `verbs/_windows.py`: `Nd` (1..90, the sliding figure),
+  `month` (this calendar month in the caller's tz), `YYYY-MM` (that month, closed
+  on BOTH edges, so a past figure never moves again) and `total` (the whole log,
+  the figure that only grows). Every one resolves through `core/hours.py`, so
+  both edges of a span come out of the same zoneinfo walk and never an opening
+  stamp plus a count of seconds. The old `days()` FELL BACK TO 7 for anything it
+  did not understand — that is how `7dd` or `august` becomes a plausible number
+  nobody questions — and it now raises, naming all four. An open-ended span
+  (`month`, `total`) closes on the next local midnight and never on `now`: every
+  edge is half-open and the event closing the current interval is usually the one
+  stamped `now`, so ending there dropped the last block of work from the very
+  window a person opens to see it. `total` carries no day buckets on purpose. The
+  resolved span rides on the answer (`window`: the spelling, the kind, a
+  printable label, both edges), so a screen titles itself "August 2026" instead
+  of inferring a month from two epoch floats.
+- **The Actors page anchors on the calendar month, with the window on screen.**
+  It opens on *This month* — the figure that only grows within it — and carries a
+  visible filter: 7 days · This month · Last month · Total, the same span flowing
+  into the per-dev overlay. `ui/src/hoursWindow.ts` maps four labelled options
+  onto four server spellings and repeats none of the arithmetic; what the page
+  prints about the span is the payload's own label, because a client re-deriving
+  "August 2026" from two epoch floats is a second calendar in a second language
+  and a second zone. Exactly ONE spelling is computed in the browser and has to
+  be — `last`, "the month before the one the READER is in", emitted as a bare
+  `YYYY-MM` — and it takes `now` as a parameter so January's `2026-00` is
+  testable. The window is an ARGUMENT to the one board call, exactly as
+  `milestone` is: still one fetcher, one coalesced refetch, one snapshot every
+  pane reads. A board one version behind sends no `window` key and the old
+  day-bucket sentence is still drawn — a degradation, not a blank.
+- **The smoke index is ordered by SLUG, not by filename.** `-` (0x2d) sorts
+  before `.` (0x2e), so the first section whose slug prefixed another's —
+  `actors-window-filter.tsx` beside `actors.tsx` — landed in an order the index's
+  own list of names contradicted, and `tests/test_ui.py` said so. A page and its
+  detail are the normal way sections get named; the slug is the identity
+  everywhere else in that generator (the import path, the index key, the
+  duplicate check), so it is now the identity the order is over too
+  (`ui/smoke/sections.mjs`).
 - **A milestone may DECLARE its seam files, and sibling appends to them stop
   being conflicts.** Three conflicts in one real wave were the same mechanical
   thing: sibling cards each appending their own entry to one shared registry
