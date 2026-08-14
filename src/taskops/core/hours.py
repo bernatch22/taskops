@@ -9,6 +9,18 @@ Two pieces of arithmetic bought with blood in v1:
 * **Calendar windows use both midnights of the same computation**, never
   `start + 86400`. A DST day is 23 or 25 hours long and adding a constant
   silently shifts every subsequent day of the report.
+* **An interval belongs to the window its CLOSING stamp is in** (`since=`).
+  v2 handed `sessions()` only the events inside `[start, end)`, so an interval
+  straddling the leading edge lost its opener and was counted by NOBODY: a
+  chapter-close burst aged out whole intervals at once and the sliding total
+  fell by more than the elapsed time — read on the dashboard as "hours being
+  deducted when chapters close". The edge rule lives HERE and not in the
+  feeding because `sessions()` is the one definition of what an interval is,
+  and the timesheet blocks and the total beside them must stay one pass: a
+  caller that filtered its own events would be a second definition, and the
+  blocks would disagree with the total the moment the two drifted. The caller
+  keeps one duty only — fetch from `start - GAP`, since nothing older than the
+  longest countable interval can pair into the window anyway.
 
 The signal is the timestamp of the events themselves. In v1 it was `activity`
 events that were local-only and never reached the server, so hours were
@@ -37,7 +49,7 @@ class Session(TypedDict):
     seconds: float
 
 
-def sessions(stamps: Sequence[tuple[float, str]]) -> list[Session]:
+def sessions(stamps: Sequence[tuple[float, str]], since: float | None = None) -> list[Session]:
     """One actor's timestamped events → the blocks of time that were COUNTED.
 
     THE one definition of what an interval is. `spent()` is a fold of this and
@@ -54,12 +66,17 @@ def sessions(stamps: Sequence[tuple[float, str]]) -> list[Session]:
     same card and touch end-to-start. A dropped gap breaks the run because the
     blocks stop touching; a change of card breaks it because the question a
     timesheet answers is "what was it working on at 15:40".
+
+    `since` is the window's leading edge: an interval is kept when the stamp
+    that CLOSES it is at or after it, whatever its opener. Feed the events from
+    `since - GAP` and the window's sum stops depending on where the edge cuts —
+    the header of this module says what the alternative cost.
     """
     out: list[Session] = []
     ordered = sorted(stamps)
     for (before, _), (after, task) in zip(ordered, ordered[1:], strict=False):
         delta = after - before
-        if not 0 < delta <= GAP:
+        if not 0 < delta <= GAP or (since is not None and after < since):
             continue
         last = out[-1] if out else None
         if last is not None and last["task"] == task and last["end"] == before:
@@ -70,20 +87,20 @@ def sessions(stamps: Sequence[tuple[float, str]]) -> list[Session]:
     return out
 
 
-def spent(stamps: Sequence[tuple[float, str]]) -> dict[str, float]:
+def spent(stamps: Sequence[tuple[float, str]], since: float | None = None) -> dict[str, float]:
     """Seconds per card, from one actor's timestamped events.
 
-    A fold of `sessions()` — see there for what an interval is and why this
-    function no longer decides it.
+    A fold of `sessions()` — see there for what an interval is, what `since`
+    means, and why this function no longer decides either.
     """
     totals: dict[str, float] = {}
-    for block in sessions(stamps):
+    for block in sessions(stamps, since):
         totals[block["task"]] = totals.get(block["task"], 0.0) + block["seconds"]
     return totals
 
 
-def total(stamps: Sequence[tuple[float, str]]) -> float:
-    return sum(spent(stamps).values())
+def total(stamps: Sequence[tuple[float, str]], since: float | None = None) -> float:
+    return sum(spent(stamps, since).values())
 
 
 def day_bounds(when: float, tz: str) -> tuple[float, float]:
