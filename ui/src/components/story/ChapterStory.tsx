@@ -4,8 +4,17 @@
  * the shape that answers "what needs a move?" has nothing to say when the
  * answer is "nothing, we finished". So this view replaces the columns for that
  * state only (App.tsx swaps on `story != null`) with the chapter told as a
- * result: a celebration header, then the cards themselves, SIDE BY SIDE in a
- * responsive grid, in landing order — left to right, top to bottom.
+ * result: ONE strip of aggregate stats, then the cards themselves, SIDE BY
+ * SIDE in a responsive grid, in landing order — left to right, top to bottom.
+ *
+ * The header was a celebration block for one day (2026-08-14) and it was a
+ * DUPLICATE: the milestone's title is already on the picker and its goal prose
+ * already has a home in the Monitor tab's chapter pane (monitor/Chapter.tsx,
+ * which owns the clamp and the reasoning about how tall a goal is allowed to
+ * be). Repeating goal, criteria and a 26px title here pushed the actual
+ * content — the cards — below the fold for no gain. What survives is the
+ * arithmetic and the completion signal, folded INTO the strip as a mark and a
+ * chip, so the grid starts immediately under one line of chrome.
  *
  * It was a vertical rail for one day (2026-08-14) and that was the wrong read:
  * one card per row, a disc and a spine, everything narrow and stacked, and the
@@ -38,11 +47,6 @@ const page: React.CSSProperties = {
   padding: "0 24px 30px",
 };
 
-/** Two measures, on purpose. Prose is read down a column and 1600px of goal
- *  text is unreadable, so the header keeps the narrow one; the grid wants every
- *  pixel it can get, since each extra column is one more card on screen. */
-const proseMeasure: React.CSSProperties = { maxWidth: "620px", margin: "0 auto" };
-
 const gridMeasure: React.CSSProperties = {
   maxWidth: "1180px",
   margin: "0 auto",
@@ -56,7 +60,7 @@ const chip: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-/* ── the celebration header ─────────────────────────────────────────────── */
+/* ── the stats strip — the whole header ─────────────────────────────────── */
 
 function Stat({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
@@ -84,19 +88,17 @@ function strip(s: ChapterStats): { label: string; value: string }[] {
   ];
 }
 
-function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats }): React.JSX.Element {
-  const stone = story.milestone;
-  if (!stone) return <></>;
+/** The completion signal, folded into the strip: a small `ok`-toned disc with a
+ *  check and the word for what happened. The palette's own green, no emoji, no
+ *  confetti — and no separate celebration block above it, which is the point. */
+function Landed({ status }: { status: string }): React.JSX.Element {
   return (
-    <header data-testid="story-header" style={{ padding: "26px 0 24px", textAlign: "center" }}>
-      {/* The completion mark: a laurel-toned disc with a check, drawn in the
-          `ok` tone — the palette's own green, no emoji, no confetti. */}
-      <div
+    <div style={{ display: "flex", alignItems: "center", gap: "9px", flex: "none" }}>
+      <span
         aria-hidden
         style={{
-          width: "44px",
-          height: "44px",
-          margin: "0 auto 14px",
+          width: "26px",
+          height: "26px",
           borderRadius: "50%",
           display: "grid",
           placeItems: "center",
@@ -105,56 +107,37 @@ function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats 
           color: "var(--ok)",
         }}
       >
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path d="M4 10.5 8.2 14.5 16 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+          <path d="M4 10.5 8.2 14.5 16 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-      </div>
-      <div style={{ ...chip, display: "inline-block", color: "var(--ok)", background: "var(--ok-soft)", marginBottom: "10px" }}>
-        {stone.status === "landed" ? "chapter landed" : "chapter complete"}
-      </div>
-      <h1 style={{ margin: "0 0 12px", fontSize: "26px", fontWeight: 550, letterSpacing: "-0.035em", lineHeight: 1.2 }}>
-        {stone.title}
-      </h1>
-      {stone.goal ? (
-        <div style={{ ...proseMeasure, color: "var(--text-2)", fontSize: "14px", textAlign: "left" }}>
-          <Markdown text={stone.goal} />
-        </div>
-      ) : null}
-      {(stone.criteria ?? []).length > 0 ? (
-        <ul
-          data-testid="story-criteria"
-          style={{
-            ...proseMeasure,
-            listStyle: "none",
-            marginTop: "16px",
-            padding: 0,
-            textAlign: "left",
-            display: "grid",
-            gap: "6px",
-          }}
-        >
-          {(stone.criteria ?? []).map((line) => (
-            <li key={line} style={{ display: "flex", gap: "8px", fontSize: "12.5px", color: "var(--text-2)" }}>
-              <span style={{ color: "var(--ok)", flex: "none" }}>✓</span>
-              <Markdown text={line} inline />
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      </span>
+      <span style={{ ...chip, color: "var(--ok)", background: "var(--ok-soft)" }}>
+        {status === "landed" ? "chapter landed" : "chapter complete"}
+      </span>
+    </div>
+  );
+}
+
+function Header({ story, stats }: { story: ActivityPayload; stats: ChapterStats }): React.JSX.Element {
+  const stone = story.milestone;
+  if (!stone) return <></>;
+  return (
+    <header data-testid="story-header" style={{ padding: "18px 0 14px" }}>
       <div
         data-testid="story-stats"
         style={{
           display: "flex",
-          justifyContent: "center",
-          gap: "30px",
+          alignItems: "center",
+          gap: "26px",
           flexWrap: "wrap",
-          marginTop: "22px",
-          padding: "16px 20px",
-          borderRadius: "16px",
+          padding: "13px 20px",
+          borderRadius: "14px",
           background: "var(--pane)",
           border: "1px solid var(--hair)",
         }}
       >
+        <Landed status={stone.status} />
+        <span aria-hidden style={{ width: "1px", alignSelf: "stretch", background: "var(--hair)" }} />
         {strip(stats).map((s) => (
           <Stat key={s.label} label={s.label} value={s.value} />
         ))}
@@ -175,9 +158,21 @@ function Diff({ card }: { card: CardStory }): React.JSX.Element | null {
   const diff = diffOf(card);
   if (diff.added === 0 && diff.deleted === 0 && !diff.binary) return null;
   return (
-    <div data-testid="diff" className="num mono" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px" }}>
-      <span style={{ color: "var(--ok)" }}>+{diff.added}</span>
-      <span style={{ color: "var(--danger)" }}>−{diff.deleted}</span>
+    <div data-testid="diff" className="num mono" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
+      {/* One pill, two tones: the pair is a single fact and reads as one shape
+          at a glance instead of two loose numbers among the chips. */}
+      <span
+        style={{
+          display: "inline-flex",
+          gap: "6px",
+          padding: "2px 7px",
+          borderRadius: "6px",
+          background: "var(--pane-3)",
+        }}
+      >
+        <span style={{ color: "var(--ok)" }}>+{diff.added}</span>
+        <span style={{ color: "var(--danger)" }}>−{diff.deleted}</span>
+      </span>
       {diff.binary ? (
         <span data-testid="bin-chip" style={{ ...chip, color: "var(--text-2)", background: "var(--pane-3)" }}>
           bin
@@ -212,19 +207,29 @@ function Tile({
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
-    gap: "9px",
+    gap: "10px",
     height: "100%",
-    background: "var(--pane)",
+    width: "100%",
+    /* A gradient of two of the page's OWN pane tones — no new colour, just a
+       hint of depth so the tile reads as a raised object and not as a box. */
+    background: "linear-gradient(180deg, var(--pane-2), var(--pane))",
     borderStyle: "solid",
     borderWidth: "1px",
     borderColor: "var(--hair)",
-    borderRadius: "13px",
-    padding: "13px 15px",
+    borderRadius: "14px",
+    padding: "15px 16px",
     transition: "all 150ms cubic-bezier(0.2, 0.8, 0.2, 1)",
     /* Dropped is muted, never shouted: it stays fully legible, one notch back
        in the page's own ink, and says so on a chip. */
     opacity: dropped ? 0.62 : 1,
-    ...(lift ? { boxShadow: "0 0 0 3px var(--accent-soft)", transform: "translateY(-2px)", opacity: 1 } : {}),
+    ...(lift
+      ? {
+          boxShadow: "0 0 0 3px var(--accent-soft), 0 10px 24px var(--glow)",
+          borderColor: "var(--accent-line)",
+          transform: "translateY(-2px)",
+          opacity: 1,
+        }
+      : {}),
     ...(ring ? { outline: "2px solid var(--accent)", outlineOffset: "2px" } : {}),
   };
   return (
@@ -265,7 +270,9 @@ function Tile({
         >
           {ordinal}
         </span>
-        <span className="mono" style={{ fontSize: "10.5px", color: "var(--text-3)" }}>
+        {/* The id is a handle, not a heading: fainter than the title by a
+            whole step so the hierarchy inside the tile is title first. */}
+        <span className="mono" style={{ fontSize: "10px", color: "var(--faint)", letterSpacing: "0.01em" }}>
           {card.id}
         </span>
         <span style={{ flex: 1 }} />
@@ -277,7 +284,7 @@ function Tile({
       <div
         style={{
           fontSize: "14px",
-          fontWeight: 450,
+          fontWeight: 550,
           letterSpacing: "-0.025em",
           lineHeight: 1.35,
           color: "var(--text)",
@@ -335,6 +342,51 @@ function Tile({
   );
 }
 
+/** The order connector. Ordinals say WHICH position a card holds; the arrow
+ *  says the positions are a sequence — together they make development order
+ *  legible in two dimensions, which neither does alone.
+ *
+ *  It is drawn per TILE, in the gutter to its right, on every tile but the
+ *  chapter's last. Not per ROW-END, deliberately: `auto-fill` decides the
+ *  column count from the container's width at paint time, so "is this tile at
+ *  the end of its row?" is only answerable by measuring the DOM — and this
+ *  view is rendered and pinned headlessly through react-dom/server, where
+ *  there is no layout to measure. A wrapping arrow would also have to be a
+ *  different glyph (down-and-back), which is a diagram; this stays chrome:
+ *  --text-3, 11px, aria-hidden, pointer-events off so it never eats a click. */
+function Step({ last, children }: { last: boolean; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div style={{ position: "relative", display: "flex" }}>
+      {children}
+      {last ? null : (
+        <span
+          data-testid="story-arrow"
+          aria-hidden
+          style={{
+            position: "absolute",
+            right: "-12.5px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            display: "flex",
+            color: "var(--text-3)",
+            pointerEvents: "none",
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M1.5 6h8M6.4 3l3 3-3 3"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ── the page ───────────────────────────────────────────────────────────── */
 
 export function ChapterStory({ story, openCard }: ChapterStoryProps): React.JSX.Element {
@@ -358,7 +410,9 @@ export function ChapterStory({ story, openCard }: ChapterStoryProps): React.JSX.
           }}
         >
           {cards.map((card, i) => (
-            <Tile key={card.id} card={card} ordinal={i + 1} openCard={openCard} />
+            <Step key={card.id} last={i === cards.length - 1}>
+              <Tile card={card} ordinal={i + 1} openCard={openCard} />
+            </Step>
           ))}
         </div>
       </div>

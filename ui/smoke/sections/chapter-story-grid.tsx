@@ -170,9 +170,20 @@ export async function run(fixture: Fixture, check: Check, _h: Harness): Promise<
     markup.includes('data-testid="story-grid"') &&
       markup.includes("grid-template-columns:repeat(auto-fill, minmax(300px, 1fr))"),
   );
-  check("the header celebrates the landed chapter", markup.includes("chapter landed"));
-  check("the goal renders as markdown, backticks read", markup.includes("<code") && !markup.includes("`activity`"));
-  check("the chapter's criteria are listed", markup.includes("the grid replaces the columns"));
+  check("the completion mark is folded into the stats strip", markup.includes("chapter landed"));
+  check(
+    "the strip carries the aggregate numbers",
+    markup.includes('data-testid="story-stats"') && markup.includes("+109") && markup.includes("−22"),
+  );
+  /* The header is the strip and NOTHING else. The milestone's goal prose, its
+   * criteria and a large title all live elsewhere (the picker names the
+   * chapter; monitor/Chapter.tsx owns the goal) and repeating them here pushed
+   * the cards below the fold. Pinned as an ABSENCE, because a deletion that
+   * only presence-checks the survivors comes back the first time somebody
+   * "restores the header". */
+  check("the milestone goal prose is gone from the story view", !markup.includes("reads as a story"));
+  check("the criteria list is gone from the story view", !markup.includes("the grid replaces the columns"));
+  check("the large milestone title is gone from the story view", !markup.includes("A finished chapter"));
   /* the grid reads left to right, top to bottom, so DOM order IS landing
    * order — the one thing the two-dimensional layout cannot say on its own,
    * which is why each tile also carries its ordinal. */
@@ -202,6 +213,16 @@ export async function run(fixture: Fixture, check: Check, _h: Harness): Promise<
     `${buttons.length}`,
   );
   check("no tile fired during a static render", opened.length === 0);
+
+  /* The order connector: one arrow per tile in the gutter to its right, on
+   * every tile EXCEPT the chapter's last — four cards, three arrows — so the
+   * ordinals read as a sequence and not just as numbers. */
+  const arrows = (markup.match(/data-testid="story-arrow"/g) ?? []).length;
+  check("an order arrow follows every tile but the chapter's last", arrows === CARDS.length - 1, `${arrows}`);
+  check(
+    "the last tile carries no arrow — the flow ends there",
+    markup.lastIndexOf('data-testid="story-arrow"') < markup.lastIndexOf('data-card="tk-gone"'),
+  );
 
   check(
     "the dropped card is muted and marked, not omitted",
