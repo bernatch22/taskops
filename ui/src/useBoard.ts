@@ -69,9 +69,12 @@ const COALESCE_MS = 150;
 /* `milestone` joins them for the same reason and by the same route: the chapter
  * in focus is an ARGUMENT to the one `board` call, held by App beside the tab and
  * carried by every refetch the socket triggers. It is OMITTED when empty rather
- * than sent as `""` — `verbs/pulse.py::_which` reads an absent milestone as
- * "resolve the open one yourself", which is exactly the unfiltered behaviour that
- * "all chapters" has to keep reaching. */
+ * than sent as `""` — an absent milestone is the server resolving the scope
+ * itself (`verbs/_facts.py::in_scope`), which is the dashboard's OPENING state,
+ * before the reader has picked anything. It is NOT "all chapters": that resolves
+ * to the single open chapter when there is one, and the whole board is asked for
+ * by name, `milestone=*` (`MilestonePicker.tsx::ALL_CHAPTERS`), which travels
+ * through here like any other id. */
 function boardArgs(milestone: string, window: string): Record<string, unknown> {
   const args: Record<string, unknown> = { window, tz: browserZone() };
   if (milestone) args["milestone"] = milestone;

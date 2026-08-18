@@ -161,6 +161,18 @@ MILESTONE_STATUSES = ("open", "done", "dropped")
 CLOSED = ("done", "dropped")
 LEASE_TTL = 900.0  # 15 min; every MCP call renews it
 PROJECT = "project"  # the `task` of board-level events
+EVERYTHING = "*"
+"""`milestone=*`: the WHOLE board, said out loud — no chapter in scope.
+
+An ABSENT milestone means "resolve it yourself" (`verbs/_facts.py::in_scope`),
+which with exactly one open chapter IS that chapter. Right for an agent, and it
+left the dashboard's "all chapters" unreachable: it sent no `milestone=`, the
+board came back narrowed anyway, and the picker drew a ✓ beside a scope that had
+never been in effect and that clicking could not change (2026-08-18). Absent and
+"all" are two questions; they now have two arguments, and nothing that omitted
+it sees any change. `verbs/activity.py` is where the two genuinely part — it
+REQUIRES a chapter, and answered `milestone * does not exist`, a lookup's answer
+to a question that was never a lookup."""
 
 
 # Fields of a Card that `edited` may target. Anything else is a BadRequest, so

@@ -29,7 +29,7 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     **DEV_SCHEMAS,
     "taskops_board": _object(
         {
-            "milestone": _text("ms-… to focus one chapter; default: the open one"),
+            "milestone": _text("ms-… one chapter, * the whole board; default: the open one"),
             "window": _text(
                 'hours over "7d" (the last N calendar days), "month" (this month so '
                 'far), "2026-07" (that calendar month) or "total" (the whole log)'

@@ -12,8 +12,11 @@
  * What it picks is an ARGUMENT, not state of its own: the id travels up to App,
  * joins `window`/`tz` in `useBoard`'s one `board` call, and comes back as a whole
  * page narrowed to that chapter — rail, panes and groups together. "All chapters"
- * sends no `milestone=` at all, which is the behaviour the dashboard had before
- * this existed and must keep having.
+ * sends `milestone=*` (`ALL_CHAPTERS`), and that is the fix of 2026-08-18: it used
+ * to send NOTHING, which does not mean "all" — it means "server, resolve it", so a
+ * board with a single open chapter came back narrowed to that chapter while the ✓
+ * sat on "all chapters" the whole time, unclickable because clicking it changed
+ * no argument.
  *
  * The CLOSED label keeps a distinction that cost a bug to find: `board.milestone`
  * is null both when NOTHING is open and when SEVERAL are (the server refuses to
@@ -29,6 +32,14 @@ import { useEffect, useRef, useState } from "react";
 import type { Milestone } from "../../types";
 import { useOverlayStack } from "../shared/Overlay";
 
+/** What "all chapters" SENDS — `core/types.py::EVERYTHING`, the same string on
+ *  both sides. It is an argument and not the absence of one because absence
+ *  means "server, resolve it": with a single open chapter the server narrowed to
+ *  it, and this option drew a ✓ beside a scope that was never in effect. `""`
+ *  still exists here and still means absence — the page's opening state, before
+ *  the reader has picked anything (`App.tsx::scopeOf`). */
+export const ALL_CHAPTERS = "*";
+
 export interface MilestonePickerProps {
   /** The chapter in scope as the SERVER resolved it, "" when it resolved none. */
   milestone: string;
@@ -38,7 +49,9 @@ export interface MilestonePickerProps {
   milestones: Milestone[];
   /** How many chapters landed in total, behind the list's cap. `?? 0`. */
   landedTotal?: number | undefined;
-  /** The chosen id, "" for "all chapters". */
+  /** The scope IN EFFECT: a chapter id, `ALL_CHAPTERS` for the whole board.
+   *  Never "" — App resolves its own empty opening state against what the
+   *  server answered, so the ✓ marks the scope the page is actually drawn at. */
   selected: string;
   onSelect: (id: string) => void;
 }
@@ -112,6 +125,10 @@ export function MilestonePicker(props: MilestonePickerProps): React.JSX.Element 
   /* The chosen chapter is history — the pill has to say so, or a finished
    * chapter's empty panes read as a board where nothing is happening. */
   const history = milestones.some((m) => m.id === selected && !isOpen(m));
+  /* Board-wide is a scope, not the absence of one, so the pill says so: with a
+   * single open chapter it otherwise read "no open milestone" over a page
+   * showing every chapter's cards. */
+  const all = selected === ALL_CHAPTERS;
 
   return (
     <div ref={box} style={{ position: "relative", display: "flex" }}>
@@ -134,7 +151,9 @@ export function MilestonePicker(props: MilestonePickerProps): React.JSX.Element 
         />
         <div style={{ textAlign: "left", minWidth: 0 }}>
           <div style={{ fontSize: "13px", fontWeight: 500, letterSpacing: "-0.02em" }}>
-            {milestone || (chapters > 1 ? `${chapters} chapters open` : "no open milestone")}
+            {all
+              ? "all chapters"
+              : milestone || (chapters > 1 ? `${chapters} chapters open` : "no open milestone")}
           </div>
           <div style={{ fontSize: "10.5px", color: "var(--text-3)" }} data-testid="pill-sub">
             {history
@@ -255,14 +274,14 @@ export function Menu({
   return (
     <div style={menu} role="listbox" data-testid="milestone-menu">
       <button
-        style={entry(selected === "")}
+        style={entry(selected === ALL_CHAPTERS)}
         role="option"
-        aria-selected={selected === ""}
-        data-milestone=""
-        onClick={() => onSelect("")}
+        aria-selected={selected === ALL_CHAPTERS}
+        data-milestone={ALL_CHAPTERS}
+        onClick={() => onSelect(ALL_CHAPTERS)}
       >
         <span style={{ width: "12px", flex: "none", color: "var(--accent)" }}>
-          {selected === "" ? "✓" : ""}
+          {selected === ALL_CHAPTERS ? "✓" : ""}
         </span>
         <span>all chapters</span>
       </button>

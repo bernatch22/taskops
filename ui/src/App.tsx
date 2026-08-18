@@ -38,6 +38,7 @@ import { watching } from "./components/card/CommentBox";
 import { Drawer } from "./components/card/Drawer";
 import { Header } from "./components/chrome/Header";
 import { KpiRail } from "./components/chrome/KpiRail";
+import { ALL_CHAPTERS } from "./components/chrome/MilestonePicker";
 import { TABS, TabNav, type TabId } from "./components/chrome/TabNav";
 import type { Client } from "./client";
 import type { ActivityPayload } from "./types";
@@ -104,6 +105,16 @@ export function onTab(next: TabId): { tab: TabId; tree: string | null; report: s
  *  answer has arrived — draws the chapter grid; null, including "complete but
  *  still in flight", draws the columns unchanged.
  *  `ui/smoke/sections/chapter-story-grid.tsx`. */
+/** Which scope the pill is drawn at — pure and exported for `onTab`'s reason.
+ *  `picked` is what the reader chose ("" until they choose), `resolved` the
+ *  chapter the SERVER narrowed the answer to. The rule: what was picked, else
+ *  what the server resolved — the opening default, now named rather than
+ *  implied — else the whole board, which is the honest reading of an answer
+ *  scoped to no chapter. `ui/smoke/sections/all-chapters-scope.tsx`. */
+export function scopeOf(picked: string, resolved: string | undefined): string {
+  return picked || resolved || ALL_CHAPTERS;
+}
+
 export function boardView(story: ActivityPayload | null): "story" | "columns" {
   return story ? "story" : "columns";
 }
@@ -185,9 +196,20 @@ export function App({ client }: { client: Client }): React.JSX.Element {
   // the fallback is the only thing that can be true.
   const chapters = board?.milestones;
   useEffect(() => {
-    if (!chapters || !milestone) return;
+    if (!chapters || !milestone || milestone === ALL_CHAPTERS) return;
     if (!chapters.some((m) => m.id === milestone)) setMilestone("");
   }, [chapters, milestone]);
+
+  /* WHAT THE PILL IS TOLD, which is the scope IN EFFECT and not this state. `""`
+   * here means "nothing picked yet", and the server reads an absent `milestone=`
+   * as "resolve it yourself" — on a board with one open chapter that IS that
+   * chapter, so the page arrived narrowed while the menu drew its ✓ on "all
+   * chapters", an option the reader could not click their way out of because
+   * clicking it changed no argument (2026-08-18). The opening default is kept —
+   * a board with one chapter open still opens on it — and it is now NAMED: the ✓
+   * falls on the chapter the server resolved, and "all chapters" is the row that
+   * sends `*` and means it (`core/types.py::EVERYTHING`). */
+  const scope = scopeOf(milestone, board?.milestone?.id);
 
   function flip(): void {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -202,7 +224,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
           milestone={board?.pulse.milestone ?? ""}
           milestones={board?.milestones ?? []}
           landedTotal={board?.landed_total}
-          selected={milestone}
+          selected={scope}
           onSelect={setMilestone}
           live={live}
           forge={board?.forge}

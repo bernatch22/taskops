@@ -15,7 +15,7 @@ from ..core import (
 )
 from ..store import reviews
 from .._errors import NotFound
-from ..core.types import CLOSED, PROJECT, Card, Event, Milestone
+from ..core.types import CLOSED, PROJECT, EVERYTHING, Card, Event, Milestone
 from ..store.stores import Stores
 
 
@@ -99,15 +99,15 @@ def reports(stores: Stores, milestone: str = "") -> tuple[list[reporting.Report]
 
 
 def in_scope(stores: Stores, given: str) -> Milestone | None:
-    """The chapter a read is narrowed to: the one NAMED, else the single open
-    one (`open_milestone`, None for zero or several).
+    """The chapter a read is narrowed to: the one NAMED, NONE for `EVERYTHING`
+    (`core/types.py`), else the single open one (None for zero or several).
 
     A named chapter is looked up by id and NOT filtered by status. That is the
     whole point of a landed chapter still being listed — focusing one is how
     anybody reviews finished work — and a status filter here would have made
     the picker offer something the server then refused to resolve."""
     if given:
-        return stores.state()["milestones"].get(given)
+        return None if given == EVERYTHING else stores.state()["milestones"].get(given)
     return open_milestone(stores)
 
 

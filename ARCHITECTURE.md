@@ -1361,7 +1361,17 @@ files that answer it:
 * **the card dossier drawer**, opening over Monitor and Board through `App`'s
   `openCard` — it renders the acceptance criteria no v1 screen ever drew, and
   carries the UI's ONE write, the comment box with its mention picker
-  . The header's milestone picker scopes every tab at once.
+  . The header's milestone picker scopes every tab at once, and **"all
+  chapters" is an ARGUMENT** — `milestone=*` (`core/types.py::EVERYTHING`), not
+  the absence of one. It sent nothing for a wave, which the server reads as
+  "resolve the scope yourself" and resolves to the single open chapter: the page
+  arrived narrowed to that chapter with the ✓ sitting on "all chapters" the whole
+  time, and clicking the option changed no argument (2026-08-18). Absence still
+  means exactly that — it is the dashboard's OPENING state, and `App::scopeOf`
+  resolves it against the chapter the answer came back scoped to, so the ✓ marks
+  the scope the page is actually drawn at. `verbs/activity.py` refuses `*` in the
+  words of its own doors: a story is one chapter's cards by definition.
+  `ui/smoke/sections/all-chapters-scope.tsx`.
 
 * **the comment toasts**, a stack bottom-right over every tab
   (`ui/src/components/toasts/`), because the UI's one write was invisible to

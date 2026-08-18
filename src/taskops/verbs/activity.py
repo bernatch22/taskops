@@ -58,7 +58,7 @@ from .. import _clock
 from .events import MAX_CURSOR
 from .._errors import NotFound, BadRequest
 from ._stories import DEPTHS, HEADLINE
-from ..core.types import Card, Milestone
+from ..core.types import EVERYTHING, Card, Milestone
 from ..store.stores import Stores
 
 DOORS = (
@@ -125,6 +125,12 @@ def _scope(stores: Stores, args: _args.Args) -> tuple[Milestone | None, list[Car
         stone = stores.state()["milestones"].get(shared.pop()) if len(shared) == 1 else None
         return stone, cards
     given = _args.text(args, "milestone", default="")
+    # `milestone=*` is the DASHBOARD's "all chapters" (`EVERYTHING`) and
+    # `board` answers it; a story has no board-wide shape — it is one chapter's
+    # cards, by definition — so it is refused with the doors rather than falling
+    # through the lookup below, which would have said `*` does not exist.
+    if given == EVERYTHING:
+        raise BadRequest(DOORS)
     stone = _facts.in_scope(stores, given)
     if stone is None and given:
         raise NotFound(f"milestone {given} does not exist — taskops_board lists them")

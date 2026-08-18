@@ -16,7 +16,7 @@ from taskops.core import seams
 from taskops.store import log
 from taskops.verbs import pulse, _facts, project, _stories
 from taskops._errors import Refused, NotFound, BadRequest
-from taskops.core.types import ANON, LEASE_TTL
+from taskops.core.types import ANON, LEASE_TTL, EVERYTHING
 from taskops.store.stores import Stores
 
 BERNA = "dev:berna"
@@ -355,6 +355,34 @@ def test_a_landed_chapter_is_still_on_the_board(stores: Stores) -> None:
     focused = call(stores, "board", BERNA, milestone=stone)
     assert focused["milestone"]["id"] == stone
     assert focused["milestone"]["goal"] == "read a bank CSV and issue invoices with VAT"
+
+
+def test_the_whole_board_is_asked_for_by_name_never_by_saying_nothing(stores: Stores) -> None:
+    """"All chapters" was unreachable and the dashboard drew a ✓ on it anyway
+    (2026-08-18). Sending no `milestone=` does not mean the whole board — it
+    means "resolve it yourself", and with a single open chapter that IS that
+    chapter, so the page arrived narrowed with the pill claiming otherwise and
+    clicking the option changed no argument. Board-wide is `milestone=*`."""
+    landed = call(stores, "plan", BERNA, milestone="first", goal="g", tasks=[{"title": "a"}])
+    call(stores, "merged", BERNA, milestone=landed["milestone"]["id"], into="main", sha="9c2f")
+    call(stores, "plan", BERNA, milestone="second", goal="g", tasks=[{"title": "b"}])
+
+    # Said nothing: the single OPEN chapter, which is the agent's default and
+    # what every existing caller keeps seeing.
+    default = call(stores, "board", BERNA)
+    assert default["milestone"]["title"] == "second"
+    assert [c["title"] for c in default["groups"]["take"]] == ["b"]
+
+    # Said `*`: no chapter in scope, and the landed chapter's card is there.
+    whole = call(stores, "board", BERNA, milestone=EVERYTHING)
+    assert whole["milestone"] is None
+    assert sorted(c["title"] for c in whole["groups"]["take"]) == ["a", "b"]
+
+    # And `activity` refuses it in the words of its own doors: a story is one
+    # chapter's cards, so there is nothing board-wide for it to answer — and it
+    # must not say `*` does not exist, which was the lookup's answer.
+    with pytest.raises(BadRequest, match="milestone=ms-…"):
+        call(stores, "activity", BERNA, milestone=EVERYTHING)
 
 
 def test_the_landed_chapters_are_capped_newest_first(
