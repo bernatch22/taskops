@@ -3,6 +3,40 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.4.2 — the filter that filtered nothing, and the window that stopped signing in
+
+- **"All chapters" is an ARGUMENT now, and it really shows every chapter.** The
+  option sent no `milestone=` at all — and an absent milestone never meant "the
+  whole board": it means "server, resolve the scope yourself", which resolves to
+  the single open chapter when there is exactly one. So on a board with one
+  chapter open and seven landed (Berna's, reported 2026-08-18) the page came back
+  narrowed to that chapter, the menu drew its ✓ beside a scope that had never
+  been in effect, and clicking the option changed no argument at all — the only
+  way to see other work was to name every chapter in turn. Board-wide is now
+  asked for by name (`milestone=*`, `core/types.py::EVERYTHING`). Absence still
+  means exactly what it meant, so no agent and no existing caller sees any
+  change: it is the dashboard's OPENING state, and the ✓ now falls on the chapter
+  the server actually resolved, so the pill can no longer claim a scope the page
+  is not drawn at. `taskops_activity` refuses `*` in the words of its own doors —
+  a story is one chapter's cards by definition — where it used to answer
+  `milestone * does not exist`, a lookup's answer to a question that was never a
+  lookup.
+- **A window whose session ran out signs in again instead of teaching `taskops
+  join`.** A host session is twelve hours and a window is a thing you leave open.
+  Two halves of one hole, both on the `taskops ui` path and nowhere else: the
+  command read the token lying in `remote.json` instead of `session.fresh` —
+  which every other command has taken since sessions landed — so a window opened
+  on yesterday's session was dead on arrival; and the forwarder held the token it
+  was built with for the life of the process, so a window that was open when the
+  session expired answered "that credential expired" to every read. Neither path
+  could come back, so the habit it taught was re-joining: a human pasting a
+  credential the machine can mint itself from the key it already has. The retry
+  is `RemoteBoard.call`'s and just as narrow — the SERVER said EXPIRED, and this
+  process holds a key — and it is a callable passed in, so the forwarder still
+  knows nothing about keys, files or logins. A window with no way back in (a
+  standing bearer token, a public viewer) is unchanged: nobody replaces a token
+  behind its owner's back.
+
 ## 0.4.1 — the board comes alive: the forge enrols the team, hours stop lying, comments become visible
 
 - **A comment now SAYS so, on every open dashboard.** The UI's one write was
