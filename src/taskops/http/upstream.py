@@ -28,6 +28,20 @@ it, because then the reader is debugging this host instead of reading the board.
 Only a server that could not be reached at all is spoken for here, and it says
 so in the same envelope shape everything else uses.
 
+**A SESSION RUNS OUT, and the window must not** (2026-08-18). A host session is
+`login.py::SESSION_TTL` — twelve hours — and this class held the token it was
+built with for the life of the process, so a window left open overnight woke up
+answering "that credential expired" to every read, and the habit it taught was
+`taskops join`: re-pasting a credential the machine can mint by itself, which is
+exactly what the session chapter exists to end. The retry here is
+`board.py::RemoteBoard.call`'s, narrow for the same reason — the SERVER said
+EXPIRED, and this process was handed a way to sign in — and it is a callable
+passed in rather than a key read here, so this module still knows nothing about
+keys, files or logins (`cli/serving.py` builds it out of `session.refresher`).
+A window with no way to refresh (a standing bearer token, a public viewer) is
+unchanged: `refresh` is None and the refusal travels to the page as it always
+did.
+
 **The feed is a poll, not a relay** (`feed.py`: a message is a SIGNAL, not a
 payload). `mounts.py` asks `head()` on an interval while somebody is connected
 and pokes the page when the number moves; the page then refetches through the
@@ -39,10 +53,12 @@ something the board did not say.
 from __future__ import annotations
 
 import json
+from typing import Callable
 from urllib.error import URLError, HTTPError
 from urllib.request import Request, urlopen
 
 from .._json import as_object
+from ..store.creds import EXPIRED
 
 TIMEOUT = 20.0
 """Seconds to wait on the remote for one /rpc. The same budget `board.py` gives
@@ -53,16 +69,38 @@ waiting on, not a background job."""
 class Upstream:
     """One remote board, addressed by url, spoken to with one credential."""
 
-    def __init__(self, url: str, token: str, timeout: float = TIMEOUT) -> None:
+    def __init__(
+        self,
+        url: str,
+        token: str,
+        timeout: float = TIMEOUT,
+        refresh: Callable[[], str] | None = None,
+    ) -> None:
         self.url = url.rstrip("/")
         self.token = token
         self.timeout = timeout
+        # How to mint ANOTHER session when this one runs out, or None when
+        # nobody may replace this token behind its owner's back — the docstring
+        # above argues both halves.
+        self.refresh = refresh
 
     def rpc(self, body: bytes) -> tuple[int, bytes]:
-        """(status, bytes) — the remote's own answer, untouched.
+        """(status, bytes) — the remote's own answer, untouched, with ONE retry
+        for the one case a retry can fix: the session ran out and this window
+        knows how to sign in again.
 
         Returns rather than raises: this sits under an HTTP handler whose job is
         to hand the page what the board said, and a refusal IS an answer."""
+        status, answer = self._post(body)
+        if self.refresh is None or not _ran_out(answer):
+            return status, answer
+        try:
+            self.token = self.refresh()
+        except Exception:  # noqa: BLE001 — a failed refresh is the board's refusal, unchanged
+            return status, answer
+        return self._post(body)
+
+    def _post(self, body: bytes) -> tuple[int, bytes]:
         headers = {"Content-Type": "application/json"}
         if self.token:
             # No token is the VIEWER's window onto a public board: sending an
@@ -94,14 +132,28 @@ class Upstream:
         return seq_of(answer) if status == 200 else 0
 
 
+def _ran_out(answer: bytes) -> bool:
+    """Is this the board saying the SESSION expired — not any other refusal?
+
+    `store/creds.py::EXPIRED` is the named sentence `board.py` matches on for
+    the same reason: the words after it are a human's instruction and drift."""
+    body = as_object(_parsed(answer))
+    if body.get("ok"):
+        return False
+    return EXPIRED in str(as_object(body.get("error")).get("message", ""))
+
+
+def _parsed(answer: bytes) -> object:
+    try:
+        return json.loads(answer)
+    except ValueError:
+        return None
+
+
 def seq_of(answer: bytes) -> int:
     """The `seq` out of an envelope, or 0. Never raises: a body that is not an
     envelope means the poke is skipped, which costs one tick."""
-    try:
-        parsed: object = json.loads(answer)
-    except ValueError:
-        return 0
-    seq: object = as_object(parsed).get("seq", 0)
+    seq: object = as_object(_parsed(answer)).get("seq", 0)
     return seq if isinstance(seq, int) else 0
 
 

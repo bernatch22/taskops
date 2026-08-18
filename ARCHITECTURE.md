@@ -1669,6 +1669,21 @@ local process**; the browser holds only the token `taskops ui` mints into
 `ui.json`, which is local and revocable. `tests/test_topology.py` searches every
 served byte, and their headers, for the team token.
 
+**A SESSION RUNS OUT AND THE WINDOW DOES NOT** (2026-08-18). A host session is
+twelve hours (`http/login.py::SESSION_TTL`), and a window is a thing you leave
+open: `_upstream` read the token lying in `remote.json` and `Upstream` held it
+for the life of the process, so the morning after, every read answered "that
+credential expired" — and the habit that taught was `taskops join`, a human
+re-pasting a credential the machine can mint itself, which is the exact thing
+the session chapter exists to end. Two halves, both fixed: the command opens
+with `session.fresh`, like every other command has since that chapter landed,
+and the window is handed `session.refresher` so it can sign in AGAIN mid-flight
+— `board.py::RemoteBoard.call`'s retry, narrow for the same reason (the server
+said `EXPIRED`, this process holds a key). A window with no way back in — a
+standing bearer, a public viewer — is unchanged: `refresh` is None and nobody
+replaces a token behind its owner's back (`session.py`). `Upstream` still knows
+nothing about keys or files: it is handed a callable.
+
 **A refusal from the remote arrives in the SERVER's own words**, status and all:
 `upstream.py` returns `(status, bytes)` and re-wraps only a body that is not an
 envelope. A board that says "held by agent:berna/w1" with a 409 must not reach

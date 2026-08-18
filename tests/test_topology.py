@@ -2166,6 +2166,77 @@ def test_a_window_whose_server_is_gone_says_so_and_writes_nothing(
     assert not (window.mounts.root / "board").exists()
 
 
+def test_a_window_whose_session_ran_out_signs_in_again_instead_of_dying(
+    server: BoardServer,
+) -> None:
+    """A host session is twelve hours (`http/login.py::SESSION_TTL`) and a window
+    is meant to be left open. It used to hold the token it was built with for the
+    life of the process, so the morning after, every read answered "that
+    credential expired" and the habit that taught was `taskops join` — pasting a
+    credential the machine can mint itself (2026-08-18, berna's axion board).
+
+    The retry is `board.py::RemoteBoard.call`'s and it is narrow: the SERVER said
+    EXPIRED, and this process was handed a way to sign in."""
+    from taskops.http.upstream import Upstream
+
+    now = _clock.now()
+    ran_out, _ = server.mounts.credentials.mint(BERNA, BOARD, now - 100.0, ttl=1.0)
+    minted: list[str] = []
+
+    def sign_in() -> str:
+        token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+        minted.append(token)
+        return token
+
+    call = json.dumps({"verb": "board", "args": {}, "actor": BERNA}).encode()
+
+    # WITH a way back in: one refusal nobody sees, one login, the board's answer.
+    up = Upstream(url_of(server), ran_out, refresh=sign_in)
+    status, answer = up.rpc(call)
+    assert status == 200 and json.loads(answer)["ok"] is True
+    assert len(minted) == 1 and up.token == minted[0] != ran_out
+
+    # …and the session it just minted is kept: the SECOND call signs in nowhere.
+    status, answer = up.rpc(call)
+    assert status == 200 and len(minted) == 1
+
+    # WITHOUT one — a standing bearer token, or a public viewer — the refusal is
+    # the board's own and reaches the page exactly as it always did.
+    mute = Upstream(url_of(server), ran_out)
+    status, answer = mute.rpc(call)
+    body = json.loads(answer)
+    assert body["ok"] is False and "expired" in body["error"]["message"]
+    assert mute.token == ran_out
+
+    # And it is EXPIRY, never any other refusal: a credential this board never
+    # issued is not a session to renew, and burning a login on one would turn
+    # every typo into a round trip to the host.
+    stranger = Upstream(url_of(server), "not-a-credential", refresh=sign_in)
+    status, answer = stranger.rpc(call)
+    assert json.loads(answer)["ok"] is False and len(minted) == 1
+
+
+def test_a_window_opened_on_a_spent_session_mints_one_before_it_serves(
+    server: BoardServer, keyed: Path, tmp_path: Path
+) -> None:
+    """The other half of the same day: not the window that was already open, but
+    the one being opened NOW on a session that ran out overnight. `_upstream`
+    read the token lying in the file, so `taskops ui` came up forwarding a dead
+    credential — and every command BESIDE it (`board ls`, the four admin verbs)
+    had taken `session.fresh` since the session chapter landed."""
+    from taskops.cli import serving
+    from taskops.gitwork import install
+
+    project = tmp_path / "clone"
+    door = {"host": host_of(server), "principal": "berna", "key": str(keyed)}
+    install.write_config(project, url_of(server), "spent", door, _clock.now() - 1.0)
+
+    upstream = serving._upstream(project)  # noqa: SLF001 — the decision under test
+    assert upstream is not None and upstream.token not in ("", "spent")
+    status, answer = upstream.rpc(json.dumps({"verb": "board", "args": {}}).encode())
+    assert status == 200 and json.loads(answer)["ok"] is True
+
+
 def test_the_command_reads_the_mode_off_the_config_and_nothing_else(tmp_path: Path) -> None:
     """The whole switch, at the only place it is decided."""
     from taskops.cli import serving
@@ -2187,6 +2258,25 @@ def test_the_command_reads_the_mode_off_the_config_and_nothing_else(tmp_path: Pa
     upstream = serving._upstream(root)  # noqa: SLF001
     assert upstream is not None
     assert upstream.url == "https://boards.example/facturador" and upstream.token == "t0ken"
+    # A STANDING bearer is never replaced behind its owner's back, so this
+    # window has no way to sign in again and does not pretend to have one
+    # (`session.py::refresher`, and the window's own retry hangs off exactly
+    # this being None — `http/upstream.py`).
+    assert upstream.refresh is None
+
+    # With a `login` block it does: the session that expires overnight is minted
+    # again from the key, in the process, instead of by a human typing join.
+    (root / ".taskops" / "remote.json").write_text(
+        json.dumps(
+            {
+                "token": "t0ken",
+                "login": {"host": "https://boards.example", "principal": "berna", "key": "k"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    signed_in = serving._upstream(root)  # noqa: SLF001
+    assert signed_in is not None and signed_in.refresh is not None
 
 
 def test_the_command_itself_serves_the_window(

@@ -25,7 +25,7 @@ if TYPE_CHECKING:  # a NAME for the annotation, never an import at start-up
     from ..http.upstream import Upstream
 
 from . import window
-from .. import _clock
+from .. import _clock, session
 from .._json import as_object
 from ..board import DIR, find_root, is_project, read_config
 from .._errors import TaskopsError
@@ -133,7 +133,13 @@ def _upstream(root: Path) -> Upstream | None:
     url = str(config.get("url", ""))
     if not url:
         return None
-    token = str(config.get("token", ""))
+    # The SESSION, refreshed here if it has run out and refreshable again from
+    # inside the window if it runs out while somebody is reading (2026-08-18,
+    # `http/upstream.py`): a host session is twelve hours and this window is
+    # meant to be left open. `fresh` falls back to the cached token whenever it
+    # cannot sign in, and `refresher` is None for a standing bearer — neither
+    # replaces a token nobody may replace, which is `session.py`'s own rule.
+    token = str(session.fresh(root, config, _clock.now()))
     if not token and config.get("readonly"):
         # A viewer's window (`commands.py::_watch`): an Upstream with no bearer.
         # `Mounts.public` reads exactly this — no token means this window is
@@ -145,7 +151,7 @@ def _upstream(root: Path) -> Upstream | None:
             f"{root / DIR}/board.json points at {url} but there is no credential in "
             "remote.json — run: taskops join <url with ?token= or ?invite=>"
         )
-    return Remote(url, token)
+    return Remote(url, token, refresh=session.refresher(root, config))
 
 
 def _open(url: str) -> int:
