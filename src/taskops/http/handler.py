@@ -67,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
         elif tail.startswith("git/"):
             self._git(board, tail[4:])
         elif tail.startswith("ui"):
-            self._static(tail[2:])
+            self._static(board, tail[2:])
         elif (page := static.at_root(self.mounts.ui, self.path)) is not None:
             self._send(200, *page)  # a WINDOW serves its page at the ROOT
         else:
@@ -121,14 +121,35 @@ class Handler(BaseHTTPRequestHandler):
         self._answer(lambda _: self._diff(board, rest))
 
     def _diff(self, board: str, rest: str) -> dict[str, Any]:
-        """Mounted from the LOCAL clone whether the board is local or remote —
-        that is the whole point of serving the window here (§16)."""
+        """A window answers from its own LOCAL clone; a serve-mode host from
+        the board's forge mirror — `repos.py` decides which, per board (§16)."""
         self.mounts.check(board)
         self._credential(board, "read")
-        return gitdoor.answer(self.mounts.repo, rest, self.path.partition("?")[2])
+        repo, mirrored = self.mounts.repos.for_board(board)
+        return gitdoor.answer(repo, rest, self.path.partition("?")[2], mirrored=mirrored)
 
-    def _static(self, rest: str) -> None:  # `static.py` owns what it answers, and why
-        self._send(*static.answer(self.mounts.ui, rest))
+    def _static(self, board: str, rest: str) -> None:
+        """The /ui door. A WINDOW serves its bundle to whoever reaches the port,
+        unchanged. A serve-mode HOST serves the SAME packaged bundle for a board
+        whose owner declared a forge (`repos.backed` — the fact, never a clone),
+        behind the credential /rpc asks for: public board, anonymous READ;
+        private board, the join refusal. The 410 comes BEFORE the credential on
+        purpose — it says nothing about the board a login would guard, and the
+        no-forge sentence predates keys on this door. A GET here runs no verb,
+        so an anonymous page load writes nothing — no presence row (§11)."""
+        if self.mounts.ui is not None:
+            self._send(*static.answer(self.mounts.ui, rest))
+            return
+        try:
+            self.mounts.check(board)
+            if not self.mounts.repos.backed(board):
+                self._send(*static.answer(None, rest))
+                return
+            self._credential(board, "read")
+        except TaskopsError as err:
+            self._fail(rpc.status_for(rpc.failure(err)), err)
+            return
+        self._send(*static.answer(static.PACKAGED, rest))
 
     # ── plumbing ────────────────────────────────────────────────────────────
 

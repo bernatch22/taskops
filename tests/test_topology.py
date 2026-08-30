@@ -1790,9 +1790,13 @@ def test_the_websocket_upgrade_is_a_real_handshake(server: BoardServer) -> None:
 def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
     server: BoardServer,
 ) -> None:
-    """`taskops serve` is an events API. Its /ui/ is ONE sentence naming
-    `taskops ui`, at 410 — the page was withdrawn on purpose and is not coming
-    back to a host that has no clone to read a diff from (`http/static.py`)."""
+    """`taskops serve` with a board that declares NO forge: its /ui/ is ONE
+    sentence at 410. (The wording grew with §16's hosted window — tk-d0b464 —
+    and now names BOTH ways out, `taskops ui` and `taskops board forge`; what
+    this test PINS — a plain-text 410, one human sentence, no page — was the
+    contract all along and is unchanged. The old "never coming back" clause
+    pinned the pre-mirror implementation, not the contract: coming back was
+    always the owner's move, and now there is one.)"""
     assert server.mounts.ui is None and server.mounts.repo is None
     with pytest.raises(HTTPError) as caught:
         urlopen(f"{url_of(server)}/ui/", timeout=5)
@@ -1801,6 +1805,7 @@ def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
     assert answer.code == 410
     assert answer.headers["Content-Type"].startswith("text/plain")
     assert "taskops ui" in body
+    assert "taskops board forge <owner>/<repo>" in body
     # the sentence, and NOT the bundle: no page, no script, no bundle marker.
     assert "<html" not in body.lower() and "<script" not in body.lower()
     assert len(body) < 400
@@ -1888,14 +1893,17 @@ def test_a_host_with_no_repo_mounts_no_git_and_says_which_case_it_is(
     server: BoardServer,
 ) -> None:
     """`taskops serve` sits in a boards directory. It refuses and NAMES the
-    reason — the UI reads those words and falls through its cascade instead of
-    drawing a dead pane. Nothing was ever sniffed: the switch is construction."""
+    door — since §16's hosted window, that door is the board's own move:
+    `taskops board forge <owner>/<repo>`, whose mirror is what a serve-mode
+    host may read. (The old wording named `taskops ui`; what this test PINS —
+    a 404 that says which case it is — is unchanged, the words followed the
+    amended NO_REPO meaning.) The switch is still a decided fact, per board."""
     assert server.mounts.repo is None
     status, body = _get(f"{url_of(server)}/git/commit/HEAD", _token(server, BERNA))
     assert status == 404 and body["ok"] is False
     assert body["error"]["code"] == "not_found"
     assert "not a repository" in body["error"]["message"]
-    assert "taskops ui" in body["error"]["message"]
+    assert "taskops board forge <owner>/<repo>" in body["error"]["message"]
 
 
 def test_a_repo_host_answers_a_commit_against_its_first_parent(
@@ -1950,6 +1958,179 @@ def test_the_git_door_is_the_same_token_door_as_rpc(repo_server: BoardServer) ->
     assert json.loads(caught.value.read().decode())["error"]["code"] == "refused"
     status, _ = _get(url, "not-a-real-token")
     assert status in (401, 403, 409)
+
+
+# ── the MIRROR: a serve-mode host answering /git from the declared forge ────
+#
+# §16, "The hosted window": a board host holds no checkout, but a board whose
+# owner declared a forge may be answered from `<root>/<board>/mirror.git` — a
+# bare, read-only clone of that forge. No network in these tests: the mirror
+# is pre-cloned from a LOCAL fixture repo through the same `url=` override an
+# owner's ssh deploy-key remote uses (`gitwork/mirror.py::ensure` returns an
+# existing mirror untouched, which is exactly how that override survives).
+
+
+def _declare_forge(httpd: BoardServer) -> None:
+    client(httpd, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+
+
+def _mirrored(httpd: BoardServer, tmp_path: Path) -> Path:
+    """Declare the forge and pre-clone the board's mirror from a local fixture
+    forge — the owner's move for a private repo, and the test's for no network."""
+    from taskops.gitwork import mirror as mirrors
+    from tests.test_mirror import forge_repo
+
+    forge = forge_repo(tmp_path)
+    _declare_forge(httpd)
+    made = mirrors.ensure(httpd.mounts.root / BOARD, None, url=str(forge))
+    assert made is not None
+    return forge
+
+
+def test_a_serve_host_with_a_forge_board_answers_git_from_the_mirror(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Acceptance 1: same doors, same payload shape — the reader cannot tell a
+    mirror from a checkout, and the resolved repo is cached per board."""
+    _mirrored(server, tmp_path / "fixture")
+    status, body = _get(f"{url_of(server)}/git/commit/HEAD", _token(server, BERNA))
+    assert status == 200 and body["ok"] is True
+    assert body["data"]["stat"] == {"README.md": [1, 0]}
+    # resolved once and kept, the way stores are — never re-sniffed per request
+    assert server.mounts.repos._mirrors[BOARD] == server.mounts.root / BOARD / "mirror.git"
+    # the compare door reads from the same mirror, same vocabulary
+    status, body = _get(
+        f"{url_of(server)}/git/compare/main...main", _token(server, BERNA)
+    )
+    assert status == 200
+    assert set(body["data"]) == {"base", "head", "stat", "patch", "truncated", "cap"}
+
+
+def test_a_report_renders_from_the_mirror_through_the_file_door(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Acceptance 2 (milestone): report bytes come through the existing
+    gitdoor file route, read from the mirror instead of a reader's clone."""
+    from urllib.parse import quote
+
+    from tests.test_mirror import run
+
+    forge = _mirrored(server, tmp_path / "fixture")
+    report = forge / ".taskops" / "reports" / "note.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("# hello from the forge\n", encoding="utf-8")
+    run.must("add", "-A", cwd=forge)
+    run.must("commit", "-q", "-m", "a report", cwd=forge)
+    sha = run.must("rev-parse", "HEAD", cwd=forge)
+    path = quote(".taskops/reports/note.md", safe="")
+    # the commit landed on the forge AFTER the clone, so serving it also walks
+    # the file door through its one on-demand refresh — the mirror catches up
+    status, body = _get(f"{url_of(server)}/git/file/{sha}?path={path}", _token(server, BERNA))
+    assert status == 200
+    assert body["data"]["text"].rstrip("\n") == "# hello from the forge"
+    assert body["data"]["content_type"] == "text/markdown"
+
+
+def test_a_missing_ref_on_a_mirror_buys_exactly_one_fetch_then_answers(
+    server: BoardServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Acceptance 3 (milestone): one bounded on-demand fetch before stale —
+    and a ref already present costs no network at all."""
+    from taskops.gitwork import mirror as mirrors
+    from tests.test_mirror import commit
+
+    forge = _mirrored(server, tmp_path / "fixture")
+    sha = commit(forge, "later.txt")  # exists on the forge, not in the mirror yet
+    fetches: list[Path] = []
+    real = mirrors.fetch
+
+    def counted(mirror_path: Path) -> bool:
+        fetches.append(mirror_path)
+        return real(mirror_path)
+
+    monkeypatch.setattr(mirrors, "fetch", counted)
+    status, body = _get(f"{url_of(server)}/git/commit/{sha}", _token(server, BERNA))
+    assert status == 200 and len(fetches) == 1
+    assert body["data"]["stat"] == {"later.txt": [1, 0]}
+    # now present: the same ask touches the network zero more times
+    status, _ = _get(f"{url_of(server)}/git/commit/{sha}", _token(server, BERNA))
+    assert status == 200 and len(fetches) == 1
+
+
+def test_a_windows_own_clone_never_fetches_on_a_missing_ref(
+    repo_server: BoardServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§16's local sentence still holds: "Nothing is fetched for you" — a
+    background fetch would move a branch under an inhabited worktree."""
+    from taskops.gitwork import mirror as mirrors
+
+    fetches: list[Path] = []
+    monkeypatch.setattr(mirrors, "fetch", lambda path: fetches.append(path) or False)
+    status, body = _get(
+        f"{url_of(repo_server)}/git/commit/deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        _token(repo_server, BERNA),
+    )
+    assert status == 404 and "not in your clone yet" in body["error"]["message"]
+    assert fetches == []
+
+
+# ── the HOSTED window: /ui on a serve-mode host, per forge and visibility ───
+
+
+def test_the_forge_fact_alone_opens_the_hosted_window(server: BoardServer) -> None:
+    """Card acceptance 1: /<board>/ui/ serves the packaged bundle on a
+    serve-mode host once the owner declares a forge — the FACT opens the page,
+    no mirror is cloned for it (the page's own /git calls resolve one lazily
+    when a diff is actually read)."""
+    _declare_forge(server)
+    token = _token(server, BERNA)
+    with urlopen(f"{url_of(server)}/ui/?token={token}", timeout=5) as response:
+        assert response.headers["Content-Type"].startswith("text/html")
+        assert "<script" in response.read().decode().lower()
+    with urlopen(f"{url_of(server)}/ui/app.js?token={token}", timeout=5) as response:
+        assert response.headers["Content-Type"].startswith("text/javascript")
+        assert response.read()
+    assert server.mounts.repos._mirrors == {}  # the page cost no clone
+
+
+def test_a_private_hosted_window_refuses_anonymous_exactly_as_rpc_does(
+    server: BoardServer,
+) -> None:
+    """Same wall, same words: no second credential system on the page door. An
+    anonymous GET on a private forge-backed board gets /rpc's join refusal —
+    the JSON envelope, not the 410 sentence and not the bundle."""
+    _declare_forge(server)
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"{url_of(server)}/ui/", timeout=5)
+    with caught.value as err:
+        assert err.code == 409
+        body = json.loads(err.read().decode())
+    assert body["error"]["code"] == "refused"
+    assert "taskops join <url with ?token=" in body["error"]["message"]
+    # a token lets the same request through — the wall is the credential
+    with urlopen(f"{url_of(server)}/ui/?token={_token(server, BERNA)}", timeout=5) as ok:
+        assert ok.status == 200
+
+
+def test_a_public_hosted_window_serves_anonymous_and_writes_not_one_byte(
+    server: BoardServer, owner: str
+) -> None:
+    """Card acceptance 2, §11's harshest rule on the newest door: a public
+    board serves the page to a stranger, and the read leaves NO write of any
+    kind — presence included, asserted against the store itself AND hash for
+    hash, twice, because a second load is a second chance to write."""
+    _declare_forge(server)
+    publish(server, owner)
+    before = _fingerprint(server)
+    seen = dict(_presence(server))
+    for _ in range(2):
+        with urlopen(f"{url_of(server)}/ui/", timeout=5) as response:
+            assert response.status == 200
+            assert response.headers["Content-Type"].startswith("text/html")
+            assert "<script" in response.read().decode().lower()
+    assert _fingerprint(server) == before
+    assert dict(_presence(server)) == seen
+    assert "anon" not in dict(_presence(server))
 
 
 # ── the WINDOW: a local host serving a remote board ─────────────────────────

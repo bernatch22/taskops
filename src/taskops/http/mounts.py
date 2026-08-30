@@ -11,9 +11,10 @@ import re
 from pathlib import Path
 from threading import Lock
 
-from . import feed, watcher
+from . import feed, static, watcher
 from .. import verbs, _clock
 from .login import Host
+from .repos import Repos
 from ..verbs import project
 from .._errors import NotFound, BadRequest
 from .upstream import Upstream, seq_of
@@ -21,8 +22,6 @@ from ..store.creds import Credentials
 from ..store.stores import Stores
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
-
-_PACKAGED_UI = Path(__file__).resolve().parent.parent / "ui"
 
 class Mounts:
     """The boards this process serves, opened once and kept.
@@ -45,16 +44,16 @@ class Mounts:
     ) -> None:
         self.root = root
         self.upstream = upstream
-        # The ONE place that decides whether this process can read a repo, and
-        # it is decided by the CALLER at construction, never sniffed per
-        # request (`gitdoor.py` carries the rest).
+        # Whether this process can read a repo is decided by the CALLER at
+        # construction — a window's own checkout — or, on a serve-mode host,
+        # per BOARD from its declared forge's mirror (`repos.py` carries it).
         self.repo = repo
-        # ONE switch, not two: the same `repo` that mounts /git mounts the bundle. A
-        # dashboard needs the viewer's CLONE to draw a diff, so a process with no clone
-        # has no business serving one — see `static.py` for the whole post-mortem. The
-        # bundle still ships inside the wheel; what went away is the server-side mount
-        # and the `--ui` flag that configured it.
-        self.ui = _PACKAGED_UI if repo is not None else None
+        self.repos = Repos(root, repo, self.stores)
+        # ONE switch, not two: the same `repo` that mounts /git mounts the bundle at
+        # the WINDOW's root. On a serve-mode host `ui` stays None and the /ui door asks
+        # `repos.backed()` per board instead — the forge fact, the same one that opens
+        # /git — see `static.py` and `repos.py` for the whole argument.
+        self.ui = static.PACKAGED if repo is not None else None
         self.credentials = Credentials(root / "live.sqlite")
         # The HOST's own identity, and it opens NOTHING until a login asks
         # (`login.py::Host` says why lazily is a rule here, not a taste).

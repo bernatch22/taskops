@@ -120,7 +120,7 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   /* Steps 3 and 4 — the no-repo host, discovered from the door's own words.
    * `noteGitRefusal` is the only way the flag moves, and `why()` changes with
    * it: before the refusal the sentence is "could not read that diff"; after it,
-   * "this host serves boards, not a clone". Asserting BOTH is what would fail if
+   * "neither a checkout nor a mirror". Asserting BOTH is what would fail if
    * the flag stopped mattering. */
   const beforeRefusal = cascade(null, target, { diff: null, loading: false });
   check(
@@ -171,7 +171,11 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check("with a real anchor on it", withSlug.includes('data-testid="patch-forge-link"') && !withSlug.includes('href=""'));
   check(
     "and it reads as this host being what it is, not as an error",
-    withSlug.includes("serves boards, not a clone"),
+    /* The exact sentence moved with the hosted window (§16): the flag's
+       learned state now means "neither a checkout nor a mirror", never "this
+       host can never read git". The CONTRACT this line pins is unchanged —
+       an honest, non-error sentence about what the host is. */
+    withSlug.includes("neither a checkout nor a mirror"),
   );
 
   const bare = renderToStaticMarkup(

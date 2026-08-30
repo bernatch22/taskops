@@ -11,12 +11,14 @@ there is no second credential system, and `server.py` checks the credential
 before this module is reached.
 
 **Whether the door exists at all is decided ONCE, at construction**, never
-re-derived per request: `Mounts` carries `repo: Path | None`. `taskops ui` sits
+re-derived per request (`http/repos.py` resolves it per board). `taskops ui` sits
 inside a repo (its root is `<repo>/.taskops`) and passes it; `taskops serve`
-sits in a boards directory and passes nothing, so every /git request there is a
-404 whose message SAYS which case it is — the UI reads those words and falls
-through its cascade (numstat → /git → the forge link → an honest sentence)
-rather than showing a dead pane. ARCHITECTURE.md §16.
+sits in a boards directory and passes nothing FOR A BOARD WITH NO DECLARED
+FORGE, so /git there is a 404 whose message says which case it is — the UI falls
+through its cascade rather than a dead pane. A declared forge may instead mount
+a bare read-only mirror (`<root>/<board>/mirror.git` — §16, "The hosted
+window"): `NO_REPO` means "no checkout here and no mirror for this board",
+never "this host can never read git".
 
 This module only routes and refuses. Everything about git is `gitwork/diff.py`,
 which is where the ref validation lives.
@@ -39,6 +41,7 @@ from typing import Any
 from pathlib import Path
 from urllib.parse import unquote
 
+from . import stale
 from ..core import reports
 from .._errors import NotFound, BadRequest
 from ..gitwork import diff, patch
@@ -46,25 +49,11 @@ from ..gitwork import diff, patch
 NO_REPO = (
     "this host serves boards, not a repository — it was started outside a "
     "checkout (taskops serve), so there is no clone here to read a diff from. "
-    "A host that sits in a repo (taskops ui) answers /git."
+    "A host that sits in a repo (taskops ui) answers /git; a board with a "
+    "declared forge answers from its mirror when the host can hold one."
 )
 
 SEPARATOR = "..."
-
-STALE = (
-    "{refs} not in your clone yet — `{fetch}` brings {them}. The board is shared and "
-    "the code is not: a card's branch reaches origin when it closes, and this "
-    "window reads only the checkout it stands in. Nothing is fetched for you."
-)
-"""The MISSING-REF case, in its own words. It is not an error and must not read
-like one: on a shared board most refs belong to somebody else's card, and until
-you fetch, "not here yet" is simply the truth about your disk. Naming the exact
-command is this codebase's habit — every refusal names the call that works —
-and it is also the reason nothing fetches on the reader's behalf: a background
-`git fetch` inside a read-only door would move a branch under a worktree
-somebody is sitting in."""
-
-SHA = "0123456789abcdef"
 
 NOT_A_REPORT = (
     "{path} is not a report. This door serves committed files under "
@@ -97,24 +86,34 @@ TEXT = "text/plain"
 MARKDOWN = "text/markdown"
 
 
-def answer(repo: Path | None, tail: str, query: str) -> dict[str, Any]:
-    """The whole door. `tail` is the path after `<board>/git/`."""
+def answer(
+    repo: Path | None, tail: str, query: str, *, mirrored: bool = False
+) -> dict[str, Any]:
+    """The whole door. `tail` is the path after `<board>/git/`. `mirrored`
+    says the repo is the board's mirror (`http/repos.py`), which is the one
+    case a missing ref buys a bounded fetch (`http/stale.py`)."""
     if repo is None:
         raise NotFound(NO_REPO)
     kind, _, rest = tail.partition("/")
     path = _param(query, "path") or None
     if kind == "file" and rest:
-        return _file(repo, unquote(rest), path or "")
+        return _file(repo, unquote(rest), path or "", mirrored)
     if kind == "commit" and rest:
         ref = unquote(rest)
         found = diff.commit_range(repo, ref)
+        if found is None and stale.refreshed(repo, mirrored, [ref]):
+            found = diff.commit_range(repo, ref)
         if found is None:
-            raise NotFound(_stale(ref))
+            raise NotFound(stale.sentence(ref))
     elif kind == "compare" and SEPARATOR in rest:
         left, _, right = unquote(rest).partition(SEPARATOR)
         found = diff.compare_range(repo, left, right)
         if found is None:
-            raise NotFound(_stale(*(r for r in (left, right) if not diff.resolve(repo, r))))
+            missing = [r for r in (left, right) if not diff.resolve(repo, r)]
+            if stale.refreshed(repo, mirrored, missing):
+                found = diff.compare_range(repo, left, right)
+            if found is None:
+                raise NotFound(stale.sentence(*missing))
     else:
         raise BadRequest(
             "git/commit/<ref>, git/compare/<a>...<b>, or git/file/<rev>?path=<file>"
@@ -122,7 +121,7 @@ def answer(repo: Path | None, tail: str, query: str) -> dict[str, Any]:
     return patch.between(repo, found[0], found[1], path)
 
 
-def _file(repo: Path, rev: str, wanted: str) -> dict[str, Any]:
+def _file(repo: Path, rev: str, wanted: str, mirrored: bool) -> dict[str, Any]:
     """One committed file at a rev — read-only, shape-guarded, capped.
 
     Three walls, in this order: the path is a REPORT path (`under()`, which
@@ -144,8 +143,10 @@ def _file(repo: Path, rev: str, wanted: str) -> dict[str, Any]:
     if not diff.usable(path):
         raise BadRequest(ODD_SHAPE.format(path=path, dir=reports.DIR))
     sha = diff.resolve(repo, rev)
+    if sha is None and stale.refreshed(repo, mirrored, [rev]):
+        sha = diff.resolve(repo, rev)
     if sha is None:
-        raise NotFound(_stale(rev))
+        raise NotFound(stale.sentence(rev))
     got = patch.show(repo, sha, path)
     if got is None:
         raise NotFound(ABSENT.format(path=path, sha=sha[:12]))
@@ -158,26 +159,6 @@ def _file(repo: Path, rev: str, wanted: str) -> dict[str, Any]:
         "truncated": cut,
         "cap": patch.CAP,
     }
-
-
-def _stale(*refs: str) -> str:
-    """Which refs are missing, and the one command that brings them.
-
-    A sha is asked for WITHOUT a refspec — `git fetch origin <40 hex>` is
-    refused by most servers unless they allow it — while a branch is named, so
-    the reader can paste the line and get exactly what the pane wanted."""
-    names = [ref for ref in refs if ref] or ["that ref"]
-    branches = [ref for ref in names if not _looks_like_a_sha(ref)]
-    many = len(names) > 1
-    return STALE.format(
-        refs=f"{' and '.join(names)} {'are' if many else 'is'}",
-        fetch=" ".join(["git fetch origin", *branches]),
-        them="them" if many else "it",
-    )
-
-
-def _looks_like_a_sha(ref: str) -> bool:
-    return len(ref) >= 7 and all(char in SHA for char in ref.lower())
 
 
 def _param(query: str, key: str) -> str:
