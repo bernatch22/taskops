@@ -5,11 +5,15 @@
 (`NO_UI` below, answered `410 Gone`).
 
 Why, and it is the same rule as /git's (ARCHITECTURE.md §16): a dashboard shows
-DIFFS, and a diff is read from the reader's own clone. The server deliberately
-has no clone — it never gains a repo, a checkout or a git credential — so a page
-served from it could only ever fall through every step of `links.tsx::cascade`
-to a forge link or a sentence. That was serving a degraded window and calling it
-*the* window. The binary serves the window; the server serves the truth.
+DIFFS, and a diff needs a repo to read. A host with none — the state every
+board's host is in until its owner declares a forge — could only serve a page
+that falls through every step of `links.tsx::cascade` to a forge link or a
+sentence. That was serving a degraded window and calling it *the* window. The
+binary serves the window; the server serves the truth. What ends that state is
+§16's hosted-window amendment: a bare READ-ONLY mirror of the DECLARED forge
+(`<root>/<board>/mirror.git`), and only a board that holds one gets `/ui/`
+back. `NO_UI` therefore means "this board declared no forge", never "this host
+can never have a repo".
 
 `410 Gone` rather than 404 because the two say different things to whoever typed
 the URL: 404 is "no idea what that is, maybe later", and this is neither vague

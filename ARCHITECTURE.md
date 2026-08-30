@@ -1012,7 +1012,8 @@ Both remaining items are done. The migration ran against all four v1 boards
 directory of board logs, so it is `pip install` into a venv and one pm2 entry
 (README, "Deployed"). **The box runs this tree** since 2026-08-09 (tk-df8e64,
 §17), so `https://taskops.bernardocastro.dev/<board>/ui/` answers `410` and one
-sentence, exactly as the trunk does (§16, §17). Re-derivable:
+sentence, exactly as the trunk does (§16, §17) — until a board with a declared
+forge gets its hosted window (§16, "The hosted window"). Re-derivable:
 `curl -s https://taskops.bernardocastro.dev/healthz` and
 `curl -w '%{http_code}' https://taskops.bernardocastro.dev/axion/ui/`
 — measured `{"boards": 4}` (after all four boards had been addressed through
@@ -1505,15 +1506,18 @@ construction and never sniffed per request** (`Mounts(repo=…)`,
 | `taskops serve` | a directory of boards, no checkout | **404 with the reason spelled out**, and nothing faked | **410 and one sentence** |
 
 The `/ui/` column arrived later, and it is the same `repo` deciding both — see
-"API ONLY is now literal" below.
+"API ONLY is now literal" below. Both cells of the `serve` row are narrowed a
+second time by "The hosted window" below: a board that DECLARED a forge may be
+answered from a bare read-only mirror of it, and only then.
 
 A viewer meets that gap whenever this clone cannot answer — a ref not fetched
 yet, a shallow checkout, a commit from before this repo had the branch — and
 there the UI's declared cascade takes over: numstat from the event → patch from
 /git → the forge link if a slug exists → one honest sentence. No dead anchor, no
 empty pane pretending. (The gap used to have a second, worse shape: a browser
-with no clone at all, pointed at the hosted page. There is no hosted page any
-more — see below.)
+with no clone at all, pointed at the hosted page. That page was withdrawn — see
+below — and comes back only standing on a real history: the forge mirror, in
+"The hosted window".)
 
 That cascade is ONE function — `ui/src/links.tsx::cascade`, beside the slug and
 the link templates it already owned — and `ui/src/components/card/Patch.tsx`
@@ -1595,9 +1599,11 @@ doubled separator and the directory itself, and never repairs one: a traversal
 normalised into something acceptable is the bug. Anything outside
 `.taskops/reports/` is a 400 that names the directory, and `tests/test_topology.py`
 walks every shape (a real secret one directory up included, asserting its
-contents appear nowhere in the answer). `taskops serve` still mounts no `/git`
-at all: the switch is `Mounts.repo`, decided once at construction, and a new
-question underneath it opens no door.
+contents appear nowhere in the answer). `taskops serve` mounts no `/git`
+from a checkout it does not have: the switch is `Mounts.repo`, decided once at
+construction, and a new question underneath it opens no door. The hosted-window
+amendment below changes what `repo` may point AT — a bare mirror of the
+declared forge — never the switch itself.
 
 ### The window: `taskops ui` serves locally even for a REMOTE board (2026-08-08)
 
@@ -1636,7 +1642,7 @@ The routes do not change, so the committed bundle is untouched by any of this:
 decision). The server used to serve the bundle too, from a `--ui` flag with a
 packaged default — so the box above answered `/ui/` with a real dashboard, and
 that dashboard could not draw a single patch, because the machine it was served
-from deliberately has no clone. It was a degraded window presented as *the*
+from deliberately had no clone. It was a degraded window presented as *the*
 window; the redirect above merely pointed people at it. **The binary serves the
 window; the server serves the truth.**
 
@@ -1644,7 +1650,9 @@ So: `Mounts.ui` is not a parameter, it is `repo`'s shadow — one construction-t
 switch mounts `/git` AND the bundle, and only a process standing in a checkout
 has either. `/ui/` on a board host answers `static.py::NO_UI` as plain text with
 **410 Gone**, not 404: 404 says "no idea, maybe later", and this page was
-withdrawn on purpose and is never coming back to a host with no clone. Plain
+withdrawn on purpose and is never coming back to a host with no clone — and a
+host holding the board's forge MIRROR is no longer that host ("The hosted
+window", below). Plain
 text and not the JSON envelope because the only reader who reaches that door is
 a human with a browser. The `--ui` flag is REMOVED, not deprecated: there is no
 command line that puts the decision back. The bundle still ships inside the
@@ -1708,6 +1716,66 @@ fetched on the reader's behalf: a background fetch inside a read-only door would
 move a branch under a worktree somebody is sitting in.
 
 A repo joined to nothing behaves exactly as it did.
+
+### The hosted window: the host may hold a MIRROR of the declared forge (decided 2026-08-30)
+
+The first amendment narrowed "no server reads a repo" to "a host that sits in a
+repo may read it". This one narrows the other clause — *the server deliberately
+has no clone* — and, as before, the change is recorded here rather than quietly
+made:
+
+> **A board host MAY hold a bare, READ-ONLY mirror of the board's DECLARED
+> forge — and only then does it answer `/git` and `/ui/`.** A board with no
+> declared forge is exactly what it was: 404 on `/git`, 410 on `/ui/`, each
+> refusal naming `taskops board forge <owner>/<repo>` as the door.
+
+Why this is not the degraded window "API ONLY" withdrew. That window's flaw was
+never that a server drew a dashboard — it was that the machine drawing it had
+NO git at all, so every diff fell through the whole cascade to a forge link or
+a sentence, a blank presented as *the* window. The mirror removes the flaw, not
+the caution: it is **the same history the forge already holds** — `git clone
+--mirror` of the repo the owner declared with `board forge`, refreshed by ONE
+bounded on-demand fetch when a requested ref is missing, then answered stale
+rather than blocking — so a diff served from it is the diff GitHub would show,
+read by the same `gitwork/diff.py` doors, behind the same visibility rules as
+`/rpc`. And the dev-side story does not move an inch: `taskops ui` still serves
+the window from the checkout it stands in, reading the dev's OWN clone,
+including refs the forge has never seen. The hosted window is for the reader
+who has no clone — the case the local window, by construction, cannot serve.
+
+**Where it lives**: `<root>/<board>/mirror.git`, a bare repo beside the board's
+`events.jsonl` — later cards follow this wording. It is DERIVED and disposable
+in exactly the sense `cache.sqlite` is: delete it and it re-clones from the
+declared forge; nothing in it is truth the forge does not hold. Its ONLY source
+is that forge. It takes no client pushes — the host still exposes no receive
+door of any kind — and it is not a second trunk: nothing lands there, nothing
+is read back into the log from it, and `taskops_merge` still happens in the
+dev's shared checkout.
+
+**The credential story** is §19's, unchanged in kind. A public repo needs no
+credential at all. A private repo is fetched with an **ssh deploy key on the
+host's filesystem** — read-only, minted and installed by the OWNER, revocable
+on the forge like any deploy key — which is the ONE new credential this chapter
+adds, and it is the owner's business exactly as `board forge` itself is. What
+remains banned is what §11 and §19 already ban: a stored GitHub token (the
+mirror's remote is an address, never a token), a write credential in any form,
+GitHub as a second identity system, and any dev credential travelling to the
+host — nobody's `gh auth token` is involved, because the owner already declared
+the repo and the mirror pulls from the outside like any anonymous (or
+deploy-keyed) clone.
+
+**Still banned, spelled out**: client pushes to the host and git replication
+between clones (the mirror replicates FROM the forge, one direction, and no
+clone ever pushes to it); a write credential on the host; a second trunk; a
+`--ui` flag or any per-request sniffing (whether the mirror exists is decided
+at mount time, the same `Mounts.repo` switch, now pointable at `mirror.git`);
+and anonymous writes — a public board's hosted window is a READ, and it leaves
+no `presence` row.
+
+So `static.py::NO_UI` and `gitdoor.py::NO_REPO` change meaning, not words of
+intent: each stops saying "this host never has a repo" and starts saying "this
+BOARD declared no forge, so this host holds no mirror to read from" — a state
+the owner ends with one `taskops board forge`. The refusal still names the door.
 
 ### A concept named by two cards is a seam — the fan-out rule, third notch
 
@@ -1803,7 +1871,9 @@ request (`http/mounts.py::stores`), so a just-restarted process says `1`, not
 
 **That md5-of-the-served-bundle check is history, not the procedure any more.**
 Since §16's "API ONLY" amendment the host serves no bundle: `/<board>/ui/`
-answers `410` and one sentence, so there is nothing at the domain to md5. The
+answers `410` and one sentence (until the hosted-window chapter deploys a board
+whose forge is declared — §16, "The hosted window"), so there is nothing at the
+domain to md5. The
 wheel is still checked for its markers *before* it ships — it is the same wheel
 teammates install to get `taskops ui` — and the domain is verified by DATA,
 through `/rpc`.

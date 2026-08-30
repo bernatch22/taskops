@@ -13,10 +13,12 @@ before this module is reached.
 **Whether the door exists at all is decided ONCE, at construction**, never
 re-derived per request: `Mounts` carries `repo: Path | None`. `taskops ui` sits
 inside a repo (its root is `<repo>/.taskops`) and passes it; `taskops serve`
-sits in a boards directory and passes nothing, so every /git request there is a
-404 whose message SAYS which case it is — the UI reads those words and falls
-through its cascade (numstat → /git → the forge link → an honest sentence)
-rather than showing a dead pane. ARCHITECTURE.md §16.
+sits in a boards directory and passes nothing FOR A BOARD WITH NO DECLARED
+FORGE, so /git there is a 404 whose message says which case it is — the UI falls
+through its cascade rather than a dead pane. A declared forge may instead mount
+a bare read-only mirror (`<root>/<board>/mirror.git` — §16, "The hosted
+window"): `NO_REPO` means "no checkout here and no mirror for this board",
+never "this host can never read git".
 
 This module only routes and refuses. Everything about git is `gitwork/diff.py`,
 which is where the ref validation lives.
