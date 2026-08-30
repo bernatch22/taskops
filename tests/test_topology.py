@@ -1888,14 +1888,17 @@ def test_a_host_with_no_repo_mounts_no_git_and_says_which_case_it_is(
     server: BoardServer,
 ) -> None:
     """`taskops serve` sits in a boards directory. It refuses and NAMES the
-    reason — the UI reads those words and falls through its cascade instead of
-    drawing a dead pane. Nothing was ever sniffed: the switch is construction."""
+    door — since §16's hosted window, that door is the board's own move:
+    `taskops board forge <owner>/<repo>`, whose mirror is what a serve-mode
+    host may read. (The old wording named `taskops ui`; what this test PINS —
+    a 404 that says which case it is — is unchanged, the words followed the
+    amended NO_REPO meaning.) The switch is still a decided fact, per board."""
     assert server.mounts.repo is None
     status, body = _get(f"{url_of(server)}/git/commit/HEAD", _token(server, BERNA))
     assert status == 404 and body["ok"] is False
     assert body["error"]["code"] == "not_found"
     assert "not a repository" in body["error"]["message"]
-    assert "taskops ui" in body["error"]["message"]
+    assert "taskops board forge <owner>/<repo>" in body["error"]["message"]
 
 
 def test_a_repo_host_answers_a_commit_against_its_first_parent(
@@ -1950,6 +1953,120 @@ def test_the_git_door_is_the_same_token_door_as_rpc(repo_server: BoardServer) ->
     assert json.loads(caught.value.read().decode())["error"]["code"] == "refused"
     status, _ = _get(url, "not-a-real-token")
     assert status in (401, 403, 409)
+
+
+# ── the MIRROR: a serve-mode host answering /git from the declared forge ────
+#
+# §16, "The hosted window": a board host holds no checkout, but a board whose
+# owner declared a forge may be answered from `<root>/<board>/mirror.git` — a
+# bare, read-only clone of that forge. No network in these tests: the mirror
+# is pre-cloned from a LOCAL fixture repo through the same `url=` override an
+# owner's ssh deploy-key remote uses (`gitwork/mirror.py::ensure` returns an
+# existing mirror untouched, which is exactly how that override survives).
+
+
+def _declare_forge(httpd: BoardServer) -> None:
+    client(httpd, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+
+
+def _mirrored(httpd: BoardServer, tmp_path: Path) -> Path:
+    """Declare the forge and pre-clone the board's mirror from a local fixture
+    forge — the owner's move for a private repo, and the test's for no network."""
+    from taskops.gitwork import mirror as mirrors
+    from tests.test_mirror import forge_repo
+
+    forge = forge_repo(tmp_path)
+    _declare_forge(httpd)
+    made = mirrors.ensure(httpd.mounts.root / BOARD, None, url=str(forge))
+    assert made is not None
+    return forge
+
+
+def test_a_serve_host_with_a_forge_board_answers_git_from_the_mirror(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Acceptance 1: same doors, same payload shape — the reader cannot tell a
+    mirror from a checkout, and the resolved repo is cached per board."""
+    _mirrored(server, tmp_path / "fixture")
+    status, body = _get(f"{url_of(server)}/git/commit/HEAD", _token(server, BERNA))
+    assert status == 200 and body["ok"] is True
+    assert body["data"]["stat"] == {"README.md": [1, 0]}
+    # resolved once and kept, the way stores are — never re-sniffed per request
+    assert server.mounts.repos._mirrors[BOARD] == server.mounts.root / BOARD / "mirror.git"
+    # the compare door reads from the same mirror, same vocabulary
+    status, body = _get(
+        f"{url_of(server)}/git/compare/main...main", _token(server, BERNA)
+    )
+    assert status == 200
+    assert set(body["data"]) == {"base", "head", "stat", "patch", "truncated", "cap"}
+
+
+def test_a_report_renders_from_the_mirror_through_the_file_door(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Acceptance 2 (milestone): report bytes come through the existing
+    gitdoor file route, read from the mirror instead of a reader's clone."""
+    from urllib.parse import quote
+
+    from tests.test_mirror import run
+
+    forge = _mirrored(server, tmp_path / "fixture")
+    report = forge / ".taskops" / "reports" / "note.md"
+    report.parent.mkdir(parents=True)
+    report.write_text("# hello from the forge\n", encoding="utf-8")
+    run.must("add", "-A", cwd=forge)
+    run.must("commit", "-q", "-m", "a report", cwd=forge)
+    sha = run.must("rev-parse", "HEAD", cwd=forge)
+    path = quote(".taskops/reports/note.md", safe="")
+    # the commit landed on the forge AFTER the clone, so serving it also walks
+    # the file door through its one on-demand refresh — the mirror catches up
+    status, body = _get(f"{url_of(server)}/git/file/{sha}?path={path}", _token(server, BERNA))
+    assert status == 200
+    assert body["data"]["text"].rstrip("\n") == "# hello from the forge"
+    assert body["data"]["content_type"] == "text/markdown"
+
+
+def test_a_missing_ref_on_a_mirror_buys_exactly_one_fetch_then_answers(
+    server: BoardServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Acceptance 3 (milestone): one bounded on-demand fetch before stale —
+    and a ref already present costs no network at all."""
+    from taskops.gitwork import mirror as mirrors
+    from tests.test_mirror import commit
+
+    forge = _mirrored(server, tmp_path / "fixture")
+    sha = commit(forge, "later.txt")  # exists on the forge, not in the mirror yet
+    fetches: list[Path] = []
+    real = mirrors.fetch
+
+    def counted(mirror_path: Path) -> bool:
+        fetches.append(mirror_path)
+        return real(mirror_path)
+
+    monkeypatch.setattr(mirrors, "fetch", counted)
+    status, body = _get(f"{url_of(server)}/git/commit/{sha}", _token(server, BERNA))
+    assert status == 200 and len(fetches) == 1
+    assert body["data"]["stat"] == {"later.txt": [1, 0]}
+    # now present: the same ask touches the network zero more times
+    status, _ = _get(f"{url_of(server)}/git/commit/{sha}", _token(server, BERNA))
+    assert status == 200 and len(fetches) == 1
+
+
+def test_a_windows_own_clone_never_fetches_on_a_missing_ref(
+    repo_server: BoardServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§16's local sentence still holds: "Nothing is fetched for you" — a
+    background fetch would move a branch under an inhabited worktree."""
+    from taskops.gitwork import mirror as mirrors
+
+    fetches: list[Path] = []
+    monkeypatch.setattr(mirrors, "fetch", lambda path: fetches.append(path) or False)
+    status, body = _get(
+        f"{url_of(repo_server)}/git/commit/deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        _token(repo_server, BERNA),
+    )
+    assert status == 404 and "not in your clone yet" in body["error"]["message"]
+    assert fetches == []
 
 
 # ── the WINDOW: a local host serving a remote board ─────────────────────────

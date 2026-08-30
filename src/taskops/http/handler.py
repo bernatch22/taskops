@@ -121,11 +121,12 @@ class Handler(BaseHTTPRequestHandler):
         self._answer(lambda _: self._diff(board, rest))
 
     def _diff(self, board: str, rest: str) -> dict[str, Any]:
-        """Mounted from the LOCAL clone whether the board is local or remote —
-        that is the whole point of serving the window here (§16)."""
+        """A window answers from its own LOCAL clone; a serve-mode host from
+        the board's forge mirror — `repos.py` decides which, per board (§16)."""
         self.mounts.check(board)
         self._credential(board, "read")
-        return gitdoor.answer(self.mounts.repo, rest, self.path.partition("?")[2])
+        repo, mirrored = self.mounts.repos.for_board(board)
+        return gitdoor.answer(repo, rest, self.path.partition("?")[2], mirrored=mirrored)
 
     def _static(self, rest: str) -> None:  # `static.py` owns what it answers, and why
         self._send(*static.answer(self.mounts.ui, rest))
