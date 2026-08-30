@@ -16,8 +16,10 @@
  * ── Availability is discovered, never configured ───────────────────────────
  *
  * Whether the diff exists is a fact about the HOST, not about a card: `taskops
- * ui` sits in a repo and mounts /git, `taskops serve` sits in a boards directory
- * and does not (ARCHITECTURE.md §16). There is no setting to read and no probe
+ * ui` sits in a repo and mounts /git; `taskops serve` sits in a boards directory
+ * and answers /git from a per-board MIRROR of the declared forge — or refuses,
+ * for a board with no forge (ARCHITECTURE.md §16, "The hosted window"). Either
+ * way the client's move is the same. There is no setting to read and no probe
  * to run — the FIRST refusal whose words are `gitdoor.py::NO_REPO` flips it for
  * the session, and from then on nothing asks again.
  *
@@ -365,7 +367,7 @@ function why(refusal?: string | null): string {
   if (refusal) return refusal;
   return hostHasClone
     ? "this host could not read that diff"
-    : "this host serves boards, not a clone, so there is no repository here to read a diff from";
+    : "this host has neither a checkout nor a mirror for this board, so there is no repository here to read a diff from";
 }
 
 /** THE CASCADE. One function, four returns, in order. Everything that draws a
