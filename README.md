@@ -58,7 +58,7 @@ importable leaves commits un-stamped, silently.
 taskops init                              a local board in this repo
 taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
-taskops serve                             host boards — an events API, no dashboard
+taskops serve                             host boards — /ui and /git open per declared forge
 taskops server init                       bootstrap THIS host: its owner and their ssh key
 taskops board create|ls|push|pull|rm      the boards on a host
 taskops board visibility|forge            who may read one · which repo's team is enrolled
@@ -371,9 +371,11 @@ to bytes that are not in history yet is a pointer to nothing.
 ```
 
 Then `taskops ui` lists it under the chapter's **Reports** tab and renders it
-full width, read out of **your own clone** at that sha — the dashboard never
-asks the server for the bytes, and there is nothing to serve: a host running
-`taskops serve` answers `/git` with a 404, whole.
+full width, read out of **your own clone** at that sha — the local dashboard
+never asks the server for the bytes. A host running `taskops serve` answers
+`/git` too, from a bare read-only mirror of the board's DECLARED forge — the
+hosted window, for the reader with no clone. A board that never declared one
+refuses with a sentence naming `taskops board forge <owner>/<repo>`.
 
 **Reading one, from the other side.** Everything above is the author's half; a
 reader needs no ceremony at all. Three doors onto the same bytes:
