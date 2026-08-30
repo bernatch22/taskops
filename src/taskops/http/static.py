@@ -1,8 +1,10 @@
 """Serving the UI bundle. Small on purpose: the board is an API, not a website.
 
-**And only a WINDOW serves it.** `taskops serve` — a board host — answers /rpc,
-/feed, /healthz and nothing else; its /ui/ is one sentence naming `taskops ui`
-(`NO_UI` below, answered `410 Gone`).
+**A WINDOW serves it — and, since §16's hosted-window amendment, so does a
+serve-mode host, but only for a board whose owner declared a forge.** The
+handler asks `repos.backed()` for the FACT and serves `PACKAGED` behind the
+same credential /rpc asks for; a board with no forge keeps the one sentence
+(`NO_UI` below, answered `410 Gone`), which now names both ways out.
 
 Why, and it is the same rule as /git's (ARCHITECTURE.md §16): a dashboard shows
 DIFFS, and a diff needs a repo to read. A host with none — the state every
@@ -17,8 +19,9 @@ can never have a repo".
 
 `410 Gone` rather than 404 because the two say different things to whoever typed
 the URL: 404 is "no idea what that is, maybe later", and this is neither vague
-nor temporary. The page WAS here, it was withdrawn on purpose, and it is never
-coming back to this host. The body is plain text, not the JSON error envelope,
+nor temporary. The page WAS here, it was withdrawn on purpose, and only the
+owner's own act (`taskops board forge`) brings it back — never time, never a
+retry. The body is plain text, not the JSON error envelope,
 because the one reader who reaches this door is a human with a browser.
 
 The bundle is NOT removed from the package: `src/taskops/ui/` still ships inside
@@ -32,10 +35,17 @@ from __future__ import annotations
 from pathlib import Path
 
 NO_UI = (
-    "this host serves the board, not the dashboard — run `taskops ui` in a "
-    "checkout joined to this board and it serves the window itself, reading "
-    "diffs from your own clone.\n"
+    "this board's window is not served here — it declares no forge for this "
+    "host to mirror. Two ways in: run `taskops ui` in a checkout joined to "
+    "this board (the window reads your own clone), or the owner declares the "
+    "repo with `taskops board forge <owner>/<repo>` and this host serves the "
+    "page itself.\n"
 )
+
+PACKAGED = Path(__file__).resolve().parent.parent / "ui"
+"""The bundle the wheel ships (`src/taskops/ui/`). A WINDOW mounts it via
+`Mounts.ui`; a serve-mode host serves the SAME files for a board whose owner
+declared a forge — one copy, never a second bundle path to drift."""
 
 MISSING = "no UI bundle is installed here — this checkout's taskops has none.\n"
 """A window that HAS a clone but whose install carries no bundle. Distinct from
@@ -120,8 +130,9 @@ def at_root(root: Path | None, path: str) -> tuple[bytes, str] | None:
 
 def answer(root: Path | None, rest: str) -> tuple[int, bytes, str]:
     """The WHOLE /ui door: (status, body, content-type). `root is None` means
-    this process is a board host — see the module docstring for why that is a
-    410 and one sentence rather than a page."""
+    NO window opens for this board here — a board host whose board declared no
+    forge — and the module docstring argues why that is a 410 and one sentence
+    (now naming BOTH ways out) rather than a page."""
     if root is None:
         return 410, NO_UI.encode(), "text/plain; charset=utf-8"
     found = payload(root, rest)

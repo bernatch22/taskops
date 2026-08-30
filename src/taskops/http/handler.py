@@ -67,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
         elif tail.startswith("git/"):
             self._git(board, tail[4:])
         elif tail.startswith("ui"):
-            self._static(tail[2:])
+            self._static(board, tail[2:])
         elif (page := static.at_root(self.mounts.ui, self.path)) is not None:
             self._send(200, *page)  # a WINDOW serves its page at the ROOT
         else:
@@ -128,8 +128,28 @@ class Handler(BaseHTTPRequestHandler):
         repo, mirrored = self.mounts.repos.for_board(board)
         return gitdoor.answer(repo, rest, self.path.partition("?")[2], mirrored=mirrored)
 
-    def _static(self, rest: str) -> None:  # `static.py` owns what it answers, and why
-        self._send(*static.answer(self.mounts.ui, rest))
+    def _static(self, board: str, rest: str) -> None:
+        """The /ui door. A WINDOW serves its bundle to whoever reaches the port,
+        unchanged. A serve-mode HOST serves the SAME packaged bundle for a board
+        whose owner declared a forge (`repos.backed` — the fact, never a clone),
+        behind the credential /rpc asks for: public board, anonymous READ;
+        private board, the join refusal. The 410 comes BEFORE the credential on
+        purpose — it says nothing about the board a login would guard, and the
+        no-forge sentence predates keys on this door. A GET here runs no verb,
+        so an anonymous page load writes nothing — no presence row (§11)."""
+        if self.mounts.ui is not None:
+            self._send(*static.answer(self.mounts.ui, rest))
+            return
+        try:
+            self.mounts.check(board)
+            if not self.mounts.repos.backed(board):
+                self._send(*static.answer(None, rest))
+                return
+            self._credential(board, "read")
+        except TaskopsError as err:
+            self._fail(rpc.status_for(rpc.failure(err)), err)
+            return
+        self._send(*static.answer(static.PACKAGED, rest))
 
     # ── plumbing ────────────────────────────────────────────────────────────
 

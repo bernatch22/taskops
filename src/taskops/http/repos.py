@@ -79,3 +79,20 @@ class Repos:
         with self._lock:
             self._mirrors[name] = made
         return made, True
+
+    def backed(self, name: str) -> bool:
+        """Does a window open for this board here — the FACT, never the mirror.
+
+        /ui asks this instead of `for_board` on purpose: the page it serves is
+        the package's own bundle (`static.PACKAGED`), so its bytes need no repo
+        at all — resolving one would put a network clone in front of
+        `index.html` for nothing, and a clone that FAILS (forge down, key
+        missing) would take the page down with it. The declared forge alone
+        opens the door; the page's own /git calls go through `for_board` and
+        resolve the mirror lazily the moment a diff is actually read — which is
+        also where a resolution failure belongs: on the diff pane, in
+        gitdoor's words, not on the page load. A window's checkout answers for
+        every board, exactly as `for_board`'s first clause does."""
+        if self.checkout is not None:
+            return True
+        return project.forge(self._stores(name)) is not None

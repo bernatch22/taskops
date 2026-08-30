@@ -1790,9 +1790,13 @@ def test_the_websocket_upgrade_is_a_real_handshake(server: BoardServer) -> None:
 def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
     server: BoardServer,
 ) -> None:
-    """`taskops serve` is an events API. Its /ui/ is ONE sentence naming
-    `taskops ui`, at 410 — the page was withdrawn on purpose and is not coming
-    back to a host that has no clone to read a diff from (`http/static.py`)."""
+    """`taskops serve` with a board that declares NO forge: its /ui/ is ONE
+    sentence at 410. (The wording grew with §16's hosted window — tk-d0b464 —
+    and now names BOTH ways out, `taskops ui` and `taskops board forge`; what
+    this test PINS — a plain-text 410, one human sentence, no page — was the
+    contract all along and is unchanged. The old "never coming back" clause
+    pinned the pre-mirror implementation, not the contract: coming back was
+    always the owner's move, and now there is one.)"""
     assert server.mounts.ui is None and server.mounts.repo is None
     with pytest.raises(HTTPError) as caught:
         urlopen(f"{url_of(server)}/ui/", timeout=5)
@@ -1801,6 +1805,7 @@ def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
     assert answer.code == 410
     assert answer.headers["Content-Type"].startswith("text/plain")
     assert "taskops ui" in body
+    assert "taskops board forge <owner>/<repo>" in body
     # the sentence, and NOT the bundle: no page, no script, no bundle marker.
     assert "<html" not in body.lower() and "<script" not in body.lower()
     assert len(body) < 400
@@ -2067,6 +2072,65 @@ def test_a_windows_own_clone_never_fetches_on_a_missing_ref(
     )
     assert status == 404 and "not in your clone yet" in body["error"]["message"]
     assert fetches == []
+
+
+# ── the HOSTED window: /ui on a serve-mode host, per forge and visibility ───
+
+
+def test_the_forge_fact_alone_opens_the_hosted_window(server: BoardServer) -> None:
+    """Card acceptance 1: /<board>/ui/ serves the packaged bundle on a
+    serve-mode host once the owner declares a forge — the FACT opens the page,
+    no mirror is cloned for it (the page's own /git calls resolve one lazily
+    when a diff is actually read)."""
+    _declare_forge(server)
+    token = _token(server, BERNA)
+    with urlopen(f"{url_of(server)}/ui/?token={token}", timeout=5) as response:
+        assert response.headers["Content-Type"].startswith("text/html")
+        assert "<script" in response.read().decode().lower()
+    with urlopen(f"{url_of(server)}/ui/app.js?token={token}", timeout=5) as response:
+        assert response.headers["Content-Type"].startswith("text/javascript")
+        assert response.read()
+    assert server.mounts.repos._mirrors == {}  # the page cost no clone
+
+
+def test_a_private_hosted_window_refuses_anonymous_exactly_as_rpc_does(
+    server: BoardServer,
+) -> None:
+    """Same wall, same words: no second credential system on the page door. An
+    anonymous GET on a private forge-backed board gets /rpc's join refusal —
+    the JSON envelope, not the 410 sentence and not the bundle."""
+    _declare_forge(server)
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"{url_of(server)}/ui/", timeout=5)
+    with caught.value as err:
+        assert err.code == 409
+        body = json.loads(err.read().decode())
+    assert body["error"]["code"] == "refused"
+    assert "taskops join <url with ?token=" in body["error"]["message"]
+    # a token lets the same request through — the wall is the credential
+    with urlopen(f"{url_of(server)}/ui/?token={_token(server, BERNA)}", timeout=5) as ok:
+        assert ok.status == 200
+
+
+def test_a_public_hosted_window_serves_anonymous_and_writes_not_one_byte(
+    server: BoardServer, owner: str
+) -> None:
+    """Card acceptance 2, §11's harshest rule on the newest door: a public
+    board serves the page to a stranger, and the read leaves NO write of any
+    kind — presence included, asserted against the store itself AND hash for
+    hash, twice, because a second load is a second chance to write."""
+    _declare_forge(server)
+    publish(server, owner)
+    before = _fingerprint(server)
+    seen = dict(_presence(server))
+    for _ in range(2):
+        with urlopen(f"{url_of(server)}/ui/", timeout=5) as response:
+            assert response.status == 200
+            assert response.headers["Content-Type"].startswith("text/html")
+            assert "<script" in response.read().decode().lower()
+    assert _fingerprint(server) == before
+    assert dict(_presence(server)) == seen
+    assert "anon" not in dict(_presence(server))
 
 
 # ── the WINDOW: a local host serving a remote board ─────────────────────────
