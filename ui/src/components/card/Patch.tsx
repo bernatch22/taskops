@@ -237,7 +237,7 @@ export function DiffPane({
   if (step.step === "loading") {
     return (
       <div data-testid="patch-loading" style={note}>
-        reading the diff from this host's clone…
+        reading the diff from this host…
       </div>
     );
   }

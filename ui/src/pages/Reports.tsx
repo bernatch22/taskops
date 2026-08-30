@@ -124,8 +124,9 @@ const dot = (
  *  step, said for a report instead of for a patch.
  *
  *  A refusal the door actually sent WINS, verbatim, for the reason `links.tsx`
- *  gives: only the door knows whether this clone is missing that commit
- *  (`git fetch origin …` brings it), whether the host has no clone at all, or
+ *  gives: only the door knows whether its repo is missing that commit
+ *  (`git fetch origin …` brings it), whether the host has neither a checkout
+ *  nor a mirror to read from, or
  *  whether that path is not a report — and each one is actionable in words this
  *  side could only paraphrase. Pure and exported, so the sentence is pinned
  *  without a fetch (`App.tsx::onTab`'s reasoning). */
@@ -133,10 +134,10 @@ export function whyNoReport(
   state: { file: GitFile | null; loading: boolean; refusal: string | null },
   hasReader: boolean,
 ): string {
-  if (state.loading) return "reading it from your clone…";
+  if (state.loading) return "reading it from this host…";
   if (state.refusal) return state.refusal;
-  if (!hasReader) return "this window has no door onto a clone, so there are no bytes to read";
-  return "this host could not read that report out of your clone";
+  if (!hasReader) return "this window has no door onto a repository, so there are no bytes to read";
+  return "this host could not read that report";
 }
 
 function Reader({
