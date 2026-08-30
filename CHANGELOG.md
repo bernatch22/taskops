@@ -3,6 +3,49 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.5.0 — the hosted window
+
+- **A board can be READ without a clone.** Until now the dashboard was only ever
+  served by `taskops ui`, a binary standing in a checkout: a host running
+  `taskops serve` answered `/git` with a 404 and `/ui/` with a 410, because a
+  dashboard draws DIFFS and the host deliberately had no repository to read them
+  from. Serving a page that could not draw a single patch was a degraded window
+  presented as *the* window, so it was withdrawn. That reasoning had one
+  unexamined premise — that the host can never have git — and this release
+  removes it, argued in ARCHITECTURE §16 ("The hosted window") before a line of
+  code moved.
+- **The host may hold a bare, READ-ONLY mirror of the board's DECLARED forge**,
+  at `<root>/<board>/mirror.git`, and only then does it answer `/git` and
+  `/ui/`. The mirror is derived and disposable in exactly the sense
+  `cache.sqlite` is: delete it and it re-clones; nothing in it is truth the
+  forge does not already hold. Its ONLY source is the repo the owner declared
+  with `taskops board forge` — it takes no client pushes, it is not a second
+  trunk, and nothing is ever read back into the log from it.
+- **A board that declared no forge is exactly what it was**: 404 on `/git`,
+  410 on `/ui/`, and each refusal now names the door — `taskops board forge
+  <owner>/<repo>` — instead of stranding the reader in a sentence about a host
+  they cannot change.
+- **No new credential type.** A public repo is mirrored anonymously; a private
+  one is fetched with an ssh deploy key on the host's filesystem, installed by
+  the OWNER, revocable on the forge — the one new credential this chapter adds,
+  and it is the owner's business exactly as `board forge` itself is. No stored
+  GitHub token, no dev credential travelling, no second identity system.
+- **The page opens on the FACT, never on a clone.** `/ui/` is granted by the
+  declared forge alone: the bundle's bytes come from the installed package, so
+  putting a network clone in front of `index.html` would take a static page down
+  whenever the forge is unreachable. The mirror resolves lazily the moment a
+  diff is actually read — which is where a failure belongs, in the diff pane, in
+  the door's own words.
+- **A missing ref buys exactly ONE bounded fetch**, then answers stale rather
+  than blocking a page on a forge that is down — and only on a mirror. A
+  window's own clone still fetches nothing on the reader's behalf: a background
+  fetch inside a read-only door would move a branch under a worktree somebody is
+  sitting in.
+- **Reads stay reads.** `/ui/` sits behind the credential `/rpc` asks for —
+  a `public` board serves the page to an anonymous reader, a private one refuses
+  with the same join sentence — and an anonymous page load writes nothing at
+  all, not even the invisible write: no presence row.
+
 ## 0.4.2 — the filter that filtered nothing, and the window that stopped signing in
 
 - **"All chapters" is an ARGUMENT now, and it really shows every chapter.** The
