@@ -98,6 +98,23 @@ function unwrap<T>(body: unknown): T {
   return envelope.data as T;
 }
 
+/** The board's base, from where the page IS — the one client for three mounts.
+ *
+ *  A window (`taskops ui`) serves the page at `/` and mounts its single board
+ *  under `/board`; a board host serves it at `/<board>/` — the address a human
+ *  pastes — and kept 0.5.0's `/<board>/ui/` because links were already pasted.
+ *  Stripping a trailing `/ui` and THEN every trailing slash is what makes all
+ *  three collapse to a clean base: 0.5.0 stripped only the `/ui` tail, so at
+ *  `/<board>/` the base kept its slash and every call carried `//` — which is
+ *  also why no token is orphaned by the change: the bases this yields are the
+ *  ones the two WORKING mounts already used (`tokenKey` is keyed by base), and
+ *  the only key that moves ("taskops:/<board>/") belonged to a page that never
+ *  managed a single call. */
+export function baseOf(pathname: string): string {
+  const mounted = pathname.replace(/\/ui\/?$/, "").replace(/\/+$/, "");
+  return mounted === "" ? "/board" : mounted;
+}
+
 /** Where a board's token lives. Per base, so two boards in one browser do not
  *  overwrite each other's credential. Same key the vanilla page used, so an
  *  existing tab keeps working across the rewrite. */
@@ -140,7 +157,11 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
 
   async function rpc<T>(verb: RpcVerb, args: Record<string, unknown> = {}): Promise<T> {
     const send = env.fetch ?? globalThis.fetch;
-    const response = await send(base + "/rpc", {
+    // /api/rpc, the address the server grew when the page took the board root
+    // (http/routes.py). The bare 0.5.0 spelling still answers there, but this
+    // page ships WITH its server, so it speaks the current address only — a
+    // fallback would be dead code wearing a retry.
+    const response = await send(base + "/api/rpc", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -155,7 +176,7 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
 
   async function git<T>(route: string): Promise<T> {
     const send = env.fetch ?? globalThis.fetch;
-    const response = await send(base + "/" + route, {
+    const response = await send(base + "/api/" + route, {
       headers: { Authorization: "Bearer " + token() },
     });
     return unwrap<T>(await response.json());
@@ -163,7 +184,7 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
 
   function feedUrl(scheme: "ws" | "http"): string {
     const origin = env.origin ?? globalThis.location?.origin ?? "";
-    const url = new URL(base + "/feed", origin || "http://localhost");
+    const url = new URL(base + "/api/feed", origin || "http://localhost");
     if (scheme === "ws") url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set("token", token());
     return url.toString();

@@ -12,18 +12,16 @@
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
-import { bootstrapToken, createClient } from "./client";
+import { baseOf, bootstrapToken, createClient } from "./client";
 import { applyTheme, readTheme } from "./theme/theme";
 
 applyTheme(readTheme());
 
-// Two addresses, one page. A WINDOW serves it at the root — `taskops ui` hands
-// out `http://127.0.0.1:<port>/`, because `board` is only the name a window
-// mounts its single board under and `/ui/` was a door on a host that serves no
-// page at all; neither belongs in the URL a human types. Mounted under
-// /<board>/ui/ it still works, and that is where the routes hang off.
-const mounted = location.pathname.replace(/\/ui\/?$/, "");
-const base = mounted === "" || mounted === "/" ? "/board" : mounted;
+// THREE addresses, one page: the window's root (`taskops ui`, board under
+// /board), the board's OWN address on a host (/<board>/ — the URL a human
+// pastes), and 0.5.0's /<board>/ui/, kept for the links already out there.
+// `baseOf` collapses all three to one clean base — the argument lives on it.
+const base = baseOf(location.pathname);
 
 // The token is stripped from wherever the page actually IS, not from a path
 // recomputed out of `base` — at the root those two are different addresses, and
