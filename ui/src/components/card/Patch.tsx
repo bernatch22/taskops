@@ -24,7 +24,7 @@
  * pane scrolls on its own X axis (`overflow: auto` over `white-space: pre`) and
  * every grid cell above it is `minmax(0, …)`. Nothing here may widen the drawer:
  * a horizontal scrollbar on the page is the one failure mode this pane has. */
-import { Ext, Numstat, cascade, useGitDiff, type DiffStep, type GitReader, type GitTarget, type Repo } from "../../links";
+import { Ext, Numstat, cascade, gitRoute, useGitDiff, type DiffStep, type GitReader, type GitTarget, type Repo } from "../../links";
 import { Fragment, useState } from "react";
 import type { Counts } from "../../links";
 import { split, type Hunk, type Side } from "./split";
@@ -441,12 +441,22 @@ const summaryBar: React.CSSProperties = {
   borderBottom: "1px solid var(--hair)",
 };
 
-/** Files changed — the card AS A PULL REQUEST.
+/** Files changed — the card AS A PULL REQUEST, over a range its CALLER chose.
  *
- *  The target is `<milestone branch>...<card branch>`, both already on the
- *  dossier payload, so nothing is constructed and nothing is guessed — the same
- *  two facts the forge `compare` link is built from, asked of the local clone
- *  instead of of the network.
+ *  It takes a whole `GitTarget` and not a `base`/`head` pair, because the two
+ *  callers do not ask the same question: the dossier asks for the range the
+ *  board RECORDED (a commit, or `<first>^...<last>` — `links.tsx::cardRange`),
+ *  and the Worktrees diff page asks about two live branches on disk. A pair of
+ *  strings could only express the second, which is how the dossier's pane came
+ *  to hold a base no host had.
+ *
+ *  `data-range` is the route it asked for, on the wrapper. It is there so the
+ *  RANGE can be asserted where it is chosen: the fetch is a `useEffect` and
+ *  `react-dom/server` fires none, so without it a mutation at the dossier's
+ *  call site renders identically and goes green — which is exactly what
+ *  happened once already (`smoke/sections/card-diff-range.tsx` says so). It
+ *  states what this pane is showing, which is also the first thing to read when
+ *  a pane is empty and nobody knows what it asked for.
  *
  *  The list is the FIRST step of the cascade in its own right: `stat` is the
  *  numstat vocabulary, so a reader who never expands a file still gets +/− per
@@ -454,15 +464,13 @@ const summaryBar: React.CSSProperties = {
 export function FilesChanged({
   reader,
   repo,
-  base,
-  head,
+  target,
   summary = false,
   view = DRAWER_VIEW,
 }: {
   reader: GitReader | null | undefined;
   repo: Repo | null | undefined;
-  base: string;
-  head: string;
+  target: GitTarget;
   /** Draw the `N files changed  +a −d` bar above the list.
    *
    *  A PROP here rather than a computation at the call site, because the count
@@ -477,17 +485,18 @@ export function FilesChanged({
    *  the drawer's, so the dossier pane is byte-for-byte what it was. */
   view?: PatchView;
 }): React.JSX.Element {
-  const target: GitTarget = { kind: "compare", base, head };
   const state = useGitDiff(reader, target, true);
   return (
-    <FileList
-      reader={reader}
-      repo={repo}
-      target={target}
-      step={cascade(repo, target, state)}
-      summary={summary}
-      view={view}
-    />
+    <div data-range={gitRoute(target)} style={{ minWidth: 0 }}>
+      <FileList
+        reader={reader}
+        repo={repo}
+        target={target}
+        step={cascade(repo, target, state)}
+        summary={summary}
+        view={view}
+      />
+    </div>
   );
 }
 
@@ -516,15 +525,19 @@ export function FileList({
   summary?: boolean;
   view?: PatchView;
 }): React.JSX.Element {
-  const { base, head } = target.kind === "compare" ? target : { base: "", head: target.ref };
   if (step.step !== "patch") return <DiffPane step={step} view={view} />;
 
   const stat: Counts = step.diff.stat;
   const paths = Object.keys(stat).sort();
   if (paths.length === 0) {
+    /* Named in the grammar of the range that was actually asked: a compare has
+       two ends and a commit has one, and "between <sha> and " was the sentence
+       a single-commit target used to produce. */
     return (
       <div data-testid="changed-none" style={note}>
-        no files differ between {base} and {head}
+        {target.kind === "compare"
+          ? `no files differ between ${target.base} and ${target.head}`
+          : `no files changed in ${target.ref}`}
       </div>
     );
   }

@@ -273,11 +273,14 @@ export function WorktreeDiff({
             ))}
           </span>
         </div>
+        {/* Two live BRANCHES, on purpose, where the dossier's pane asks for
+            recorded shas (`links.tsx::cardRange`): this page is about a working
+            tree that exists on disk right now, so its subject is where those
+            two tips stand — not the commits the board has bound to a card. */}
         <FilesChanged
           reader={reader}
           repo={repo}
-          base={base}
-          head={head}
+          target={{ kind: "compare", base, head }}
           summary={true}
           view={view}
         />

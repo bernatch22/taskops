@@ -2101,6 +2101,55 @@ def test_the_hosts_missing_ref_sentence_says_what_a_host_that_prunes_nothing_can
     assert "Nothing was pruned" in message and "never pushed here" in message
 
 
+# ── the CARD'S OWN RANGE, asked by sha (ui/src/links.tsx::cardRange) ───────
+
+
+def test_a_landed_cards_own_commits_name_a_range_this_host_can_read(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The reported failure, end to end and on the SERVER side of it.
+
+    A card's branches — its own and its chapter's — were pruned on the forge
+    before this host became the board's remote, so neither name resolves here
+    while both of the card's commits sit in the trunk that was pushed. The
+    dossier therefore asks by sha, and for a multi-commit card the base is the
+    FIRST commit's PARENT: `<sha>^`, a spelling `gitwork/diff.py` already
+    resolves (`SHAPE` admits `^`, `resolve()` peels `^{commit}`), which is why
+    this chapter added nothing to the door.
+
+    The last assertion is the one worth having: with the first SHA as the base
+    instead of its parent, the door still answers 200 and the pane still looks
+    complete — with that commit's file silently missing. That is the failure
+    mode the `^` exists to prevent, and it is pinned here as the difference
+    between the two ranges rather than described.
+    """
+    from urllib.parse import quote
+
+    from taskops.gitwork import bare
+    from tests.test_mirror import run, commit, forge_repo
+
+    src = forge_repo(tmp_path / "fixture")
+    run.must("switch", "-q", "-c", "tk-range", cwd=src)
+    first = commit(src, "one.py")
+    last = commit(src, "two.py")
+    run.must("switch", "-q", "main", cwd=src)
+    run.must("merge", "--no-ff", "-q", "-m", "land tk-range", "tk-range", cwd=src)
+    repo = bare.ensure(server.mounts.root / BOARD)
+    run.must("push", str(repo), "main:refs/heads/main", cwd=src)
+    token = _token(server, BERNA)
+
+    status, _ = _get(f"{url_of(server)}/git/commit/tk-range", token)
+    assert status == 404, "the branch must be absent, or this proves nothing"
+
+    # percent-encoded, as `links.tsx::gitRoute` sends it: `...` is the route's
+    # grammar and stays literal, everything else is one encoded ref.
+    base = quote(f"{first}^", safe="")
+    status, body = _get(f"{url_of(server)}/git/compare/{base}...{last}", token)
+    assert status == 200, body
+    assert set(body["data"]["stat"]) == {"one.py", "two.py"}
+
+    status, dropped = _get(f"{url_of(server)}/git/compare/{first}...{last}", token)
+    assert status == 200 and set(dropped["data"]["stat"]) == {"two.py"}
 def test_the_hosts_missing_ref_sentence_is_grammatical_for_one_ref(
     server: BoardServer, tmp_path: Path
 ) -> None:

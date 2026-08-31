@@ -13,7 +13,7 @@
  * to agents. That is the hole `<Criteria>` closes, and the reason it is a section
  * of its own rather than a paragraph folded into the spec. */
 import { shortActor } from "../../format";
-import { Ext, Numstat, cardHead, commitUrl, type GitReader, type Repo } from "../../links";
+import { Ext, Numstat, cardRange, commitUrl, type GitReader, type Repo } from "../../links";
 import { TONE_FG } from "../board/CardTile";
 import { Markdown } from "../shared/Markdown";
 import { CommitPatch, FilesChanged } from "./Patch";
@@ -114,6 +114,7 @@ export function Body({
 }): React.JSX.Element {
   const { card } = dossier;
   const stood = dossier.standing;
+  const range = cardRange(dossier.commits, dossier.branch, dossier.milestone?.branch ?? "");
   return (
     <>
       {stood && stood.verdict === "changes" ? (
@@ -287,24 +288,21 @@ export function Body({
       ) : null}
 
       {/* The card AS A PULL REQUEST, read from the host's own git (or this
-          clone) instead of the forge — the card's HEAD against its chapter's
-          branch. The head is the recorded sha when the card has one and the
-          branch otherwise (`links.tsx::cardHead`): a branch is durable again
-          now that the host prunes nothing, but a card whose branch was pruned
-          on the forge before that host existed is only findable by sha. This used to be described as
-          "the same two branches the `compare ↗` link above is built from", and
-          that link is gone: the Worktree block now opens the tree in this
-          dashboard instead of sending the reader to somebody else's rendering
-          of a range. The two branches are unchanged; only the sentence was
-          borrowing them. No branch on either side, no section. */}
-      {dossier.commits.length > 0 && dossier.branch && dossier.milestone?.branch ? (
+          clone) instead of the forge — and over the range the BOARD recorded,
+          both ends of it. `links.tsx::cardRange` is the whole decision and
+          argues it: a lone recorded commit goes through the commit door, which
+          diffs it against its first parent; several become
+          `<first>^...<last>`, whose base is the oldest commit's PARENT so that
+          commit's own changes are in the pane rather than one off the edge of
+          it. Neither end is a branch name, which is what makes the pane render
+          for a card whose `tk-*` and `ms/*` branches were pruned before this
+          host became the board's remote — the reported failure. This used to be
+          described as "the same two branches the `compare ↗` link above is
+          built from", and that link is gone: the Worktree block opens the tree
+          in this dashboard instead. No range to ask for, no section. */}
+      {range !== null ? (
         <Section title="Files changed">
-          <FilesChanged
-            reader={reader}
-            repo={repo}
-            base={dossier.milestone.branch}
-            head={cardHead(dossier.commits, dossier.branch)}
-          />
+          <FilesChanged reader={reader} repo={repo} target={range} />
         </Section>
       ) : null}
 
