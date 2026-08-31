@@ -5359,3 +5359,186 @@ def test_no_declared_forge_means_no_mirroring_and_no_fault(
 
     assert "mirror" not in client(server, BERNA).call("board", {})
     assert sh_git("remote", cwd=hosted(server)).stdout.strip() == ""
+
+
+# ── the DEV's side: `taskops remote git` (tk-b11ce0) ─────────────────────────
+#
+# §16 gave the host a git door and left the client unable to name it. These
+# drive `main()` with the real argv, like the ergonomics block above, because
+# what is being tested IS the wiring: what lands in `.git/config`, what does
+# not, and whether the real git client can push through it.
+
+
+def sh_git_real(*args: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+    """git with the machine's own credential helpers OUT and ours left IN —
+    `sh_git` resets the whole helper list, which would erase the very thing
+    these tests configure. `GIT_CONFIG_NOSYSTEM` removes /etc/gitconfig's
+    (macOS ships an osxkeychain there); HOME is already the fixture's."""
+    return subprocess.run(  # noqa: S603
+        ["git", "-c", "user.email=t@test", "-c", "user.name=t", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1"},
+        check=False,
+    )
+
+
+@pytest.fixture()
+def checkout(server: BoardServer, discoverable: Path, virgin: Path) -> Path:
+    """A REAL git repo whose board exists and whose host is recorded, with the
+    owner's key where ssh itself would look — the state a dev is in just before
+    they wire the git remote. The board is named by `board create`, so the git
+    address these tests assert is the DERIVED one, guessed by nobody."""
+    from taskops.cli import main
+
+    assert sh_git_real("init", "-b", "master", ".", cwd=virgin).returncode == 0
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create"]) == 0  # named after the directory, and recorded
+    return virgin
+
+
+def local_config(repo: Path) -> str:
+    return (repo / ".git" / "config").read_text(encoding="utf-8")
+
+
+def test_remote_git_prints_the_address_and_the_lines_to_paste(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 1, the printed half: no flag, no write. The address is the
+    recorded host plus the board's name — nobody has to guess the URL shape."""
+    from taskops.cli import main
+
+    capsys.readouterr()
+    assert main(["remote", "git"]) == 0
+    said = capsys.readouterr().out
+    assert said.splitlines()[0] == f"{host_of(server)}/{checkout.name}/repo.git"
+    assert f"git remote add taskops {host_of(server)}/{checkout.name}/repo.git" in said
+    assert f"credential.{host_of(server)}.helper" in said
+    assert "hook credential" in said  # the helper, not a token in a URL
+    assert "remote" not in local_config(checkout)  # printing WRITES NOTHING
+
+
+def test_remote_git_add_wires_a_remote_and_a_helper_and_never_a_token(
+    server: BoardServer, checkout: Path
+) -> None:
+    """Criterion 1, the writing half — and the credential rule. What lands in
+    `.git/config` is an address and a COMMAND; a session token appears nowhere,
+    because `.git/config` is plaintext and a token expires within the hour."""
+    from taskops.cli import main
+
+    assert main(["remote", "git", "--add"]) == 0
+    config = local_config(checkout)
+    assert '[remote "taskops"]' in config
+    assert f"{host_of(server)}/{checkout.name}/repo.git" in config
+    assert "hook credential" in config
+    assert "@" not in config.partition("[remote")[2].partition("\n\n")[0]  # no user:token@
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    assert token not in config and "password" not in config
+    # Re-running is free and idempotent: same remote, same helper, no second one.
+    assert main(["remote", "git", "--add"]) == 0
+    assert local_config(checkout).count("hook credential") == 1
+    assert local_config(checkout).count('[remote "taskops"]') == 1
+
+
+def test_an_existing_origin_is_never_touched_and_origin_is_refused_by_name(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 2. Somebody's GitHub is in `origin`; the whole point is that it
+    is still there afterwards, and that asking for `origin` explicitly is a
+    refusal rather than a favour — its absence is not this command's to decide
+    either, so the refusal does not depend on there being one."""
+    from taskops.cli import main
+
+    theirs = "git@github.com:bernatch22/taskops.git"
+    assert sh_git_real("remote", "add", "origin", theirs, cwd=checkout).returncode == 0
+    assert main(["remote", "git", "--add"]) == 0
+    assert sh_git_real("remote", "get-url", "origin", cwd=checkout).stdout.strip() == theirs
+
+    capsys.readouterr()
+    assert main(["remote", "git", "--add", "--name", "origin"]) == 1
+    assert "does not take it over" in capsys.readouterr().err
+    assert sh_git_real("remote", "get-url", "origin", cwd=checkout).stdout.strip() == theirs
+
+
+def test_a_taken_name_is_refused_and_the_remote_it_names_is_left_alone(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other half of criterion 2: `taskops` itself can be taken, and the way
+    out is a NAME, never a `set-url` over whatever was there."""
+    from taskops.cli import main
+
+    mine = "https://elsewhere.example/mine.git"
+    assert sh_git_real("remote", "add", "taskops", mine, cwd=checkout).returncode == 0
+    capsys.readouterr()
+    assert main(["remote", "git", "--add"]) == 1
+    refusal = capsys.readouterr().err
+    assert mine in refusal and "--name <other>" in refusal
+    assert sh_git_real("remote", "get-url", "taskops", cwd=checkout).stdout.strip() == mine
+    assert main(["remote", "git", "--add", "--name", "board"]) == 0
+    assert sh_git_real("remote", "get-url", "taskops", cwd=checkout).stdout.strip() == mine
+
+
+def test_a_credential_helper_somebody_else_configured_is_not_overwritten(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Same rule one config key over: a credential helper is somebody's decision
+    about a secret, so this command adds one or refuses, never replaces."""
+    from taskops.cli import main
+
+    key = f"credential.{host_of(server)}.helper"
+    assert sh_git_real("config", "--local", key, "osxkeychain", cwd=checkout).returncode == 0
+    capsys.readouterr()
+    assert main(["remote", "git", "--add"]) == 1
+    assert "osxkeychain" in capsys.readouterr().err
+    assert sh_git_real("config", "--local", key, cwd=checkout).stdout.strip() == "osxkeychain"
+
+
+def test_the_helper_mints_a_session_for_this_host_and_declines_every_other(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The credential itself: git asks, the ssh key answers, nothing is stored.
+
+    `get` for the recorded host comes back with the session in Basic's password
+    field; another host gets silence (git moves on to the next helper), and
+    `store`/`erase` are silence too — a helper that caches is a helper that
+    persists a token, which is the thing this design exists to avoid."""
+    from taskops.cli import gitremote
+
+    port = server.server_address[1]
+    asked = f"protocol=http\nhost=127.0.0.1:{port}\npath={checkout.name}/repo.git\n"
+    assert gitremote.credential(asked, ["get"]) == 0
+    answered = dict(
+        line.partition("=")[::2] for line in capsys.readouterr().out.splitlines() if line
+    )
+    assert answered["username"] == gitremote.USERNAME
+    assert answered["password"]  # a live session, minted here, written nowhere
+    body = json.loads((checkout / ".taskops" / "remote.json").read_text())
+    assert body["token"] == answered["password"] and body["token_expires"] > 0
+
+    assert gitremote.credential("protocol=https\nhost=github.com\n", ["get"]) == 0
+    assert capsys.readouterr().out == ""  # not our host: not our business
+    assert gitremote.credential(asked, ["store"]) == 0
+    assert gitremote.credential(asked, ["erase"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_a_real_git_push_authenticates_through_the_helper_end_to_end(
+    server: BoardServer, checkout: Path, tmp_path: Path
+) -> None:
+    """The whole card, proved by the real git client: two commands from a dev,
+    then `git push taskops master` lands on the board's own `repo.git` — no
+    token typed, none stored, and the ssh key never leaves the laptop."""
+    from taskops.cli import main
+
+    assert main(["remote", "git", "--add"]) == 0
+    (checkout / "hello.txt").write_text("v1\n", encoding="utf-8")
+    assert sh_git_real("add", ".", cwd=checkout).returncode == 0
+    assert sh_git_real("commit", "-m", "first", cwd=checkout).returncode == 0
+
+    pushed = sh_git_real("push", "taskops", "master", cwd=checkout)
+    assert pushed.returncode == 0, pushed.stderr
+    repo = server.mounts.root / checkout.name / "repo.git"
+    tip = sh_git_real("rev-parse", "HEAD", cwd=checkout).stdout.strip()
+    assert sh_git("rev-parse", "master", cwd=repo).stdout.strip() == tip

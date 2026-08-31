@@ -3,6 +3,8 @@
     taskops init            a local board in this repo
     taskops join <url>      join one (bare, ?token= or --invite), install the hooks
     taskops remote add <url>  the host this checkout operates, like git's origin
+    taskops remote git      the board's OWN git repository, and how to push to it:
+                            printed to paste, or --add to wire it here (never origin)
     taskops serve           host boards — an events API, no dashboard
     taskops server init     bootstrap THIS host: its owner and their ssh key
     taskops board create    make a board on a host  ·  board ls, from anywhere
@@ -20,7 +22,8 @@
     taskops invite <who>    a single-use link  ·  taskops revoke --key|--invite
     taskops tidy            remove worktrees whose work is already in the trunk
     taskops ui              the dashboard — serves it if nothing is, opens the browser
-    taskops hook …          what the two git hooks and the Claude hook call
+    taskops hook …          what the git hooks, the Claude hook and git's credential
+                            helper call — never a human
 
 Moving a card from the terminal does not exist: that is MCP. v1 grew 35
 management commands, each one a second way to do something the tools already
@@ -47,6 +50,7 @@ from . import (
     operate,
     serving,
     commands,
+    gitremote,
 )
 from ..board import find_root
 from .._errors import TaskopsError
@@ -108,6 +112,11 @@ def _run(args: argparse.Namespace) -> int:
         return 0
     if args.command == "ui":
         return serving.ui(here)
+    if str(args.which) == "credential":
+        # git's credential helper protocol: the operation is argv, the request is
+        # stdin. Read here, so `gitremote.credential` stays a pure function of
+        # what git said and the tests can hand it a request directly.
+        return gitremote.credential(sys.stdin.read(), [str(x) for x in args.rest])
     if str(args.which) == "claude":
         # Routed here and not through `commands` so the delivery hook owns its
         # own error policy end to end: it prints NOTHING, ever, including the

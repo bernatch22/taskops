@@ -58,6 +58,8 @@ importable leaves commits un-stamped, silently.
 taskops init                              a local board in this repo
 taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
+taskops remote git [--add]                the board's OWN git repository: the address to push to,
+                                          printed to paste or wired here (never over your origin)
 taskops serve                             host boards — the page and /git open per declared forge
 taskops server init                       bootstrap THIS host: its owner and their ssh key
 taskops board create|ls|push|pull|rm      the boards on a host
@@ -153,7 +155,13 @@ taskops board create [<name>]                      # defaults to the directory's
 taskops board push                                 # this repo's LOCAL board becomes that one
 taskops join <name>                                # or: a teammate connects to an existing one
 taskops board pull [<name>]                        # the reverse: it comes back down, verified by id
+taskops remote git --add                           # and point git at the board's own repo
 ```
+
+`taskops remote git` adds a remote called `taskops` — never `origin`, which
+is your own setup — plus a credential helper for that host. The push then
+authenticates with the ssh key you already have: git asks the helper, the
+helper mints a session, and no token is written into `.git/config`.
 
 ### A board's whole life, and what each step destroys
 
