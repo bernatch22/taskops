@@ -15,7 +15,7 @@
 # (`tests/test_topology.py`), against a host it created.
 #
 #   sh smoke.sh                                  # the author's host, defaults below
-#   sh smoke.sh <host> <public-board> <private-board> <card-branch> <landed-branch>
+#   sh smoke.sh <host> <public-board> <private-board> <card-branch> <landed-card> <reported-card>
 #
 # Every assertion is here because it FAILED once, in production, against a real
 # reader — the comment above each one says which report it comes from. Nothing
@@ -37,6 +37,10 @@ BRANCH=${4:-tk-32d2ba}
 # the fault that turned the pull mirror inside out (§16, 2026-08-31). The host
 # holds the history now and never prunes, so this ref must answer forever.
 LANDED=${5:-tk-dfaff7}
+# The card the Files-changed pane was reported blank on (2026-08-31): two
+# recorded commits, so it exercises the RANGE arm of the rule below, not the
+# single-commit door.
+REPORTED=${6:-tk-bffa26}
 
 BASE="https://$HOST"
 C="curl -sS -m 15"
@@ -228,18 +232,74 @@ code=$(printf %s "$got" | sed -n '1s/[^ ]* \([0-9][0-9]*\).*/\1/p')
   "HTTP $code — a private board is not world-clonable"
 pass "GET /$PRIVATE/repo.git upload-pack (anonymous)" "HTTP 401"
 
-# ── (h) a LANDED card still renders its diff ─────────────────────────────────
-# Reported 2026-08-31 against the pull mirror, and the reason this chapter
-# exists: `tk-dfaff7`'s branch was pruned on the forge when its chapter landed,
-# so the board — whose git was a --mirror of the forge — lost the diff of work
-# that is intact in the trunk. The host holds the history now and refuses ref
-# deletions, so this URL must answer for the life of the board.
-head_ln "a card whose branch was pruned on the forge"
-body=$($C "$BASE/$BOARD/api/git/commit/$LANDED") || fail "GET git/commit/$LANDED" "no answer"
-case $body in
-  *'"patch"'*) pass "GET /$BOARD/api/git/commit/$LANDED" \
-    "a diff ($(printf %s "$body" | wc -c | tr -d ' ') bytes)" ;;
-  *) fail "GET git/commit/$LANDED" "no diff: $(printf %s "$body" | head -c 300)" ;;
-esac
+# ── (h) the Files-changed pane's OWN range, for the two reported cards ───────
+# This section REPLACES the one that asked `git/commit/<the landed card's branch
+# name>` (written 2026-08-30 for the pull mirror). That assertion is not
+# recoverable and must not come back: `tk-dfaff7`'s branch was pruned on the
+# forge before this host became the board's remote, so the ref was never pushed
+# here and the host — which prunes nothing — has nothing to serve under that
+# name. Asking a landed card for its BRANCH was the fault itself, in the smoke
+# as much as in the pane.
+# Reported 2026-08-31 on tk-bffa26: the pane asked
+# compare(base=ms/promotion-survives-its-own-confi, head=tk-bffa26) and the
+# milestone branch does not exist on the host — pruned before the host became
+# the remote — so a landed card showed nothing while its diff sat right there
+# (proven on tk-dfaff7, whose recorded commit answers 45898 bytes through the
+# commit door). This chapter moved the pane onto the card's OWN recorded
+# commits, so the assertion has to ask what the pane asks and derive it the same
+# way, or it would go green against a broken pane.
+#
+# `links.tsx::cardRange` is the rule, verbatim: no sha → nothing to assert; ONE
+# recorded commit → `git/commit/<sha>`, which the door already diffs against its
+# first parent; SEVERAL → `git/compare/<oldest>^...<newest>`, the base being the
+# OLDEST commit's PARENT because git diff excludes its base. `gitRoute`
+# percent-encodes each ref (`^` → %5E) and leaves `...` literal, since the
+# separator is the route's grammar and not part of either ref.
+#
+# python3 reads the shas and nothing else does the arithmetic: the payload
+# carries `sha` in more places than `commits` (the history and the merge record
+# among them), so a grep over the whole body picks the wrong first and last ref
+# and would pass on a range no pane ever asks for.
+head_ln "the pane's own range, for both reported cards"
+for card in "$LANDED" "$REPORTED"; do
+  payload=$($C -X POST "$BASE/$BOARD/api/rpc" -H 'Content-Type: application/json' \
+    -d "{\"verb\": \"card\", \"args\": {\"task\": \"$card\"}}") \
+    || fail "POST card $card" "no answer"
+  # route on the first line, the first commit's own files on the rest — one read
+  # of the payload, and the same read the pane does.
+  asked=$(printf %s "$payload" | python3 -c '
+import json, sys, urllib.parse
+data = json.load(sys.stdin).get("data") or {}
+shas = [c["sha"] for c in (data.get("commits") or []) if isinstance(c.get("sha"), str) and c["sha"]]
+if not shas:
+    sys.exit("no recorded commit")
+q = urllib.parse.quote
+route = ("git/commit/" + q(shas[-1], safe="") if len(shas) == 1
+         else "git/compare/" + q(shas[0] + "^", safe="") + "..." + q(shas[-1], safe=""))
+print(route)
+for name in (data["commits"][0].get("files") or []):
+    print(name)
+') || fail "card $card" "could not derive the pane's range"
+  route=$(printf %s "$asked" | sed -n 1p)
+  body=$($C "$BASE/$BOARD/api/$route") || fail "GET $route" "no answer ($card)"
+  case $body in
+    *'"patch": "diff'*|*'"patch":"diff'*)
+      pass "GET /$BOARD/api/$route" \
+        "$card renders ($(printf %s "$body" | wc -c | tr -d ' ') bytes)" ;;
+    *) fail "GET $route" "$card: no patch: $(printf %s "$body" | head -c 300)" ;;
+  esac
+  # THE dropped-base assertion: with the base at the newest commit (or at a
+  # branch tip) the answer is still a patch — it is just the wrong one. Only the
+  # FIRST commit's own files prove the range reaches back to where it started.
+  printf '%s\n' "$asked" | sed -n '2,$p' | while read -r name; do
+    [ -n "$name" ] || continue
+    case $body in
+      *"\"$name\""*) : ;;
+      *) fail "GET $route" "$card: $name — the first commit's file is missing from stat: the base was dropped" ;;
+    esac
+  done || exit 1
+  pass "the first commit's files are in stat" \
+    "$card: $(printf '%s\n' "$asked" | sed -n '2,$p' | wc -l | tr -d ' ') file(s) from $(printf %s "$asked" | sed -n 2p)"
+done
 
 printf '\nall green — %s, board %s\n' "$HOST" "$BOARD"
