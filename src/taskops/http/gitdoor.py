@@ -87,11 +87,13 @@ MARKDOWN = "text/markdown"
 
 
 def answer(
-    repo: Path | None, tail: str, query: str, *, mirrored: bool = False
+    repo: Path | None, tail: str, query: str, *, mirrored: str = ""
 ) -> dict[str, Any]:
-    """The whole door. `tail` is the path after `<board>/git/`. `mirrored`
-    says the repo is the board's mirror (`http/repos.py`), which is the one
-    case a missing ref buys a bounded fetch (`http/stale.py`)."""
+    """The whole door. `tail` is the path after `<board>/git/`. `mirrored` is
+    the forge label when the repo is the board's mirror (`http/repos.py`), ""
+    for a window's clone — the one traveller carrying both facts: a mirror's
+    missing ref buys a bounded fetch, and the refusal speaks in the host's
+    words instead of the window's (`http/stale.py`)."""
     if repo is None:
         raise NotFound(NO_REPO)
     kind, _, rest = tail.partition("/")
@@ -104,7 +106,7 @@ def answer(
         if found is None and stale.refreshed(repo, mirrored, [ref]):
             found = diff.commit_range(repo, ref)
         if found is None:
-            raise NotFound(stale.sentence(ref))
+            raise NotFound(stale.sentence(ref, mirrored=mirrored))
     elif kind == "compare" and SEPARATOR in rest:
         left, _, right = unquote(rest).partition(SEPARATOR)
         found = diff.compare_range(repo, left, right)
@@ -113,7 +115,7 @@ def answer(
             if stale.refreshed(repo, mirrored, missing):
                 found = diff.compare_range(repo, left, right)
             if found is None:
-                raise NotFound(stale.sentence(*missing))
+                raise NotFound(stale.sentence(*missing, mirrored=mirrored))
     else:
         raise BadRequest(
             "git/commit/<ref>, git/compare/<a>...<b>, or git/file/<rev>?path=<file>"
@@ -121,7 +123,7 @@ def answer(
     return patch.between(repo, found[0], found[1], path)
 
 
-def _file(repo: Path, rev: str, wanted: str, mirrored: bool) -> dict[str, Any]:
+def _file(repo: Path, rev: str, wanted: str, mirrored: str) -> dict[str, Any]:
     """One committed file at a rev — read-only, shape-guarded, capped.
 
     Three walls, in this order: the path is a REPORT path (`under()`, which
@@ -146,7 +148,7 @@ def _file(repo: Path, rev: str, wanted: str, mirrored: bool) -> dict[str, Any]:
     if sha is None and stale.refreshed(repo, mirrored, [rev]):
         sha = diff.resolve(repo, rev)
     if sha is None:
-        raise NotFound(stale.sentence(rev))
+        raise NotFound(stale.sentence(rev, mirrored=mirrored))
     got = patch.show(repo, sha, path)
     if got is None:
         raise NotFound(ABSENT.format(path=path, sha=sha[:12]))
