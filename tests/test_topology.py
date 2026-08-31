@@ -7,10 +7,12 @@ days, all invisible to tests that used a single store. So this file never uses
 
 from __future__ import annotations
 
+import os
 import json
 import socket
 import argparse
 import threading
+import subprocess
 from base64 import b64encode
 from typing import Any, BinaryIO, Iterator
 from hashlib import sha256
@@ -5038,3 +5040,189 @@ def test_the_dev_whose_key_the_sync_published_joins_with_two_words(
     assert len(hub.seen) == asked  # her side asked GitHub nothing at all
     for path in (p for p in project.rglob("*") if p.is_file()):
         assert TOKEN.encode() not in path.read_bytes(), f"the GitHub token reached {path}"
+
+
+# ── the git doors: clone, fetch and PUSH against the board's OWN repo.git ────
+#
+# §16, "The host becomes the remote": /<board>/repo.git speaks smart-HTTP over
+# the same door as everything else, the token riding in HTTP Basic's password
+# field. These tests run the REAL git client against the live server — the
+# protocol is git's own, so the proof has to be too.
+
+
+def sh_git(*args: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(  # noqa: S603
+        # credential.helper= (empty) RESETS the helper list: without it the
+        # machine's osxkeychain quietly saves the pushed token and hands it to
+        # the "anonymous" clone, and the visibility tests test the keychain.
+        ["git", "-c", "credential.helper=", "-c", "user.email=t@test", "-c", "user.name=t", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        check=False,
+    )
+
+
+def seeded(tmp_path: Path) -> Path:
+    src = tmp_path / "seed"
+    src.mkdir()
+    assert sh_git("init", "-b", "master", ".", cwd=src).returncode == 0
+    (src / "hello.txt").write_text("v1\n", encoding="utf-8")
+    assert sh_git("add", ".", cwd=src).returncode == 0
+    assert sh_git("commit", "-m", "first", cwd=src).returncode == 0
+    return src
+
+
+def remote_of(httpd: BoardServer, token: str = "", board: str = BOARD) -> str:
+    """The address `taskops remote` would spell — token in Basic's password."""
+    cred = f"x:{token}@" if token else ""
+    return f"http://{cred}127.0.0.1:{httpd.server_address[1]}/{board}/repo.git"
+
+
+def hosted(httpd: BoardServer, board: str = BOARD) -> Path:
+    return httpd.mounts.root / board / "repo.git"
+
+
+def host_ref(httpd: BoardServer, ref: str) -> str:
+    done = sh_git("rev-parse", "--verify", "--quiet", ref, cwd=hosted(httpd))
+    return done.stdout.strip()
+
+
+def writer(httpd: BoardServer, subject: str = BERNA) -> str:
+    token, _ = httpd.mounts.credentials.mint(subject, BOARD, _clock.now())
+    return token
+
+
+def test_push_clone_and_fetch_round_trip_on_the_boards_own_repo(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 1 whole: the first push CREATES repo.git (never a read — see
+    gitwork/bare.py), a clone gets the work back, a fetch sees the next push.
+    An agent: credential pushes too — workers are who bind.py pushes as."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    pushed = sh_git("push", remote_of(server, token), "master", cwd=seed)
+    assert pushed.returncode == 0, pushed.stderr
+
+    repo = hosted(server)
+    assert (repo / "HEAD").is_file()  # created by the push, beside events.jsonl
+    for knob in ("receive.denyDeletes", "receive.denyNonFastForwards"):
+        assert sh_git("config", knob, cwd=repo).stdout.strip() == "true"
+
+    copy = tmp_path / "copy"
+    cloned = sh_git("clone", remote_of(server, token), str(copy), cwd=tmp_path)
+    assert cloned.returncode == 0, cloned.stderr
+    assert (copy / "hello.txt").read_text(encoding="utf-8") == "v1\n"
+
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    agent = writer(server, W1)
+    assert sh_git("push", remote_of(server, agent), "master:tk-test", cwd=seed).returncode == 0
+    fetched = sh_git("fetch", "origin", cwd=copy)
+    assert fetched.returncode == 0, fetched.stderr
+    tip = sh_git("rev-parse", "HEAD", cwd=seed).stdout.strip()
+    assert sh_git("rev-parse", "origin/tk-test", cwd=copy).stdout.strip() == tip
+
+
+def test_a_public_board_is_clonable_anonymously_and_a_private_one_refuses(
+    server: BoardServer, tmp_path: Path, owner: str
+) -> None:
+    """READ follows visibility exactly as /rpc does. Private first, so the same
+    board proves both walls; the anonymous clone runs no verb and leaves no
+    presence row, exactly as the crawl test pins for the JSON doors."""
+    seed = seeded(tmp_path)
+    assert sh_git("push", remote_of(server, writer(server)), "master", cwd=seed).returncode == 0
+
+    refused = sh_git("clone", remote_of(server), str(tmp_path / "no"), cwd=tmp_path)
+    assert refused.returncode != 0
+    assert not (tmp_path / "no" / "hello.txt").exists()
+
+    publish(server, owner)
+    cloned = sh_git("clone", remote_of(server), str(tmp_path / "yes"), cwd=tmp_path)
+    assert cloned.returncode == 0, cloned.stderr
+    assert (tmp_path / "yes" / "hello.txt").read_text(encoding="utf-8") == "v1\n"
+    assert "anon" not in dict(_presence(server))
+
+
+def test_an_anonymous_push_is_refused_and_creates_no_repo(
+    server: BoardServer, tmp_path: Path, owner: str
+) -> None:
+    """A push is a write under §11's ban, PUBLIC board included — and since the
+    repo is created by the first push, a refused stranger creates nothing."""
+    publish(server, owner)
+    seed = seeded(tmp_path)
+    pushed = sh_git("push", remote_of(server), "master", cwd=seed)
+    assert pushed.returncode != 0
+    assert not hosted(server).exists()
+
+
+def test_a_read_only_credential_clones_but_may_not_push(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The auth split, one credential on both sides of it: caps decide, and the
+    refusal is the standing one — no second rule invented for git."""
+    seed = seeded(tmp_path)
+    assert sh_git("push", remote_of(server, writer(server)), "master", cwd=seed).returncode == 0
+    reader, _ = server.mounts.credentials.mint(ANA, BOARD, _clock.now(), caps="read")
+
+    cloned = sh_git("clone", remote_of(server, reader), str(tmp_path / "ro"), cwd=tmp_path)
+    assert cloned.returncode == 0, cloned.stderr
+
+    before = host_ref(server, "master")
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    pushed = sh_git("push", remote_of(server, reader), "master", cwd=seed)
+    assert pushed.returncode != 0
+    assert host_ref(server, "master") == before
+
+
+def test_a_pushed_branch_is_readable_through_the_json_diff_door(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The acceptance the reversal exists for: the window's diff is read from
+    the board's OWN repository, no forge declared, no mirror consulted."""
+    seed = seeded(tmp_path)
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master:tk-seen", cwd=seed).returncode == 0
+
+    with urlopen(f"{url_of(server)}/git/commit/tk-seen?token={token}", timeout=5) as answer:
+        body = json.loads(answer.read())
+    assert body["ok"] and "hello.txt" in body["data"]["patch"]
+
+
+def test_the_host_refuses_a_ref_deletion(server: BoardServer, tmp_path: Path) -> None:
+    """The host NEVER prunes — enforced in the created repo's own config, so
+    the very receive-pack that would move the ref is the process refusing."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master:tk-kept", cwd=seed).returncode == 0
+
+    gone = sh_git("push", remote_of(server, token), "--delete", "tk-kept", cwd=seed)
+    assert gone.returncode != 0
+    assert "deny deleting" in (gone.stderr + gone.stdout) or host_ref(server, "tk-kept")
+    assert host_ref(server, "tk-kept")
+
+
+def test_the_host_refuses_a_non_fast_forward_even_forced(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """A force is a client-side word; the refusal is the server process's own
+    config, so `--force` changes nothing and the landed history survives."""
+    seed = seeded(tmp_path)
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+    before = host_ref(server, "master")
+
+    assert sh_git("reset", "--hard", "HEAD~1", cwd=seed).returncode == 0
+    (seed / "hello.txt").write_text("rewritten\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "amended history", cwd=seed).returncode == 0
+    for way in ((), ("--force",)):
+        pushed = sh_git("push", *way, remote_of(server, token), "master", cwd=seed)
+        assert pushed.returncode != 0, way
+        assert host_ref(server, "master") == before
