@@ -3,6 +3,31 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.5.5 — the Worktrees page renders too (it was never the drawer)
+
+The failure reported since 0.5.0 was always on the WORKTREES page, and three
+chapters fixed the card drawer instead — the drawer was verified, declared
+working, and the page nobody had rendered kept asking
+`compare/ms%2F<chapter>...tk-<id>`. Both branches of a landed card are pruned
+when its chapter lands, so on every landed card the page drew a refusal over
+work sitting in the trunk. Verifying a neighbour is not verifying.
+
+- **`pages/WorktreeDiff.tsx` takes its range from `links.tsx::cardRange`** — the
+  same rule the drawer uses, never a second one that can drift: the card's
+  recorded commits, base = the oldest commit's PARENT. A tree with nothing
+  recorded keeps the two branch tips, which is right for a live tree whose work
+  is not committed yet and where the branch is the only handle there is.
+- **Pinned on the rendered PAGE** (`ui/smoke/sections/worktree-page-range.tsx`),
+  read off its `data-range`, with the call-site mutation measured red — the
+  previous section pinned the rule one layer below the call site and a call-site
+  mutation was green while production stayed broken.
+- **The history that was missing is on the host now**: 91 card branches and 19
+  chapter branches, pushed at the tips the board recorded, plus two cards whose
+  oldest commit was not an ancestor of their newest (rebased in their day) and
+  so needed its own ref. Audited across every card on the board: 87 of 89 render
+  a real diff on both surfaces, and the two that do not have no commit recorded
+  at all — there is nothing to diff, and their refusal is literally true.
+
 ## 0.5.4 — the Files-changed pane renders for a landed card
 
 **0.5.3 is withdrawn in all but name.** It carries this release's source fix but

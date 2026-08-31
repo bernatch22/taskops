@@ -44,7 +44,7 @@ import {
   type ThreadProps,
   type WorktreeDiffProps,
 } from "../components/monitor/panels";
-import { Ext, compareUrl } from "../links";
+import { Ext, cardRange, gitForge, type GitTarget } from "../links";
 
 export type { ThreadProps };
 
@@ -157,7 +157,26 @@ export function WorktreeDiff({
   // Step three of the cascade as a page-level anchor. `null` when the board
   // carries no slug, and then no anchor is drawn at all — no disabled link, no
   // `href=""` (`links.tsx`, the chapter's "NO SLUG → NO LINKS" rule).
-  const forge = compareUrl(repo, head, base);
+  /* THE RANGE. `cardRange` — the SAME rule the drawer's pane uses, never a
+   * second one that could drift from it: the card's recorded commits when it
+   * has any (base = the oldest commit's PARENT, since `git diff` excludes its
+   * base), and only otherwise the two branch tips.
+   *
+   * This page used to insist on the two live BRANCHES "on purpose", because
+   * its subject is a working tree that exists on disk right now. That was
+   * true and it was still wrong, and Berna reported it from THIS page for
+   * hours (2026-08-31) while three chapters fixed the drawer: a card's branch
+   * and its chapter's are pruned when the chapter lands, so on every landed
+   * card both names resolve to nothing and the page drew a refusal over work
+   * that is sitting in the trunk. A tree with NO recorded commit keeps the
+   * branch compare — that is a live tree whose work has not been committed
+   * yet, where the branch really is the only handle there is. */
+  const target: GitTarget = cardRange(dossier?.commits, head, base) ?? {
+    kind: "compare",
+    base,
+    head,
+  };
+  const forge = gitForge(repo, target);
   return (
     <div style={page} data-testid="worktree-diff" data-branch={head}>
       <div
@@ -273,14 +292,13 @@ export function WorktreeDiff({
             ))}
           </span>
         </div>
-        {/* Two live BRANCHES, on purpose, where the dossier's pane asks for
-            recorded shas (`links.tsx::cardRange`): this page is about a working
-            tree that exists on disk right now, so its subject is where those
-            two tips stand — not the commits the board has bound to a card. */}
+        {/* The card's recorded range, or the two branch tips when nothing is
+            recorded yet — see `target` above for why this page stopped
+            insisting on the branches. */}
         <FilesChanged
           reader={reader}
           repo={repo}
-          target={{ kind: "compare", base, head }}
+          target={target}
           summary={true}
           view={view}
         />
