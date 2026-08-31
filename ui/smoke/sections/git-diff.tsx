@@ -190,7 +190,7 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
    * on a `taskops serve` host), which must still be a readable pane and never a
    * dead anchor. */
   const filesChanged = renderToStaticMarkup(
-    <FilesChanged reader={undefined} repo={REPO} base="ms/x" head="tk-a11111" />,
+    <FilesChanged reader={undefined} repo={REPO} target={{ kind: "compare", base: "ms/x", head: "tk-a11111" }} />,
   );
   check(
     "Files changed with no reader falls to the forge, not to nothing",

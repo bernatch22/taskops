@@ -306,42 +306,81 @@ export function fileRoute(rev: string, path: string): string {
   return `git/file/${encodeURIComponent(rev)}?path=${encodeURIComponent(path)}`;
 }
 
-/** The card's HEAD for a diff — the recorded sha when there is one, else the
- *  branch name.
+/** The card's own diff RANGE — both ends of it, from what the board recorded.
  *
- *  ── Why a sha at all, when the host keeps every branch forever ────────────
+ *  ── The failure this replaces ─────────────────────────────────────────────
  *
- *  Because "forever" started on a date. The host holds the board's own git and
- *  prunes nothing (ARCHITECTURE §16, "The host becomes the remote"), so a
- *  branch name is a durable handle again — for every card pushed since. A card
- *  worked BEFORE that, whose `tk-*` branch was pruned on the forge when its
- *  chapter landed and never reached this host, has no branch anywhere; its
- *  commits are in the trunk that was pushed, and a sha is the only name that
- *  still finds them. That is the reported failure (tk-dfaff7), and it is
- *  permanent history: no later push grows the branch back.
+ *  For one version the pane asked `compare(base = the chapter's branch, head =
+ *  the card's newest recorded sha)`. Only the HEAD had been made durable, and
+ *  half a durable range is not a durable range: for every card that already
+ *  LANDED, `ms/<chapter>` was pruned on the forge before this host became the
+ *  board's remote, so the base is a ref the host has never had and the compare
+ *  refuses with the whole pane empty. Reported live on tk-bffa26, whose two
+ *  commits are both in the trunk this host holds while neither branch name
+ *  resolves. A branch name is durable only for a card pushed since that date;
+ *  a recorded sha is durable for every card there has ever been.
  *
- *  ── Why prefer the sha even when the branch exists ────────────────────────
+ *  ── What the recorded commits NAME ───────────────────────────────────────
  *
- *  A sha names the same bytes forever; a branch names whatever its tip is now.
- *  For a card that is still being worked those are the same thing, and for a
- *  card that CLOSED the sha is more honest — the diff a reader opens on a
- *  landed card is the work that landed, not wherever a reused branch has since
- *  moved to. And the sha is already on the payload (`CardPayload.commits`,
- *  `verbs/_context.py::dossier` — a `commit` event's body per card, oldest
- *  first, so the LAST is the newest): nothing is invented here and no event was
- *  added for this.
+ *  `CardPayload.commits` is a `commit` event's body per card, oldest first
+ *  (`verbs/_context.py::dossier`), and they are the card's own commits on the
+ *  card's own branch, in order. So:
  *
- *  It is the HEAD only. The base stays the milestone's branch, which the board
- *  records as a name and nothing else — there is no recorded sha for "where the
- *  chapter was", and a merge-base against the chapter's tip is what the compare
- *  wants anyway. */
-export function cardHead(
+ *  · ONE commit → `git/commit/<sha>`. The door already diffs a commit against
+ *    its FIRST PARENT (`gitwork/diff.py`, and why first parent is argued
+ *    there), which is exactly "what this card added", so there is nothing to
+ *    compute on this side.
+ *  · SEVERAL → the whole span, and its base is the FIRST commit's PARENT, not
+ *    the first commit. `compare(base = commits[0], …)` is the bug that hides
+ *    inside the obvious spelling: `git diff` is exclusive of its base, so the
+ *    oldest commit's own changes would silently vanish from a pane that looks
+ *    complete. `<sha>^` is a spelling `diff.py` already resolves — `SHAPE`
+ *    admits `^` and `resolve()` peels through `^{commit}` — so the parent is
+ *    named to git rather than guessed here, and no server change was needed
+ *    for it. `compare_range` then reads `merge-base(<first>^, <last>)`, which
+ *    IS `<first>^` because it is an ancestor, so the range is precisely the
+ *    card's commits and nothing else.
+ *
+ *  ── Why this is right for a card still IN FLIGHT too ─────────────────────
+ *
+ *  Because it is the same document. `merge-base(ms/<chapter>, tk-<id>)` is the
+ *  point the card branched from, and the parent of its oldest commit IS that
+ *  point — the card's commits are contiguous on its own branch. The
+ *  chapter-branch compare was never a better answer, only an equal one that
+ *  additionally requires two refs to exist; keeping it as a second path would
+ *  be a branch in the code whose only distinguishing feature is that it can
+ *  fail. It does survive where it is genuinely the better question: the
+ *  Worktrees diff PAGE (`pages/WorktreeDiff.tsx`) asks about a working tree on
+ *  disk, where the branch tip — not a recorded sha — is the subject.
+ *
+ *  The fallback, last: a card with commit bodies but no `sha` on any of them is
+ *  a payload shape the board does not write; it falls to the two branch names,
+ *  which is exactly what this pane asked before. NO commit body at all is
+ *  `null` and therefore no section — the same gate the pane has always had, and
+ *  it is the honest one: a card with nothing bound to it has no range of its
+ *  own to show, and a compare against a chapter tip would be inventing one.
+ *
+ *  The forge link keeps pointing somewhere true either way: `gitForge` reads
+ *  the SAME target (a commit page for a sha, `compare/<base>...<head>` for a
+ *  span), and a sha and a `<sha>^` are both real refs on the forge. */
+export function cardRange(
   commits: readonly { sha?: unknown }[] | null | undefined,
   branch: string,
-): string {
-  const last = commits && commits.length > 0 ? commits[commits.length - 1] : null;
-  const sha = last && typeof last.sha === "string" ? last.sha : "";
-  return sha || branch;
+  chapter: string,
+): GitTarget | null {
+  const bodies = commits ?? [];
+  const shas = bodies
+    .map((one) => (typeof one.sha === "string" ? one.sha : ""))
+    .filter((sha) => sha !== "");
+  const oldest = shas[0];
+  const newest = shas[shas.length - 1];
+  if (oldest === undefined || newest === undefined) {
+    return bodies.length > 0 && branch && chapter
+      ? { kind: "compare", base: chapter, head: branch }
+      : null;
+  }
+  if (shas.length === 1) return { kind: "commit", ref: newest };
+  return { kind: "compare", base: `${oldest}^`, head: newest };
 }
 
 /** The forge page for the same target — step THREE, in the same vocabulary as
