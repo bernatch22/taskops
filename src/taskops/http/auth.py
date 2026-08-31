@@ -52,8 +52,26 @@ def token_in(header: str, path: str) -> str:
     agent's client sends a header, a browser follows a link (`?token=`), and a
     newcomer redeems an invite (`?invite=`). One extractor, so a door added
     later — /feed, /git — cannot accidentally invent a second way in.
+
+    POST-MORTEM (shipped broken in 0.5.0, reported 2026-08-31): this used to be
+    `header.removeprefix("Bearer ").strip()`, and that one line made every
+    PUBLIC board unreadable from its own hosted page. The page's client sends
+    `Authorization: "Bearer " + token()` — with no token, the header reaches
+    the server as `Bearer` (the trailing space stripped in transit), the prefix
+    `"Bearer "` does not match, and the LITERAL STRING "Bearer" came back as
+    the token. `creds.check` then answered "unknown credential — run: taskops
+    join" to a reader who presented nothing at all. Anonymous reads worked only
+    when NO Authorization header was sent — which no browser client does. So:
+    scheme and value are parsed as separate whitespace-delimited fields, the
+    scheme case-insensitive per RFC 7235, and a bearer scheme with NO value is
+    NO credential presented — the query-string fallback and, behind it, the
+    anonymous gate still run. This is deliberately narrow: a header that
+    carries any actual value — wrong, expired, or under a scheme this server
+    never spoke — is a credential that WAS presented, and it refuses exactly as
+    it always has. "Unparseable" is not "anonymous".
     """
-    token = header.removeprefix("Bearer ").strip()
+    scheme, _, value = header.strip().partition(" ")
+    token = value.strip() if scheme.lower() == "bearer" else header.strip()
     if token:
         return token
     for part in path.partition("?")[2].split("&"):

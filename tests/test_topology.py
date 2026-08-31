@@ -2643,6 +2643,76 @@ def test_a_public_board_answers_every_read_verb_with_no_credential(
     assert anon(server, "mentions", {})[1]["data"]["mentions"] == []
 
 
+def bearing(httpd: BoardServer, header: str, verb: str = "board") -> tuple[int, Any]:
+    """A call carrying an explicit Authorization header, verbatim — the way a
+    browser client sends one, including the degenerate shapes a test needs."""
+    request = Request(
+        f"{url_of(httpd)}/rpc",
+        data=json.dumps({"verb": verb, "args": {}}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": header},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            return int(response.status), json.loads(response.read().decode())
+    except HTTPError as err:
+        with err:  # an HTTPError IS a response: unclosed, it leaks the socket
+            return int(err.code), json.loads(err.read().decode())
+
+
+def test_a_bare_bearer_is_no_credential_and_a_public_board_reads(
+    server: BoardServer, owner: str
+) -> None:
+    """0.5.0's shipped fault: the hosted page sends `"Bearer " + ""`, the header
+    arrives as `Bearer`, and `token_in` returned the literal "Bearer" as a
+    token — so a PUBLIC board refused its own page with "unknown credential".
+    A bearer scheme with no value is NOBODY presenting ANYTHING: it must read
+    exactly as the no-header stranger does."""
+    plan(client(server, BERNA))
+    publish(server, owner)
+    for header in ("Bearer", "Bearer ", ""):
+        status, body = bearing(server, header)
+        assert status == 200, header
+        assert body["data"]["groups"]["take"], header
+
+
+def test_a_bare_bearer_on_a_private_board_refuses_as_no_credential(
+    server: BoardServer,
+) -> None:
+    """No credential is no credential on a private board too — and the sentence
+    is the no-credential one (how to join), never "unknown credential"."""
+    for header in ("Bearer", "Bearer ", ""):
+        status, body = bearing(server, header)
+        assert status == 409, header
+        assert "taskops join <url with ?token=" in _prints(body), header
+
+
+def test_a_presented_credential_that_is_wrong_still_refuses_loudly(
+    server: BoardServer, owner: str
+) -> None:
+    """The fix must not widen: once a VALUE was presented — garbage under
+    Bearer, or a scheme this server never spoke — there is no anonymous
+    fallback, even on a public board, and the sentence does not move."""
+    publish(server, owner)
+    for header in ("Bearer not-a-token", "Basic dXNlcjpwYXNz"):
+        status, body = bearing(server, header)
+        assert status == 409, header
+        assert "unknown credential" in _prints(body), header
+
+
+def test_a_real_bearer_value_still_works_and_the_scheme_is_case_insensitive(
+    server: BoardServer,
+) -> None:
+    """RFC 7235: the auth-scheme is case-insensitive. `Bearer <token>` is the
+    contract every client already speaks; `bearer <token>` is the same
+    credential, not a stranger."""
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    for header in (f"Bearer {token}", f"bearer {token}"):
+        status, body = bearing(server, header)
+        assert status == 200, header
+        assert body["ok"] is True, header
+
+
 def test_the_orchestrators_read_is_not_widened_to_a_stranger(
     server: BoardServer, owner: str
 ) -> None:
