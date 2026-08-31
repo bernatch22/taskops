@@ -46,13 +46,13 @@ class Mounts:
         self.upstream = upstream
         # Whether this process can read a repo is decided by the CALLER at
         # construction — a window's own checkout — or, on a serve-mode host,
-        # per BOARD from its declared forge's mirror (`repos.py` carries it).
+        # per BOARD from the board's own repo.git (`repos.py` carries it).
         self.repo = repo
         self.repos = Repos(root, repo, self.stores)
         # ONE switch, not two: the same `repo` that mounts /git mounts the bundle at
         # the WINDOW's root. On a serve-mode host `ui` stays None and the /ui door asks
-        # `repos.backed()` per board instead — the forge fact, the same one that opens
-        # /git — see `static.py` and `repos.py` for the whole argument.
+        # `repos.backed()` per board instead — the board's own repo.git, the same
+        # one that answers /git — see `static.py` and `repos.py` for the argument.
         self.ui = static.PACKAGED if repo is not None else None
         self.credentials = Credentials(root / "live.sqlite")
         # The HOST's own identity, and it opens NOTHING until a login asks

@@ -1,21 +1,25 @@
 """Serving the UI bundle. Small on purpose: the board is an API, not a website.
 
 **A WINDOW serves it — and, since §16's hosted-window amendment, so does a
-serve-mode host, but only for a board whose owner declared a forge.** The
-handler asks `repos.backed()` for the FACT and serves `PACKAGED` behind the
-same credential /rpc asks for; a board with no forge keeps the one sentence
-(`NO_UI` below, answered `410 Gone`), which now names both ways out.
+serve-mode host, but only for a board whose CODE is here.** The handler asks
+`repos.backed()` for the FACT and serves `PACKAGED` behind the same credential
+/rpc asks for; a board with no git on this host keeps the one sentence (`NO_UI`
+below, answered `410 Gone`), which names both ways out.
 
 Why, and it is the same rule as /git's (ARCHITECTURE.md §16): a dashboard shows
 DIFFS, and a diff needs a repo to read. A host with none — the state every
-board's host is in until its owner declares a forge — could only serve a page
+board's host is in until code is pushed to it — could only serve a page
 that falls through every step of `links.tsx::cascade` to a forge link or a
 sentence. That was serving a degraded window and calling it *the* window. The
-binary serves the window; the server serves the truth. What ends that state is
-§16's hosted-window amendment: a bare READ-ONLY mirror of the DECLARED forge
-(`<root>/<board>/mirror.git`), and only a board that holds one gets `/ui/`
-back. `NO_UI` therefore means "this board declared no forge", never "this host
-can never have a repo".
+binary serves the window; the server serves the truth. What ends that state,
+since §16's "The host becomes the remote" reversed the amendment that first
+ended it, is the board's OWN repository (`<root>/<board>/repo.git`) — created by
+the first push, never pruned — and only a board that holds one gets `/ui/` back.
+The gate MOVED rather than changed: it used to be the declared forge, whose
+mirror was the host's only git; the forge is now a projection of `repo.git` and
+opens nothing. `NO_UI` therefore means "nobody has pushed this board's code
+here", never "this host can never have a repo" — and, unlike the forge fact, it
+is a state every worktree joined to the board clears on its next commit.
 
 `410 Gone` rather than 404 because the two say different things to whoever typed
 the URL: 404 is "no idea what that is, maybe later", and this is neither vague
@@ -35,17 +39,18 @@ from __future__ import annotations
 from pathlib import Path
 
 NO_UI = (
-    "this board's window is not served here — it declares no forge for this "
-    "host to mirror. Two ways in: run `taskops ui` in a checkout joined to "
-    "this board (the window reads your own clone), or the owner declares the "
-    "repo with `taskops board forge <owner>/<repo>` and this host serves the "
-    "page itself.\n"
+    "this board's window is not served here — no code has been pushed to this "
+    "board's git on this host, so there is no history for a dashboard to show "
+    "diffs from. Two ways in: run `taskops ui` in a checkout joined to this "
+    "board (the window reads your own clone), or push this board's code to "
+    "this host and it serves the page itself — a worktree joined to the board "
+    "pushes every commit on its own.\n"
 )
 
 PACKAGED = Path(__file__).resolve().parent.parent / "ui"
 """The bundle the wheel ships (`src/taskops/ui/`). A WINDOW mounts it via
-`Mounts.ui`; a serve-mode host serves the SAME files for a board whose owner
-declared a forge — one copy, never a second bundle path to drift."""
+`Mounts.ui`; a serve-mode host serves the SAME files for a board whose own
+repository is here — one copy, never a second bundle path to drift."""
 
 MISSING = "no UI bundle is installed here — this checkout's taskops has none.\n"
 """A window that HAS a clone but whose install carries no bundle. Distinct from
@@ -149,8 +154,8 @@ def at_root(root: Path | None, path: str) -> tuple[bytes, str] | None:
 
 def answer(root: Path | None, rest: str) -> tuple[int, bytes, str]:
     """The WHOLE /ui door: (status, body, content-type). `root is None` means
-    NO window opens for this board here — a board host whose board declared no
-    forge — and the module docstring argues why that is a 410 and one sentence
+    NO window opens for this board here — a board host holding none of that
+    board's git — and the module docstring argues why that is a 410 and one sentence
     (now naming BOTH ways out) rather than a page."""
     if root is None:
         return 410, NO_UI.encode(), "text/plain; charset=utf-8"

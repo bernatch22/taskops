@@ -131,11 +131,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _diff(self, board: str, rest: str) -> dict[str, Any]:
         """A window answers from its own LOCAL clone; a serve-mode host from
-        the board's forge mirror — `repos.py` decides which, per board (§16)."""
+        the board's OWN repo.git — `repos.py` decides which, per board (§16,
+        "The host becomes the remote"; the pull mirror is retired)."""
         self.mounts.check(board)
         self._credential(board, "read")
-        repo, mirrored = self.mounts.repos.for_board(board)
-        return gitdoor.answer(repo, rest, self.path.partition("?")[2], mirrored=mirrored)
+        repo, hosted = self.mounts.repos.for_board(board)
+        return gitdoor.answer(repo, rest, self.path.partition("?")[2], hosted=hosted)
 
     # `_static` moved whole to `page.py` when the git doors arrived — the budget
     # forced a split and the page policy was the cohesive cut.

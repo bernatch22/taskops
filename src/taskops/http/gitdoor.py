@@ -10,15 +10,14 @@ Same envelope as `rpc.py` (always an object; a failure is
 there is no second credential system, and `server.py` checks the credential
 before this module is reached.
 
-**Whether the door exists at all is decided ONCE, at construction**, never
-re-derived per request (`http/repos.py` resolves it per board). `taskops ui` sits
-inside a repo (its root is `<repo>/.taskops`) and passes it; `taskops serve`
-sits in a boards directory and passes nothing FOR A BOARD WITH NO DECLARED
-FORGE, so /git there is a 404 whose message says which case it is — the UI falls
-through its cascade rather than a dead pane. A declared forge may instead mount
-a bare read-only mirror (`<root>/<board>/mirror.git` — §16, "The hosted
-window"): `NO_REPO` means "no checkout here and no mirror for this board",
-never "this host can never read git".
+**WHICH repo answers is `http/repos.py`'s decision, per board.** `taskops ui`
+sits inside a repo (its root is `<repo>/.taskops`) and passes its checkout for
+every board; `taskops serve` sits in a boards directory and answers from the
+board's OWN `<root>/<board>/repo.git` (§16, "The host becomes the remote" — the
+pull mirror that stood here for one day is retired). So `NO_REPO` means "no
+checkout here, and nobody has pushed this board's code to this host yet", never
+"this host can never read git" — the UI falls through its cascade rather than a
+dead pane.
 
 This module only routes and refuses. Everything about git is `gitwork/diff.py`,
 which is where the ref validation lives.
@@ -48,10 +47,16 @@ from ..gitwork import diff, patch
 
 NO_REPO = (
     "this host serves boards, not a repository — it was started outside a "
-    "checkout (taskops serve), so there is no clone here to read a diff from. "
-    "A host that sits in a repo (taskops ui) answers /git; a board with a "
-    "declared forge answers from its mirror when the host can hold one."
+    "checkout (taskops serve), and nothing has been pushed to this board's git "
+    "here yet, so there is no history to read a diff from. Two ways in: push "
+    "to this board's remote (`taskops remote` names it, and a worktree joined "
+    "to the board pushes every commit on its own), or run `taskops ui` in a "
+    "checkout, where the window reads your own clone."
 )
+"""The serve-mode refusal, naming the moves that open it. It is a BOARD-level
+fact with a board-level remedy — the mirror's `NO_FORGE` retired into it
+(`http/repos.py`), because the forge is no longer a source and its absence is
+therefore no longer a reason a diff cannot be read."""
 
 SEPARATOR = "..."
 
@@ -87,35 +92,32 @@ MARKDOWN = "text/markdown"
 
 
 def answer(
-    repo: Path | None, tail: str, query: str, *, mirrored: str = ""
+    repo: Path | None, tail: str, query: str, *, hosted: bool = False
 ) -> dict[str, Any]:
-    """The whole door. `tail` is the path after `<board>/git/`. `mirrored` is
-    the forge label when the repo is the board's mirror (`http/repos.py`), ""
-    for a window's clone — the one traveller carrying both facts: a mirror's
-    missing ref buys a bounded fetch, and the refusal speaks in the host's
-    words instead of the window's (`http/stale.py`)."""
+    """The whole door. `tail` is the path after `<board>/git/`. `hosted` is
+    True when the repo is the board's own, on a serve-mode host, and False for
+    a window's clone (`http/repos.py`): the one fact still travelling, and it
+    decides only the AUDIENCE of a missing-ref refusal (`http/stale.py`). The
+    bounded on-demand fetch it used to license retired with the pull mirror —
+    the board's own repository IS the source, so there is nowhere to fetch
+    from and a missing ref is answered at once."""
     if repo is None:
         raise NotFound(NO_REPO)
     kind, _, rest = tail.partition("/")
     path = _param(query, "path") or None
     if kind == "file" and rest:
-        return _file(repo, unquote(rest), path or "", mirrored)
+        return _file(repo, unquote(rest), path or "", hosted)
     if kind == "commit" and rest:
         ref = unquote(rest)
         found = diff.commit_range(repo, ref)
-        if found is None and stale.refreshed(repo, mirrored, [ref]):
-            found = diff.commit_range(repo, ref)
         if found is None:
-            raise NotFound(stale.sentence(ref, mirrored=mirrored))
+            raise NotFound(stale.sentence(ref, hosted=hosted))
     elif kind == "compare" and SEPARATOR in rest:
         left, _, right = unquote(rest).partition(SEPARATOR)
         found = diff.compare_range(repo, left, right)
         if found is None:
             missing = [r for r in (left, right) if not diff.resolve(repo, r)]
-            if stale.refreshed(repo, mirrored, missing):
-                found = diff.compare_range(repo, left, right)
-            if found is None:
-                raise NotFound(stale.sentence(*missing, mirrored=mirrored))
+            raise NotFound(stale.sentence(*missing, hosted=hosted))
     else:
         raise BadRequest(
             "git/commit/<ref>, git/compare/<a>...<b>, or git/file/<rev>?path=<file>"
@@ -123,7 +125,7 @@ def answer(
     return patch.between(repo, found[0], found[1], path)
 
 
-def _file(repo: Path, rev: str, wanted: str, mirrored: str) -> dict[str, Any]:
+def _file(repo: Path, rev: str, wanted: str, hosted: bool) -> dict[str, Any]:
     """One committed file at a rev — read-only, shape-guarded, capped.
 
     Three walls, in this order: the path is a REPORT path (`under()`, which
@@ -145,10 +147,8 @@ def _file(repo: Path, rev: str, wanted: str, mirrored: str) -> dict[str, Any]:
     if not diff.usable(path):
         raise BadRequest(ODD_SHAPE.format(path=path, dir=reports.DIR))
     sha = diff.resolve(repo, rev)
-    if sha is None and stale.refreshed(repo, mirrored, [rev]):
-        sha = diff.resolve(repo, rev)
     if sha is None:
-        raise NotFound(stale.sentence(rev, mirrored=mirrored))
+        raise NotFound(stale.sentence(rev, hosted=hosted))
     got = patch.show(repo, sha, path)
     if got is None:
         raise NotFound(ABSENT.format(path=path, sha=sha[:12]))

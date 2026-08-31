@@ -1,10 +1,11 @@
-"""gitwork/mirror.py — the forge mirror, against a LOCAL fixture forge.
+"""The host's relationship with the forge, against a LOCAL fixture forge.
 
-No network anywhere: the "forge" is a plain repo in tmp_path and the mirror
-clones it by path, through the same `url=` override an owner's ssh remote
-uses. What these pin is §16's contract — derived and disposable, one bounded
-on-demand fetch, and a failure that answers within the timeout instead of
-raising into a request.
+No network anywhere: the "forge" is a plain repo in tmp_path and every remote
+is a path, through the same override an owner's ssh deploy-key address uses.
+Two halves, in the order the chapters happened: the pull mirror's RETIREMENT
+(`gitwork/bare.py::adopt` — the history it held becomes the board's own
+`repo.git`), and the OUTBOUND leg (`gitwork/onward.py` — best effort, never a
+gate, every outcome legible on the board payload).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from taskops import verbs
 from taskops.mcp import boardview
 from taskops._json import as_object
 from taskops.store import mirroring
-from taskops.gitwork import run, bare, mirror, onward
+from taskops.gitwork import run, bare, onward
 from taskops.store.stores import Stores
 
 
@@ -40,133 +41,97 @@ def commit(root: Path, name: str) -> str:
     return run.must("rev-parse", "HEAD", cwd=root)
 
 
-# ── ensure ──────────────────────────────────────────────────────────────────
+# ── the pull mirror's RETIREMENT (gitwork/bare.py::adopt) ──────────────────
+#
+# §16's "The host becomes the remote" retires `mirror.git` and deletes
+# `gitwork/mirror.py` with it. What used to be pinned here — ensure/fetch/
+# refresh_if_missing, a bounded on-demand fetch, a derived-and-disposable clone
+# of the forge — pinned a mechanism the chapter reversed, so it went with the
+# module rather than being kept green against a source that no longer exists.
+# What is owed to a mirror on disk is the HISTORY in it, and that is what these
+# pin: production carries a populated `mirror.git` for taskops-v2 today, and it
+# must become `repo.git` without losing a commit.
 
 
-def test_first_ensure_clones_a_bare_mirror(tmp_path: Path) -> None:
+def legacy_mirror(board_dir: Path, forge: Path) -> Path:
+    """A board as §16's first amendment left it: a bare mirror of the forge and
+    no `repo.git`. Cloned by PATH, the same `url=` shape an owner's ssh
+    deploy-key remote used, so there is no network in any of this."""
+    board_dir.mkdir(parents=True, exist_ok=True)
+    made = board_dir / "mirror.git"
+    run.must("clone", "--mirror", str(forge), str(made))
+    return made
+
+
+def test_adopt_seeds_the_boards_own_repo_from_a_retired_mirror(tmp_path: Path) -> None:
+    """The migration §16 promised: no history the mirror held is lost, and the
+    mirror directory is gone afterwards — a truth-holder must not carry a
+    `--mirror` refspec that would prune it back."""
     forge = forge_repo(tmp_path)
+    run.must("branch", "tk-old", cwd=forge)
     board_dir = tmp_path / "board"
-    board_dir.mkdir()
-    got = mirror.ensure(board_dir, None, url=str(forge))
-    assert got == board_dir / "mirror.git"
-    assert got.is_dir()
-    # bare, and holding the forge's history
+    legacy = legacy_mirror(board_dir, forge)
+    head = run.must("rev-parse", "main", cwd=legacy)
+
+    got = bare.adopt(board_dir)
+    assert got == board_dir / "repo.git"
     assert run.git("rev-parse", "--is-bare-repository", cwd=got).out == "true"
-    assert run.git("rev-parse", "--verify", "--quiet", "main", cwd=got).ok
+    assert run.must("rev-parse", "main", cwd=got) == head
+    assert run.must("rev-parse", "tk-old", cwd=got) == head  # every ref, not just HEAD
+    assert not legacy.exists()
 
 
-def test_ensure_on_an_existing_mirror_returns_it_without_recloning(tmp_path: Path) -> None:
-    """An existing mirror is returned untouched — that is how an owner's own
-    remote (an ssh deploy-key address) survives every later call."""
-    forge = forge_repo(tmp_path)
-    board_dir = tmp_path / "board"
-    board_dir.mkdir()
-    first = mirror.ensure(board_dir, None, url=str(forge))
-    assert first is not None
-    # a second ask must not touch the remote at all: point it somewhere dead
-    run.must("remote", "set-url", "origin", str(tmp_path / "gone"), cwd=first)
-    again = mirror.ensure(board_dir, None, url=str(tmp_path / "gone"))
-    assert again == first
-    assert run.git("remote", "get-url", "origin", cwd=first).out == str(tmp_path / "gone")
-
-
-def test_ensure_with_no_forge_and_no_url_is_none(tmp_path: Path) -> None:
-    """The state every board is born in: no declared forge, no mirror."""
-    assert mirror.ensure(tmp_path, None) is None
-    assert mirror.ensure(tmp_path, {"host": "example.com", "repo": "a/b"}) is None
-
-
-def test_ensure_derives_the_https_address_from_the_declared_fact(tmp_path: Path) -> None:
-    """The address is spelled from core/forge.py's shape — no token, no user@."""
-    assert mirror._url({"host": "github.com", "repo": "owner/name", "need": "push"}) == (
-        "https://github.com/owner/name.git"
-    )
-    assert mirror._url(None) == ""
-
-
-def test_a_failed_clone_leaves_nothing_behind(tmp_path: Path) -> None:
-    board_dir = tmp_path / "board"
-    board_dir.mkdir()
-    assert mirror.ensure(board_dir, None, url=str(tmp_path / "nowhere")) is None
-    assert not (board_dir / "mirror.git").exists()
-
-
-# ── fetch ───────────────────────────────────────────────────────────────────
-
-
-def test_fetch_picks_up_a_new_commit_from_the_forge(tmp_path: Path) -> None:
-    forge = forge_repo(tmp_path)
-    board_dir = tmp_path / "board"
-    board_dir.mkdir()
-    got = mirror.ensure(board_dir, None, url=str(forge))
-    assert got is not None
-    sha = commit(forge, "later.txt")
-    # ^{commit}: bare --verify of a well-formed sha is ok even when absent
-    assert not run.git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", cwd=got).ok
-    assert mirror.fetch(got) is True
-    assert run.must("rev-parse", "main", cwd=got) == sha
-
-
-def test_a_dead_remote_answers_false_within_the_timeout(tmp_path: Path) -> None:
-    forge = forge_repo(tmp_path)
-    board_dir = tmp_path / "board"
-    board_dir.mkdir()
-    got = mirror.ensure(board_dir, None, url=str(forge))
-    assert got is not None
-    run.must("remote", "set-url", "origin", str(tmp_path / "gone"), cwd=got)
-    assert mirror.fetch(got) is False
-
-
-# ── refresh_if_missing ──────────────────────────────────────────────────────
-
-
-def test_a_present_ref_costs_no_fetch_at_all(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_the_seeded_repo_carries_the_hosts_own_refusals_and_no_origin(
+    tmp_path: Path,
 ) -> None:
+    """A seeded repo is a REMOTE, not a copy of a mirror: it refuses deletions
+    and rewrites like any `bare.ensure` one, and it keeps no `origin` pointing
+    at the directory the migration just deleted."""
     forge = forge_repo(tmp_path)
     board_dir = tmp_path / "board"
-    board_dir.mkdir()
-    got = mirror.ensure(board_dir, None, url=str(forge))
+    legacy_mirror(board_dir, forge)
+    got = bare.adopt(board_dir)
     assert got is not None
-
-    def boom(_: Path) -> bool:
-        raise AssertionError("a present ref must not touch the network")
-
-    monkeypatch.setattr(mirror, "fetch", boom)
-    assert mirror.refresh_if_missing(got, "main") is True
+    assert run.must("config", "receive.denyDeletes", cwd=got) == "true"
+    assert run.must("config", "receive.denyNonFastForwards", cwd=got) == "true"
+    assert not run.git("remote", "get-url", "origin", cwd=got).ok
 
 
-def test_a_missing_ref_buys_exactly_one_fetch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_adopt_returns_an_existing_repo_untouched_and_never_reseeds(
+    tmp_path: Path,
 ) -> None:
+    """The board's own repo OUTRANKS anything else on disk: once it exists,
+    `adopt` is `at` — no clone, and a mirror left beside it is not consulted."""
     forge = forge_repo(tmp_path)
     board_dir = tmp_path / "board"
     board_dir.mkdir()
-    got = mirror.ensure(board_dir, None, url=str(forge))
-    assert got is not None
-    run.must("branch", "later", cwd=forge)
-
-    calls: list[Path] = []
-    real = mirror.fetch
-
-    def counted(where: Path) -> bool:
-        calls.append(where)
-        return real(where)
-
-    monkeypatch.setattr(mirror, "fetch", counted)
-    assert mirror.refresh_if_missing(got, "later") is True
-    assert calls == [got]
+    made = bare.ensure(board_dir)
+    legacy = legacy_mirror(board_dir, forge)
+    assert bare.adopt(board_dir) == made
+    assert not run.git("rev-parse", "--verify", "--quiet", "main", cwd=made).ok
+    assert legacy.exists()  # untouched: this migration never ran
 
 
-def test_a_ref_still_absent_after_the_fetch_is_answered_false(tmp_path: Path) -> None:
-    """Stale is answered, never blocked on: 'not here' is the truth about
-    this disk, and one fetch is the whole budget."""
-    forge = forge_repo(tmp_path)
+def test_adopt_creates_nothing_for_a_board_with_neither(tmp_path: Path) -> None:
+    """It sits on the READ path, so the rule `mounts.stores` paid for holds one
+    level down: a stranger's GET for a board nobody pushed to leaves no repo."""
     board_dir = tmp_path / "board"
     board_dir.mkdir()
-    got = mirror.ensure(board_dir, None, url=str(forge))
-    assert got is not None
-    assert mirror.refresh_if_missing(got, "never-existed") is False
+    assert bare.adopt(board_dir) is None
+    assert list(board_dir.iterdir()) == []
+
+
+def test_a_failed_seeding_leaves_the_mirror_alone(tmp_path: Path) -> None:
+    """The one unrecoverable outcome would be a half-run migration that had
+    already deleted its source, so a broken clone answers None and keeps it."""
+    board_dir = tmp_path / "board"
+    board_dir.mkdir()
+    legacy = board_dir / "mirror.git"
+    legacy.mkdir()
+    (legacy / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    assert bare.adopt(board_dir) is None
+    assert legacy.exists()
+    assert not (board_dir / "repo.git").exists()
 
 
 # ── the OUTBOUND leg (gitwork/onward.py, §16 "the host becomes the remote") ──

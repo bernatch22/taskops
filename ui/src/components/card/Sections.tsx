@@ -13,7 +13,7 @@
  * to agents. That is the hole `<Criteria>` closes, and the reason it is a section
  * of its own rather than a paragraph folded into the spec. */
 import { shortActor } from "../../format";
-import { Ext, Numstat, commitUrl, type GitReader, type Repo } from "../../links";
+import { Ext, Numstat, cardHead, commitUrl, type GitReader, type Repo } from "../../links";
 import { TONE_FG } from "../board/CardTile";
 import { Markdown } from "../shared/Markdown";
 import { CommitPatch, FilesChanged } from "./Patch";
@@ -286,8 +286,12 @@ export function Body({
         </Section>
       ) : null}
 
-      {/* The card AS A PULL REQUEST, read from the clone instead of the forge —
-          the card's branch against its chapter's. This used to be described as
+      {/* The card AS A PULL REQUEST, read from the host's own git (or this
+          clone) instead of the forge — the card's HEAD against its chapter's
+          branch. The head is the recorded sha when the card has one and the
+          branch otherwise (`links.tsx::cardHead`): a branch is durable again
+          now that the host prunes nothing, but a card whose branch was pruned
+          on the forge before that host existed is only findable by sha. This used to be described as
           "the same two branches the `compare ↗` link above is built from", and
           that link is gone: the Worktree block now opens the tree in this
           dashboard instead of sending the reader to somebody else's rendering
@@ -299,7 +303,7 @@ export function Body({
             reader={reader}
             repo={repo}
             base={dossier.milestone.branch}
-            head={dossier.branch}
+            head={cardHead(dossier.commits, dossier.branch)}
           />
         </Section>
       ) : null}

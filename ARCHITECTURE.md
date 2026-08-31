@@ -2024,8 +2024,16 @@ itself is not a truth-holder. So: a fresh `git init --bare repo.git` beside
 (production does, today), `repo.git` is SEEDED from it — one local
 `git clone --bare mirror.git repo.git`, on-disk and cheap — so no history the
 mirror held is lost, and the mirror-mode config dies with the old directory,
-which is then removed. `http/repos.py` points `/git` and the hosted window at
-`repo.git` from then on: the window's diffs are read from the board's OWN
+which is then removed. Wired as `gitwork/bare.py::adopt` and called by
+`http/repos.py`, the first door that needs an answer: it is the ONE read path
+in the codebase allowed to write, argued there — a migration of a history the
+host already possesses is not a directory conjured by a stranger's question,
+and a board holding neither repo still leaves the disk untouched. `mirror.py`
+is DELETED in the same card rather than left as a second source; a fallback
+that could only ever answer for refs the FORGE has is wrong in exactly the case
+the reader asks about (a branch nobody pushed, a branch the forge pruned), and
+`http/repos.py` carries that argument. `http/repos.py` points `/git` and the
+hosted window at `repo.git` from then on: the window's diffs are read from the board's OWN
 repository, with no dependency on the forge — which is the acceptance the
 chapter is held to.
 
@@ -2087,7 +2095,14 @@ the permanence: all of it stands on `repo.git` alone. The forge was the
 SOURCE under the pull-mirror, so a board without one had no hosted window at
 all; under this topology the forge is a projection, and a board that wants no
 projection is simply complete. `NO_FORGE`'s refusal retires with the mirror
-it described.
+it described — into `gitdoor.NO_REPO`, which now says the true board-level
+fact ("nobody has pushed this board's code here yet") and names the two moves
+that end it. The HOSTED WINDOW's gate moves the same way: `repos.backed` asks
+for `repo.git`, not for a forge, so `static.NO_UI` stops promising a page in
+exchange for `taskops board forge` — and the missing-ref sentence's AUDIENCE
+split (tk-9cde88) outlives the mirror that prompted it, the host's half
+rewritten as `stale.HOSTED`: this host prunes nothing, so a ref absent here was
+never pushed here. The window's half is unchanged, byte for byte.
 
 **Beside §20, not inside it.** `board push`/`board pull` move the BOARD — the
 event log, the one history nobody can regenerate — and this chapter moves the
