@@ -3,6 +3,57 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.5.2 — the host holds the git; GitHub is the copy
+
+0.5.0 and 0.5.1 built the hosted window on a mirror the host PULLED from the
+declared forge. That was the wrong direction, and the reader felt it: a
+worktree branch nobody had pushed did not exist for the host, and a `tk-*`
+branch pruned when its chapter landed erased a finished card's diff even
+though the commits were sitting in the trunk. The board's view of the code was
+a function of somebody else's branch hygiene. This release inverts it.
+
+- **The host IS the board's git remote.** `<root>/<board>/repo.git`, served
+  over smart-HTTP at `https://<host>/<board>/repo.git`: clone, fetch and push.
+  A worktree's card branch reaches it at the moment of the commit — the
+  post-commit hook already pushed `origin <tk-…>`, so for a joined checkout the
+  only thing that changes is which remote that is.
+- **It never prunes.** `receive.denyDeletes` and `receive.denyNonFastForwards`
+  live in the repo's own config, so the refusal comes from the very
+  `receive-pack` process that would move the ref: no window between an
+  application check and the update, no hook script a later `git init` can drop,
+  and a client's `--force` changes nothing. A landed card's diff is readable at
+  its URL forever.
+- **GitHub becomes the outbound copy.** After a push lands, the host pushes
+  onward to the declared forge on a background thread — best effort in outcome
+  AND in time, since inline a hanging forge would make the mirror felt as a
+  ten-second gate on a push that already succeeded. Fast-forward only: no
+  `--mirror` (it deletes), no `--force`, no `--prune`. The host does not do to
+  the forge what it refuses for itself.
+- **A mirror failure is never silent.** Success and failure both land on the
+  board payload as `mirror` and on the orchestrator's board view — "up to date,
+  pushed 2m ago" or "FAILED just now: <git's own words>" — kept in
+  `live.sqlite` rather than the event log, because "this host reached GitHub ten
+  seconds ago" replayed on another machine is a lie.
+- **One credential, still.** A push authenticates as the enrolled principal the
+  board already knows: git's HTTP Basic carries a session in the password
+  field, minted at push time from the dev's ssh key by a credential helper
+  (`taskops hook credential`), so no token is ever written into `.git/config`.
+  The receive door answers 401 with `WWW-Authenticate: Basic`, because git only
+  volunteers a credential after a challenge. Reads follow the board's
+  visibility exactly as `/rpc` does.
+- **`taskops remote git [--add]`** wires a checkout to the board's git and
+  prints what it did. It refuses `--name origin` outright: repointing somebody's
+  own remote is not connecting, it is rewriting. `taskops join` does not do it
+  for you — it is the one act that could silently change where a push goes.
+- **The pull mirror is deleted**, not kept as a fallback: it could only ever
+  answer for refs the forge has, which is wrong in exactly the case a reader
+  asks about. A host that already holds a populated `mirror.git` migrates it
+  once — `git clone --bare` into `repo.git`, then the mirror is removed.
+- **The owner's two acts**, if they want GitHub kept in sync: a WRITE deploy key
+  on the host, and `git -C <root>/<board>/repo.git remote add forge
+  git@github.com:<owner>/<repo>.git`. Until then every board read says the
+  mirror is not configured. Still no stored GitHub token, anywhere.
+
 ## 0.5.1 — the hosted window, actually usable
 
 0.5.0 shipped a window nobody could use. Both faults were reported the next
