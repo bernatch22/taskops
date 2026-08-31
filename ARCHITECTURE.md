@@ -837,14 +837,15 @@ nobody has touched yet.
 | a `recover` verb | doing is derived from the live lease; nothing is ever wrong to recover. Handing a card on is not that verb and never grew into one — it stayed inside `assign`, needs a named replacement, and is argued in §12 | no entry in `verbs/__init__.py::REGISTRY`; `tests/test_verbs.py::test_a_dead_workers_card_comes_back_by_itself` |
 | a reviewer ROLE, a stored review STATUS, automatic reviewer assignment | v1's review system: `peer` deadlocks, 14 closing rules over 6 modules, reviewers eating the budget of the work | review EXISTS since 2026-08-07 but narrowed: optional per card, derived from history-only events + a second lease, judged by an ordinary agent that may never judge its own work. `CARD_STATUSES` stays three; there is no reviewer role and nothing auto-assigns |
 | AUTOMATIC merges to the trunk | v1's `land` merged as a side effect of closing a card and ran checkout under working agents | a CARD cannot be merged to the trunk — `taskops_merge task=` takes no target. A finished MILESTONE lands via `taskops_merge milestone=` (2026-08-07): explicit, refused while any card is open or unintegrated, refused off-trunk, recorded as a `milestone landed` event. What stays impossible is the trunk moving as a side effect of anything |
-| git replication between clones | split-brain, two machines "owning" the same card | `RemoteBoard` never falls back to a local store on write failure (`Unreachable` instead) |
+| git replication between clones | split-brain, two machines "owning" the same card | `RemoteBoard` never falls back to a local store on write failure (`Unreachable` instead). Narrowed on 2026-08-31, not lifted: the host became the board's git REMOTE (§16, "The host becomes the remote") — a hub, one direction on each leg (worktree → host, host → forge). What stays banned is BETWEEN clones: no clone pushes to another clone, and the host never pulls git from the forge |
 | Claude hooks **that decide or store** | latency, another thing to install and drift; v1's held state and gated actions | context travels in `initialize.instructions` + tool responses. The ONE exception, sanctioned 2026-08-06: `taskops hook claude`, delivery-only — it reads, injects a ✉ or ◆ line, and can be deleted with no loss but immediacy. `tests/test_claude.py` pins its safety properties, one test each — the module docstring lists them and `grep -c '^def test_' tests/test_claude.py` counts them |
 | a mark-as-read / ack verb for mentions | a stored `read` flag is `recover` again: a write whose only job is to contradict an earlier one | `core/mentions.py::pending()` derives it from the thread; `tests/test_verbs.py::test_a_mention_clears_itself_the_moment_the_actor_touches_the_card` |
 | PER-REQUEST SIGNING (every call carrying an SSHSIG envelope, no sessions) | it was the first design and sessions won on cost, not on taste: a signature per request means teaching a signature envelope to THREE transports — the stdlib `http.server`, the WebSocket handshake on `/feed`, and the MCP layer that opens a board once and holds it — and every one of them would have had to learn nonce replay, clock skew and canonicalisation separately, for exactly the result a bearer already has. It also needs the private key FILE on every call, in every worker, forever; a session needs it twice a day. And the fleet argument decides it: a signed envelope is a NEW wire format, so production's four boards would have had to be re-joined, which rule 3 forbids | `/login` is the only door that verifies a signature (`http/login.py`), and what it hands back is an ordinary `Credential` — the same row, the same table, the same `Authorization: Bearer` every legacy token uses (`store/creds.py`). The client half is `session.py` (the token's life: mint, refresh, remember) with `identity.py` beside it (WHO signs in and with WHICH key — `discover_key`, `establish`, the one door `--key` comes in through); each is well under the budget *because* each has one job. `tests/test_topology.py::test_a_legacy_only_board_still_works_on_rpc` and its three siblings are the fleet half: production's exact state — no principal, no key, an empty `allowed_signers` — driven through /rpc, /feed, the MCP handshake and the `taskops ui` window |
 | HAND-ROLLED CRYPTO, and a pip crypto DEPENDENCY | two ways to lose the same argument. Writing ed25519 verification by hand is the classic own-goal; adding `cryptography` or `PyNaCl` to buy it back breaks "a wheel and a directory" — the property that makes `pip install taskops` on a bare box a deploy (§17) — and puts a compiled wheel in the path of every agent's install | the verifier is OpenSSH's own: `ssh-keygen -Y sign` / `-Y verify -f allowed_signers`, the same SSHSIG mechanism git uses to sign commits, invoked through the ONE subprocess module (`gitwork/sig.py`, under `gitwork/run.py`). `pyproject.toml` has no runtime dependency at all, and `tests/test_architecture.py` keeps `subprocess` out of every layer but that one |
-| ANONYMOUS WRITES, in any form — including the invisible one | a public board is anonymous READ and nothing else. The subtle failure is not a card somebody could see: every read verb opens with `stores.live.renew(actor, now)`, an INSERT into `presence`, so a public board without a guard has every visitor writing to `live.sqlite` on every page load — no event, no card, nothing any ordinary test would notice. There is also no "anonymous-write grace" and no third visibility | `http/auth.py::anonymous` never hands out a credential with more than `{"read"}`, and refuses a write with the sentence that names how a key gets registered; `store/live.py::renew` is the ONE place that decides the presence row. `tests/test_topology.py::test_an_anonymous_crawl_of_a_public_board_moves_not_one_byte` asserts `events.jsonl` and `live.sqlite` (with `-wal` and `-shm`) hash-identical across a crawl of every read door there is, and `…::test_anonymous_may_not_claim_to_be_somebody` closes the `actor=` hole |
+| ANONYMOUS WRITES, in any form — including the invisible one | a public board is anonymous READ and nothing else. The subtle failure is not a card somebody could see: every read verb opens with `stores.live.renew(actor, now)`, an INSERT into `presence`, so a public board without a guard has every visitor writing to `live.sqlite` on every page load — no event, no card, nothing any ordinary test would notice. There is also no "anonymous-write grace" and no third visibility. A `git push` to the host's `repo.git` is a write under this ban, exactly as an event is (§16, "The host becomes the remote") | `http/auth.py::anonymous` never hands out a credential with more than `{"read"}`, and refuses a write with the sentence that names how a key gets registered; `store/live.py::renew` is the ONE place that decides the presence row. `tests/test_topology.py::test_an_anonymous_crawl_of_a_public_board_moves_not_one_byte` asserts `events.jsonl` and `live.sqlite` (with `-wal` and `-shm`) hash-identical across a crawl of every read door there is, and `…::test_anonymous_may_not_claim_to_be_somebody` closes the `actor=` hole |
 | a `--force` on `taskops board push`, and a SYNC channel behind `board.ingest` | a non-empty target means two histories, and giving them an order they never had fabricates a timeline the board never observed. The precondition ("no history but its own beginning") is true exactly once in a board's life, which is what keeps the door a promotion and not replication between clones — the thing banned two rows up | `http/ingest.py` refuses and says so; `tests/test_topology.py::test_a_target_that_is_not_empty_is_refused_and_no_force_is_offered`, and the argument is the module's own docstring |
 | a `--force` on `taskops board rm` (and it is not an alias for `--discard-history`) | removing a board deletes the only copy of a history nobody can regenerate, and `--force` is a word every tool spends on something recoverable — it names no consequence, so it cannot warn. The flag that gets past the guardrail names the thing it destroys, and the guardrail itself is on the HOST, comparing the ids the caller says it holds against the ids the board really has: a wall the client enforces is a convention | `http/removal.py` refuses unless `core/holding.py` says the history is held elsewhere, and only a literal `true` opens `discard_history`; `tests/test_topology.py::test_the_flag_is_named_for_what_it_destroys_and_a_force_is_not_a_synonym` and `…::test_board_rm_refuses_a_history_this_checkout_does_not_hold_and_names_both_ways_out` |
+| a `--force` push, a ref deletion, or a prune against the host's `repo.git` — and a HAND-ROLLED git protocol behind it | the host became the board's git remote (§16, "The host becomes the remote", 2026-08-31) precisely because a forge-side prune erased a landed card's diff from the board; a force or delete on the host would reintroduce the same erasure at the hub, and there is no flag that opens either, for `board rm`'s reason — `--force` names no consequence. And the pack protocol is git's own, spoken by git's plumbing through the one subprocess module, for the reason hand-rolled crypto is banned two rows up: a Python pkt-line is the same own-goal with a different file extension | the receive door refuses non-fast-forward pushes and ref deletions (the chapter's later cards carry the enforcement); `subprocess` stays confined to `gitwork/run.py` by `tests/test_architecture.py` |
 | a SILENT `taskops join` over a local board | the local history stayed on disk byte for byte and nothing ever looked at it again or said so — a command about connecting is what made it invisible | `cli/commands.py::_keep_or_archive` refuses naming `taskops board push` and `--discard-local` (which archives, never deletes); `tests/test_topology.py::test_join_refuses_to_orphan_a_local_board_and_names_both_ways_out` |
 | GitHub as a CREDENTIAL — v1's GitHub login: a stored token, a call to GitHub on every sign-in | three costs, and §19 is the whole argument: a token that travels (worth stealing for reasons unrelated to the board), a network dependency at every login (GitHub down = nobody signs in), and a SECOND identity system beside the keys, with its own enrolment, expiry and revocation to keep in step. The convenience is kept and the costs are not: GitHub is asked ONCE, by the owner, and what persists is an ssh key | the only module that speaks to GitHub is `cli/github.py`, on the owner's machine; the host takes principals and key lines (`http/members.py`) and no token reaches it. `tests/test_topology.py::test_the_owners_token_is_spent_on_ONE_endpoint_and_written_nowhere` greps the host tree AND the checkout with a positive control, and `…::test_no_flag_on_join_takes_a_token_and_none_ever_will` holds the parser to "never a flag value". There is one `members.enroll` row in `core/scope.py` — a ROLE rule — and no second credential type anywhere |
 | a GitHub door on the DEV's side — `POST /<board>/join/github`, a `--github` flag, a token discovered at join time (2026-08-11) | it made every dev's own credential travel to a host that has no business seeing one, to prove a fact the OWNER already holds; and it asked for an ssh key from people who, having push over ssh, had published one already. Deleted the day after it shipped — §19.1 | there is no route, no flag and no client function: `grep -r 'join/github\|by_github' src tests` is empty, and `test_no_flag_on_join_takes_a_token_and_none_ever_will` asserts the ABSENCE from `join --help`. The replacement is one command on the owner's side and `taskops join`, bare, on the dev's (`…::test_the_dev_whose_key_the_sync_published_joins_with_two_words`) |
@@ -1722,6 +1723,14 @@ A repo joined to nothing behaves exactly as it did.
 
 ### The hosted window: the host may hold a MIRROR of the declared forge (decided 2026-08-30)
 
+*Reversed one day later — "The host becomes the remote", below. The direction
+of the git flow inverts: the host holds the board's OWN repo (`repo.git`),
+takes pushes from enrolled principals, and mirrors OUTWARD to the forge;
+`mirror.git` retires. This section stays as the argument it was, because what
+it got right (a hosted window must stand on a real history; the switch is
+decided at mount time; the credential is a deploy key, never a token)
+survives the reversal, and what it got wrong is named there.*
+
 The first amendment narrowed "no server reads a repo" to "a host that sits in a
 repo may read it". This one narrows the other clause — *the server deliberately
 has no clone* — and, as before, the change is recorded here rather than quietly
@@ -1917,6 +1926,179 @@ failure:
 sh smoke.sh                                   # taskops.bernardocastro.dev, taskops-v2
 sh smoke.sh <host> <board> <private-board>
 ```
+
+### The host becomes the remote (decided 2026-08-31 — reverses the mirror)
+
+This section has been narrowed twice and each time the change was recorded
+rather than quietly made. This amendment is larger: it REVERSES a ban rather
+than narrowing one, and the words it reverses are one day old. "The mirror
+takes no client pushes — the host still exposes no receive door of any kind"
+stops being true. From this chapter on:
+
+> **The board's host holds the board's git, as a real remote. A checkout's
+> `origin` IS the host: `git push` lands there, `git clone`/`fetch` reads from
+> there, and the declared forge becomes an OUTBOUND mirror the host pushes to,
+> best effort. The host never prunes a card branch.**
+
+**Be fair to the ban before reversing it.** "Client pushes to the host" was
+banned when the host had no git at all — a directory of boards, `subprocess`
+nowhere near it — and the failure it guarded against was real: two clones
+replicating git state between themselves is split-brain with a merge driver,
+and a host that accepted pushes with no identity story would have been an
+anonymous write with a packfile attached. Both hazards are still hazards.
+What changed is not the hazards; it is that the host now HAS an identity
+story every door already checks (§19), and that the topology proposed here is
+not replication between clones at all — it is a hub, one direction on each
+leg. Writing the ban down was right. What the day-old design got wrong is
+narrower and worth naming exactly.
+
+**What the pull-mirror got wrong.** The mirror's one source was the forge, so
+the board's view of the code became a FUNCTION OF SOMEBODY ELSE'S BRANCH
+HYGIENE — three failures, all observed live against the hosted window on
+2026-08-31, the day after it shipped:
+
+- a worktree branch that was never pushed **does not exist** for the host, so
+  a card being worked on had no diff at its URL until its close pushed it;
+- a `tk-*` branch pruned on the forge when its chapter landed **disappeared
+  from the board**, even though the work is intact and reachable from master.
+  Verified against production: `git ls-remote origin` had neither `tk-dfaff7`
+  nor `ms/parallel-by-mechanism-the-board-`, yet both cards' work is in the
+  trunk. The stale sentence called that "normal, not a fault" — true of the
+  MIRROR, and exactly the fault of the DESIGN: a landed card's diff is the
+  board's own record and it had been made erasable by a forge-side `git push
+  --delete` the board never sees;
+- and structurally, the host's git was a copy of a copy: worktree → GitHub →
+  mirror, with GitHub — the viewer — sitting in the middle of the board's own
+  data path.
+
+The original ask, restated by Berna the same day, was the other topology all
+along: the taskops server keeps the history and mirrors it ONWARD to GitHub.
+The cost of adopting it now is small by construction: `gitwork/bind.py`
+already pushes `origin <tk-…>` on post-commit, best effort, never a gate — so
+for a joined checkout the only thing that changes is WHICH remote `origin`
+is. The lifecycle pushes in `gitwork/remote.py::push` keep their contract and
+their ten seconds; they just stop travelling through a third party.
+
+The decisions the rest of the chapter follows, each argued:
+
+**Transport: git smart-HTTP over the existing door, not ssh.** The relay in
+front of this host (§17) exposes no port but HTTPS, so ssh transport would
+begin by re-plumbing the deployment. It would also mean a SECOND auth system
+— an sshd, an `authorized_keys`, a key-to-principal mapping — beside the one
+the board already has, for keys that are already enrolled on the host and
+already end in a bearer session every door checks (§19: one introduction, one
+credential). Git speaks smart-HTTP natively (`info/refs?service=…`, then
+`git-upload-pack` / `git-receive-pack` POSTs), authenticates it with HTTP
+Basic, and a session token rides in that password field with no client-side
+tooling at all. ssh becomes worth revisiting only if BOTH of these turn true:
+a deployment that fronts raw TCP (no relay), and clients that cannot hold a
+session token. Neither exists, and the second is unlikely ever to — `taskops
+join` mints the session that signs everything else.
+
+**The address: `/<board>/repo.git`.** A git client is pointed at
+`https://<host>/<board>/repo.git` and everything git asks for lives under it:
+`/<board>/repo.git/info/refs?service=git-upload-pack`,
+`/<board>/repo.git/git-upload-pack`, `/<board>/repo.git/git-receive-pack`.
+It cannot collide with anything the router already serves, and each half of
+that is a fact about an existing closed set, not a hope: the JSON diff door
+is the tail `git/…` (and `api/git/…` — `http/routes.py::split` strips the
+prefix once, and `repo.git` does not start with `api/` so the strip never
+touches it), while `repo.git` is its own first segment; and the page's assets
+are `static.py::asset`'s closed set — flat filenames whose suffix is in
+`TYPES`, and `.git` is not in `TYPES`, so no bundle that ever ships can
+shadow the repo and the repo can never shadow an asset. The `.git` suffix is
+also the convention every forge trained every tool on, which is why the name
+is not `code` or `src`: an address a person guesses should be the one that
+works.
+
+**On-disk: a NEW bare repo, `<root>/<board>/repo.git`, and `mirror.git`
+retires.** The mirror does not get promoted, for two reasons written into its
+own contract. It is DERIVED and disposable — "delete it and it re-clones" —
+and the board's real remote is the opposite thing: truth the forge does not
+necessarily hold, deletable by nobody. And its refspec is `--mirror`, whose
+fetch semantics are *make local match the forge, prunes included* — the exact
+behaviour this chapter exists to kill would be sitting in the repo's own
+config, one habitual `git fetch` away. A truth-holder configured to erase
+itself is not a truth-holder. So: a fresh `git init --bare repo.git` beside
+`events.jsonl`, and on a host that already has a populated `mirror.git`
+(production does, today), `repo.git` is SEEDED from it — one local
+`git clone --bare mirror.git repo.git`, on-disk and cheap — so no history the
+mirror held is lost, and the mirror-mode config dies with the old directory,
+which is then removed. `http/repos.py` points `/git` and the hosted window at
+`repo.git` from then on: the window's diffs are read from the board's OWN
+repository, with no dependency on the forge — which is the acceptance the
+chapter is held to.
+
+**Roles: a push is a write, and §11's anonymous-write ban covers it.** Only
+an enrolled principal may push — `dev:<name>` and `agent:<dev>/<name>` alike,
+because workers are exactly who `bind.py` pushes as, on every commit. An
+anonymous caller and a read-only credential are refused at the receive door
+with the sentence that names `taskops join`. A read — clone, fetch,
+`ls-remote` — follows the board's VISIBILITY exactly as `/rpc` does: a public
+board clones anonymously (and, per §11's invisible-write ban, that read
+leaves no `presence` row), a private board clones with the credential the
+doors already check. One rule, already written, now asked by one more door.
+
+**The host never prunes, and never takes a force.** A card branch pushed to
+the host is readable at its URL forever — that permanence is the point of the
+reversal, so it is enforced, not hoped: the receive door refuses a ref
+deletion and a non-fast-forward push outright. There is no flag that opens
+either, for `board rm`'s reason (§11): `--force` is a word that names no
+consequence, and what it would destroy here is the diff of a landed card —
+the board's own record. History rewriting, when it is ever needed, is the
+owner's deliberate act against the host's filesystem, not a verb.
+
+**The outbound mirror: best effort, never a gate, failure visible.** The
+forge relationship inverts, it does not end: a board that declared one
+(`taskops board forge <owner>/<repo>`) gets its history pushed ONWARD, from
+`repo.git` to the forge, at the same lifecycle moments `remote.py::push`
+already owns — and a forge that is down MUST NOT fail the client's push,
+which lands on the host and is done. Best effort never means silent: a mirror
+push that fails is a FACT a reader can see — surfaced where the board already
+surfaces derived facts, on the payload, never swallowed into a log line —
+because an invisible best-effort is how the forge quietly drifts a month
+behind. The credential is an ssh deploy key on the host's filesystem with
+WRITE on the forge — and that is a real escalation over the mirror's
+read-only key, so it is named as one: minted and installed by the OWNER, an
+explicit act, revocable on the forge like any deploy key, and scoped to that
+one repo. §19.2 carries the credential argument. What it is NOT: a GitHub
+token (the key opens one repo, not an account), and never anything a dev
+supplies.
+
+**A board with NO declared forge gets everything except the outbound
+mirror — and that is not a fault.** Push, clone, the hosted window's diffs,
+the permanence: all of it stands on `repo.git` alone. The forge was the
+SOURCE under the pull-mirror, so a board without one had no hosted window at
+all; under this topology the forge is a projection, and a board that wants no
+projection is simply complete. `NO_FORGE`'s refusal retires with the mirror
+it described.
+
+**Beside §20, not inside it.** `board push`/`board pull` move the BOARD — the
+event log, the one history nobody can regenerate — and this chapter moves the
+CODE. The two lifecycles share a host and nothing else: `board push` still
+promotes a history exactly once onto an empty target, `board pull` is still a
+snapshot, `board rm` still guards on possession — and `board rm` now names
+one more thing it destroys, the board's `repo.git`, judged by the same
+possession logic: a history this checkout holds (the clone IS possession of
+the git half) is deletable, one it does not hold is refused.
+
+**What stays banned, spelled out, because a reversal invites the question:**
+
+- **replication BETWEEN clones.** This is a hub — worktree → host, host →
+  forge, one direction on each leg. No clone pushes to another clone, no
+  clone pulls the board's state from anywhere but the host, and the host
+  never pulls git from the forge again.
+- **a stored GitHub token, and GitHub as a second credential type.** §19,
+  unmoved. The outbound key is a deploy key: one repo, revocable, the
+  owner's.
+- **anonymous writes, in any form — a git push included.** The receive door
+  is behind the same credential wall as every write verb.
+- **a hand-rolled git protocol.** The pack protocol is git's, spoken by
+  git's own plumbing through the ONE subprocess module (`gitwork/run.py`),
+  the way SSHSIG verification is OpenSSH's (§11). A Python reimplementation
+  of pkt-line is the crypto own-goal with a different file extension.
+- **a `--force` or a prune that could erase a card branch on the host.**
+  Argued above; it is the reversal's own reason turned into a rule.
 
 ---
 
@@ -2472,6 +2654,36 @@ here is one — `.keys` is `text/plain` and the collaborator page is a JSON *arr
 which `as_object` flattens to `{}`. A page of people silently reading as nobody
 is the bug that shape prevents, so the decoding belongs to whoever knows what it
 asked for and only the status and `Unreachable` are shared.
+
+### 19.2 The mirror's key gains WRITE — the owner's explicit act (2026-08-31)
+
+The hosted-window chapter (§16, 2026-08-30) added exactly one credential to
+this story: an ssh deploy key on the host's filesystem, READ-ONLY, so the
+host could pull a private repo's mirror. The reversal (§16, "The host becomes
+the remote") inverts the flow, and the key follows: the host now PUSHES to
+the declared forge, so the deploy key needs write on that one repo. That is a
+real escalation and it is treated as one, not smuggled in as a config detail:
+
+- **It is the owner's explicit act, twice over.** Declaring the forge was
+  already the owner's move (`taskops board forge`); minting a WRITE deploy
+  key and installing it on the host is a second, separate decision the owner
+  makes with eyes open, because it hands the host the power to move branches
+  on the forge. Nothing mints it, discovers it, or asks a dev for it.
+- **It is still not a token, and the difference still matters.** A deploy key
+  opens ONE repo; a GitHub token opens an account. If the host is ever
+  compromised, the blast radius is the mirror of a repo whose real history
+  the host itself holds — revoke the key on the forge and the leg is dead,
+  the board untouched. Everything §19 bans stays banned: no stored GitHub
+  token, no dev credential travelling, no second identity system.
+- **Write on the forge, never force.** The outbound push is the same
+  best-effort, fast-forward-only discipline the host demands of its own
+  receive door: the mirror leg cannot delete or rewrite on the forge either,
+  so a key with write is not a key that erases.
+
+A board whose owner declines the escalation keeps the read side whole: the
+host serves clones, pushes, and the hosted window from `repo.git`, and the
+forge simply goes unmirrored — visible as the mirror-push fact the payload
+carries, never as a fault.
 
 ## 20. A board's whole life — create → push → (live) → pull → rm (2026-08-10)
 
