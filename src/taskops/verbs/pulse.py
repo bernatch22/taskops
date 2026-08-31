@@ -29,6 +29,7 @@ from typing import Any
 from . import _args, _rows, _facts, project, _context, _mentions
 from .. import _clock
 from ..core import graph, seams
+from ..store import mirroring
 from ..store.stores import Stores
 
 DONE_SHOWN = 20
@@ -170,6 +171,10 @@ def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
         # byte for byte. That is also `forge()`'s own contract: absent, cleared
         # and unintelligible collapse to one answer (`core/forge.py`).
         **({"forge": opens} if opens else {}),
+        # And what the OUTBOUND leg to that forge last did — §16's "best effort
+        # never means silent", under `forge`'s own contract: nothing to say
+        # sends no key (`store/mirroring.py` argues the channel).
+        **mirroring.glance(stores.live, opens),
         "milestone": stone,
         # The open chapters AND the recent landed ones. Sending only the open
         # ones was correct while `open` was the only status a chapter ever had;
