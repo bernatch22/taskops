@@ -1,7 +1,7 @@
 """The request handler — one method per door, split out of `server.py` so the
 router (the class) and the server's lifecycle (`BoardServer`, `serve`) each
-have room. What each route MEANS is `server.py`'s docstring; this file is only
-how one request travels through it.
+have room. What each route MEANS is `server.py`'s docstring; this file is
+only how one request travels through it (`routes.py` reads the path).
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ from http.server import BaseHTTPRequestHandler
 from . import rpc, feed, admin, login, static, gitdoor
 from .. import _clock
 from .auth import Credential, token_in, anonymous
+from .mounts import NAME
+from .routes import split
 from .._errors import BadRequest, TaskopsError
 from .._version import __version__
 
@@ -67,7 +69,10 @@ class Handler(BaseHTTPRequestHandler):
         elif tail.startswith("git/"):
             self._git(board, tail[4:])
         elif tail.startswith("ui"):
-            self._static(board, tail[2:])
+            self._static(board, tail[2:])  # 0.5.0's address, kept — links were pasted
+        elif self.mounts.ui is None and NAME.match(board) and (not tail or static.asset(tail)):
+            # the page at the board's OWN address; assets are a CLOSED set
+            self._static(board, tail)
         elif (page := static.at_root(self.mounts.ui, self.path)) is not None:
             self._send(200, *page)  # a WINDOW serves its page at the ROOT
         else:
@@ -129,8 +134,10 @@ class Handler(BaseHTTPRequestHandler):
         return gitdoor.answer(repo, rest, self.path.partition("?")[2], mirrored=mirrored)
 
     def _static(self, board: str, rest: str) -> None:
-        """The /ui door. A WINDOW serves its bundle to whoever reaches the port,
-        unchanged. A serve-mode HOST serves the SAME packaged bundle for a board
+        """The page — at the board's own root since tk-32d2ba, and still at
+        /ui/, the 0.5.0 address (kept: links were pasted). A WINDOW serves
+        its bundle to whoever reaches the port, unchanged. A serve-mode HOST
+        serves the SAME packaged bundle for a board
         whose owner declared a forge (`repos.backed` — the fact, never a clone),
         behind the credential /rpc asks for: public board, anonymous READ;
         private board, the join refusal. The 410 comes BEFORE the credential on
@@ -191,9 +198,3 @@ class Handler(BaseHTTPRequestHandler):
 
     def _fail(self, status: int, err: TaskopsError) -> None:
         self._json(status, rpc.failure(err))
-
-
-def split(path: str) -> tuple[str, str]:
-    clean = path.partition("?")[0].strip("/")
-    board, _, tail = clean.partition("/")
-    return board, tail
