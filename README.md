@@ -58,7 +58,7 @@ importable leaves commits un-stamped, silently.
 taskops init                              a local board in this repo
 taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
-taskops serve                             host boards — /ui and /git open per declared forge
+taskops serve                             host boards — the page and /git open per declared forge
 taskops server init                       bootstrap THIS host: its owner and their ssh key
 taskops board create|ls|push|pull|rm      the boards on a host
 taskops board visibility|forge            who may read one · which repo's team is enrolled
@@ -376,6 +376,26 @@ never asks the server for the bytes. A host running `taskops serve` answers
 `/git` too, from a bare read-only mirror of the board's DECLARED forge — the
 hosted window, for the reader with no clone. A board that never declared one
 refuses with a sentence naming `taskops board forge <owner>/<repo>`.
+
+**The hosted page is at the board's OWN address.** `https://<host>/<board>/`
+IS the dashboard — not a sub-path under it — and the machine doors sit under a
+prefix that can never collide with a page asset:
+
+```
+https://<host>/<board>/            the page          (also /<board>, no slash)
+https://<host>/<board>/app.js      its assets        style.css, index.html
+https://<host>/<board>/api/rpc     the verbs         also /<board>/rpc
+https://<host>/<board>/api/git/…   diffs from the mirror   also /<board>/git/…
+https://<host>/<board>/api/feed    the live feed     also /<board>/feed
+https://<host>/healthz             the host itself
+```
+
+The right-hand spellings are 0.5.0's and they keep answering, unprefixed and
+un-redirected — including `/<board>/ui/`, which was the page's address for one
+day. Links were pasted, agents and the MCP client are configured against them,
+and `taskops ui`'s upstream forward speaks them, so they are a contract now
+rather than a legacy. Re-derivable at any time with `sh smoke.sh <host>
+<board>`.
 
 **Reading one, from the other side.** Everything above is the author's half; a
 reader needs no ceremony at all. Three doors onto the same bytes:

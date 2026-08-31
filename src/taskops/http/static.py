@@ -86,6 +86,25 @@ def resolve(root: Path, rest: str) -> Path | None:
     return fallback if fallback.is_file() else None
 
 
+def asset(rest: str) -> bool:
+    """Is this tail a file the packaged bundle actually ships?
+
+    Since tk-32d2ba the page lives at the board's OWN address, so its relative
+    links — `./style.css`, `./app.js` off `index.html` — arrive as
+    `/<board>/style.css` and the router must tell the page's tails from a
+    board's machine doors. It can, deterministically: the bundle's filenames
+    are a CLOSED SET — whatever `ui/build.mjs` wrote into the wheel, flat,
+    every suffix in `TYPES` — and none of them is `rpc`, `git`, `feed`, `ui`
+    or `api`, so an asset can never shadow a door and a door never shadows an
+    asset. Checked against the real files rather than a hardcoded list, so a
+    bundle that grows a font ships without a router edit; a nested or
+    dot-leading tail is refused before disk is asked, which also keeps `..`
+    out without a resolve."""
+    if not rest or "/" in rest or rest.startswith(".") or Path(rest).suffix not in TYPES:
+        return False
+    return (PACKAGED / rest).is_file()
+
+
 def content_type(path: Path) -> str:
     return TYPES.get(path.suffix, "application/octet-stream")
 

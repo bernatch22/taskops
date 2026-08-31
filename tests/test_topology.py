@@ -2133,6 +2133,116 @@ def test_a_public_hosted_window_serves_anonymous_and_writes_not_one_byte(
     assert "anon" not in dict(_presence(server))
 
 
+# ── the board's OWN address is the page; the machine doors under /api ──────
+
+
+def test_the_boards_own_address_is_the_page(server: BoardServer) -> None:
+    """tk-32d2ba (a): GET /<board> and /<board>/ serve the dashboard on a
+    serve-mode host for a forge-backed board, behind exactly the credential
+    /rpc asks for — and the page's RELATIVE links resolve from that address:
+    `./style.css` and `./app.js` arrive as /<board>/style.css, /<board>/app.js.
+    The page still costs no clone: the forge FACT opens it, never the mirror."""
+    _declare_forge(server)
+    token = _token(server, BERNA)
+    for suffix in ("", "/"):
+        with urlopen(f"{url_of(server)}{suffix}?token={token}", timeout=5) as response:
+            assert response.headers["Content-Type"].startswith("text/html")
+            assert "<script" in response.read().decode().lower()
+    with urlopen(f"{url_of(server)}/app.js?token={token}", timeout=5) as response:
+        assert response.headers["Content-Type"].startswith("text/javascript")
+        assert response.read()
+    with urlopen(f"{url_of(server)}/style.css?token={token}", timeout=5) as response:
+        assert response.headers["Content-Type"].startswith("text/css")
+        assert response.read()
+    assert server.mounts.repos._mirrors == {}  # the page cost no clone
+
+
+def test_the_board_root_keeps_rpcs_credential_wall(server: BoardServer) -> None:
+    """Same wall as /ui/'s, at the new address: a PRIVATE forge-backed board
+    refuses an anonymous GET of its root with /rpc's join refusal, and the
+    same request with a token gets the page. No second credential system."""
+    _declare_forge(server)
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"{url_of(server)}/", timeout=5)
+    with caught.value as err:
+        assert err.code == 409
+        body = json.loads(err.read().decode())
+    assert body["error"]["code"] == "refused"
+    assert "taskops join <url with ?token=" in body["error"]["message"]
+    with urlopen(f"{url_of(server)}/?token={_token(server, BERNA)}", timeout=5) as ok:
+        assert ok.status == 200
+
+
+def test_a_board_root_with_no_forge_answers_the_same_410_sentence(
+    server: BoardServer,
+) -> None:
+    """A board that declared no forge serves no page at its root either — the
+    ONE plain-text sentence /ui/ answers, naming both ways out, so the two
+    addresses of the same page cannot disagree about why it is not here."""
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"{url_of(server)}/", timeout=5)
+    with caught.value as answer:
+        body = answer.read().decode()
+    assert answer.code == 410
+    assert answer.headers["Content-Type"].startswith("text/plain")
+    assert "taskops board forge <owner>/<repo>" in body
+
+
+def test_a_tail_outside_the_bundles_closed_set_is_still_a_404(
+    server: BoardServer,
+) -> None:
+    """The page's assets are a CLOSED set (`static.asset`): a tail that names
+    no packaged file never reaches the page door, so a mistyped API path is
+    still the honest 404 and the SPA fallback cannot swallow it — even on a
+    forge-backed PUBLIC board, where the page itself is anonymous."""
+    _declare_forge(server)
+    for tail in ("nope.css", "app", "deep/app.js", "verbs"):
+        with pytest.raises(HTTPError) as caught:
+            urlopen(f"{url_of(server)}/{tail}?token={_token(server, BERNA)}", timeout=5)
+        with caught.value as err:
+            assert err.code == 404 and err.read()
+
+
+def test_the_machine_doors_answer_under_api_too(server: BoardServer) -> None:
+    """tk-32d2ba (b): /<board>/api/{rpc,git,feed} are the addresses the page
+    uses from now on, and each answers EXACTLY as its bare 0.5.0 spelling —
+    one strip in `routes.py::split`, so the two spellings share one handler,
+    one credential, one set of words. Both are asserted side by side here so
+    they cannot drift apart in silence."""
+    token = _token(server, BERNA)
+    old = _post(url_of(server), token, {"verb": "board", "actor": BERNA})
+    new = _post(f"{url_of(server)}/api", token, {"verb": "board", "actor": BERNA})
+    assert new["ok"] is True and new["data"] == old["data"]
+    # /git: no repo on this host either way — the SAME refusal, naming the door
+    old_status, old_body = _get(f"{url_of(server)}/git/commit/HEAD", token)
+    new_status, new_body = _get(f"{url_of(server)}/api/git/commit/HEAD", token)
+    assert (new_status, new_body) == (old_status, old_body)
+    assert new_status == 404 and "taskops board forge" in new_body["error"]["message"]
+    # /feed: the SSE door greets through the prefix exactly as it always has
+    with urlopen(f"{url_of(server)}/api/feed?token={token}", timeout=5) as stream:
+        assert b"hello" in stream.readline() + stream.readline()
+
+
+def test_window_mode_is_unchanged_by_the_board_root(repo_server: BoardServer) -> None:
+    """tk-32d2ba (d): `taskops ui` serves its page at the ROOT — that is the
+    address it hands out — and mounts its board under /board, whose root is
+    NOT a page (the page branch is serve-mode only: `mounts.ui is None`). The
+    /api spelling still answers there, because the rebuilt bundle will speak
+    it through a window too."""
+    with urlopen(f"{url_of(repo_server, '')}", timeout=5) as response:
+        assert response.headers["Content-Type"].startswith("text/html")
+        assert "<script" in response.read().decode().lower()
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"{url_of(repo_server)}/", timeout=5)  # /board/: no page, as in 0.5.0
+    with caught.value as err:
+        assert err.code == 404 and err.read()
+    token = _token(repo_server, BERNA)
+    answer = _post(f"{url_of(repo_server)}/api", token, {"verb": "board", "actor": BERNA})
+    assert answer["ok"] is True
+    status, body = _get(f"{url_of(repo_server)}/api/git/commit/HEAD", token)
+    assert status == 200 and body["data"]["stat"]  # the checkout answered, through /api
+
+
 # ── the WINDOW: a local host serving a remote board ─────────────────────────
 #
 # Two real servers on two real ports, which is the only way this chapter can be
@@ -2641,6 +2751,76 @@ def test_a_public_board_answers_every_read_verb_with_no_credential(
     # Empty BY CONSTRUCTION: a comment can only name an actor somebody registered,
     # and `anon` is outside the actor grammar, so nothing can ever address it.
     assert anon(server, "mentions", {})[1]["data"]["mentions"] == []
+
+
+def bearing(httpd: BoardServer, header: str, verb: str = "board") -> tuple[int, Any]:
+    """A call carrying an explicit Authorization header, verbatim — the way a
+    browser client sends one, including the degenerate shapes a test needs."""
+    request = Request(
+        f"{url_of(httpd)}/rpc",
+        data=json.dumps({"verb": verb, "args": {}}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": header},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            return int(response.status), json.loads(response.read().decode())
+    except HTTPError as err:
+        with err:  # an HTTPError IS a response: unclosed, it leaks the socket
+            return int(err.code), json.loads(err.read().decode())
+
+
+def test_a_bare_bearer_is_no_credential_and_a_public_board_reads(
+    server: BoardServer, owner: str
+) -> None:
+    """0.5.0's shipped fault: the hosted page sends `"Bearer " + ""`, the header
+    arrives as `Bearer`, and `token_in` returned the literal "Bearer" as a
+    token — so a PUBLIC board refused its own page with "unknown credential".
+    A bearer scheme with no value is NOBODY presenting ANYTHING: it must read
+    exactly as the no-header stranger does."""
+    plan(client(server, BERNA))
+    publish(server, owner)
+    for header in ("Bearer", "Bearer ", ""):
+        status, body = bearing(server, header)
+        assert status == 200, header
+        assert body["data"]["groups"]["take"], header
+
+
+def test_a_bare_bearer_on_a_private_board_refuses_as_no_credential(
+    server: BoardServer,
+) -> None:
+    """No credential is no credential on a private board too — and the sentence
+    is the no-credential one (how to join), never "unknown credential"."""
+    for header in ("Bearer", "Bearer ", ""):
+        status, body = bearing(server, header)
+        assert status == 409, header
+        assert "taskops join <url with ?token=" in _prints(body), header
+
+
+def test_a_presented_credential_that_is_wrong_still_refuses_loudly(
+    server: BoardServer, owner: str
+) -> None:
+    """The fix must not widen: once a VALUE was presented — garbage under
+    Bearer, or a scheme this server never spoke — there is no anonymous
+    fallback, even on a public board, and the sentence does not move."""
+    publish(server, owner)
+    for header in ("Bearer not-a-token", "Basic dXNlcjpwYXNz"):
+        status, body = bearing(server, header)
+        assert status == 409, header
+        assert "unknown credential" in _prints(body), header
+
+
+def test_a_real_bearer_value_still_works_and_the_scheme_is_case_insensitive(
+    server: BoardServer,
+) -> None:
+    """RFC 7235: the auth-scheme is case-insensitive. `Bearer <token>` is the
+    contract every client already speaks; `bearer <token>` is the same
+    credential, not a stranger."""
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    for header in (f"Bearer {token}", f"bearer {token}"):
+        status, body = bearing(server, header)
+        assert status == 200, header
+        assert body["ok"] is True, header
 
 
 def test_the_orchestrators_read_is_not_widened_to_a_stranger(
