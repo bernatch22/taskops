@@ -1526,9 +1526,16 @@ below — and comes back only standing on a real history: the forge mirror, in
 That cascade is ONE function — `ui/src/links.tsx::cascade`, beside the slug and
 the link templates it already owned — and `ui/src/components/card/Patch.tsx`
 only DRAWS the step it is handed, so no component holds a fallback order of its
-own. It feeds the dossier's **Files changed** (the card as a PR:
-`compare/ms/<slug>...tk-<id>`, the file list from `stat`, each file's patch on
-expand via `?path=`) and the fold on every commit row. Availability is
+own. It feeds the dossier's **Files changed** (the card as a PR, over the range
+the BOARD recorded rather than two branch names — `links.tsx::cardRange`: one
+recorded commit goes through `commit/<sha>`, which the door diffs against its
+first parent, and several become `compare/<first>^...<last>`, whose base is the
+oldest commit's PARENT so that commit's own changes are inside the range. Both
+ends are durable, which is what makes the pane render for a card whose `tk-*`
+and `ms/*` branches were pruned before this host became the remote — the head
+alone was not enough, 0.5.2 shipped that and the pane stayed empty. Then the
+file list from `stat`, each file's patch on expand via `?path=`) and the fold on
+every commit row. Availability is
 DISCOVERED, not configured: the first refusal whose words are
 `gitdoor.py::NO_REPO` flips a module-level flag for the session and nothing asks
 again — an unknown ref does not flip it, because that means "ask again for
@@ -1542,6 +1549,10 @@ effect firing, and that half is covered against a real server in
 chapter): `pages/WorktreeDiff.tsx`, the full-width page a Worktrees row opens,
 hands its whole range `<milestone branch>...tk-<id>` to the very same
 `FilesChanged` — plus a summary bar, which is a prop on it and not a second ask.
+Two live BRANCHES there, deliberately, where the dossier asks by sha: that page's
+subject is a working tree that exists on disk right now, so where its two tips
+stand IS the question. `FilesChanged` therefore takes a whole `GitTarget` rather
+than a base/head pair — a pair could only ever express the second question.
 Nothing else moved to do that: **no verb, no stored key, no change to the door**,
 and no component fetches a patch outside `cascade()`. The one seam this cost is
 `FileList` exported beside `FilesChanged` — the pure half, given a step — for

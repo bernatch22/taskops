@@ -49,18 +49,33 @@ that reader and must not drift toward the host's."""
 HOSTED = (
     "{refs} not in this board's own repository on this host. Nothing was "
     "pruned to make that true — this host keeps every branch pushed to it "
-    "forever — so {them} was never pushed here: a card worked before this host "
-    "became the board's remote, or a worktree whose commits have not left it. "
+    "forever — so {subject} never pushed here: {cause}. "
     "A commit reaches this repository the moment it is made in a worktree "
     "joined to the board; the declared forge is a copy of what is here, never "
     "the other way round, so there is nowhere else this pane could look."
 )
+
 """The HOST's words — a reader with no clone, who can run nothing. No command
 is named because there is none they could run, and no forge is named because
 the forge is no longer a source: under the reversal it is a projection of this
 repository, so "not here" is not "look over there". What replaced the mirror's
 "a pruned branch is normal" is the stronger fact — this host prunes nothing —
 and therefore a different diagnosis: the commits never arrived."""
+
+SINGLE = (
+    "a card worked before this host became the board's remote, or a "
+    "worktree whose commits have not left it"
+)
+SEVERAL = (
+    "cards worked before this host became the board's remote, or "
+    "worktrees whose commits have not left them"
+)
+"""The DIAGNOSIS, in the number of the refs it explains. It is an apposition
+to the missing refs themselves — "they were never pushed here: cards worked
+before …" — so it declines with them, subject and possessive both: one ref
+missing is one card or one worktree, several are cards or worktrees. 0.5.2
+shipped "so them was never pushed here" with this clause frozen singular; a
+sentence a reader is meant to trust cannot ask them to forgive its grammar."""
 
 SHA = "0123456789abcdef"
 
@@ -82,7 +97,11 @@ def sentence(*refs: str, hosted: bool = False) -> str:
     listed = f"{' and '.join(names)} {'are' if many else 'is'}"
     them = "them" if many else "it"
     if hosted:
-        return HOSTED.format(refs=listed, them=them)
+        return HOSTED.format(
+            refs=listed,
+            subject="they were" if many else "it was",
+            cause=SEVERAL if many else SINGLE,
+        )
     branches = [ref for ref in names if not _looks_like_a_sha(ref)]
     return STALE.format(
         refs=listed,

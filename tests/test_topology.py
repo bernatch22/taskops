@@ -2101,6 +2101,105 @@ def test_the_hosts_missing_ref_sentence_says_what_a_host_that_prunes_nothing_can
     assert "Nothing was pruned" in message and "never pushed here" in message
 
 
+# ── the CARD'S OWN RANGE, asked by sha (ui/src/links.tsx::cardRange) ───────
+
+
+def test_a_landed_cards_own_commits_name_a_range_this_host_can_read(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The reported failure, end to end and on the SERVER side of it.
+
+    A card's branches — its own and its chapter's — were pruned on the forge
+    before this host became the board's remote, so neither name resolves here
+    while both of the card's commits sit in the trunk that was pushed. The
+    dossier therefore asks by sha, and for a multi-commit card the base is the
+    FIRST commit's PARENT: `<sha>^`, a spelling `gitwork/diff.py` already
+    resolves (`SHAPE` admits `^`, `resolve()` peels `^{commit}`), which is why
+    this chapter added nothing to the door.
+
+    The last assertion is the one worth having: with the first SHA as the base
+    instead of its parent, the door still answers 200 and the pane still looks
+    complete — with that commit's file silently missing. That is the failure
+    mode the `^` exists to prevent, and it is pinned here as the difference
+    between the two ranges rather than described.
+    """
+    from urllib.parse import quote
+
+    from taskops.gitwork import bare
+    from tests.test_mirror import run, commit, forge_repo
+
+    src = forge_repo(tmp_path / "fixture")
+    run.must("switch", "-q", "-c", "tk-range", cwd=src)
+    first = commit(src, "one.py")
+    last = commit(src, "two.py")
+    run.must("switch", "-q", "main", cwd=src)
+    run.must("merge", "--no-ff", "-q", "-m", "land tk-range", "tk-range", cwd=src)
+    repo = bare.ensure(server.mounts.root / BOARD)
+    run.must("push", str(repo), "main:refs/heads/main", cwd=src)
+    token = _token(server, BERNA)
+
+    status, _ = _get(f"{url_of(server)}/git/commit/tk-range", token)
+    assert status == 404, "the branch must be absent, or this proves nothing"
+
+    # percent-encoded, as `links.tsx::gitRoute` sends it: `...` is the route's
+    # grammar and stays literal, everything else is one encoded ref.
+    base = quote(f"{first}^", safe="")
+    status, body = _get(f"{url_of(server)}/git/compare/{base}...{last}", token)
+    assert status == 200, body
+    assert set(body["data"]["stat"]) == {"one.py", "two.py"}
+
+    status, dropped = _get(f"{url_of(server)}/git/compare/{first}...{last}", token)
+    assert status == 200 and set(dropped["data"]["stat"]) == {"two.py"}
+def test_the_hosts_missing_ref_sentence_is_grammatical_for_one_ref(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The SINGULAR half, whole. 0.5.2 served "so them was never pushed here"
+    on the live window: a plural substitution in a subject slot. The number
+    now runs through the whole sentence — subject, verb and the diagnosis it
+    introduces — so both halves are pinned as bytes, not as substrings."""
+    _own_git(server, tmp_path / "fixture")
+    status, body = _get(
+        f"{url_of(server)}/git/commit/tk-dfaff7", _token(server, BERNA)
+    )
+    assert status == 404
+    assert body["error"]["message"] == (
+        "tk-dfaff7 is not in this board's own repository on this host. "
+        "Nothing was pruned to make that true — this host keeps every branch "
+        "pushed to it forever — so it was never pushed here: a card worked "
+        "before this host became the board's remote, or a worktree whose "
+        "commits have not left it. A commit reaches this repository the moment "
+        "it is made in a worktree joined to the board; the declared forge is a "
+        "copy of what is here, never the other way round, so there is nowhere "
+        "else this pane could look."
+    )
+
+
+def test_the_hosts_missing_ref_sentence_is_grammatical_for_several_refs(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The PLURAL half — the one that was wrong. A compare asks for two refs
+    at once, which is exactly how the live report arrived: base ms/… and head
+    tk-… both absent. "they were never pushed here: cards worked … or
+    worktrees whose commits have not left them" — read it aloud; that is the
+    contract."""
+    _own_git(server, tmp_path / "fixture")
+    status, body = _get(
+        f"{url_of(server)}/git/compare/ms/a-chapter...tk-bffa26",
+        _token(server, BERNA),
+    )
+    assert status == 404
+    assert body["error"]["message"] == (
+        "ms/a-chapter and tk-bffa26 are not in this board's own repository on "
+        "this host. Nothing was pruned to make that true — this host keeps "
+        "every branch pushed to it forever — so they were never pushed here: "
+        "cards worked before this host became the board's remote, or "
+        "worktrees whose commits have not left them. A commit reaches this "
+        "repository the moment it is made in a worktree joined to the board; "
+        "the declared forge is a copy of what is here, never the other way "
+        "round, so there is nowhere else this pane could look."
+    )
+
+
 # ── the HOSTED window: /ui on a serve-mode host, per repo and visibility ───
 
 
