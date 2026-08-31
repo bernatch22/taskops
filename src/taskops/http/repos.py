@@ -31,7 +31,7 @@ from threading import Lock
 
 from ..verbs import project
 from .._errors import NotFound
-from ..gitwork import mirror
+from ..gitwork import bare, mirror
 from ..store.stores import Stores
 
 NO_FORGE = (
@@ -72,6 +72,14 @@ class Repos:
         itself is the name the missing-ref sentence speaks (`http/stale.py`)."""
         if self.checkout is not None:
             return self.checkout, ""
+        own = bare.at(self.root / name)
+        if own is not None:
+            # The board's OWN repo (§16, "The host becomes the remote"): once a
+            # push has created it, it outranks any mirror — the diffs the window
+            # reads are the board's truth, with no dependency on the forge. The
+            # label is "" as a window's is: there is nowhere to fetch FROM, this
+            # repo IS the source, so the one bounded fetch stays unlicensed.
+            return own, ""
         with self._lock:
             found = self._mirrors.get(name)
             if found is not None:
@@ -103,4 +111,6 @@ class Repos:
         every board, exactly as `for_board`'s first clause does."""
         if self.checkout is not None:
             return True
+        if bare.at(self.root / name) is not None:
+            return True  # the board's own repo opens the window, forge or no forge
         return project.forge(self._stores(name)) is not None
