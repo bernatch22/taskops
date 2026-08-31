@@ -2074,6 +2074,44 @@ def test_a_windows_own_clone_never_fetches_on_a_missing_ref(
     assert fetches == []
 
 
+def test_the_windows_missing_ref_sentence_is_pinned_byte_for_byte(
+    repo_server: BoardServer,
+) -> None:
+    """The WINDOW's words, whole — right for a reader who has a clone and may
+    fetch into it. tk-9cde88 split the vocabulary by audience and this pin is
+    the local half of the contract: the host got its own sentence, and these
+    bytes did not move an inch in the split."""
+    status, body = _get(
+        f"{url_of(repo_server)}/git/commit/tk-dfaff7", _token(repo_server, BERNA)
+    )
+    assert status == 404
+    assert body["error"]["message"] == (
+        "tk-dfaff7 is not in your clone yet — `git fetch origin tk-dfaff7` "
+        "brings it. The board is shared and the code is not: a card's branch "
+        "reaches origin when it closes, and this window reads only the "
+        "checkout it stands in. Nothing is fetched for you."
+    )
+
+
+def test_a_mirrored_hosts_missing_ref_sentence_speaks_to_a_reader_with_no_clone(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """tk-9cde88: 0.5.1 served the window's sentence from the hosted board to
+    a reader with NO clone — "your clone", "git fetch", "nothing is fetched
+    for you", every clause false on a host that had in fact fetched. The
+    host's refusal names the forge it mirrors, says a pruned card branch is
+    normal, and tells the reader to run nothing."""
+    _mirrored(server, tmp_path / "fixture")
+    status, body = _get(
+        f"{url_of(server)}/git/commit/tk-dfaff7", _token(server, BERNA)
+    )
+    assert status == 404
+    message = body["error"]["message"]
+    assert "your clone" not in message and "git fetch" not in message
+    assert "github.com/bernatch22/taskops" in message  # the declared forge, named
+    assert "pruned" in message and "normal, not a fault" in message
+
+
 # ── the HOSTED window: /ui on a serve-mode host, per forge and visibility ───
 
 
