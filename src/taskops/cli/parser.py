@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 
+from . import gitremote
 from ..core import forge
 
 AS_HELP = "the principal that key belongs to (default: $USER)"
@@ -28,10 +29,22 @@ def build(description: str) -> argparse.ArgumentParser:
     sub.add_parser("init", help="a local board in this repo")
     _join(sub)
     origin = sub.add_parser("remote", help="the host this checkout operates (git's origin)")
-    origin.add_argument("action", nargs="?", default="", choices=["", "add"])
-    origin.add_argument("url", nargs="?", default="", help="https://<host>")
+    origin.add_argument("action", nargs="?", default="", choices=["", "add", "git"])
+    # `add` takes the HOST; `git` takes an optional <host>/<board> and otherwise
+    # uses the recorded pair — one slot, because both are an address.
+    origin.add_argument("url", nargs="?", default="", help="add: https://<host> · git: <host>/<board>")
     origin.add_argument(
         "--replace", action="store_true", help="this checkout already names another host"
+    )
+    origin.add_argument(
+        "--add",
+        action="store_true",
+        help="remote git: write the remote and the credential helper here instead of printing them",
+    )
+    origin.add_argument(
+        "--name",
+        default="",
+        help=f"remote git --add: the remote's name (default: {gitremote.REMOTE}; never origin)",
     )
     server = sub.add_parser("serve", help="host boards")
     server.add_argument("--root", default="~/taskops-boards")
@@ -48,7 +61,9 @@ def build(description: str) -> argparse.ArgumentParser:
     tidy.add_argument("--trunk", default="")
     sub.add_parser("ui", help="the dashboard: serve if needed, open the browser, token included")
     hook = sub.add_parser("hook", help="internal: what the installed hooks call")
-    hook.add_argument("which", choices=["trailer", "commit", "claude"])
+    # `credential` is git's credential helper (`cli/gitremote.py`) — internal in
+    # exactly the same sense as the other three: git invokes it, never a human.
+    hook.add_argument("which", choices=["trailer", "commit", "claude", "credential"])
     hook.add_argument("rest", nargs="*")
     return parser
 

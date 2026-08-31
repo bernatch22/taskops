@@ -2131,6 +2131,47 @@ the git half) is deletable, one it does not hold is refused.
 - **a `--force` or a prune that could erase a card branch on the host.**
   Argued above; it is the reversal's own reason turned into a rule.
 
+### The dev's side: `taskops remote git`, and no `origin` (2026-08-31)
+
+The reversal gave the host a git door and left the client unable to NAME it:
+`https://<host>/<board>/repo.git` existed only inside `http/gitpack.py`, so
+pointing a checkout at it meant reading the source. `taskops remote git` is
+that sentence — printed to paste, or `--add` to write it here — and it is a
+third action on `taskops remote` rather than a twelfth top-level command,
+because recording where the board's git lives is the same act as recording
+where the board lives (`cli/gitremote.py`).
+
+**`origin` is never written, and `--name origin` is refused outright.** Not
+"left alone if it exists": refused. A checkout's `origin` is somebody's own
+setup — very often their GitHub — and no state of it is this command's to
+decide, its absence included. The remote is `taskops`; a name already in use
+is a refusal that names `--name <other>`, never a `set-url`. Adding a remote
+is CONNECTING (the CLI's promise); repointing one is managing.
+
+**The credential is a HELPER, never a URL.** `https://x:<token>@host/…` is the
+obvious spelling and it is banned here for two reasons, either sufficient:
+`git remote add` persists its URL in `.git/config`, plaintext, so a live
+session token would sit in the one file nobody thinks to look at; and a
+taskops session EXPIRES, so a token baked into a config is wrong within the
+hour and cannot renew itself. What gets configured is
+`credential.<host>.helper`, pointing at `taskops hook credential` — git asks
+for a password at push time, the helper mints or renews a session from the ssh
+key already on disk (`identity.establish`, the same entry every board verb
+uses) and hands it over on a pipe. `store` and `erase` are answered with
+silence: a helper that caches is a helper that persists a token, and minting is
+free. One credential story, §19's, reaching git through git's own door — and
+`allowed_signers` remains the only thing the host keeps.
+
+**The address is NOT a board-payload field, and that is the argued half.** The
+payload carries the forge and the mirror fact, so `repo_url` looks like it
+belongs beside them. It does not: the server cannot know its own public
+address — a proxy, a port-forward, the local `taskops ui` window, and every
+reader already reached it at an address the server never saw — so a stored one
+is the first field to rot and the first to send a dev to the wrong host. The
+address is (the host you asked) + `/<board>/repo.git`, a derivation the CLIENT
+can always do correctly and the server never can. `board ls` prints that shape
+once, and names the command that spells it exactly.
+
 ---
 
 ## 17. Deployed — taskops.bernardocastro.dev is v2 (2026-08-08)
