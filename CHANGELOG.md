@@ -3,6 +3,43 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.5.4 — the Files-changed pane renders for a landed card
+
+**0.5.3 is withdrawn in all but name.** It carries this release's source fix but
+the PREVIOUS release's committed UI bundle, so a hosted page served by it still
+asks for branch names and the pane stays empty. The cause is worth writing down:
+the version bump, the changelog and the tag were made while the shell was still
+inside a card's worktree after a conflict resolution, so `v0.5.3` points at that
+card's branch — which holds `links.tsx::cardRange` but not the chapter-closing
+rebuild of `src/taskops/ui/app.js`. Every gate passed there, because that tree
+was internally consistent; what was missing was the rest of the chapter. A
+release is cut from the trunk, and the check that catches this is comparing the
+bundle a host SERVES against the one the tag committed — which is now a deploy
+step, not a habit.
+
+- **The pane asked for two branch names, and a landed card has neither.**
+  0.5.2 made the HEAD durable — the card's newest recorded sha instead of its
+  branch — and stopped there. The BASE stayed the chapter's branch name, and for
+  every card that landed before this host became the board's remote that branch
+  was pruned on the forge, so the compare refused and the pane was empty while
+  the commits sat in the trunk. Reported live on tk-bffa26 and tk-c37061.
+- **The range now comes from the card's own commits, both ends**
+  (`ui/src/links.tsx::cardRange`): one recorded commit goes through the commit
+  door, which already diffs a commit against its first parent; several become
+  `compare/<oldest>^...<newest>`. The base is the oldest commit's PARENT, not
+  the oldest commit — `git diff` is exclusive of its base, so
+  `<oldest>...<newest>` answers 200 with that commit's own changes silently
+  missing, which is a pane that looks complete and is not. No server change was
+  needed: `<sha>^` already passed the ref shape and resolves through `^{commit}`.
+- **Pinned where it broke.** The pane renders the route it asked for and a smoke
+  section reads that route off the rendered component — the previous attempt was
+  pinned one layer below the call site, so a call-site mutation went green while
+  the pane stayed broken. `smoke.sh` derives the same route from the LIVE card
+  payload and asserts the first commit's files are in the answer.
+- **"so them was never pushed here"** — the host's missing-ref refusal had a
+  plural substitution in a subject slot. The number now runs through the whole
+  sentence, and both forms are pinned as bytes.
+
 ## 0.5.2 — the host holds the git; GitHub is the copy
 
 0.5.0 and 0.5.1 built the hosted window on a mirror the host PULLED from the
