@@ -2065,6 +2065,22 @@ one repo. §19.2 carries the credential argument. What it is NOT: a GitHub
 token (the key opens one repo, not an account), and never anything a dev
 supplies.
 
+Wired as `gitwork/onward.py`, started by the receive door once git's own exit
+code says the push landed (`http/gitpack.py`) and running on a background
+thread — best effort in TIME as well as in outcome, since inline the client
+would feel the mirror as a ten-second gate on a push that already succeeded.
+Two pushes racing need no lock: the refspec is the whole `refs/heads/*`, so a
+later push subsumes an earlier one; only the REPORT is ordered, by timestamp
+(`store/mirroring.py`). The report is a row in `live.sqlite` — alive, never an
+event, because "could this host reach GitHub" is false the moment the log
+travels — and it rides on the board payload as `mirror` (`verbs/pulse.py`,
+under `forge`'s own contract: nothing to say sends no key), drawn as one
+MIRROR line by `mcp/boardview.py`, success included, so "silence" can never
+mean both "up to date" and "the key expired a month ago". The outbound remote
+is one named `forge` inside `repo.git`, added by the owner by hand — the ssh
+address IS the credential story, and a forge declared with no remote reads as
+a failure naming that exact command.
+
 **A board with NO declared forge gets everything except the outbound
 mirror — and that is not a fault.** Push, clone, the hosted window's diffs,
 the permanence: all of it stands on `repo.git` alone. The forge was the

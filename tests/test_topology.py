@@ -26,6 +26,7 @@ import taskops
 from taskops import _clock
 from taskops.http import feed
 from taskops.board import RemoteBoard
+from taskops.store import mirroring
 from tests.conftest import T0
 from taskops._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
 from taskops._locate import read_config
@@ -5226,3 +5227,110 @@ def test_the_host_refuses_a_non_fast_forward_even_forced(
         pushed = sh_git("push", *way, remote_of(server, token), "master", cwd=seed)
         assert pushed.returncode != 0, way
         assert host_ref(server, "master") == before
+
+
+# The OUTBOUND leg, through the real door: a push that lands is copied onward
+# to the declared forge (§16, "the host becomes the remote"). The "forge" is a
+# bare repo in tmp_path — no network — and the remote inside `repo.git` is the
+# owner's own act, exactly as a deploy-key address would be (§19.2).
+
+
+def far_forge(tmp_path: Path, name: str = "far.git") -> Path:
+    far = tmp_path / name
+    assert sh_git("init", "--bare", "-q", "-b", "master", str(far), cwd=tmp_path).returncode == 0
+    return far
+
+
+def awaited(
+    httpd: BoardServer, label: str, want: bool | None = None
+) -> dict[str, Any] | None:
+    """The mirror runs on its own thread (never in the client's push), so its
+    report is polled for rather than assumed — out of the same live store the
+    board payload reads it from. Bounded by TRIES and not by a clock: this
+    suite freezes `now()`, and `PUSH_TIMEOUT` already bounds the leg itself."""
+    live = httpd.mounts.stores(BOARD).live
+    seen: dict[str, Any] | None = None
+    for _ in range(400):  # 20s at 50ms, twice gitwork's own push budget
+        seen = mirroring.last(live, label)
+        if seen is not None and (want is None or seen["ok"] is want):
+            return seen
+        threading.Event().wait(0.05)
+    return seen
+
+
+def test_a_landed_push_is_mirrored_onward_to_the_declared_forge(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 3's first half: the host pushes onward, whole namespace, and
+    the success is legible as one on the board payload."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    client(server, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+
+    # the owner's explicit act, and the only credential story there is (§19.2)
+    far = far_forge(tmp_path)
+    assert sh_git("remote", "add", "forge", str(far), cwd=hosted(server)).returncode == 0
+
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    assert sh_git("push", remote_of(server, token), "master:tk-c1abcd", cwd=seed).returncode == 0
+
+    seen = awaited(server, "github.com/bernatch22/taskops", want=True)
+    assert seen is not None and seen["ok"] is True, seen
+    for ref in ("master", "tk-c1abcd"):
+        assert sh_git("rev-parse", "--verify", "--quiet", ref, cwd=far).stdout.strip(), ref
+    said = client(server, BERNA).call("board", {})
+    assert said["mirror"]["ok"] is True
+    assert said["mirror"]["forge"] == "github.com/bernatch22/taskops"
+
+
+def test_an_unreachable_forge_does_not_fail_the_clients_push(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 3's second half, and criterion 1: the client's push succeeds,
+    the host's history is intact, and the failure is on the board payload for
+    the owner to read — never swallowed."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    client(server, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+    assert sh_git("remote", "add", "forge", str(tmp_path / "gone"), cwd=hosted(server)).returncode == 0
+
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    pushed = sh_git("push", remote_of(server, token), "master", cwd=seed)
+    assert pushed.returncode == 0, pushed.stderr
+    assert host_ref(server, "master") == sh_git("rev-parse", "HEAD", cwd=seed).stdout.strip()
+
+    seen = awaited(server, "github.com/bernatch22/taskops", want=False)
+    assert seen is not None and seen["ok"] is False and seen["detail"]
+    assert client(server, BERNA).call("board", {})["mirror"]["ok"] is False
+
+
+def test_a_declared_forge_with_no_remote_on_the_host_says_so(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The owner has not made §19.2's escalation: the board still works and the
+    payload names the exact command that opens the leg."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    client(server, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+
+    seen = awaited(server, "github.com/bernatch22/taskops", want=False)
+    assert seen is not None and seen["ok"] is False
+    assert "remote add forge git@github.com:bernatch22/taskops.git" in seen["detail"]
+
+
+def test_no_declared_forge_means_no_mirroring_and_no_fault(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The state every board is born in: the push lands, nothing is attempted,
+    and the payload carries no `mirror` key at all — not a `null`, not a fault."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+
+    assert "mirror" not in client(server, BERNA).call("board", {})
+    assert sh_git("remote", cwd=hosted(server)).stdout.strip() == ""

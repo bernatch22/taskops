@@ -13,7 +13,12 @@ from pathlib import Path
 
 import pytest
 
-from taskops.gitwork import run, mirror
+from taskops import verbs
+from taskops.mcp import boardview
+from taskops._json import as_object
+from taskops.store import mirroring
+from taskops.gitwork import run, bare, mirror, onward
+from taskops.store.stores import Stores
 
 
 def forge_repo(path: Path) -> Path:
@@ -162,3 +167,133 @@ def test_a_ref_still_absent_after_the_fetch_is_answered_false(tmp_path: Path) ->
     got = mirror.ensure(board_dir, None, url=str(forge))
     assert got is not None
     assert mirror.refresh_if_missing(got, "never-existed") is False
+
+
+# ── the OUTBOUND leg (gitwork/onward.py, §16 "the host becomes the remote") ──
+#
+# The same no-network discipline as above, pointing the other way: the "forge"
+# is a bare repo in tmp_path and the outbound remote is a path. What these pin
+# is the chapter's promise — a landed push is copied onward, best effort, and
+# every outcome (including "the owner installed no key") is legible on the
+# board payload instead of dying in a log line.
+
+
+def hosted_repo(root: Path, name: str = "board") -> Path:
+    """A board's own `repo.git` with one commit in it, as a push would leave it."""
+    board_dir = root / name
+    board_dir.mkdir(parents=True, exist_ok=True)
+    repo = bare.ensure(board_dir)
+    seed = forge_repo(root / f"{name}-seed")
+    run.must("push", str(repo), "main:refs/heads/master", cwd=seed)
+    return board_dir
+
+
+def bare_forge(root: Path, name: str = "far") -> Path:
+    far = root / name
+    run.must("init", "--bare", "-q", "-b", "master", str(far))
+    return far
+
+
+def declare(stores: Stores, repo: str = "owner/name") -> None:
+    verbs.call(stores, "project", "dev:berna", {"op": "forge", "repo": repo})
+
+
+def test_the_outbound_leg_copies_the_whole_heads_namespace(
+    tmp_path: Path, stores: Stores
+) -> None:
+    """A landed push reaches the declared forge, whole: the refspec is the
+    namespace, not the branch this push happened to mention."""
+    board_dir = hosted_repo(tmp_path)
+    far = bare_forge(tmp_path)
+    declare(stores)
+    run.must("remote", "add", onward.REMOTE, str(far), cwd=board_dir / "repo.git")
+    run.must("branch", "tk-abc123", "master", cwd=board_dir / "repo.git")
+
+    said = onward.onward(board_dir, stores, "board")
+    assert said is not None and said["ok"] is True, said
+    assert said["forge"] == "github.com/owner/name"
+    for ref in ("master", "tk-abc123"):
+        assert run.git("rev-parse", "--verify", "--quiet", ref, cwd=far).ok, ref
+    # and it is legible AS a success, on the board payload
+    seen = as_object(verbs.call(stores, "board", "dev:berna", {}).get("mirror"))
+    assert seen["ok"] is True and seen["detail"] == ""
+    assert "up to date" in "\n".join(boardview._mirror({"mirror": seen}, seen["at"]))
+
+
+def test_a_declared_forge_with_no_remote_on_the_host_fails_visibly(
+    tmp_path: Path, stores: Stores
+) -> None:
+    """The owner declined (or has not yet made) §19.2's escalation: nothing is
+    pushed, nothing is silent, and the sentence names the exact command."""
+    board_dir = hosted_repo(tmp_path)
+    declare(stores)
+
+    said = onward.onward(board_dir, stores, "board")
+    assert said is not None and said["ok"] is False
+    assert "remote add forge git@github.com:owner/name.git" in said["detail"]
+
+    seen = as_object(verbs.call(stores, "board", "dev:berna", {}).get("mirror"))
+    assert seen["ok"] is False
+    assert "FAILED" in "\n".join(boardview._mirror({"mirror": seen}, seen["at"]))
+
+
+def test_an_unreachable_forge_leaves_the_hosts_history_intact(
+    tmp_path: Path, stores: Stores
+) -> None:
+    """Best effort in the direction that matters: the host still holds every
+    ref, and the reader is told what git said rather than a guess of ours."""
+    board_dir = hosted_repo(tmp_path)
+    declare(stores)
+    repo = board_dir / "repo.git"
+    run.must("remote", "add", onward.REMOTE, str(tmp_path / "not-a-repo"), cwd=repo)
+    before = run.must("rev-parse", "master", cwd=repo)
+
+    said = onward.onward(board_dir, stores, "board")
+    assert said is not None and said["ok"] is False and said["detail"]
+    assert run.must("rev-parse", "master", cwd=repo) == before
+    assert as_object(verbs.call(stores, "board", "dev:berna", {})["mirror"])["ok"] is False
+
+
+def test_no_declared_forge_means_no_attempt_at_all(
+    tmp_path: Path, stores: Stores, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The state every board is born in — and not a fault: no push, no thread,
+    no `mirror` key on the payload at all (`forge`'s own contract)."""
+    board_dir = hosted_repo(tmp_path)
+
+    def boom(_: Path) -> tuple[bool, str]:
+        raise AssertionError("a board with no declared forge must not touch git")
+
+    monkeypatch.setattr(onward, "push", boom)
+    assert onward.onward(board_dir, stores) is None
+    assert onward.after_receive(board_dir, stores) is None
+    assert "mirror" not in verbs.call(stores, "board", "dev:berna", {})
+
+
+def test_a_board_that_has_never_pushed_says_nothing_yet(tmp_path: Path, stores: Stores) -> None:
+    """A declared forge alone is not a report: `repo.git` does not exist, so
+    there is nothing to copy and nothing to claim about the copy."""
+    declare(stores)
+    assert onward.onward(tmp_path / "board", stores) is None
+    assert "mirror" not in verbs.call(stores, "board", "dev:berna", {})
+
+
+def test_an_older_observation_cannot_overwrite_a_newer_one(stores: Stores) -> None:
+    """Two pushes race by construction and their threads may finish out of
+    order; the report keeps the NEWEST word, so a stale failure cannot bury a
+    success that happened after it."""
+    mirroring.record(stores.live, "github.com/owner/name", ok=True, detail="", at=200.0)
+    mirroring.record(stores.live, "github.com/owner/name", ok=False, detail="stale", at=100.0)
+    seen = mirroring.last(stores.live, "github.com/owner/name")
+    assert seen is not None and seen["ok"] is True
+    mirroring.record(stores.live, "github.com/owner/name", ok=False, detail="fresh", at=300.0)
+    later = mirroring.last(stores.live, "github.com/owner/name")
+    assert later is not None and later["ok"] is False and later["detail"] == "fresh"
+
+
+def test_the_report_is_keyed_on_the_forge_so_a_new_one_starts_clean(stores: Stores) -> None:
+    """Re-declaring the forge must not inherit a stranger's failure."""
+    mirroring.record(stores.live, "github.com/owner/one", ok=False, detail="denied", at=100.0)
+    declare(stores, "owner/two")
+    assert "mirror" not in verbs.call(stores, "board", "dev:berna", {})
+    assert mirroring.glance(stores.live, {"host": "github.com", "repo": "owner/one"}) == {}

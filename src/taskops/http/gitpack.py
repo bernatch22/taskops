@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING
 
 from . import rpc, gitbody
 from .._errors import Refused, NotFound, BadRequest, TaskopsError
-from ..gitwork import run, bare
+from ..gitwork import run, bare, onward
 
 if TYPE_CHECKING:
     from .handler import Handler
@@ -95,7 +95,14 @@ def _door(handler: Handler, board: str, service: str, *, advert: bool) -> None:
     except TaskopsError as err:
         handler._fail(rpc.status_for(rpc.failure(err)), err)  # noqa: SLF001
         return
-    _stream(handler, str(found), service, advert=advert, body=body)
+    code = _stream(handler, str(found), service, advert=advert, body=body)
+    if writing and not advert and code == 0:
+        # The push LANDED — now the forge gets a copy, on a background thread
+        # and never as a gate (`gitwork/onward.py` argues both, and answers
+        # None for a board that declared no forge). After `_stream`, always:
+        # the client's result is already on the wire, so nothing this returns
+        # can reach it, which is exactly the property that makes it best effort.
+        onward.after_receive(handler.mounts.root / board, handler.mounts.stores(board), board)
 
 
 def _challenge(handler: Handler, err: Refused) -> None:
@@ -114,8 +121,12 @@ def _challenge(handler: Handler, err: Refused) -> None:
     handler.wfile.write(data)
 
 
-def _stream(handler: Handler, repo: str, service: str, *, advert: bool, body: bytes) -> None:
-    """Run the plumbing and put its stdout on the wire.
+def _stream(handler: Handler, repo: str, service: str, *, advert: bool, body: bytes) -> int:
+    """Run the plumbing and put its stdout on the wire, and answer git's code.
+
+    The code is what a caller needs to know whether the push LANDED — the one
+    condition the outbound mirror hangs on. It is git's answer, not HTTP's:
+    the response is a 200 either way once bytes have flowed (below).
 
     The advertisement is small and is buffered so a failure can still answer as
     one (500, git's words logged); the pack exchange is streamed under chunked
@@ -135,11 +146,11 @@ def _stream(handler: Handler, repo: str, service: str, *, advert: bool, body: by
         if code != 0:
             fault = Refused(f"git {verb} could not advertise: {err or f'exit {code}'}")
             handler._fail(500, fault)  # noqa: SLF001
-            return
+            return code
         head = f"# service={service}\n"
         preamble = f"{len(head) + 4:04x}{head}{FLUSH}".encode()
         handler._send(200, preamble + b"".join(parts), kind)  # noqa: SLF001
-        return
+        return code
     handler.send_response(200)
     handler.send_header("Content-Type", kind)
     handler.send_header("Cache-Control", "no-cache")
@@ -154,6 +165,7 @@ def _stream(handler: Handler, repo: str, service: str, *, advert: bool, body: by
     handler.wfile.write(b"0\r\n\r\n")
     if code != 0 and err:
         handler.log_error("git %s: %s", verb, err)
+    return code
 
 
 def _param(path: str, key: str) -> str:
