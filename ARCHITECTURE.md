@@ -1508,7 +1508,10 @@ construction and never sniffed per request** (`Mounts(repo=…)`,
 The `/ui/` column arrived later, and it is the same `repo` deciding both — see
 "API ONLY is now literal" below. Both cells of the `serve` row are narrowed a
 second time by "The hosted window" below: a board that DECLARED a forge may be
-answered from a bare read-only mirror of it, and only then.
+answered from a bare read-only mirror of it, and only then. And the page's ADDRESS moved
+one notch after that: on a serve-mode host the last column is the board's own
+`/<board>/`, with `/<board>/ui/` kept as an alias — "The board's own address IS
+the page" at the end of this section.
 
 A viewer meets that gap whenever this clone cannot answer — a ref not fetched
 yet, a shallow checkout, a commit from before this repo had the branch — and
@@ -1822,6 +1825,98 @@ The dashboard draws NOTHING of this yet: `BoardPayload.wave` is declared in
 starts from the server's real shape, and `null` (fewer than two ready cards,
 nothing to decide) is deliberately a different state from absent (a board older
 than the wave).
+
+### A bare `Bearer` is NO credential, not an unknown one (2026-08-31)
+
+The hosted window shipped on 2026-08-30 and was unusable the next morning for
+the exact reader it was built for: a PUBLIC board, opened from its own hosted
+page, answered *"unknown credential — run: taskops join"*. Nothing about
+visibility was wrong. The page simply had no token, so the browser sent
+`Authorization: Bearer ` with an empty value; `auth.token_in`'s `removeprefix`
+did not match the header without its space-and-value, and it returned the
+literal string `Bearer` as if that were somebody's token. `creds.check` then did
+its job perfectly on a token nobody ever minted.
+
+So the fault was never in the visibility rule and never in the client. It was in
+the one place that decides what a header MEANS:
+
+> **An `Authorization` header that carries no value is the ABSENCE of a
+> credential, identical to sending no header at all. A header that carries a
+> value is a claim, and a claim that does not check out is refused with the
+> sentence it has always used.**
+
+Both halves are load-bearing, and the second is why this is not the tempting
+one-line generalisation. "Treat anything unparseable as anonymous" would make a
+typo'd token read a private board as far as its visibility allows and, worse,
+would turn an expired credential into a silent downgrade instead of the loud
+`unknown credential` it has always been. Empty is not wrong; wrong is wrong —
+and the two refusals stay different sentences: a caller who presented NOTHING to
+a private board is told how to join, a caller who presented something unknown is
+told it is unknown.
+
+It lives in ONE extractor (`http/auth.py::token_in`) because every door — `rpc`,
+`feed`, `git`, the static page — asks that function and nothing else. A second
+door with its own opinion about a header is how the fleet ends up with two
+credential rules, which is the failure mode §19 exists to prevent. `taskops
+ui`'s window never saw this: it mints a token before it opens a tab, so the only
+client that sends an empty bearer is the hosted page, and the hosted page is
+younger than the extractor.
+
+The lesson generalises past auth: **anonymous worked only because no client
+existed**. Every test that pinned "no header reads a public board" sent no
+header, because the only readers were `curl` and the MCP client. A browser
+cannot express "no header" through a fetch wrapper that always sets one — so a
+contract that is only ever exercised by hand-written clients is not pinned,
+it is merely unvisited. `tests/test_topology.py` now sends the bare header
+alongside the absent one, on a public board AND a private one, which is the pair
+that says which of the two rules above is being tested.
+
+### The board's own address IS the page (2026-08-31)
+
+The same report carried a second complaint, and it is a design one: the page was
+at `/<board>/ui/`. A board host serves exactly one thing to a human, and it had
+been given a sub-path — so the URL a person pastes says `ui` twice over (once in
+the product's name for the thing, once in the path) and the shortest address on
+the host, `/<board>/`, answered 404. Whatever a host serves to people belongs at
+its own address; a prefix is for the doors people never type.
+
+> **A board's page is served at `/<board>/` (and `/<board>`, bare). The MACHINE
+> doors move under `/<board>/api/…` — `rpc`, `git/…`, `feed`, `invite/redeem`.**
+
+Two facts make that router unambiguous rather than a guess per request. The
+prefix is stripped ONCE, in `http/routes.py::split`, shared by GET and POST, so
+`/<board>/api/rpc` IS `/<board>/rpc` — same handler, same credential, same
+words, and no door can drift from the other spelling. And the page's own
+relative links (`./app.js`, `./style.css` off `index.html`) now arrive as board
+tails, which the router separates from doors by a CLOSED SET: `static.py::asset`
+asks the packaged bundle what files it actually ships, flat, with a suffix in
+`TYPES`. None is named `rpc`, `git`, `feed`, `ui` or `api`, so an asset can
+never shadow a door and a door never shadows an asset — and a bundle that grows
+a font ships without a router edit. The host's own one-segment doors (`/login`,
+`/rpc`, `/healthz`) are untouched, because the strip lives in the TAIL and never
+sees them; a board literally named `api` still answers at `/api/…`.
+
+**The 0.5.0 spellings are kept, not deprecated** — `/<board>/ui/`,
+`/<board>/rpc`, `/<board>/git/…`, `/<board>/feed` all answer, unprefixed and
+without a redirect. Not out of politeness: links to them were pasted the day
+they existed, `.mcp.json` files and agents are configured against them, four
+legacy-bearer production boards speak them, and `taskops ui`'s upstream forward
+builds them. A redirect would have been the tidier story and would have broken
+every POST that follows one badly. So the rule this chapter adds about old
+addresses is the one it also obeys: **an address that ever worked keeps
+answering, and the new one is where the page POINTS people.** `ui/src/client.ts`
+derives its base from the page's own location (`baseOf`) precisely so the page
+never hardcodes which of the two it was loaded from.
+
+**Both faults are pinned live, not only in the suite.** `smoke.sh` at the repo
+root is the re-runnable list — every assertion in it is one of these two reports
+or something 0.5.0 already promised, read-only, and it exits on the first
+failure:
+
+```sh
+sh smoke.sh                                   # taskops.bernardocastro.dev, taskops-v2
+sh smoke.sh <host> <board> <private-board>
+```
 
 ---
 
