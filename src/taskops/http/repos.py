@@ -17,7 +17,10 @@ the local clone is the reader's own truth, mirrors are the host's.
 The second half of the answer is `mirrored`: `gitdoor` may buy a missing ref
 ONE bounded fetch on a mirror (`http/stale.py`), and must never do that to a
 window's clone — a background fetch inside a read-only door would move a
-branch under a worktree somebody is sitting in.
+branch under a worktree somebody is sitting in. It travels as the forge's
+LABEL ("host/owner/repo"), "" for a window: the same value that licenses the
+fetch also chooses the missing-ref sentence's audience (`stale.sentence`),
+because a host's refusal must name the forge and never say "your clone".
 """
 
 from __future__ import annotations
@@ -60,25 +63,30 @@ class Repos:
         self._stores = stores
         self._lock = Lock()
         self._mirrors: dict[str, Path] = {}
+        self._labels: dict[str, str] = {}
 
-    def for_board(self, name: str) -> tuple[Path | None, bool]:
-        """`(repo, mirrored)` — the repo /git reads for this board, and whether
-        it is a mirror (which is what licenses the one on-demand fetch)."""
+    def for_board(self, name: str) -> tuple[Path | None, str]:
+        """`(repo, mirrored)` — the repo /git reads for this board, and the
+        forge label ("host/owner/repo") when it is a mirror, "" when it is a
+        window's clone. Truthiness licenses the one on-demand fetch; the label
+        itself is the name the missing-ref sentence speaks (`http/stale.py`)."""
         if self.checkout is not None:
-            return self.checkout, False
+            return self.checkout, ""
         with self._lock:
             found = self._mirrors.get(name)
-        if found is not None:
-            return found, True
+            if found is not None:
+                return found, self._labels[name]
         fact = project.forge(self._stores(name))
         if fact is None:
             raise NotFound(NO_FORGE.format(board=name))
         made = mirror.ensure(self.root / name, fact)
         if made is None:  # clone failed or impossible — gitdoor says NO_REPO
-            return None, False
+            return None, ""
+        label = f"{fact['host']}/{fact['repo']}"
         with self._lock:
             self._mirrors[name] = made
-        return made, True
+            self._labels[name] = label
+        return made, label
 
     def backed(self, name: str) -> bool:
         """Does a window open for this board here — the FACT, never the mirror.
