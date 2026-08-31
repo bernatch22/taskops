@@ -1,10 +1,21 @@
 #!/bin/sh
 # The live smoke for a taskops board HOST. Read-only, no credential, no state:
-# every request below is a GET or a `board` read, so it is safe to run against
-# production at any time, including from a laptop that never joined the board.
+# every request below is a GET, a `board` read or a git ref ADVERTISEMENT, so it
+# is safe to run against production at any time, including from a laptop that
+# never joined the board.
+#
+# ONE thing this script deliberately does NOT do: a real push round-trip. It
+# would need a scratch board, and creating one is a WRITE on somebody's
+# production host with an owner credential this script must not want — and a
+# throwaway branch pushed to a real board could never be cleaned up, because the
+# host refuses ref deletions BY DESIGN (§16: that permanence is the chapter).
+# There is no safe destructive line to ship here, so the receive door is pinned
+# by what it must answer a caller with no credential — 401 + WWW-Authenticate,
+# section (g) — and the round-trip itself lives in the suite
+# (`tests/test_topology.py`), against a host it created.
 #
 #   sh smoke.sh                                  # the author's host, defaults below
-#   sh smoke.sh <host> <public-board> <private-board> <card-branch>
+#   sh smoke.sh <host> <public-board> <private-board> <card-branch> <landed-branch>
 #
 # Every assertion is here because it FAILED once, in production, against a real
 # reader — the comment above each one says which report it comes from. Nothing
@@ -22,6 +33,10 @@ HOST=${1:-taskops.bernardocastro.dev}
 BOARD=${2:-taskops-v2}
 PRIVATE=${3:-axion}
 BRANCH=${4:-tk-32d2ba}
+# A card whose branch was PRUNED on the forge while its work sits in the trunk —
+# the fault that turned the pull mirror inside out (§16, 2026-08-31). The host
+# holds the history now and never prunes, so this ref must answer forever.
+LANDED=${5:-tk-dfaff7}
 
 BASE="https://$HOST"
 C="curl -sS -m 15"
@@ -122,13 +137,16 @@ case $body in
   *) fail "POST /$PRIVATE/api/rpc" "expected the no-credential refusal, got: $body" ;;
 esac
 
-# ── (d) a card branch renders a diff from the forge mirror ────────────────────
-# The hosted window's whole point: a reader with NO clone. Before the mirror,
-# every diff fell through the UI's cascade to a forge link — a blank presented
-# as the window. A tk-* branch on purpose: `master` is fetched by any clone, and
-# the failure this catches is a mirror whose on-demand fetch never ran, which
-# only shows on a ref the mirror did not have at clone time.
-head_ln "a card branch diffs from the mirror"
+# ── (d) a card branch renders a diff from the board's own git ─────────────────
+# The hosted window's whole point: a reader with NO clone. Before the host had
+# git of its own, every diff fell through the UI's cascade to a forge link — a
+# blank presented as the window. Written for the pull mirror (2026-08-30) and
+# kept verbatim through the reversal (2026-08-31, §16): the SOURCE moved from a
+# mirror of the forge to `<root>/<board>/repo.git`, and the assertion did not,
+# which is the point — the reader's URL is the contract, not the plumbing. A
+# tk-* branch on purpose: `master` is fetched by any clone, and what this catches
+# is a host whose git holds nothing but the trunk.
+head_ln "a card branch diffs from the board's own git"
 body=$($C "$BASE/$BOARD/api/git/commit/$BRANCH") || fail "GET git/commit/$BRANCH" "no answer"
 case $body in
   *'"patch"'*) pass "GET /$BOARD/api/git/commit/$BRANCH" "a diff ($(printf %s "$body" | wc -c | tr -d ' ') bytes)" ;;
@@ -159,6 +177,69 @@ headers=$(curl -sS -m 3 -D - -o /dev/null "$BASE/$BOARD/feed" 2>/dev/null || tru
 case $headers in
   *event-stream*) pass "GET /$BOARD/feed" "text/event-stream" ;;
   *) fail "GET /$BOARD/feed" "no event-stream header: $(printf %s "$headers" | tr '\r\n' '  ')" ;;
+esac
+
+# ── (g) the board's OWN git — clone, and the wall in front of a push ──────────
+# The reversal of 2026-08-31 (ARCHITECTURE §16, "The host becomes the remote"):
+# the host holds the board's git at /<board>/repo.git and GitHub became the
+# outbound copy. Every line here is a ref ADVERTISEMENT — git's first request,
+# the one `git clone` and `git ls-remote` begin with — so nothing is fetched,
+# nothing is written, and no credential is offered. GIT_TERMINAL_PROMPT=0 so a
+# door that challenges fails the assertion instead of hanging on a password
+# prompt nobody is at the keyboard for.
+head_ln "the board's own git at /<board>/repo.git"
+export GIT_TERMINAL_PROMPT=0
+# A PUBLIC board clones anonymously: read follows the board's visibility exactly
+# as /rpc does, and running no verb it leaves no presence row (§11's invisible
+# write). `ls-remote` is the whole clone handshake minus the pack.
+refs=$(git ls-remote "$BASE/$BOARD/repo.git" 2>&1) || \
+  fail "git ls-remote $BASE/$BOARD/repo.git" "$(printf %s "$refs" | tr '\n' ' ' | head -c 300)"
+case $refs in
+  *refs/heads/*) pass "git ls-remote /$BOARD/repo.git  (anonymous)" \
+    "$(printf %s "$refs" | grep -c 'refs/') ref(s) advertised" ;;
+  *) fail "git ls-remote /$BOARD/repo.git" "no refs advertised: $(printf %s "$refs" | head -c 300)" ;;
+esac
+
+# An anonymous PUSH is refused, and the SHAPE of the refusal is the assertion,
+# not just the fact of it: git volunteers Basic only after a 401 bearing
+# WWW-Authenticate, so a 409 (which is what every other write door answers)
+# reads to git as "the URL is broken" and it never sends the credential it was
+# holding. Both halves are checked — the status and the header.
+recv="$BASE/$BOARD/repo.git/info/refs?service=git-receive-pack"
+got=$(curl -sS -m 15 -D - -o /dev/null "$recv" 2>/dev/null) || fail "GET receive-pack advert" "no answer"
+code=$(printf %s "$got" | sed -n '1s/[^ ]* \([0-9][0-9]*\).*/\1/p')
+[ "$code" = 401 ] || fail "GET /$BOARD/repo.git receive-pack (anonymous)" \
+  "HTTP $code — an anonymous push is a write and must be refused (§11)"
+case $got in
+  *[Ww][Ww][Ww]-[Aa]uthenticate*[Bb]asic*) pass "GET /$BOARD/repo.git receive-pack (anonymous)" \
+    "HTTP 401 + WWW-Authenticate: Basic — git will now offer the helper's token" ;;
+  *) fail "GET /$BOARD/repo.git receive-pack (anonymous)" \
+    "401 with no WWW-Authenticate: git would never send its credential" ;;
+esac
+
+# And a PRIVATE board is not clonable by a stranger either — the visibility rule
+# is one rule asked by one more door, so this must refuse exactly as /rpc did in
+# section (c), with the same 401 shape git understands.
+got=$(curl -sS -m 15 -D - -o /dev/null \
+  "$BASE/$PRIVATE/repo.git/info/refs?service=git-upload-pack" 2>/dev/null) \
+  || fail "GET /$PRIVATE/repo.git upload-pack" "no answer"
+code=$(printf %s "$got" | sed -n '1s/[^ ]* \([0-9][0-9]*\).*/\1/p')
+[ "$code" = 401 ] || fail "GET /$PRIVATE/repo.git upload-pack (anonymous)" \
+  "HTTP $code — a private board is not world-clonable"
+pass "GET /$PRIVATE/repo.git upload-pack (anonymous)" "HTTP 401"
+
+# ── (h) a LANDED card still renders its diff ─────────────────────────────────
+# Reported 2026-08-31 against the pull mirror, and the reason this chapter
+# exists: `tk-dfaff7`'s branch was pruned on the forge when its chapter landed,
+# so the board — whose git was a --mirror of the forge — lost the diff of work
+# that is intact in the trunk. The host holds the history now and refuses ref
+# deletions, so this URL must answer for the life of the board.
+head_ln "a card whose branch was pruned on the forge"
+body=$($C "$BASE/$BOARD/api/git/commit/$LANDED") || fail "GET git/commit/$LANDED" "no answer"
+case $body in
+  *'"patch"'*) pass "GET /$BOARD/api/git/commit/$LANDED" \
+    "a diff ($(printf %s "$body" | wc -c | tr -d ' ') bytes)" ;;
+  *) fail "GET git/commit/$LANDED" "no diff: $(printf %s "$body" | head -c 300)" ;;
 esac
 
 printf '\nall green — %s, board %s\n' "$HOST" "$BOARD"
