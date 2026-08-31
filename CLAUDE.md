@@ -228,6 +228,17 @@ what it exists to report, not a fault.
 - One card rebuilds the bundle at the end of a wave. N cards rebuilding it is
   N-1 conflicts by construction.
 
+**The hosted page is at the board's OWN address** — `https://<host>/<board>/`
+(and `/<board>`), its assets beside it, the machine doors under
+`/<board>/api/{rpc,git,feed}`. 0.5.0's spellings (`/<board>/ui/`,
+`/<board>/rpc`, `/<board>/git/…`, `/<board>/feed`) still answer and are a
+contract, not a legacy — ARCHITECTURE §16, "The board's own address IS the
+page". The page derives its base from its own location
+(`ui/src/client.ts::baseOf`) and hardcodes neither. `sh smoke.sh` re-derives all
+of it against the live host, plus the credential rule a browser exposed:
+**an `Authorization` header with no value is the ABSENCE of a credential, a
+header with a wrong value still refuses loudly** (`http/auth.py::token_in`).
+
 ## Never re-introduce
 
 Each has its line in ARCHITECTURE.md §11 saying what it cost and where it is

@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <title>taskops</title>
-    <!-- Relative, both of them: the page is served under /<board>/ui/, and the
-         same three files are also what `taskops ui` opens straight from disk. -->
+    <!-- Relative, both of them, and that is load-bearing: the page is served at
+         a board's OWN address (/<board>/ and /<board>), at 0.5.0's /<board>/ui/,
+         and straight off disk by `taskops ui` — one bundle, three mounts, so it
+         must never know which one it was loaded from. -->
     <link rel="stylesheet" href="./style.css" />
     <link
       rel="icon"
