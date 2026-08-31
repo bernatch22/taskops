@@ -35,7 +35,7 @@ import argparse
 from typing import Any
 from pathlib import Path
 
-from . import team, commands
+from . import team, commands, gitremote
 from .. import _wire, _clock, identity
 from .._json import as_object
 from ..board import find_root, read_config
@@ -63,7 +63,7 @@ def board(args: argparse.Namespace) -> int:
     host, _ = address(target)
     answer = call(host, "board.list", {}, signed_in(host, args))
     rows: list[dict[str, Any]] = [as_object(row) for row in answer.get("boards", [])]
-    print(f"{host} — {len(rows)} board(s), as {answer.get('role', '?')}")
+    print(f"{host} — {len(rows)} board(s), as {answer.get('role', '?')}{gitremote.shape(host)}")
     for row in rows:
         print(f"  {row['name']:<24} {row['cards']:>4} cards  seq {row['seq']:<6} {_ago(row)}")
     return 0

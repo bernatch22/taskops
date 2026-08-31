@@ -48,12 +48,32 @@ def board(data: dict[str, Any], now: float) -> str:
     hours = _obj(data.get("hours"))
     if hours:
         out += ["", "HOURS " + _hours(hours)]
+    out += _mirror(data, now)
     out += ["", pulse(data)]
     return "\n".join(out)
 
 
 
 # ── pieces ──────────────────────────────────────────────────────────────────
+
+
+def _mirror(data: dict[str, Any], now: float) -> list[str]:
+    """The outbound leg's last word — one line, and only when there is one.
+
+    §16 decided the mirror is best effort and that best effort may not be
+    silent, so the FAILURE reads as a failure on the screen the orchestrator
+    already opens every turn. A SUCCESS gets a line too, deliberately: with
+    only failures drawn, "nothing said" would mean both "up to date" and
+    "nobody has pushed since the key expired", and telling those apart is the
+    whole reason the fact is kept (`store/mirroring.py`).
+    """
+    fact = _obj(data.get("mirror"))
+    if not fact:
+        return []
+    when = ago(max(0.0, now - float(fact.get("at") or 0)))
+    if fact.get("ok"):
+        return ["", f"MIRROR {fact.get('forge')} — up to date, pushed {when}"]
+    return ["", f"MIRROR {fact.get('forge')} — FAILED {when}: {fact.get('detail')}"]
 
 
 def _header(data: dict[str, Any]) -> str:

@@ -54,6 +54,16 @@ def is_repo(repo: str) -> bool:
     return len(parts) == 2 and all(parts) and not any(ch.isspace() for ch in repo)
 
 
+def label(fact: dict[str, Any]) -> str:
+    """`host/owner/name` — the ONE spelling of a declared forge for a reader.
+
+    It is a key as well as a caption: `store/mirroring.py` rows the outbound
+    mirror's last word under it, so a board pointed at a new repo starts with
+    nothing said about it rather than inheriting the old one's report.
+    """
+    return f"{fact['host']}/{fact['repo']}"
+
+
 def declare(host: str, repo: str, need: str) -> dict[str, Any]:
     """A human's three words → the stored fact. Each refusal names the way out."""
     if host not in FORGES:

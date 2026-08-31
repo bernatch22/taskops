@@ -10,7 +10,7 @@ import json
 from typing import TYPE_CHECKING, Any, Callable, cast
 from http.server import BaseHTTPRequestHandler
 
-from . import rpc, feed, admin, login, static, gitdoor
+from . import rpc, feed, page, admin, login, static, gitdoor, gitpack
 from .. import _clock
 from .auth import Credential, token_in, anonymous
 from .mounts import NAME
@@ -41,6 +41,8 @@ class Handler(BaseHTTPRequestHandler):
         board, tail = split(self.path)
         if tail == "rpc":
             self._rpc(board)
+        elif tail.startswith("repo.git/git-"):
+            gitpack.serve(self, board, tail)  # the smart-HTTP exchange (push, fetch)
         elif tail == "invite/redeem":
             self._mint("redeem", board)
         elif board == "login" and not tail:
@@ -66,15 +68,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "seq": 0, "data": data})
         elif tail == "feed":
             self._feed(board)
+        elif tail == "repo.git/info/refs":
+            gitpack.advertise(self, board)  # git's first ask, clone and push alike
         elif tail.startswith("git/"):
             self._git(board, tail[4:])
         elif tail.startswith("ui"):
-            self._static(board, tail[2:])  # 0.5.0's address, kept — links were pasted
+            page.answer(self, board, tail[2:])  # 0.5.0's address, kept — links were pasted
         elif self.mounts.ui is None and NAME.match(board) and (not tail or static.asset(tail)):
             # the page at the board's OWN address; assets are a CLOSED set
-            self._static(board, tail)
-        elif (page := static.at_root(self.mounts.ui, self.path)) is not None:
-            self._send(200, *page)  # a WINDOW serves its page at the ROOT
+            page.answer(self, board, tail)
+        elif (found := static.at_root(self.mounts.ui, self.path)) is not None:
+            self._send(200, *found)  # a WINDOW serves its page at the ROOT
         else:
             self._fail(404, BadRequest(f"nothing at {self.path}"))
 
@@ -127,36 +131,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _diff(self, board: str, rest: str) -> dict[str, Any]:
         """A window answers from its own LOCAL clone; a serve-mode host from
-        the board's forge mirror — `repos.py` decides which, per board (§16)."""
+        the board's OWN repo.git — `repos.py` decides which, per board (§16,
+        "The host becomes the remote"; the pull mirror is retired)."""
         self.mounts.check(board)
         self._credential(board, "read")
-        repo, mirrored = self.mounts.repos.for_board(board)
-        return gitdoor.answer(repo, rest, self.path.partition("?")[2], mirrored=mirrored)
+        repo, hosted = self.mounts.repos.for_board(board)
+        return gitdoor.answer(repo, rest, self.path.partition("?")[2], hosted=hosted)
 
-    def _static(self, board: str, rest: str) -> None:
-        """The page — at the board's own root since tk-32d2ba, and still at
-        /ui/, the 0.5.0 address (kept: links were pasted). A WINDOW serves
-        its bundle to whoever reaches the port, unchanged. A serve-mode HOST
-        serves the SAME packaged bundle for a board
-        whose owner declared a forge (`repos.backed` — the fact, never a clone),
-        behind the credential /rpc asks for: public board, anonymous READ;
-        private board, the join refusal. The 410 comes BEFORE the credential on
-        purpose — it says nothing about the board a login would guard, and the
-        no-forge sentence predates keys on this door. A GET here runs no verb,
-        so an anonymous page load writes nothing — no presence row (§11)."""
-        if self.mounts.ui is not None:
-            self._send(*static.answer(self.mounts.ui, rest))
-            return
-        try:
-            self.mounts.check(board)
-            if not self.mounts.repos.backed(board):
-                self._send(*static.answer(None, rest))
-                return
-            self._credential(board, "read")
-        except TaskopsError as err:
-            self._fail(rpc.status_for(rpc.failure(err)), err)
-            return
-        self._send(*static.answer(static.PACKAGED, rest))
+    # `_static` moved whole to `page.py` when the git doors arrived — the budget
+    # forced a split and the page policy was the cohesive cut.
 
     # ── plumbing ────────────────────────────────────────────────────────────
 

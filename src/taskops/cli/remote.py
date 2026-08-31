@@ -2,6 +2,7 @@
 
     taskops remote add https://taskops.example.com     record it, like git's origin
     taskops remote                                     print what is recorded
+    taskops remote git [--add]                         the board's own git repository
 
 Git asks for neither a URL nor an identity file on every push, and the two
 reasons it does not are both copied here: the address is recorded per CLONE
@@ -27,6 +28,7 @@ already chosen.
 
 from __future__ import annotations
 
+import sys
 import argparse
 from pathlib import Path
 
@@ -57,8 +59,16 @@ ALREADY = (
 
 
 def remote(args: argparse.Namespace) -> int:
-    """`add` records the host; no argument prints it, `git remote -v` style."""
+    """`add` records the host; no argument prints it, `git remote -v` style.
+
+    `git` is the third action and it belongs here rather than on a command of its
+    own: recording where the board's git lives is the same act as recording where
+    the board lives (`cli/gitremote.py` argues the whole of it)."""
+    from . import gitremote
+
     root = find_root(Path.cwd())
+    if str(args.action) == "git":
+        return gitremote.wire(args, sys.executable)
     url, known = str(args.url), recorded_host()
     if str(args.action) != "add":
         print(f"origin  {known}" if known else NO_REMOTE)

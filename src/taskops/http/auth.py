@@ -8,6 +8,8 @@ that forgot its actor silently became the human who spawned it.
 
 from __future__ import annotations
 
+from base64 import b64decode
+
 from ..verbs import NO_KEY
 from .._errors import Refused
 from ..core.types import ANON, role_of
@@ -69,15 +71,35 @@ def token_in(header: str, path: str) -> str:
     carries any actual value — wrong, expired, or under a scheme this server
     never spoke — is a credential that WAS presented, and it refuses exactly as
     it always has. "Unparseable" is not "anonymous".
+
+    Basic is the SECOND scheme this extractor speaks, because git speaks no
+    other: the smart-HTTP door (`http/gitpack.py`) tells a git client to put
+    the session token in Basic's PASSWORD field (the username is decoration),
+    and unpacking it HERE — the one extractor — is what keeps that door on the
+    same `credentials.check` as every other, instead of a second credential
+    path. The same narrowness holds: a Basic header that does not decode, or
+    decodes to no password, WAS presented — it travels on as an unknown
+    credential and refuses loudly, never falls through to anonymous.
     """
     scheme, _, value = header.strip().partition(" ")
     token = value.strip() if scheme.lower() == "bearer" else header.strip()
+    if scheme.lower() == "basic":
+        token = _basic(value.strip()) or header.strip()
     if token:
         return token
     for part in path.partition("?")[2].split("&"):
         if part.startswith(("token=", "invite=")):
             return part.partition("=")[2]
     return ""
+
+
+def _basic(value: str) -> str:
+    """The password half of a Basic pair, or "" when there is none to take."""
+    try:
+        pair = b64decode(value, validate=True).decode()
+    except (ValueError, UnicodeDecodeError):
+        return ""
+    return pair.partition(":")[2].strip()
 
 
 def authorize(credential: Credential, actor: str) -> None:

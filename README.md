@@ -58,7 +58,9 @@ importable leaves commits un-stamped, silently.
 taskops init                              a local board in this repo
 taskops join [<name>] [--invite <id>]     join a board, install the hooks
 taskops remote add <url>                  the host this checkout operates, like git's origin
-taskops serve                             host boards — the page and /git open per declared forge
+taskops remote git [--add]                the board's OWN git repository: the address to push to,
+                                          printed to paste or wired here (never over your origin)
+taskops serve                             host boards — the page, /git and each board's own repo.git
 taskops server init                       bootstrap THIS host: its owner and their ssh key
 taskops board create|ls|push|pull|rm      the boards on a host
 taskops board visibility|forge            who may read one · which repo's team is enrolled
@@ -121,7 +123,9 @@ served at `/<its name>`:
 ├── mi-proyecto/              ← a board, served at https://host:8787/mi-proyecto
 │   ├── events.jsonl              THE TRUTH: append-only, this is the board
 │   ├── cache.sqlite              derived — delete it and it rebuilds
-│   └── live.sqlite               who holds which card right now
+│   ├── live.sqlite               who holds which card right now
+│   └── repo.git                  the board's own git — created by the first push,
+│                                 and it NEVER prunes a card branch
 └── otro-proyecto/            ← another board, same process, same port
     └── …
 ```
@@ -153,7 +157,70 @@ taskops board create [<name>]                      # defaults to the directory's
 taskops board push                                 # this repo's LOCAL board becomes that one
 taskops join <name>                                # or: a teammate connects to an existing one
 taskops board pull [<name>]                        # the reverse: it comes back down, verified by id
+taskops remote git --add                           # and point git at the board's own repo
 ```
+
+`taskops remote git` adds a remote called `taskops` — never `origin`, which
+is your own setup — plus a credential helper for that host. The push then
+authenticates with the ssh key you already have: git asks the helper
+(`taskops hook credential`), the helper mints a session from that key, and no
+token is written into `.git/config`. Run it with no `--add` to just print the
+address and the two lines to paste.
+
+### The host holds the git — GitHub is the copy
+
+```
+your worktree  ──git push──▶  the taskops HOST  ──best effort──▶  GitHub
+ (every commit, via the           <root>/<board>/repo.git         the declared forge,
+  post-commit hook)               THE history. Never prunes,      a projection nobody
+                                  never a force, never a          reads the board from
+                                  deletion.
+```
+
+The board's own git lives on the host at `https://<host>/<board>/repo.git`, and
+that is a real remote: `git clone`, `git fetch` and `git push` all speak to it
+(git smart-HTTP; the session token rides in HTTP Basic's password field, which
+is what the credential helper answers).
+
+* **A read follows the board's visibility.** A public board clones anonymously,
+  with no credential and leaving no trace; a private one clones with the key you
+  already joined with.
+* **A push is a write.** Only an enrolled principal may push — a `dev:` or an
+  `agent:`; an anonymous push is refused at the door with a `401` naming
+  `taskops join`.
+* **Nothing is ever erased there.** The receive door refuses a ref deletion and
+  a non-fast-forward push, and there is no flag that opens either. So a `tk-*`
+  branch is readable at its URL forever, including after its chapter lands and
+  the branch is pruned everywhere else — which is the whole reason the host
+  holds the history rather than mirroring somebody else's.
+* **A board with no declared forge gets all of the above.** Push, clone, the
+  hosted window's diffs, the permanence: none of it needs a forge. The only
+  thing it does not get is the outbound leg.
+
+**The outbound leg is the OWNER's, on the host, and it is opt-in.** A declared
+forge (`taskops board forge <owner>/<repo>`) says whose team the board enrols;
+mirroring the code onward is a second, separate act, because it hands the host
+write access to that repo. Two things, once, on the box:
+
+```sh
+# 1. mint a deploy key WITH WRITE on <owner>/<repo> (GitHub → Settings → Deploy
+#    keys) and install its private half where the host's user can read it
+# 2. on the host, name the forge as a remote inside the board's own git:
+git -C <root>/<board>/repo.git remote add forge git@github.com:<owner>/<name>.git
+```
+
+Those two are the last things anybody does on the box, and they are the owner's
+alone — nothing mints that key, discovers it, or asks a dev for it. A deploy key
+opens ONE repo, which is why it is not a token: revoke it on the forge and the
+leg is dead with the board untouched.
+
+Then every push that lands on the host is pushed onward on a background thread.
+It is **best effort and never a gate**: a GitHub that is down cannot fail your
+push. It is also never silent — the outcome of the last mirror push rides on the
+board payload and the dashboard draws it as one MIRROR line, success included,
+so "nothing said" can never mean both *up to date* and *the key expired a month
+ago*. A forge declared with no `forge` remote reads as a failure naming that
+exact command.
 
 ### A board's whole life, and what each step destroys
 
@@ -191,8 +258,9 @@ taskops invite <who> [--board <name>]
 taskops revoke --key SHA256:… | --invite <id>      # a GitHub-enrolled key too
 ```
 
-`board rm` **refuses** unless this checkout already holds that history, and names
-both ways out — take the history down first, or say out loud that you are
+`board rm` removes the board's whole directory on the host — its event log and
+its `repo.git` with it — so it **refuses** unless this checkout already holds
+that history, and names both ways out — take the history down first, or say out loud that you are
 destroying it. The judgement is the host's, against the board's real event ids:
 
 ```sh
@@ -373,9 +441,11 @@ to bytes that are not in history yet is a pointer to nothing.
 Then `taskops ui` lists it under the chapter's **Reports** tab and renders it
 full width, read out of **your own clone** at that sha — the local dashboard
 never asks the server for the bytes. A host running `taskops serve` answers
-`/git` too, from a bare read-only mirror of the board's DECLARED forge — the
-hosted window, for the reader with no clone. A board that never declared one
-refuses with a sentence naming `taskops board forge <owner>/<repo>`.
+`/git` too, from **the board's OWN git** (`<root>/<board>/repo.git`, the same
+history your `git push` landed there) — the hosted window, for the reader with
+no clone. No forge is involved: a board nobody has pushed to yet refuses with a
+sentence naming the two ways in, and one commit from a joined worktree ends
+that state.
 
 **The hosted page is at the board's OWN address.** `https://<host>/<board>/`
 IS the dashboard — not a sub-path under it — and the machine doors sit under a
@@ -385,7 +455,8 @@ prefix that can never collide with a page asset:
 https://<host>/<board>/            the page          (also /<board>, no slash)
 https://<host>/<board>/app.js      its assets        style.css, index.html
 https://<host>/<board>/api/rpc     the verbs         also /<board>/rpc
-https://<host>/<board>/api/git/…   diffs from the mirror   also /<board>/git/…
+https://<host>/<board>/api/git/…   diffs from repo.git     also /<board>/git/…
+https://<host>/<board>/repo.git    the board's own git — clone, fetch, push
 https://<host>/<board>/api/feed    the live feed     also /<board>/feed
 https://<host>/healthz             the host itself
 ```

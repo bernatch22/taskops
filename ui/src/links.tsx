@@ -306,6 +306,44 @@ export function fileRoute(rev: string, path: string): string {
   return `git/file/${encodeURIComponent(rev)}?path=${encodeURIComponent(path)}`;
 }
 
+/** The card's HEAD for a diff — the recorded sha when there is one, else the
+ *  branch name.
+ *
+ *  ── Why a sha at all, when the host keeps every branch forever ────────────
+ *
+ *  Because "forever" started on a date. The host holds the board's own git and
+ *  prunes nothing (ARCHITECTURE §16, "The host becomes the remote"), so a
+ *  branch name is a durable handle again — for every card pushed since. A card
+ *  worked BEFORE that, whose `tk-*` branch was pruned on the forge when its
+ *  chapter landed and never reached this host, has no branch anywhere; its
+ *  commits are in the trunk that was pushed, and a sha is the only name that
+ *  still finds them. That is the reported failure (tk-dfaff7), and it is
+ *  permanent history: no later push grows the branch back.
+ *
+ *  ── Why prefer the sha even when the branch exists ────────────────────────
+ *
+ *  A sha names the same bytes forever; a branch names whatever its tip is now.
+ *  For a card that is still being worked those are the same thing, and for a
+ *  card that CLOSED the sha is more honest — the diff a reader opens on a
+ *  landed card is the work that landed, not wherever a reused branch has since
+ *  moved to. And the sha is already on the payload (`CardPayload.commits`,
+ *  `verbs/_context.py::dossier` — a `commit` event's body per card, oldest
+ *  first, so the LAST is the newest): nothing is invented here and no event was
+ *  added for this.
+ *
+ *  It is the HEAD only. The base stays the milestone's branch, which the board
+ *  records as a name and nothing else — there is no recorded sha for "where the
+ *  chapter was", and a merge-base against the chapter's tip is what the compare
+ *  wants anyway. */
+export function cardHead(
+  commits: readonly { sha?: unknown }[] | null | undefined,
+  branch: string,
+): string {
+  const last = commits && commits.length > 0 ? commits[commits.length - 1] : null;
+  const sha = last && typeof last.sha === "string" ? last.sha : "";
+  return sha || branch;
+}
+
 /** The forge page for the same target — step THREE, in the same vocabulary as
  *  step two, so a caller never has to translate between them. */
 export function gitForge(repo: Repo | null | undefined, target: GitTarget): string | null {

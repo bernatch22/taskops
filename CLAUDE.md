@@ -110,6 +110,46 @@ payload, derived per read exactly as `visibility` is, so a reader finds the door
 instead of bumping into it. **A board with no forge sends no key at all** —
 never `null`.
 
+**The HOST holds the git; GitHub is the copy** (2026-08-31, ARCHITECTURE §16
+"The host becomes the remote", which REVERSES the one-day-old pull mirror — read
+that section before touching any of it). One hub, one direction per leg:
+worktree → host → forge.
+
+```
+your worktree ──push──▶ <root>/<board>/repo.git ──best effort──▶ the declared forge
+```
+
+- The door is git smart-HTTP at `/<board>/repo.git/…` (`http/gitpack.py`), spoken
+  by git's own plumbing through the ONE subprocess module. A session token rides
+  in HTTP Basic's password field; a refusal there is a **401 with
+  `WWW-Authenticate`**, not `/rpc`'s 409, because git volunteers Basic only after
+  one.
+- A READ follows the board's visibility (public clones anonymously, and leaves no
+  `presence` row); a PUSH is a write, so only an enrolled principal may make one.
+- **The host never prunes and takes no force**: `receive.denyDeletes` /
+  `denyNonFastForwards` in the repo's own config, and no flag opens either. A
+  card branch is readable at its URL after the forge pruned it — that permanence
+  IS the chapter.
+- The bare repo is created on the first push and a legacy `mirror.git` is
+  MIGRATED, not promoted (`gitwork/bare.py::adopt`; `gitwork/mirror.py` is
+  deleted). `http/repos.py` is the one read path allowed to write, argued there.
+- The outbound leg is `gitwork/onward.py`, started by the receive door once git's
+  exit code says the push landed, on a background thread: **best effort, never a
+  gate, never silent** — the outcome is a `live.sqlite` row (`store/mirroring.py`)
+  riding on the board payload as `mirror`, drawn as one MIRROR line. Its
+  credential is a WRITE deploy key the OWNER installs on the host plus a remote
+  named `forge` inside `repo.git`, added by hand (§19.2). Still not a token.
+- **A board with no forge gets everything except the outbound leg** — push,
+  clone, the hosted window's diffs, the permanence all stand on `repo.git`
+  alone — so `NO_FORGE` retired into `gitdoor.NO_REPO` / `static.NO_UI`, which
+  name a board nobody has pushed to yet, never a missing forge.
+- The DEV's side is `taskops remote git [--add]` (`cli/gitremote.py`): it writes
+  a remote named `taskops` and **refuses `--name origin` outright**, and the
+  credential is a HELPER (`taskops hook credential`), never a URL — `git remote
+  add` persists its URL in `.git/config` and a session expires within the hour.
+  The address is not a board-payload field: the server cannot know its own public
+  address, so it is (the host you asked) + `/<board>/repo.git`, derived client-side.
+
 ## Layers — imports only point DOWN
 
 ```
@@ -150,6 +190,8 @@ a *library* users must not import, and taskops has no such half.
 <board>/events.jsonl   THE TRUTH — append + fsync BEFORE the cache
 <board>/cache.sqlite   derived, disposable (delete it, it rebuilds)
 <board>/live.sqlite    leases + presence — separate file ON PURPOSE
+<board>/repo.git       the board's OWN git, on the HOST — created by the first
+                       push, never pruned, never force-pushed. Truth, not a cache
 <root>/server.sqlite   the HOST: principals + pubkeys
 <root>/allowed_signers DERIVED from it, whole, on every change
 ```
@@ -160,16 +202,19 @@ releases. A board is created by an explicit act and never by being asked for.
 
 ## The CLI surface — it connects, it never manages
 
-Eleven top-level commands, and `board` is the only one with actions of its own.
-Moving a card from the terminal does not exist: that is MCP. Re-derive both
-lists rather than trusting this paragraph — `--help` is the source:
+Eleven top-level commands; two of them — `board` and `remote` — have actions of
+their own. Moving a card from the terminal does not exist: that is MCP.
+Re-derive every list rather than trusting this paragraph — `--help` is the source:
 
 ```sh
 uv run python -m taskops.cli --help | sed -n '/^usage/,/^$/p'   # the eleven
 uv run python -m taskops.cli board --help                       # its actions
+uv run python -m taskops.cli remote --help                      # add · git
 ```
 
-`board` today: `create · ls · push · pull · rm · visibility · forge`. The four that move
+`board` today: `create · ls · push · pull · rm · visibility · forge`; `remote`:
+`add` (the host this checkout operates) and `git` (the board's own `repo.git`,
+printed or `--add`ed as a remote named `taskops`). The four that move
 a whole history are one lifecycle, and each says what it destroys:
 
 ```
@@ -230,20 +275,25 @@ what it exists to report, not a fault.
 
 **The hosted page is at the board's OWN address** — `https://<host>/<board>/`
 (and `/<board>`), its assets beside it, the machine doors under
-`/<board>/api/{rpc,git,feed}`. 0.5.0's spellings (`/<board>/ui/`,
+`/<board>/api/{rpc,git,feed}` — and the board's git is its own first segment,
+`/<board>/repo.git/…`, which can collide with neither (the `api/` strip never
+touches it, and `.git` is not in `static.py`'s asset `TYPES`). Its diffs are read
+from that repo, never from a forge. 0.5.0's spellings (`/<board>/ui/`,
 `/<board>/rpc`, `/<board>/git/…`, `/<board>/feed`) still answer and are a
 contract, not a legacy — ARCHITECTURE §16, "The board's own address IS the
 page". The page derives its base from its own location
 (`ui/src/client.ts::baseOf`) and hardcodes neither. `sh smoke.sh` re-derives all
 of it against the live host, plus the credential rule a browser exposed:
 **an `Authorization` header with no value is the ABSENCE of a credential, a
-header with a wrong value still refuses loudly** (`http/auth.py::token_in`).
+header with a wrong value still refuses loudly** (`http/auth.py::token_in`) —
+and the git doors, whose anonymous push must come back `401` +
+`WWW-Authenticate` rather than a 409.
 
 ## Never re-introduce
 
 Each has its line in ARCHITECTURE.md §11 saying what it cost and where it is
 enforced: a reviewer ROLE, a stored review STATUS, or automatic reviewer
-assignment · `land` or automatic merges to the trunk · a SECOND trunk (2026-08-10: `main` and `master` both existed, `trees.base_ref` cut every chapter from `origin/main`, and a one-sided push refspec was quietly landing card merges there — three facts that only became a bug together) · git replication between clones
+assignment · `land` or automatic merges to the trunk · a SECOND trunk (2026-08-10: `main` and `master` both existed, `trees.base_ref` cut every chapter from `origin/main`, and a one-sided push refspec was quietly landing card merges there — three facts that only became a bug together) · git replication BETWEEN CLONES (the host-as-remote hub is not that: one direction per leg, and the host never pulls git from the forge)
 · Claude hooks **that decide or store** · a stored `doing` · a slug in a branch
 name · a `recover` · a mark-as-read/ack verb · per-request SIGNING · hand-rolled
 crypto or a pip crypto dependency · a `--force` on `board push` **or on `board

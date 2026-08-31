@@ -9,10 +9,13 @@ belong to somebody else's card, and until you fetch, "not here yet" is simply
 the truth about your disk. Naming the exact command is this codebase's habit —
 every refusal names the call that works — and it is also the reason nothing
 fetches on a WINDOW's behalf: a background `git fetch` inside a read-only door
-would move a branch under a worktree somebody is sitting in. A MIRROR is the
-host's own derived copy with nobody sitting in it, so there — and only there —
-a missing ref buys exactly one bounded fetch before the stale sentence
-(`gitwork/mirror.py::refresh_if_missing`, §16's promise).
+would move a branch under a worktree somebody is sitting in. The MIRROR used to
+be the exception — the host's own derived copy of the forge, with nobody sitting
+in it, where a missing ref bought exactly one bounded fetch. That fetch is GONE
+with the mirror (§16, "The host becomes the remote", and `http/repos.py` argues
+the retirement): the host now holds the board's OWN repository, which is the
+source, and a source has nowhere to fetch from. So nothing fetches for anybody,
+and this module only chooses words.
 
 **A refusal has an AUDIENCE, and 0.5.1 shipped one sentence to two of them**
 (reported by Berna 2026-08-31, against the live hosted window). `STALE` below
@@ -22,20 +25,17 @@ exactly right. The hosted window served those same words to a reader with NO
 clone, and every clause inverted: they had nothing to fetch into, they could
 not run the command, and the host HAD fetched (the one bounded fetch above).
 The same words can be true for one reader and false in every clause for
-another, so the vocabulary splits by audience while the module stays one:
-`MIRRORED` says what is true on a host — this host mirrors the declared forge,
-the ref is not there, and a pruned card branch is normal, not a fault, because
-its commits landed on the trunk and the sha still names them. The audience is
-never guessed: `mirrored` already travels into the door (`http/repos.py` →
-`gitdoor.answer`), carrying the forge label when the repo is a mirror and ""
-when it is a window's clone — one traveller, both facts.
+another, so the vocabulary splits by audience while the module stays one, and
+the split OUTLIVED the mirror that prompted it. `HOSTED` is the host's half,
+rewritten for what a host now is: it holds the board's own repository and
+prunes NOTHING, so a ref missing here was never pushed here — which is a
+different fact from the mirror's "the forge pruned it", and needs different
+words. The audience is never guessed: `hosted` travels into the door
+(`http/repos.py` → `gitdoor.answer`) as the one fact left to carry, True for
+the host's own repo and False for a window's clone.
 """
 
 from __future__ import annotations
-
-from pathlib import Path
-
-from ..gitwork import mirror
 
 STALE = (
     "{refs} not in your clone yet — `{fetch}` brings {them}. The board is shared and "
@@ -46,49 +46,43 @@ STALE = (
 Pinned byte-for-byte in tests/test_topology.py: these words are right for
 that reader and must not drift toward the host's."""
 
-MIRRORED = (
-    "{refs} not on {forge}, the one source this host mirrors — it fetched once "
-    "just now to be sure. A card's branch is pruned when its chapter lands, so "
-    "a landed card's branch being gone is normal, not a fault: the commits "
-    "survive on the trunk, and a sha still names {them} there. "
-    "https://{forge} holds the history this mirror reflects."
+HOSTED = (
+    "{refs} not in this board's own repository on this host. Nothing was "
+    "pruned to make that true — this host keeps every branch pushed to it "
+    "forever — so {them} was never pushed here: a card worked before this host "
+    "became the board's remote, or a worktree whose commits have not left it. "
+    "A commit reaches this repository the moment it is made in a worktree "
+    "joined to the board; the declared forge is a copy of what is here, never "
+    "the other way round, so there is nowhere else this pane could look."
 )
 """The HOST's words — a reader with no clone, who can run nothing. No command
-is named because there is none they could run; the forge is named because it
-is the one place the history keeps living."""
+is named because there is none they could run, and no forge is named because
+the forge is no longer a source: under the reversal it is a projection of this
+repository, so "not here" is not "look over there". What replaced the mirror's
+"a pruned branch is normal" is the stronger fact — this host prunes nothing —
+and therefore a different diagnosis: the commits never arrived."""
 
 SHA = "0123456789abcdef"
 
 
-def refreshed(repo: Path, mirrored: str, refs: list[str]) -> bool:
-    """True when a fetch may have brought the missing refs — retry the read.
-
-    Only the FIRST missing ref pays: `refresh_if_missing` runs at most one
-    fetch, and a mirror's fetch brings every ref at once, so the caller's
-    retry covers the rest. `mirrored` "" is the window's clone and answers
-    False without touching the network, which is the §16 sentence above."""
-    if not mirrored or not refs:
-        return False
-    return mirror.refresh_if_missing(repo, refs[0])
-
-
-def sentence(*refs: str, mirrored: str = "") -> str:
+def sentence(*refs: str, hosted: bool = False) -> str:
     """Which refs are missing — in the asker's own vocabulary.
 
-    `mirrored` is the forge label ("host/owner/repo") when the repo is the
-    board's mirror, "" when it is a window's clone: the same value that
-    licensed the one fetch chooses the words, so the two facts cannot drift.
+    `hosted` is True when the repo is the board's own, on a serve-mode host,
+    and False for a window's clone. It is the ONE fact the door carries now
+    that the mirror's fetch licence is gone, and it decides only this: which
+    reader is being spoken to.
 
     For the window, a sha is asked for WITHOUT a refspec — `git fetch origin
     <40 hex>` is refused by most servers unless they allow it — while a branch
     is named, so the reader can paste the line and get exactly what the pane
-    wanted. The mirror's sentence names no command at all."""
+    wanted. The host's sentence names no command at all."""
     names = [ref for ref in refs if ref] or ["that ref"]
     many = len(names) > 1
     listed = f"{' and '.join(names)} {'are' if many else 'is'}"
     them = "them" if many else "it"
-    if mirrored:
-        return MIRRORED.format(refs=listed, forge=mirrored, them=them)
+    if hosted:
+        return HOSTED.format(refs=listed, them=them)
     branches = [ref for ref in names if not _looks_like_a_sha(ref)]
     return STALE.format(
         refs=listed,

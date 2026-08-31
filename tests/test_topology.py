@@ -7,10 +7,12 @@ days, all invisible to tests that used a single store. So this file never uses
 
 from __future__ import annotations
 
+import os
 import json
 import socket
 import argparse
 import threading
+import subprocess
 from base64 import b64encode
 from typing import Any, BinaryIO, Iterator
 from hashlib import sha256
@@ -24,6 +26,7 @@ import taskops
 from taskops import _clock
 from taskops.http import feed
 from taskops.board import RemoteBoard
+from taskops.store import mirroring
 from tests.conftest import T0
 from taskops._errors import Refused, NotFound, BadRequest, Unreachable, TaskopsError
 from taskops._locate import read_config
@@ -1790,13 +1793,14 @@ def test_the_websocket_upgrade_is_a_real_handshake(server: BoardServer) -> None:
 def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
     server: BoardServer,
 ) -> None:
-    """`taskops serve` with a board that declares NO forge: its /ui/ is ONE
+    """`taskops serve` with a board whose code is not here: its /ui/ is ONE
     sentence at 410. (The wording grew with §16's hosted window — tk-d0b464 —
-    and now names BOTH ways out, `taskops ui` and `taskops board forge`; what
-    this test PINS — a plain-text 410, one human sentence, no page — was the
-    contract all along and is unchanged. The old "never coming back" clause
-    pinned the pre-mirror implementation, not the contract: coming back was
-    always the owner's move, and now there is one.)"""
+    and moved again with its reversal — tk-c5aed2 — so the two ways out are now
+    `taskops ui` and a push of the board's code; what this test PINS — a
+    plain-text 410, one human sentence, no page — was the contract all along and
+    is unchanged. The old "never coming back" clause pinned the pre-mirror
+    implementation, not the contract: coming back is a move somebody makes, and
+    it is now the everyday one.)"""
     assert server.mounts.ui is None and server.mounts.repo is None
     with pytest.raises(HTTPError) as caught:
         urlopen(f"{url_of(server)}/ui/", timeout=5)
@@ -1804,8 +1808,7 @@ def test_a_board_host_serves_no_dashboard_and_names_the_real_window(
     body = answer.read().decode()
     assert answer.code == 410
     assert answer.headers["Content-Type"].startswith("text/plain")
-    assert "taskops ui" in body
-    assert "taskops board forge <owner>/<repo>" in body
+    assert "taskops ui" in body and "push this board's code to" in body
     # the sentence, and NOT the bundle: no page, no script, no bundle marker.
     assert "<html" not in body.lower() and "<script" not in body.lower()
     assert len(body) < 400
@@ -1893,17 +1896,19 @@ def test_a_host_with_no_repo_mounts_no_git_and_says_which_case_it_is(
     server: BoardServer,
 ) -> None:
     """`taskops serve` sits in a boards directory. It refuses and NAMES the
-    door — since §16's hosted window, that door is the board's own move:
-    `taskops board forge <owner>/<repo>`, whose mirror is what a serve-mode
-    host may read. (The old wording named `taskops ui`; what this test PINS —
-    a 404 that says which case it is — is unchanged, the words followed the
-    amended NO_REPO meaning.) The switch is still a decided fact, per board."""
+    moves that open it — which have changed twice with the source and are now
+    the reversal's own: push the board's code here, or run `taskops ui` in a
+    checkout. What this test has PINNED throughout is a 404 that says which
+    case it is; `taskops board forge` is no longer one of the answers, because
+    the forge is a projection of this host's git and opens no door (tk-c5aed2).
+    The switch is still a decided fact, per board."""
     assert server.mounts.repo is None
     status, body = _get(f"{url_of(server)}/git/commit/HEAD", _token(server, BERNA))
     assert status == 404 and body["ok"] is False
     assert body["error"]["code"] == "not_found"
     assert "not a repository" in body["error"]["message"]
-    assert "taskops board forge <owner>/<repo>" in body["error"]["message"]
+    assert "taskops ui" in body["error"]["message"]
+    assert "taskops board forge" not in body["error"]["message"]
 
 
 def test_a_repo_host_answers_a_commit_against_its_first_parent(
@@ -1960,45 +1965,39 @@ def test_the_git_door_is_the_same_token_door_as_rpc(repo_server: BoardServer) ->
     assert status in (401, 403, 409)
 
 
-# ── the MIRROR: a serve-mode host answering /git from the declared forge ────
+# ── the board's OWN repo answering /git on a serve-mode host ───────────────
 #
-# §16, "The hosted window": a board host holds no checkout, but a board whose
-# owner declared a forge may be answered from `<root>/<board>/mirror.git` — a
-# bare, read-only clone of that forge. No network in these tests: the mirror
-# is pre-cloned from a LOCAL fixture repo through the same `url=` override an
-# owner's ssh deploy-key remote uses (`gitwork/mirror.py::ensure` returns an
-# existing mirror untouched, which is exactly how that override survives).
+# §16, "The host becomes the remote": a board host holds no checkout, and it no
+# longer holds a mirror of the forge either — it holds `<root>/<board>/repo.git`,
+# the board's own git, created by the first push and never pruned. These used to
+# pin the pull mirror; they pin the same DOORS against the new source, and the
+# fetch-on-a-missing-ref tests went with the mechanism they described (the source
+# has nowhere to fetch from). No network anywhere: the history is pushed into
+# `repo.git` from a local fixture repo.
 
 
-def _declare_forge(httpd: BoardServer) -> None:
-    client(httpd, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+def _own_git(httpd: BoardServer, tmp_path: Path) -> Path:
+    """Give the board its own `repo.git`, populated, and answer with the fixture
+    repo the history came from — the same thing a real push leaves behind."""
+    from taskops.gitwork import bare
+    from tests.test_mirror import run, forge_repo
+
+    src = forge_repo(tmp_path)
+    repo = bare.ensure(httpd.mounts.root / BOARD)
+    run.must("push", str(repo), "main:refs/heads/main", cwd=src)
+    return src
 
 
-def _mirrored(httpd: BoardServer, tmp_path: Path) -> Path:
-    """Declare the forge and pre-clone the board's mirror from a local fixture
-    forge — the owner's move for a private repo, and the test's for no network."""
-    from taskops.gitwork import mirror as mirrors
-    from tests.test_mirror import forge_repo
-
-    forge = forge_repo(tmp_path)
-    _declare_forge(httpd)
-    made = mirrors.ensure(httpd.mounts.root / BOARD, None, url=str(forge))
-    assert made is not None
-    return forge
-
-
-def test_a_serve_host_with_a_forge_board_answers_git_from_the_mirror(
+def test_a_serve_host_answers_git_from_the_boards_own_repo(
     server: BoardServer, tmp_path: Path
 ) -> None:
-    """Acceptance 1: same doors, same payload shape — the reader cannot tell a
-    mirror from a checkout, and the resolved repo is cached per board."""
-    _mirrored(server, tmp_path / "fixture")
-    status, body = _get(f"{url_of(server)}/git/commit/HEAD", _token(server, BERNA))
+    """Acceptance 1: same doors, same payload shape — the reader cannot tell the
+    board's own repo from a checkout, and no forge is declared anywhere here."""
+    _own_git(server, tmp_path / "fixture")
+    status, body = _get(f"{url_of(server)}/git/commit/main", _token(server, BERNA))
     assert status == 200 and body["ok"] is True
     assert body["data"]["stat"] == {"README.md": [1, 0]}
-    # resolved once and kept, the way stores are — never re-sniffed per request
-    assert server.mounts.repos._mirrors[BOARD] == server.mounts.root / BOARD / "mirror.git"
-    # the compare door reads from the same mirror, same vocabulary
+    # the compare door reads the same repo, same vocabulary
     status, body = _get(
         f"{url_of(server)}/git/compare/main...main", _token(server, BERNA)
     )
@@ -2006,72 +2005,60 @@ def test_a_serve_host_with_a_forge_board_answers_git_from_the_mirror(
     assert set(body["data"]) == {"base", "head", "stat", "patch", "truncated", "cap"}
 
 
-def test_a_report_renders_from_the_mirror_through_the_file_door(
+def test_a_retired_mirror_is_migrated_and_answers_through_the_same_door(
     server: BoardServer, tmp_path: Path
 ) -> None:
-    """Acceptance 2 (milestone): report bytes come through the existing
-    gitdoor file route, read from the mirror instead of a reader's clone."""
+    """§16's on-disk migration, through the door that triggers it: a board whose
+    only git is §16-first-amendment's `mirror.git` answers /git from a seeded
+    `repo.git`, and the mirror is gone afterwards — one source, not two."""
+    from tests.test_mirror import forge_repo, legacy_mirror
+
+    forge = forge_repo(tmp_path / "fixture")
+    legacy = legacy_mirror(server.mounts.root / BOARD, forge)
+    assert legacy.exists()
+    status, body = _get(f"{url_of(server)}/git/commit/main", _token(server, BERNA))
+    assert status == 200 and body["data"]["stat"] == {"README.md": [1, 0]}
+    assert (server.mounts.root / BOARD / "repo.git" / "HEAD").is_file()
+    assert not legacy.exists()
+
+
+def test_a_report_renders_from_the_boards_own_repo_through_the_file_door(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Acceptance 2 (milestone): report bytes come through the existing gitdoor
+    file route, read from the board's own repository instead of a clone."""
     from urllib.parse import quote
 
     from tests.test_mirror import run
 
-    forge = _mirrored(server, tmp_path / "fixture")
-    report = forge / ".taskops" / "reports" / "note.md"
+    src = _own_git(server, tmp_path / "fixture")
+    report = src / ".taskops" / "reports" / "note.md"
     report.parent.mkdir(parents=True)
-    report.write_text("# hello from the forge\n", encoding="utf-8")
-    run.must("add", "-A", cwd=forge)
-    run.must("commit", "-q", "-m", "a report", cwd=forge)
-    sha = run.must("rev-parse", "HEAD", cwd=forge)
+    report.write_text("# hello from the board's own git\n", encoding="utf-8")
+    run.must("add", "-A", cwd=src)
+    run.must("commit", "-q", "-m", "a report", cwd=src)
+    sha = run.must("rev-parse", "HEAD", cwd=src)
+    run.must("push", str(server.mounts.root / BOARD / "repo.git"), "main", cwd=src)
     path = quote(".taskops/reports/note.md", safe="")
-    # the commit landed on the forge AFTER the clone, so serving it also walks
-    # the file door through its one on-demand refresh — the mirror catches up
     status, body = _get(f"{url_of(server)}/git/file/{sha}?path={path}", _token(server, BERNA))
     assert status == 200
-    assert body["data"]["text"].rstrip("\n") == "# hello from the forge"
+    assert body["data"]["text"].rstrip("\n") == "# hello from the board's own git"
     assert body["data"]["content_type"] == "text/markdown"
 
 
-def test_a_missing_ref_on_a_mirror_buys_exactly_one_fetch_then_answers(
-    server: BoardServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_a_missing_ref_is_answered_at_once_with_no_fetch_anywhere(
+    server: BoardServer, tmp_path: Path
 ) -> None:
-    """Acceptance 3 (milestone): one bounded on-demand fetch before stale —
-    and a ref already present costs no network at all."""
-    from taskops.gitwork import mirror as mirrors
-    from tests.test_mirror import commit
+    """What retired with the mirror: the ONE bounded on-demand fetch. The board's
+    own repository IS the source, so there is nowhere to fetch from — a ref that
+    is absent is answered absent, and `gitwork/mirror.py` is not importable."""
+    import importlib
 
-    forge = _mirrored(server, tmp_path / "fixture")
-    sha = commit(forge, "later.txt")  # exists on the forge, not in the mirror yet
-    fetches: list[Path] = []
-    real = mirrors.fetch
-
-    def counted(mirror_path: Path) -> bool:
-        fetches.append(mirror_path)
-        return real(mirror_path)
-
-    monkeypatch.setattr(mirrors, "fetch", counted)
-    status, body = _get(f"{url_of(server)}/git/commit/{sha}", _token(server, BERNA))
-    assert status == 200 and len(fetches) == 1
-    assert body["data"]["stat"] == {"later.txt": [1, 0]}
-    # now present: the same ask touches the network zero more times
-    status, _ = _get(f"{url_of(server)}/git/commit/{sha}", _token(server, BERNA))
-    assert status == 200 and len(fetches) == 1
-
-
-def test_a_windows_own_clone_never_fetches_on_a_missing_ref(
-    repo_server: BoardServer, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """§16's local sentence still holds: "Nothing is fetched for you" — a
-    background fetch would move a branch under an inhabited worktree."""
-    from taskops.gitwork import mirror as mirrors
-
-    fetches: list[Path] = []
-    monkeypatch.setattr(mirrors, "fetch", lambda path: fetches.append(path) or False)
-    status, body = _get(
-        f"{url_of(repo_server)}/git/commit/deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-        _token(repo_server, BERNA),
-    )
-    assert status == 404 and "not in your clone yet" in body["error"]["message"]
-    assert fetches == []
+    _own_git(server, tmp_path / "fixture")
+    status, _ = _get(f"{url_of(server)}/git/commit/tk-never", _token(server, BERNA))
+    assert status == 404
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("taskops.gitwork.mirror")
 
 
 def test_the_windows_missing_ref_sentence_is_pinned_byte_for_byte(
@@ -2080,7 +2067,8 @@ def test_the_windows_missing_ref_sentence_is_pinned_byte_for_byte(
     """The WINDOW's words, whole — right for a reader who has a clone and may
     fetch into it. tk-9cde88 split the vocabulary by audience and this pin is
     the local half of the contract: the host got its own sentence, and these
-    bytes did not move an inch in the split."""
+    bytes did not move an inch in the split — nor in the reversal that rewrote
+    the host's half (tk-c5aed2)."""
     status, body = _get(
         f"{url_of(repo_server)}/git/commit/tk-dfaff7", _token(repo_server, BERNA)
     )
@@ -2093,34 +2081,38 @@ def test_the_windows_missing_ref_sentence_is_pinned_byte_for_byte(
     )
 
 
-def test_a_mirrored_hosts_missing_ref_sentence_speaks_to_a_reader_with_no_clone(
+def test_the_hosts_missing_ref_sentence_says_what_a_host_that_prunes_nothing_can(
     server: BoardServer, tmp_path: Path
 ) -> None:
-    """tk-9cde88: 0.5.1 served the window's sentence from the hosted board to
-    a reader with NO clone — "your clone", "git fetch", "nothing is fetched
-    for you", every clause false on a host that had in fact fetched. The
-    host's refusal names the forge it mirrors, says a pruned card branch is
-    normal, and tells the reader to run nothing."""
-    _mirrored(server, tmp_path / "fixture")
+    """The AUDIENCE split survives the reversal; the host's half is rewritten.
+    Under the mirror it said "not on the forge, which prunes card branches — the
+    commits survive on the trunk". A host holding the board's OWN git cannot say
+    that: it prunes nothing, so a ref absent here was never pushed here, and the
+    forge is a copy of this repo rather than somewhere else to look. Still no
+    command and still no "your clone" — that reader has none."""
+    _own_git(server, tmp_path / "fixture")
     status, body = _get(
         f"{url_of(server)}/git/commit/tk-dfaff7", _token(server, BERNA)
     )
     assert status == 404
     message = body["error"]["message"]
     assert "your clone" not in message and "git fetch" not in message
-    assert "github.com/bernatch22/taskops" in message  # the declared forge, named
-    assert "pruned" in message and "normal, not a fault" in message
+    assert "this board's own repository on this host" in message
+    assert "Nothing was pruned" in message and "never pushed here" in message
 
 
-# ── the HOSTED window: /ui on a serve-mode host, per forge and visibility ───
+# ── the HOSTED window: /ui on a serve-mode host, per repo and visibility ───
 
 
-def test_the_forge_fact_alone_opens_the_hosted_window(server: BoardServer) -> None:
+def test_the_boards_own_git_opens_the_hosted_window(
+    server: BoardServer, tmp_path: Path
+) -> None:
     """Card acceptance 1: /<board>/ui/ serves the packaged bundle on a
-    serve-mode host once the owner declares a forge — the FACT opens the page,
-    no mirror is cloned for it (the page's own /git calls resolve one lazily
-    when a diff is actually read)."""
-    _declare_forge(server)
+    serve-mode host once the board's code is here. The GATE moved with the
+    source (tk-c5aed2): it was the declared forge, whose mirror was the host's
+    only git, and it is now the board's own `repo.git` — a dashboard shows
+    diffs, and only that repo has any."""
+    _own_git(server, tmp_path / "fixture")
     token = _token(server, BERNA)
     with urlopen(f"{url_of(server)}/ui/?token={token}", timeout=5) as response:
         assert response.headers["Content-Type"].startswith("text/html")
@@ -2128,16 +2120,15 @@ def test_the_forge_fact_alone_opens_the_hosted_window(server: BoardServer) -> No
     with urlopen(f"{url_of(server)}/ui/app.js?token={token}", timeout=5) as response:
         assert response.headers["Content-Type"].startswith("text/javascript")
         assert response.read()
-    assert server.mounts.repos._mirrors == {}  # the page cost no clone
 
 
 def test_a_private_hosted_window_refuses_anonymous_exactly_as_rpc_does(
-    server: BoardServer,
+    server: BoardServer, tmp_path: Path
 ) -> None:
     """Same wall, same words: no second credential system on the page door. An
-    anonymous GET on a private forge-backed board gets /rpc's join refusal —
-    the JSON envelope, not the 410 sentence and not the bundle."""
-    _declare_forge(server)
+    anonymous GET on a private board whose git is here gets /rpc's join refusal
+    — the JSON envelope, not the 410 sentence and not the bundle."""
+    _own_git(server, tmp_path / "fixture")
     with pytest.raises(HTTPError) as caught:
         urlopen(f"{url_of(server)}/ui/", timeout=5)
     with caught.value as err:
@@ -2151,16 +2142,21 @@ def test_a_private_hosted_window_refuses_anonymous_exactly_as_rpc_does(
 
 
 def test_a_public_hosted_window_serves_anonymous_and_writes_not_one_byte(
-    server: BoardServer, owner: str
+    server: BoardServer, owner: str, tmp_path: Path
 ) -> None:
     """Card acceptance 2, §11's harshest rule on the newest door: a public
     board serves the page to a stranger, and the read leaves NO write of any
     kind — presence included, asserted against the store itself AND hash for
     hash, twice, because a second load is a second chance to write."""
-    _declare_forge(server)
+    _own_git(server, tmp_path / "fixture")
     publish(server, owner)
-    before = _fingerprint(server)
+    # `_presence` FIRST, then the baseline: reading the board's live.sqlite from
+    # this process attaches a second connection, and WAL's -shm is the shared
+    # index every attach rewrites. Hashing before that attach and again after it
+    # compares two different sets of readers, not two states of the board — the
+    # write this test hunts is a presence ROW, asserted twice below.
     seen = dict(_presence(server))
+    before = _fingerprint(server)
     for _ in range(2):
         with urlopen(f"{url_of(server)}/ui/", timeout=5) as response:
             assert response.status == 200
@@ -2174,13 +2170,14 @@ def test_a_public_hosted_window_serves_anonymous_and_writes_not_one_byte(
 # ── the board's OWN address is the page; the machine doors under /api ──────
 
 
-def test_the_boards_own_address_is_the_page(server: BoardServer) -> None:
+def test_the_boards_own_address_is_the_page(
+    server: BoardServer, tmp_path: Path
+) -> None:
     """tk-32d2ba (a): GET /<board> and /<board>/ serve the dashboard on a
-    serve-mode host for a forge-backed board, behind exactly the credential
+    serve-mode host for a board whose git is here, behind exactly the credential
     /rpc asks for — and the page's RELATIVE links resolve from that address:
-    `./style.css` and `./app.js` arrive as /<board>/style.css, /<board>/app.js.
-    The page still costs no clone: the forge FACT opens it, never the mirror."""
-    _declare_forge(server)
+    `./style.css` and `./app.js` arrive as /<board>/style.css, /<board>/app.js."""
+    _own_git(server, tmp_path / "fixture")
     token = _token(server, BERNA)
     for suffix in ("", "/"):
         with urlopen(f"{url_of(server)}{suffix}?token={token}", timeout=5) as response:
@@ -2192,14 +2189,15 @@ def test_the_boards_own_address_is_the_page(server: BoardServer) -> None:
     with urlopen(f"{url_of(server)}/style.css?token={token}", timeout=5) as response:
         assert response.headers["Content-Type"].startswith("text/css")
         assert response.read()
-    assert server.mounts.repos._mirrors == {}  # the page cost no clone
 
 
-def test_the_board_root_keeps_rpcs_credential_wall(server: BoardServer) -> None:
-    """Same wall as /ui/'s, at the new address: a PRIVATE forge-backed board
-    refuses an anonymous GET of its root with /rpc's join refusal, and the
+def test_the_board_root_keeps_rpcs_credential_wall(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Same wall as /ui/'s, at the new address: a PRIVATE board whose git is
+    here refuses an anonymous GET of its root with /rpc's join refusal, and the
     same request with a token gets the page. No second credential system."""
-    _declare_forge(server)
+    _own_git(server, tmp_path / "fixture")
     with pytest.raises(HTTPError) as caught:
         urlopen(f"{url_of(server)}/", timeout=5)
     with caught.value as err:
@@ -2211,29 +2209,32 @@ def test_the_board_root_keeps_rpcs_credential_wall(server: BoardServer) -> None:
         assert ok.status == 200
 
 
-def test_a_board_root_with_no_forge_answers_the_same_410_sentence(
+def test_a_board_root_with_no_git_here_answers_the_same_410_sentence(
     server: BoardServer,
 ) -> None:
-    """A board that declared no forge serves no page at its root either — the
-    ONE plain-text sentence /ui/ answers, naming both ways out, so the two
-    addresses of the same page cannot disagree about why it is not here."""
+    """A board whose code has never been pushed here serves no page at its root
+    either — the ONE plain-text sentence /ui/ answers, naming both ways out, so
+    the two addresses of the same page cannot disagree about why it is not
+    here. What it names moved with the gate (tk-c5aed2): a push, or a window in
+    a checkout — never `taskops board forge`, which buys no page any more."""
     with pytest.raises(HTTPError) as caught:
         urlopen(f"{url_of(server)}/", timeout=5)
     with caught.value as answer:
         body = answer.read().decode()
     assert answer.code == 410
     assert answer.headers["Content-Type"].startswith("text/plain")
-    assert "taskops board forge <owner>/<repo>" in body
+    assert "taskops ui" in body and "push this board's code to" in body
+    assert "taskops board forge" not in body
 
 
 def test_a_tail_outside_the_bundles_closed_set_is_still_a_404(
-    server: BoardServer,
+    server: BoardServer, tmp_path: Path
 ) -> None:
     """The page's assets are a CLOSED set (`static.asset`): a tail that names
     no packaged file never reaches the page door, so a mistyped API path is
     still the honest 404 and the SPA fallback cannot swallow it — even on a
-    forge-backed PUBLIC board, where the page itself is anonymous."""
-    _declare_forge(server)
+    PUBLIC board whose git is here, where the page itself is anonymous."""
+    _own_git(server, tmp_path / "fixture")
     for tail in ("nope.css", "app", "deep/app.js", "verbs"):
         with pytest.raises(HTTPError) as caught:
             urlopen(f"{url_of(server)}/{tail}?token={_token(server, BERNA)}", timeout=5)
@@ -2255,7 +2256,7 @@ def test_the_machine_doors_answer_under_api_too(server: BoardServer) -> None:
     old_status, old_body = _get(f"{url_of(server)}/git/commit/HEAD", token)
     new_status, new_body = _get(f"{url_of(server)}/api/git/commit/HEAD", token)
     assert (new_status, new_body) == (old_status, old_body)
-    assert new_status == 404 and "taskops board forge" in new_body["error"]["message"]
+    assert new_status == 404 and "taskops ui" in new_body["error"]["message"]
     # /feed: the SSE door greets through the prefix exactly as it always has
     with urlopen(f"{url_of(server)}/api/feed?token={token}", timeout=5) as stream:
         assert b"hello" in stream.readline() + stream.readline()
@@ -5038,3 +5039,506 @@ def test_the_dev_whose_key_the_sync_published_joins_with_two_words(
     assert len(hub.seen) == asked  # her side asked GitHub nothing at all
     for path in (p for p in project.rglob("*") if p.is_file()):
         assert TOKEN.encode() not in path.read_bytes(), f"the GitHub token reached {path}"
+
+
+# ── the git doors: clone, fetch and PUSH against the board's OWN repo.git ────
+#
+# §16, "The host becomes the remote": /<board>/repo.git speaks smart-HTTP over
+# the same door as everything else, the token riding in HTTP Basic's password
+# field. These tests run the REAL git client against the live server — the
+# protocol is git's own, so the proof has to be too.
+
+
+def sh_git(*args: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(  # noqa: S603
+        # credential.helper= (empty) RESETS the helper list: without it the
+        # machine's osxkeychain quietly saves the pushed token and hands it to
+        # the "anonymous" clone, and the visibility tests test the keychain.
+        ["git", "-c", "credential.helper=", "-c", "user.email=t@test", "-c", "user.name=t", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        check=False,
+    )
+
+
+def seeded(tmp_path: Path) -> Path:
+    src = tmp_path / "seed"
+    src.mkdir()
+    assert sh_git("init", "-b", "master", ".", cwd=src).returncode == 0
+    (src / "hello.txt").write_text("v1\n", encoding="utf-8")
+    assert sh_git("add", ".", cwd=src).returncode == 0
+    assert sh_git("commit", "-m", "first", cwd=src).returncode == 0
+    return src
+
+
+def remote_of(httpd: BoardServer, token: str = "", board: str = BOARD) -> str:
+    """The address `taskops remote` would spell — token in Basic's password."""
+    cred = f"x:{token}@" if token else ""
+    return f"http://{cred}127.0.0.1:{httpd.server_address[1]}/{board}/repo.git"
+
+
+def hosted(httpd: BoardServer, board: str = BOARD) -> Path:
+    return httpd.mounts.root / board / "repo.git"
+
+
+def host_ref(httpd: BoardServer, ref: str) -> str:
+    done = sh_git("rev-parse", "--verify", "--quiet", ref, cwd=hosted(httpd))
+    return done.stdout.strip()
+
+
+def writer(httpd: BoardServer, subject: str = BERNA) -> str:
+    token, _ = httpd.mounts.credentials.mint(subject, BOARD, _clock.now())
+    return token
+
+
+def test_push_clone_and_fetch_round_trip_on_the_boards_own_repo(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 1 whole: the first push CREATES repo.git (never a read — see
+    gitwork/bare.py), a clone gets the work back, a fetch sees the next push.
+    An agent: credential pushes too — workers are who bind.py pushes as."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    pushed = sh_git("push", remote_of(server, token), "master", cwd=seed)
+    assert pushed.returncode == 0, pushed.stderr
+
+    repo = hosted(server)
+    assert (repo / "HEAD").is_file()  # created by the push, beside events.jsonl
+    for knob in ("receive.denyDeletes", "receive.denyNonFastForwards"):
+        assert sh_git("config", knob, cwd=repo).stdout.strip() == "true"
+
+    copy = tmp_path / "copy"
+    cloned = sh_git("clone", remote_of(server, token), str(copy), cwd=tmp_path)
+    assert cloned.returncode == 0, cloned.stderr
+    assert (copy / "hello.txt").read_text(encoding="utf-8") == "v1\n"
+
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    agent = writer(server, W1)
+    assert sh_git("push", remote_of(server, agent), "master:tk-test", cwd=seed).returncode == 0
+    fetched = sh_git("fetch", "origin", cwd=copy)
+    assert fetched.returncode == 0, fetched.stderr
+    tip = sh_git("rev-parse", "HEAD", cwd=seed).stdout.strip()
+    assert sh_git("rev-parse", "origin/tk-test", cwd=copy).stdout.strip() == tip
+
+
+def test_a_public_board_is_clonable_anonymously_and_a_private_one_refuses(
+    server: BoardServer, tmp_path: Path, owner: str
+) -> None:
+    """READ follows visibility exactly as /rpc does. Private first, so the same
+    board proves both walls; the anonymous clone runs no verb and leaves no
+    presence row, exactly as the crawl test pins for the JSON doors."""
+    seed = seeded(tmp_path)
+    assert sh_git("push", remote_of(server, writer(server)), "master", cwd=seed).returncode == 0
+
+    refused = sh_git("clone", remote_of(server), str(tmp_path / "no"), cwd=tmp_path)
+    assert refused.returncode != 0
+    assert not (tmp_path / "no" / "hello.txt").exists()
+
+    publish(server, owner)
+    cloned = sh_git("clone", remote_of(server), str(tmp_path / "yes"), cwd=tmp_path)
+    assert cloned.returncode == 0, cloned.stderr
+    assert (tmp_path / "yes" / "hello.txt").read_text(encoding="utf-8") == "v1\n"
+    assert "anon" not in dict(_presence(server))
+
+
+def test_an_anonymous_push_is_refused_and_creates_no_repo(
+    server: BoardServer, tmp_path: Path, owner: str
+) -> None:
+    """A push is a write under §11's ban, PUBLIC board included — and since the
+    repo is created by the first push, a refused stranger creates nothing."""
+    publish(server, owner)
+    seed = seeded(tmp_path)
+    pushed = sh_git("push", remote_of(server), "master", cwd=seed)
+    assert pushed.returncode != 0
+    assert not hosted(server).exists()
+
+
+def test_a_read_only_credential_clones_but_may_not_push(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The auth split, one credential on both sides of it: caps decide, and the
+    refusal is the standing one — no second rule invented for git."""
+    seed = seeded(tmp_path)
+    assert sh_git("push", remote_of(server, writer(server)), "master", cwd=seed).returncode == 0
+    reader, _ = server.mounts.credentials.mint(ANA, BOARD, _clock.now(), caps="read")
+
+    cloned = sh_git("clone", remote_of(server, reader), str(tmp_path / "ro"), cwd=tmp_path)
+    assert cloned.returncode == 0, cloned.stderr
+
+    before = host_ref(server, "master")
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    pushed = sh_git("push", remote_of(server, reader), "master", cwd=seed)
+    assert pushed.returncode != 0
+    assert host_ref(server, "master") == before
+
+
+def test_a_pushed_branch_is_readable_through_the_json_diff_door(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The acceptance the reversal exists for: the window's diff is read from
+    the board's OWN repository, no forge declared, no mirror consulted."""
+    seed = seeded(tmp_path)
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master:tk-seen", cwd=seed).returncode == 0
+
+    with urlopen(f"{url_of(server)}/git/commit/tk-seen?token={token}", timeout=5) as answer:
+        body = json.loads(answer.read())
+    assert body["ok"] and "hello.txt" in body["data"]["patch"]
+
+
+def test_a_card_branch_outlives_its_deletion_on_the_forge(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """THE acceptance this card exists for (§16, milestone acceptance 2): the
+    window's diff for a card survives its chapter landing. The card's branch is
+    pushed to the host and to a forge fixture, then DELETED on the forge exactly
+    as a merge's branch cleanup deletes it — and /git still renders the diff,
+    because the host holds the board's own git and prunes nothing. Under the
+    pull mirror this was the reported failure: the mirror's one source was the
+    forge, so the pane went blank the moment the chapter landed."""
+    seed = seeded(tmp_path)
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "the card's work", cwd=seed).returncode == 0
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master:tk-landed", cwd=seed).returncode == 0
+
+    forge = far_forge(tmp_path, "forge.git")
+    assert sh_git("push", str(forge), "master:tk-landed", cwd=seed).returncode == 0
+    assert sh_git("push", str(forge), "--delete", "tk-landed", cwd=seed).returncode == 0
+    assert not sh_git("rev-parse", "--verify", "--quiet", "tk-landed", cwd=forge).stdout.strip()
+
+    with urlopen(f"{url_of(server)}/git/commit/tk-landed?token={token}", timeout=5) as answer:
+        body = json.loads(answer.read())
+    assert body["ok"] and "hello.txt" in body["data"]["patch"]
+    assert host_ref(server, "tk-landed")
+
+
+def test_the_host_refuses_a_ref_deletion(server: BoardServer, tmp_path: Path) -> None:
+    """The host NEVER prunes — enforced in the created repo's own config, so
+    the very receive-pack that would move the ref is the process refusing."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master:tk-kept", cwd=seed).returncode == 0
+
+    gone = sh_git("push", remote_of(server, token), "--delete", "tk-kept", cwd=seed)
+    assert gone.returncode != 0
+    assert "deny deleting" in (gone.stderr + gone.stdout) or host_ref(server, "tk-kept")
+    assert host_ref(server, "tk-kept")
+
+
+def test_the_host_refuses_a_non_fast_forward_even_forced(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """A force is a client-side word; the refusal is the server process's own
+    config, so `--force` changes nothing and the landed history survives."""
+    seed = seeded(tmp_path)
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+    before = host_ref(server, "master")
+
+    assert sh_git("reset", "--hard", "HEAD~1", cwd=seed).returncode == 0
+    (seed / "hello.txt").write_text("rewritten\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "amended history", cwd=seed).returncode == 0
+    for way in ((), ("--force",)):
+        pushed = sh_git("push", *way, remote_of(server, token), "master", cwd=seed)
+        assert pushed.returncode != 0, way
+        assert host_ref(server, "master") == before
+
+
+# The OUTBOUND leg, through the real door: a push that lands is copied onward
+# to the declared forge (§16, "the host becomes the remote"). The "forge" is a
+# bare repo in tmp_path — no network — and the remote inside `repo.git` is the
+# owner's own act, exactly as a deploy-key address would be (§19.2).
+
+
+def far_forge(tmp_path: Path, name: str = "far.git") -> Path:
+    far = tmp_path / name
+    assert sh_git("init", "--bare", "-q", "-b", "master", str(far), cwd=tmp_path).returncode == 0
+    return far
+
+
+def awaited(
+    httpd: BoardServer, label: str, want: bool | None = None
+) -> dict[str, Any] | None:
+    """The mirror runs on its own thread (never in the client's push), so its
+    report is polled for rather than assumed — out of the same live store the
+    board payload reads it from. Bounded by TRIES and not by a clock: this
+    suite freezes `now()`, and `PUSH_TIMEOUT` already bounds the leg itself."""
+    live = httpd.mounts.stores(BOARD).live
+    seen: dict[str, Any] | None = None
+    for _ in range(400):  # 20s at 50ms, twice gitwork's own push budget
+        seen = mirroring.last(live, label)
+        if seen is not None and (want is None or seen["ok"] is want):
+            return seen
+        threading.Event().wait(0.05)
+    return seen
+
+
+def test_a_landed_push_is_mirrored_onward_to_the_declared_forge(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 3's first half: the host pushes onward, whole namespace, and
+    the success is legible as one on the board payload."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    client(server, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+
+    # the owner's explicit act, and the only credential story there is (§19.2)
+    far = far_forge(tmp_path)
+    assert sh_git("remote", "add", "forge", str(far), cwd=hosted(server)).returncode == 0
+
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    assert sh_git("push", remote_of(server, token), "master:tk-c1abcd", cwd=seed).returncode == 0
+
+    seen = awaited(server, "github.com/bernatch22/taskops", want=True)
+    assert seen is not None and seen["ok"] is True, seen
+    for ref in ("master", "tk-c1abcd"):
+        assert sh_git("rev-parse", "--verify", "--quiet", ref, cwd=far).stdout.strip(), ref
+    said = client(server, BERNA).call("board", {})
+    assert said["mirror"]["ok"] is True
+    assert said["mirror"]["forge"] == "github.com/bernatch22/taskops"
+
+
+def test_an_unreachable_forge_does_not_fail_the_clients_push(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """Criterion 3's second half, and criterion 1: the client's push succeeds,
+    the host's history is intact, and the failure is on the board payload for
+    the owner to read — never swallowed."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    client(server, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+    assert sh_git("remote", "add", "forge", str(tmp_path / "gone"), cwd=hosted(server)).returncode == 0
+
+    (seed / "hello.txt").write_text("v2\n", encoding="utf-8")
+    assert sh_git("commit", "-am", "second", cwd=seed).returncode == 0
+    pushed = sh_git("push", remote_of(server, token), "master", cwd=seed)
+    assert pushed.returncode == 0, pushed.stderr
+    assert host_ref(server, "master") == sh_git("rev-parse", "HEAD", cwd=seed).stdout.strip()
+
+    seen = awaited(server, "github.com/bernatch22/taskops", want=False)
+    assert seen is not None and seen["ok"] is False and seen["detail"]
+    assert client(server, BERNA).call("board", {})["mirror"]["ok"] is False
+
+
+def test_a_declared_forge_with_no_remote_on_the_host_says_so(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The owner has not made §19.2's escalation: the board still works and the
+    payload names the exact command that opens the leg."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    client(server, BERNA).call("project", {"op": "forge", "repo": "bernatch22/taskops"})
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+
+    seen = awaited(server, "github.com/bernatch22/taskops", want=False)
+    assert seen is not None and seen["ok"] is False
+    assert "remote add forge git@github.com:bernatch22/taskops.git" in seen["detail"]
+
+
+def test_no_declared_forge_means_no_mirroring_and_no_fault(
+    server: BoardServer, tmp_path: Path
+) -> None:
+    """The state every board is born in: the push lands, nothing is attempted,
+    and the payload carries no `mirror` key at all — not a `null`, not a fault."""
+    seed = seeded(tmp_path)
+    token = writer(server)
+    assert sh_git("push", remote_of(server, token), "master", cwd=seed).returncode == 0
+
+    assert "mirror" not in client(server, BERNA).call("board", {})
+    assert sh_git("remote", cwd=hosted(server)).stdout.strip() == ""
+
+
+# ── the DEV's side: `taskops remote git` (tk-b11ce0) ─────────────────────────
+#
+# §16 gave the host a git door and left the client unable to name it. These
+# drive `main()` with the real argv, like the ergonomics block above, because
+# what is being tested IS the wiring: what lands in `.git/config`, what does
+# not, and whether the real git client can push through it.
+
+
+def sh_git_real(*args: str, cwd: Path) -> "subprocess.CompletedProcess[str]":
+    """git with the machine's own credential helpers OUT and ours left IN —
+    `sh_git` resets the whole helper list, which would erase the very thing
+    these tests configure. `GIT_CONFIG_NOSYSTEM` removes /etc/gitconfig's
+    (macOS ships an osxkeychain there); HOME is already the fixture's."""
+    return subprocess.run(  # noqa: S603
+        ["git", "-c", "user.email=t@test", "-c", "user.name=t", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1"},
+        check=False,
+    )
+
+
+@pytest.fixture()
+def checkout(server: BoardServer, discoverable: Path, virgin: Path) -> Path:
+    """A REAL git repo whose board exists and whose host is recorded, with the
+    owner's key where ssh itself would look — the state a dev is in just before
+    they wire the git remote. The board is named by `board create`, so the git
+    address these tests assert is the DERIVED one, guessed by nobody."""
+    from taskops.cli import main
+
+    assert sh_git_real("init", "-b", "master", ".", cwd=virgin).returncode == 0
+    assert main(["remote", "add", host_of(server)]) == 0
+    assert main(["board", "create"]) == 0  # named after the directory, and recorded
+    return virgin
+
+
+def local_config(repo: Path) -> str:
+    return (repo / ".git" / "config").read_text(encoding="utf-8")
+
+
+def test_remote_git_prints_the_address_and_the_lines_to_paste(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 1, the printed half: no flag, no write. The address is the
+    recorded host plus the board's name — nobody has to guess the URL shape."""
+    from taskops.cli import main
+
+    capsys.readouterr()
+    assert main(["remote", "git"]) == 0
+    said = capsys.readouterr().out
+    assert said.splitlines()[0] == f"{host_of(server)}/{checkout.name}/repo.git"
+    assert f"git remote add taskops {host_of(server)}/{checkout.name}/repo.git" in said
+    assert f"credential.{host_of(server)}.helper" in said
+    assert "hook credential" in said  # the helper, not a token in a URL
+    assert "remote" not in local_config(checkout)  # printing WRITES NOTHING
+
+
+def test_remote_git_add_wires_a_remote_and_a_helper_and_never_a_token(
+    server: BoardServer, checkout: Path
+) -> None:
+    """Criterion 1, the writing half — and the credential rule. What lands in
+    `.git/config` is an address and a COMMAND; a session token appears nowhere,
+    because `.git/config` is plaintext and a token expires within the hour."""
+    from taskops.cli import main
+
+    assert main(["remote", "git", "--add"]) == 0
+    config = local_config(checkout)
+    assert '[remote "taskops"]' in config
+    assert f"{host_of(server)}/{checkout.name}/repo.git" in config
+    assert "hook credential" in config
+    assert "@" not in config.partition("[remote")[2].partition("\n\n")[0]  # no user:token@
+    token, _ = server.mounts.credentials.mint(BERNA, BOARD, _clock.now())
+    assert token not in config and "password" not in config
+    # Re-running is free and idempotent: same remote, same helper, no second one.
+    assert main(["remote", "git", "--add"]) == 0
+    assert local_config(checkout).count("hook credential") == 1
+    assert local_config(checkout).count('[remote "taskops"]') == 1
+
+
+def test_an_existing_origin_is_never_touched_and_origin_is_refused_by_name(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 2. Somebody's GitHub is in `origin`; the whole point is that it
+    is still there afterwards, and that asking for `origin` explicitly is a
+    refusal rather than a favour — its absence is not this command's to decide
+    either, so the refusal does not depend on there being one."""
+    from taskops.cli import main
+
+    theirs = "git@github.com:bernatch22/taskops.git"
+    assert sh_git_real("remote", "add", "origin", theirs, cwd=checkout).returncode == 0
+    assert main(["remote", "git", "--add"]) == 0
+    assert sh_git_real("remote", "get-url", "origin", cwd=checkout).stdout.strip() == theirs
+
+    capsys.readouterr()
+    assert main(["remote", "git", "--add", "--name", "origin"]) == 1
+    assert "does not take it over" in capsys.readouterr().err
+    assert sh_git_real("remote", "get-url", "origin", cwd=checkout).stdout.strip() == theirs
+
+
+def test_a_taken_name_is_refused_and_the_remote_it_names_is_left_alone(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other half of criterion 2: `taskops` itself can be taken, and the way
+    out is a NAME, never a `set-url` over whatever was there."""
+    from taskops.cli import main
+
+    mine = "https://elsewhere.example/mine.git"
+    assert sh_git_real("remote", "add", "taskops", mine, cwd=checkout).returncode == 0
+    capsys.readouterr()
+    assert main(["remote", "git", "--add"]) == 1
+    refusal = capsys.readouterr().err
+    assert mine in refusal and "--name <other>" in refusal
+    assert sh_git_real("remote", "get-url", "taskops", cwd=checkout).stdout.strip() == mine
+    assert main(["remote", "git", "--add", "--name", "board"]) == 0
+    assert sh_git_real("remote", "get-url", "taskops", cwd=checkout).stdout.strip() == mine
+
+
+def test_a_credential_helper_somebody_else_configured_is_not_overwritten(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Same rule one config key over: a credential helper is somebody's decision
+    about a secret, so this command adds one or refuses, never replaces."""
+    from taskops.cli import main
+
+    key = f"credential.{host_of(server)}.helper"
+    assert sh_git_real("config", "--local", key, "osxkeychain", cwd=checkout).returncode == 0
+    capsys.readouterr()
+    assert main(["remote", "git", "--add"]) == 1
+    assert "osxkeychain" in capsys.readouterr().err
+    assert sh_git_real("config", "--local", key, cwd=checkout).stdout.strip() == "osxkeychain"
+
+
+def test_the_helper_mints_a_session_for_this_host_and_declines_every_other(
+    server: BoardServer, checkout: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The credential itself: git asks, the ssh key answers, nothing is stored.
+
+    `get` for the recorded host comes back with the session in Basic's password
+    field; another host gets silence (git moves on to the next helper), and
+    `store`/`erase` are silence too — a helper that caches is a helper that
+    persists a token, which is the thing this design exists to avoid."""
+    from taskops.cli import gitremote
+
+    port = server.server_address[1]
+    asked = f"protocol=http\nhost=127.0.0.1:{port}\npath={checkout.name}/repo.git\n"
+    assert gitremote.credential(asked, ["get"]) == 0
+    answered = dict(
+        line.partition("=")[::2] for line in capsys.readouterr().out.splitlines() if line
+    )
+    assert answered["username"] == gitremote.USERNAME
+    assert answered["password"]  # a live session, minted here, written nowhere
+    body = json.loads((checkout / ".taskops" / "remote.json").read_text())
+    assert body["token"] == answered["password"] and body["token_expires"] > 0
+
+    assert gitremote.credential("protocol=https\nhost=github.com\n", ["get"]) == 0
+    assert capsys.readouterr().out == ""  # not our host: not our business
+    assert gitremote.credential(asked, ["store"]) == 0
+    assert gitremote.credential(asked, ["erase"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_a_real_git_push_authenticates_through_the_helper_end_to_end(
+    server: BoardServer, checkout: Path, tmp_path: Path
+) -> None:
+    """The whole card, proved by the real git client: two commands from a dev,
+    then `git push taskops master` lands on the board's own `repo.git` — no
+    token typed, none stored, and the ssh key never leaves the laptop."""
+    from taskops.cli import main
+
+    assert main(["remote", "git", "--add"]) == 0
+    (checkout / "hello.txt").write_text("v1\n", encoding="utf-8")
+    assert sh_git_real("add", ".", cwd=checkout).returncode == 0
+    assert sh_git_real("commit", "-m", "first", cwd=checkout).returncode == 0
+
+    pushed = sh_git_real("push", "taskops", "master", cwd=checkout)
+    assert pushed.returncode == 0, pushed.stderr
+    repo = server.mounts.root / checkout.name / "repo.git"
+    tip = sh_git_real("rev-parse", "HEAD", cwd=checkout).stdout.strip()
+    assert sh_git("rev-parse", "master", cwd=repo).stdout.strip() == tip

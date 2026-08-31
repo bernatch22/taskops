@@ -37,10 +37,15 @@ CREATE TABLE IF NOT EXISTS reviews (
     acquired REAL NOT NULL,
     expires  REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS mirror (
+    forge TEXT PRIMARY KEY, ok INTEGER NOT NULL, at REAL NOT NULL, detail TEXT NOT NULL
+);
 """
 # `reviews` is the REVIEW lease — a second mutex per card. Why it is its own
 # table, and the whole race analysis, is `store/reviews.py`, which also holds
 # its operations. It is created here because the file is opened here.
+# `mirror` is the OUTBOUND leg's last word, one row per declared forge:
+# `store/mirroring.py` holds its operations and argues why it is not an event.
 
 Row = tuple[Any, ...]
 
