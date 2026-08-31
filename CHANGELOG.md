@@ -3,6 +3,40 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.5.1 — the hosted window, actually usable
+
+0.5.0 shipped a window nobody could use. Both faults were reported the next
+morning against the live host, and both were contract-level: the URL people
+paste, and the credential rule every door shares.
+
+- **A public board was unreadable from its own hosted page.** The client sends
+  `Authorization: "Bearer " + token()`; with no token that header arrives as
+  `Bearer`, and `auth.token_in`'s `removeprefix("Bearer ")` did not match — so
+  the literal string `"Bearer"` came back AS the token and the reader was told
+  "unknown credential — run: taskops join". Anonymous reads worked only when NO
+  Authorization header was sent at all, which no browser client does: the
+  anonymous path was only ever green because nothing but curl had walked it.
+  Scheme and value are now parsed as separate fields, the scheme
+  case-insensitive per RFC 7235, and a bearer scheme with no value is the
+  ABSENCE of a credential. Deliberately narrow: a header carrying any actual
+  value — wrong, expired, or under a scheme this server never spoke — is a
+  credential that WAS presented and still refuses exactly as before.
+  "Unparseable" is not "anonymous".
+- **The board's own address IS the page.** `https://<host>/<board>/` (and
+  `/<board>`) serves the dashboard, with `app.js` and `style.css` beside it; the
+  machine doors also answer under `/<board>/api/{rpc,git,feed}`, stripped once
+  in `http/routes.py::split` so no door can drift from another. A sub-path was
+  wrong for the primary thing a board host serves.
+- **Nothing that worked in 0.5.0 stopped working.** `/<board>/ui/`,
+  `/<board>/rpc`, `/<board>/git/…` and `/<board>/feed` all still answer — agents,
+  the MCP client, `taskops ui`'s forward and the legacy production boards speak
+  them, and a link somebody already pasted is a contract, not a legacy.
+- **`smoke.sh`** — the live, read-only smoke for a board host: the page at the
+  board root, a bare `Bearer` reading a public board, a private board still
+  refusing, a card branch's diff rendered from the forge mirror. Every line is
+  there because it failed once in production, and each says which report it
+  came from.
+
 ## 0.5.0 — the hosted window
 
 - **A board can be READ without a clone.** Until now the dashboard was only ever
