@@ -75,8 +75,16 @@ class Handler(BaseHTTPRequestHandler):
         elif tail.startswith("ui"):
             page.answer(self, board, tail[2:])  # 0.5.0's address, kept — links were pasted
         elif self.mounts.ui is None and NAME.match(board) and (not tail or static.asset(tail)):
-            # the page at the board's OWN address; assets are a CLOSED set
-            page.answer(self, board, tail)
+            if not tail and not self.path.partition("?")[0].endswith("/"):
+                # The page's assets are RELATIVE (./app.js — one bundle, three mounts),
+                # so the slashless /<board> resolves them against the root and renders
+                # blank: exactly the address people paste. One hop repairs them all —
+                # keeping the query, because ?token= is how a window authenticates.
+                _, sep, query = self.path.partition("?")
+                self._redirect(f"/{board}/{sep}{query}")
+            else:
+                # the page at the board's OWN address; assets are a CLOSED set
+                page.answer(self, board, tail)
         elif (found := static.at_root(self.mounts.ui, self.path)) is not None:
             self._send(200, *found)  # a WINDOW serves its page at the ROOT
         else:
@@ -169,6 +177,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, status: int, body: dict[str, Any]) -> None:
         self._send(status, json.dumps(body).encode(), "application/json")
+
+    def _redirect(self, location: str) -> None:
+        """One permanent hop, no body — the only writer of a Location header."""
+        self.send_response(301)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _send(self, status: int, data: bytes, kind: str) -> None:
         """Content-Length on EVERY answer: this is HTTP/1.1 with keep-alive, and a body
