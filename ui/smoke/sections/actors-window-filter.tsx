@@ -21,33 +21,37 @@ export async function run(_fixture: Fixture, check: Check, h: Harness): Promise<
 
   /* ── The window is a CHOICE on screen and a spelling on the wire ──────
    *
-   * The page anchors on the current calendar month — the figure that only grows
-   * — with a filter beside it. What is pinned here is the seam between the two
+   * The page opens on the last 30 days — the sliding figure that only shrinks
+   * when work ages out — with the calendar one tap away. What is pinned here is
+   * the seam between the two
    * halves: the pure mapping choice→`window=` (no handler fires under
    * `react-dom/server`, so a rule inside a click closure would have no test),
    * and the fact that every word the screen says about the SPAN is the
    * payload's own, never re-derived from `from`/`to`. */
 
   check(
-    "actors window: the filter offers 7 days, this month, last month and total",
-    HOURS_CHOICES.map((c) => c.id).join(" ") === "7d month last total" &&
+    "actors window: the filter offers 7 days, 30 days, this month, last month and total",
+    HOURS_CHOICES.map((c) => c.id).join(" ") === "7d 30d month last total" &&
       HOURS_CHOICES.map((c) => c.name).join(" · ") ===
-        "7 days · This month · Last month · Total",
+        "7 days · 30 days · This month · Last month · Total",
     HOURS_CHOICES.map((c) => c.name).join(" · "),
   );
+  /* The default slid off the calendar on purpose: on the 1st "this month" is
+   * hours old, and a dev with 29 hours on screen the night before woke up to
+   * 2h 50m. `hoursWindow.ts::DEFAULT_HOURS_CHOICE` argues it in full. */
   check(
-    "actors window: the page's default is the current calendar month",
-    DEFAULT_HOURS_CHOICE === "month" && windowFor(DEFAULT_HOURS_CHOICE) === "month",
+    "actors window: the page opens on the last 30 days, not the calendar month",
+    DEFAULT_HOURS_CHOICE === "30d" && windowFor(DEFAULT_HOURS_CHOICE) === "30d",
   );
 
-  /* Three of the four are already the server's own spellings and are passed
+  /* All but one are already the server's own spellings and are passed
    * through untouched (`verbs/_windows.py::parse`). */
-  const mapped = (["7d", "month", "total"] as HoursChoice[]).map((c) =>
+  const mapped = (["7d", "30d", "month", "total"] as HoursChoice[]).map((c) =>
     windowFor(c, new Date(2026, 7, 14)),
   );
   check(
-    "actors window: 7d, month and total travel as the board's own spellings",
-    mapped.join(" ") === "7d month total",
+    "actors window: 7d, 30d, month and total travel as the board's own spellings",
+    mapped.join(" ") === "7d 30d month total",
     mapped.join(" "),
   );
 
@@ -124,16 +128,16 @@ export async function run(_fixture: Fixture, check: Check, h: Harness): Promise<
 
   const markup = renderToStaticMarkup(<Actors {...props} />);
   check(
-    "actors window: all four options are drawn, as the board's own segmented control",
+    "actors window: every option is drawn, as the board's own segmented control",
     markup.includes('data-testid="actors-window-filter"') &&
       HOURS_CHOICES.every((c) => markup.includes(`data-window="${c.id}"`)),
     markup.match(/data-window="[^"]+"/g)?.join(" "),
   );
-  /* The default is the pressed one, and it is the month — with no `choice` prop
+  /* The default is the pressed one, and it is 30 days — with no `choice` prop
    * at all, which is the state the page renders in on its own. */
   check(
-    "actors window: with nothing told it, the month is the option pressed",
-    /data-window="month" aria-pressed="true"/.test(markup) &&
+    "actors window: with nothing told it, 30 days is the option pressed",
+    /data-window="30d" aria-pressed="true"/.test(markup) &&
       (markup.match(/aria-pressed="true"/g) ?? []).length === 1,
     markup.match(/data-window="[^"]+" aria-pressed="[^"]+"/g)?.join(" "),
   );
@@ -217,7 +221,7 @@ export async function run(_fixture: Fixture, check: Check, h: Harness): Promise<
   check(
     "actors window: a payload WITH window answers the calendar set, unchanged",
     choicesFor(report) === HOURS_CHOICES &&
-      choicesFor(report).map((c) => c.id).join(" ") === "7d month last total",
+      choicesFor(report).map((c) => c.id).join(" ") === "7d 30d month last total",
     choicesFor(report).map((c) => c.id).join(" "),
   );
   /* FIRST PAINT is deterministic: nothing has come back, so the set that holds
@@ -226,11 +230,11 @@ export async function run(_fixture: Fixture, check: Check, h: Harness): Promise<
    * born in. */
   check(
     "actors window: on first paint the set follows the selection, calendar when none",
-    choicesFor(null).map((c) => c.id).join(" ") === "7d month last total" &&
-      choicesFor(null, "month").map((c) => c.id).join(" ") === "7d month last total" &&
-      choicesFor(null, "30d").map((c) => c.id).join(" ") === "7d 14d 30d 90d" &&
-      choicesFor(undefined, "7d").map((c) => c.id).join(" ") === "7d month last total",
-    choicesFor(null, "30d").map((c) => c.id).join(" "),
+    choicesFor(null).map((c) => c.id).join(" ") === "7d 30d month last total" &&
+      choicesFor(null, "month").map((c) => c.id).join(" ") === "7d 30d month last total" &&
+      choicesFor(null, "14d").map((c) => c.id).join(" ") === "7d 14d 30d 90d" &&
+      choicesFor(undefined, "7d").map((c) => c.id).join(" ") === "7d 30d month last total",
+    choicesFor(null, "14d").map((c) => c.id).join(" "),
   );
   /* THE SNAP, ONCE. A calendar choice meets a legacy answer and moves to 14d;
    * everything already in the answered set stays exactly where it is, which is
@@ -242,7 +246,7 @@ export async function run(_fixture: Fixture, check: Check, h: Harness): Promise<
       snapped(legacy, "14d") === "14d" &&
       snapped(legacy, "7d") === "7d" &&
       snapped(report, "month") === "month" &&
-      snapped(report, "30d") === "month" &&
+      snapped(report, "30d") === "30d" &&
       snapped(null, "month") === "month" &&
       snapped(null, "30d") === "30d",
     [snapped(legacy, "month"), snapped(legacy, "7d"), snapped(report, "30d")].join(" "),

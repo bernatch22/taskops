@@ -58,7 +58,9 @@ export interface SheetSession extends ActorSession {
 
 /** One hour of one day. Present even with nothing in it — see the docstring. */
 export interface SheetHour {
-  /** `<day> <hour>`, the fold's identity across days */
+  /** `<day> <slot>` — the slot, not the hour NUMBER: a pane whose first
+   *  session opened at 23:5x the previous local day (the edge rule, below) can
+   *  hold two rows labelled `23:00`, and they must fold apart */
   key: string;
   hour: number;
   /** `09:00` */
@@ -77,7 +79,9 @@ export interface SheetDay {
   label: string;
   seconds: number;
   /** every hour from the first with a session to the last, so the SHAPE of the
-   *  day is visible; never 00–23 */
+   *  day is visible; never 00–23. When the edge rule filed a midnight-crossing
+   *  session here, the first rows are the closing hours of the previous local
+   *  day, and their labels say so (`23:00` above `00:00`) */
   hours: SheetHour[];
   /** wall-clock between two sessions that nobody counted */
   gaps: number;
@@ -161,15 +165,29 @@ export function daysheet(
       mark = Math.max(mark, s.end);
     }
 
-    const hourOf = (ts: number): number => new Date(ts * 1000).getHours();
-    const first = hourOf(all[0]!.start);
-    const last = hourOf(all[all.length - 1]!.start);
+    /* THE HOUR ROWS — walked by TIMESTAMP, never by hour NUMBER. The server's
+       edge rule credits an interval to the day its CLOSING stamp is in
+       (core/hours.py), so a session that opens at 23:5x and closes past
+       midnight sits in the NEXT day's list — and that day's local hours are
+       then not monotone. The loop this replaced, `for (h = firstHour; h <=
+       lastHour)`, met such a day and drew 23..23 (one row) or 23..10 (no rows)
+       around seventeen counted hours. A SLOT is the local hour's own floor as
+       a timestamp: monotone across any midnight, labelled with its wall clock,
+       and advanced through its successor's floor so a DST-stretched hour is
+       one slot and a skipped one is none. */
+    const slotOf = (ts: number): number => {
+      const d = new Date(ts * 1000);
+      d.setMinutes(0, 0, 0);
+      return d.getTime() / 1000;
+    };
+    const last = slotOf(all[all.length - 1]!.start);
     const hours: SheetHour[] = [];
-    for (let hour = first; hour <= last; hour += 1) {
+    for (let slot = slotOf(all[0]!.start); slot <= last; slot = slotOf(slot + 3600)) {
       /* The START decides the bucket, and only the start. */
-      const sessions = all.filter((s) => hourOf(s.start) === hour);
+      const sessions = all.filter((s) => slotOf(s.start) === slot);
+      const hour = new Date(slot * 1000).getHours();
       hours.push({
-        key: `${day.day} ${hour}`,
+        key: `${day.day} ${slot}`,
         hour,
         label: `${String(hour).padStart(2, "0")}:00`,
         seconds: sessions.reduce((n, s) => n + s.seconds, 0),
