@@ -27,15 +27,21 @@ export type HoursChoice = "7d" | "14d" | "30d" | "90d" | "month" | "last" | "tot
  *  closed month behind it, then the figure that only grows. */
 export const HOURS_CHOICES: ReadonlyArray<{ id: HoursChoice; name: string }> = [
   { id: "7d", name: "7 days" },
+  { id: "30d", name: "30 days" },
   { id: "month", name: "This month" },
   { id: "last", name: "Last month" },
   { id: "total", name: "Total" },
 ];
 
-/** The page opens on the CURRENT MONTH — the figure that only grows within it,
- *  and the one this chapter exists to put under a reader's eye. A sliding
- *  window as the default is what read as "hours being discounted". */
-export const DEFAULT_HOURS_CHOICE: HoursChoice = "month";
+/** The page opens on the last 30 DAYS. It opened on the current month once,
+ *  because a sliding window had read as "hours being discounted" — and then
+ *  the calendar turned: on the 1st of the month "This month" is hours old, and
+ *  a dev who had 29 hours on screen the night before woke up to 2h 50m. Both
+ *  complaints were real; the difference is that the month's collapse happens
+ *  BY DESIGN twelve times a year, while the sliding figure only shrinks when
+ *  work actually ages out. Thirty days spans a month's weight without owning
+ *  the calendar's cliff; the month views stay one tap away. */
+export const DEFAULT_HOURS_CHOICE: HoursChoice = "30d";
 
 /** THE DEGRADED VOCABULARY — what a PRE-CALENDAR host understands.
  *
