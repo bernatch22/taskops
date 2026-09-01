@@ -3,6 +3,32 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.5.6 — the hours page draws every hour of a day that opened before midnight
+
+Reported live on `/convo/`: the hours breakdown was empty. Monday said
+17h 13m and drew a single `23:00` row; Tuesday said 3h 32m and drew nothing
+at all. Only Sunday — the one day nobody had worked across its opening
+midnight — rendered. Every session was in the payload the whole time; the
+client had no row to put them in.
+
+- **`components/actors/Daysheet.tsx` walks hour SLOTS, not hour NUMBERS.**
+  `core/hours.py`'s edge rule credits an interval to the day its CLOSING
+  stamp falls in, so a session opened at 23:5x and closed past midnight is
+  filed under the NEXT day — and that day's local hours stop being monotone.
+  The old `for (h = first; h <= last; h += 1)` then walked `23..23` (one row)
+  or `23..10` (no rows). A slot is the local hour's own floor as a timestamp:
+  monotone across any midnight, advanced through its successor's floor so a
+  DST-stretched hour is one slot and a skipped one is none. The fold's
+  identity is the slot too — such a pane can hold two rows labelled `23:00`.
+- **Verified against the live `/convo/` payload**, not a fixture: Monday now
+  draws 25 rows holding all 286 sessions, Tuesday 12 rows holding all 19, and
+  each pane's total is exactly the sum of its rows. Sunday is unchanged.
+- **Pinned by `ui/smoke/sections/daysheet-midnight-spill.tsx`**, with the old
+  walk restored as a mutation and measured red.
+- **`ui/smoke/sections/actors-window-filter.tsx` repaired** — it still pinned
+  the calendar-month default that 0.5.5's successor replaced with the sliding
+  30 days, and was red on master.
+
 ## 0.5.5 — the Worktrees page renders too (it was never the drawer)
 
 The failure reported since 0.5.0 was always on the WORKTREES page, and three
