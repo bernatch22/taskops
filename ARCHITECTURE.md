@@ -3042,3 +3042,60 @@ many slots and Actors anchors on a calendar month, so one number cannot be both,
 and moving between those tabs costs one request. A board one version behind
 sends no `window` key at all, and `windowSaid()` falls back to the day-bucket
 sentence — a degradation, never a blank.
+
+---
+
+## 22. The Editor — a worktree's files, live off the disk (2026-09-06)
+
+Berna asked for "an editor inside taskops: the worktrees, a sidebar with the
+file directory, the code on the right in tabs, highlighted — the real code of
+each worktree in real time, from local". It is the sixth tab
+(`ui/src/pages/Editor.tsx`), read-only by construction, and it answers the one
+question the Worktrees page cannot: not what a branch ADDS as a patch, but what
+the code LOOKS LIKE right now in the directory a worker is sitting in.
+
+**The contract** (`http/editor.py`, same envelope and same token door as `/git`):
+
+```
+GET /<board>/editor/trees                      every inhabited directory, the checkout (`main`) first
+GET /<board>/editor/tree?tree=<name>           files: path, size, mtime, git state · capped, total, cap, seq
+GET /<board>/editor/file?tree=&path=[&base=]   text or binary, truncated+cap, tracked, base {ref, sha}, marks [[from,to,kind]]
+GET /<board>/editor/diff?tree=&path=[&base=]   the same file as a unified patch — the Worktrees page's own renderer draws it
+GET /<board>/editor/feed?tree=<name>           WebSocket/SSE: {"type":"change","tree","seq"} — a SIGNAL, never the files
+```
+
+**Only a WINDOW answers.** The files live on the disk `taskops ui` runs on; a
+serve-mode host (taskops.bernardocastro.dev) holds boards and at most a bare
+`repo.git`, so it refuses with ONE sentence naming `taskops ui`
+(`editor.NO_CHECKOUT`) and the page quotes it — never an empty tree.
+
+**The security line** is `gitwork/inhabited.py`, three sentences: a tree is a
+directory NAME matched before it is joined to anything; a file is resolved on
+both ends and refused — never repaired — when it leaves the tree, names `.git`,
+or is a symlink out; and a base ref passes `diff.usable`, the wall every ref of
+the /git door passes. `tests/test_editor.py` drives every shape through the door.
+
+**Live, without a watcher dependency** (§11 stands): `gitwork/scan.py` lists a
+tree with git (index + untracked walk honouring every `.gitignore`, the
+directories nobody reads pruned at the directory) and measures it with one
+`stat` per file; `http/treewatch.py` runs that once a second for a tree
+somebody is listening to — `watcher.py`'s lifetime rule — and publishes when
+two scans differ. The page re-reads the listing on a signal and re-reads only
+the open tabs whose mtime moved, lighting the lines `changedSpan` names and
+keeping the scroll (`components/editor/useWorktree.ts`). Measured on a
+worker's tree in pinecall/v2: a new file in the tree 0.8 s after the write, an
+open tab re-rendered 0.2 s after it.
+
+**The caps, all stated in the answer:** `scan.FILE_CAP` = 4000 files per tree
+(`capped` + `total` beside the list), `reading.CAP` = `patch.CAP` = 512 KiB per
+file and per patch (`truncated` + `cap`), binary decided on the first 8 KiB
+(a NUL or non-UTF-8) and never decoded. The gutter's base is the card's own
+chapter branch through `diff.compare_range` — the merge-base in flight, the
+fork point once integrated — and `HEAD` for the checkout.
+
+**Highlighting is a compact tokenizer, not a dependency**
+(`components/editor/highlight.ts`, ~4 kB minified against ~25–45 kB for Prism
+or highlight.js with the eleven grammars): keyword, string, comment, number,
+tag, attribute — enough to read by, in six `--code-*` tokens that live in
+`theme/tokens.css` beside the palette rather than borrowing its status colours.
+The bundle grew 288 307 → 313 294 bytes for the whole feature.

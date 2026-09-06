@@ -3,6 +3,27 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## Unreleased — the Editor: a worktree's files, live off the disk
+
+- **A sixth tab, Editor** (`ui/src/pages/Editor.tsx`): pick a worktree — the
+  checkout first, then every directory under `.taskops/trees/` — and read its
+  files as an editor draws them: a folder tree on the left with each file's git
+  state (M/A/S/U) and a dot on every folder something moved under, tabs on the
+  right, line numbers, syntax colour for Python, TS/JS, JSON, YAML, TOML,
+  Markdown, SQL, bash, HTML and CSS, a gutter mark on every line that changed
+  since the branch base, and a per-file "diff vs base" toggle through the same
+  patch renderer the Worktrees page uses. Read-only, always.
+- **Live from local disk**: a tree somebody is looking at is scanned once a
+  second (git for the listing, `stat` for the measure — no watcher dependency),
+  the page re-reads only the open tabs that moved, lights the changed lines and
+  keeps the scroll; a "last change: <file> · <ago>" line says the project is
+  moving. Doors in from every worktree row, the diff page and the dossier.
+- **`GET /<board>/editor/{trees,tree,file,diff,feed}`** (`http/editor.py`),
+  same token door and envelope as `/git`, served ONLY by a window — the
+  deployed host says so in one sentence. Files come only from inside the
+  board's own worktrees; `..`, absolute paths, `.git` and symlinks out are
+  refused. Caps stated in every answer. ARCHITECTURE.md §22.
+
 ## 0.5.6 — the hours page draws every hour of a day that opened before midnight
 
 Reported live on `/convo/`: the hours breakdown was empty. Monday said
