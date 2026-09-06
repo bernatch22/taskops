@@ -184,6 +184,71 @@ def test_two_scans_differ_exactly_when_the_disk_moved(tmp_path: Path) -> None:
     assert scan.differs(before, scan.take(tree))
 
 
+def committed_checkout(tmp_path: Path) -> tuple[Path, str]:
+    """`checkout()` plus a COMMIT on the card's branch — a new file, a changed
+    one, a deleted one — so the working set has both halves: what the branch
+    wrote, and what is still dirty on the disk. Returns the fork point."""
+    root = checkout(tmp_path)
+    tree = card_tree(root)
+    fork = run.must("rev-parse", "HEAD", cwd=tree)
+    (tree / "src" / "committed.py").write_text("done = True\n", encoding="utf-8")
+    (tree / "README.md").write_text("hello\nand more\n", encoding="utf-8")
+    run.must("add", "src/committed.py", "README.md", cwd=tree)
+    run.must("rm", "-q", "docs/notes.md", cwd=tree)
+    run.must("commit", "-q", "-m", "the card's own work", cwd=tree)
+    return root, fork
+
+
+def test_the_working_set_is_what_the_branch_wrote_plus_the_dirt(tmp_path: Path) -> None:
+    """A worktree that committed and moved on read as CLEAN — every row `clean`,
+    nothing to open — which is the one thing a reader opening it wants to
+    know. With the base's sha the scan marks the branch's own files
+    `committed`, its deletions `deleted` with no bytes, and the dirt as before."""
+    root, fork = committed_checkout(tmp_path)
+    tree = card_tree(root)
+    taken = scan.take(tree, base=fork)
+    states = {path: entry.state for path, entry in taken.files.items()}
+    assert states["src/committed.py"] == "committed" and states["README.md"] == "committed"
+    assert states["docs/notes.md"] == "deleted" and taken.files["docs/notes.md"].size == 0
+    assert states["src/app.py"] == "modified" and states["src/new.py"] == "untracked"
+    # the fixture's staged files rode into that commit: the branch's now
+    assert states["src/staged.py"] == "committed" and states[".gitignore"] == "clean"
+    # Without a base nothing is the branch's: the checkout's own reading.
+    plain = scan.take(tree)
+    assert plain.files["src/committed.py"].state == "clean" and "docs/notes.md" not in plain.files
+
+
+@pytest.fixture()
+def committed_window(tmp_path: Path) -> Iterator[BoardServer]:
+    root, _ = committed_checkout(tmp_path)
+    httpd = serve(tmp_path / "boards", "127.0.0.1", 0, repo=root)
+    httpd.mounts.create(BOARD)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield httpd
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def test_the_tree_door_marks_the_working_set_against_the_base_it_names(
+    committed_window: BoardServer,
+) -> None:
+    status, body = _get(
+        _url(committed_window, f"tree?tree={CARD}&base={CHAPTER.replace('/', '%2F')}"),
+        _token(committed_window),
+    )
+    assert status == 200
+    data = body["data"]
+    assert data["base"]["ref"] == CHAPTER and len(data["base"]["sha"]) == 40
+    states = {f["path"]: f["state"] for f in data["files"]}
+    assert states["src/committed.py"] == "committed" and states["docs/notes.md"] == "deleted"
+    assert states["src/app.py"] == "modified"
+    # The checkout has no working set by definition: no base, every row clean.
+    _, body = _get(_url(committed_window, "tree?tree=main"), _token(committed_window))
+    assert body["data"]["base"]["ref"] == "HEAD"
+    assert all(f["state"] == "clean" for f in body["data"]["files"])
+
+
 # ── reading one file ────────────────────────────────────────────────────────
 
 
@@ -303,7 +368,7 @@ def test_the_tree_door_answers_the_files_and_states_the_cap(window: BoardServer)
     by_path = {f["path"]: f for f in data["files"]}
     assert by_path["src/app.py"]["state"] == "modified" and by_path["src/app.py"]["size"] > 0
     assert by_path["src/new.py"]["state"] == "untracked"
-    assert set(data) == {"tree", "branch", "head", "files", "capped", "total", "cap", "seq", "at"}
+    assert set(data) == {"tree", "branch", "head", "base", "files", "capped", "total", "cap", "seq", "at"}
     assert data["cap"] == scan.FILE_CAP and data["capped"] is False and data["seq"] >= 1
 
 
@@ -323,7 +388,8 @@ def test_the_file_door_answers_text_marks_and_the_base_it_used(window: BoardServ
 def test_an_untracked_file_and_a_binary_are_both_said_plainly(window: BoardServer) -> None:
     _, body = _get(_url(window, f"file?tree={CARD}&path=src/new.py"), _token(window))
     assert body["data"]["tracked"] is False and body["data"]["marks"] == [[1, 1, "added"]]
-    assert body["data"]["base"]["ref"] == "HEAD"
+    # no base asked: a card tree compares with the trunk it was cut from
+    assert body["data"]["base"]["ref"] == "main"
     _, body = _get(_url(window, f"file?tree={CARD}&path=logo.png"), _token(window))
     assert body["data"]["binary"] is True and body["data"]["text"] == ""
     assert body["data"]["marks"] == [] and body["data"]["size"] == 16

@@ -57,13 +57,14 @@ class Trees:
         slash (`mounts.NAME`), so it cannot collide with a board's own feed."""
         return f"{board}/editor/{name}"
 
-    def listing(self, key: str, tree: Path) -> Held:
-        """The watcher's reading when one runs, a fresh scan otherwise."""
+    def listing(self, key: str, tree: Path, base: str = "") -> Held:
+        """The watcher's reading when one runs, a fresh scan otherwise. `base`
+        is the sha the branch's own changes are read against (`scan.take`)."""
         with self._lock:
             held = self._held.get(key) if key in self._watched else None
-        return held if held is not None else self._refresh(key, tree)
+        return held if held is not None else self._refresh(key, tree, base)
 
-    def watch(self, key: str, tree: Path, name: str) -> None:
+    def watch(self, key: str, tree: Path, name: str, base: str = "") -> None:
         """Watch `tree`, once. A second listener joins the thread already running.
 
         The BASELINE is taken here, on the request thread, before the caller
@@ -74,11 +75,11 @@ class Trees:
             if key in self._watched:
                 return
             self._watched.add(key)
-        self._refresh(key, tree)
-        Thread(target=self._pump, args=(key, tree, name), daemon=True).start()
+        self._refresh(key, tree, base)
+        Thread(target=self._pump, args=(key, tree, name, base), daemon=True).start()
 
-    def _refresh(self, key: str, tree: Path) -> Held:
-        taken = scan.take(tree)
+    def _refresh(self, key: str, tree: Path, base: str) -> Held:
+        taken = scan.take(tree, base=base)
         with self._lock:
             before = self._held.get(key)
             moved = before is None or scan.differs(before.scan, taken)
@@ -86,7 +87,7 @@ class Trees:
             self._held[key] = fresh
         return fresh
 
-    def _pump(self, key: str, tree: Path, name: str) -> None:
+    def _pump(self, key: str, tree: Path, name: str, base: str) -> None:
         try:
             seen = self._held[key].seq
             while True:
@@ -95,7 +96,7 @@ class Trees:
                 sleep(WATCH_SECONDS)
                 if not self.hub.count(key):
                     return
-                held = self._refresh(key, tree)
+                held = self._refresh(key, tree, base)
                 if held.seq != seen:
                     seen = held.seq
                     self.hub.publish(key, {"type": "change", "tree": name, "seq": held.seq})

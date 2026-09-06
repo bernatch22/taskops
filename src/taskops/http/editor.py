@@ -30,16 +30,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 from pathlib import Path
 
-from . import rpc, feed
-from .. import _clock
+from . import rpc, feed, listing
 from .routes import param
 from .._errors import NotFound, BadRequest, TaskopsError
-from ..gitwork import diff, scan, reading, inhabited
+from ..gitwork import diff, reading, inhabited
+from ..gitwork.trees import base_ref
 
 if TYPE_CHECKING:
     from .server import BoardServer
     from .handler import Handler
-    from .treewatch import Held, Trees
+    from .treewatch import Trees
 
 NO_CHECKOUT = (
     "this host serves boards, not a checkout — the Editor reads the worktrees on "
@@ -100,10 +100,11 @@ def answer(repo: Path | None, trees: Trees, board: str, rest: str, query: str) -
     if rest not in ("tree", "file", "diff"):
         raise BadRequest(ROUTES)
     name, tree = _named(repo, param(query, "tree"))
+    base = _base(name, tree, param(query, "base"))
     if rest == "tree":
-        return _listing(name, tree, trees.listing(trees.key(board, name), tree))
+        held = trees.listing(trees.key(board, name), tree, base.sha if base else "")
+        return listing.answer(name, tree, held, base)
     rel, path = _file_in(tree, param(query, "path"))
-    base = _base(tree, param(query, "base"))
     is_tracked = reading.tracked(tree, rel)
     if rest == "diff":
         text, cut = ("", False) if base is None else reading.patch_of(
@@ -136,11 +137,12 @@ def _stream(handler: Handler, trees: Trees, board: str, query: str) -> None:
         if handler.mounts.repo is None:
             raise NotFound(NO_CHECKOUT)
         name, tree = _named(handler.mounts.repo, param(query, "tree"))
+        base = _base(name, tree, param(query, "base"))
     except TaskopsError as err:
         handler._fail(rpc.status_for(rpc.failure(err)), err)  # noqa: SLF001
         return
     key = trees.key(board, name)
-    trees.watch(key, tree, name)
+    trees.watch(key, tree, name, base.sha if base else "")
     wanted = handler.headers.get("Upgrade", ""), handler.headers.get("Sec-WebSocket-Key", "")
     feed.attach(handler, handler.mounts.hub, key, *wanted)
 
@@ -159,33 +161,23 @@ def _file_in(tree: Path, rel: str) -> tuple[str, Path]:
     return rel, path
 
 
-def _base(tree: Path, ref: str) -> reading.Base | None:
+def _base(name: str, tree: Path, ref: str) -> reading.Base | None:
     """The base asked for, resolved — or None, which the answer carries as
     `base: null` and the page draws as "no base to compare against". A ref that
     could be read as an option never reaches git (`diff.usable`, the wall every
     ref of the /git door passes); the path needs no such wall — it goes after
-    `--`, where git reads nothing as an option."""
+    `--`, where git reads nothing as an option.
+
+    No ref: the checkout compares with its own HEAD (it has no working set by
+    definition), any other tree with the trunk it was cut from — the same
+    `base_ref` that cut it — so a chapter tree's working set is what the
+    chapter wrote."""
     if ref and not diff.usable(ref):
         raise BadRequest(ODD_BASE.format(ref=ref))
+    if not ref and name != inhabited.MAIN:
+        ref = base_ref(tree)
+        ref = "" if ref == "HEAD" else ref
     return reading.base_of(tree, ref)
-
-
-def _listing(name: str, tree: Path, held: Held) -> dict[str, Any]:
-    described = inhabited.describe(name, tree, "")
-    return {
-        "tree": name,
-        "branch": described.branch,
-        "head": described.head,
-        "files": [
-            {"path": e.path, "size": e.size, "mtime": e.mtime, "state": e.state}
-            for e in held.scan.files.values()
-        ],
-        "capped": held.scan.capped,
-        "total": held.scan.total,
-        "cap": scan.FILE_CAP,
-        "seq": held.seq,
-        "at": _clock.now(),
-    }
 
 
 def _named_file(name: str, rel: str, base: reading.Base | None) -> dict[str, Any]:

@@ -62,6 +62,12 @@ NESTED = ".taskops/trees/"
 FILE_CAP = 4000
 
 CLEAN, MODIFIED, ADDED, STAGED, UNTRACKED = "clean", "modified", "added", "staged", "untracked"
+COMMITTED, DELETED = "committed", "deleted"
+"""The branch's own half of the WORKING SET: `committed` is clean on the disk
+but differs from the base — the file this worktree already wrote and
+committed — and `deleted` is gone since the base, listed with no bytes so the
+tree can strike it through. A worktree that committed and moved on used to
+read as clean, which is the one thing a reader opening it wants to know."""
 GONE = "gone"
 """Deleted from the disk and still in the index — dropped from the listing."""
 
@@ -79,16 +85,21 @@ class Scan(NamedTuple):
     total: int
 
 
-def take(tree: Path, cap: int = FILE_CAP) -> Scan:
-    """The tree as it stands: every project file git can name, measured."""
+def take(tree: Path, cap: int = FILE_CAP, base: str = "") -> Scan:
+    """The tree as it stands: every project file git can name, measured — and,
+    given the base's sha, which of them the branch itself changed."""
     states = _states(tree)
     tracked = set(_tracked(tree))
     named = (tracked | set(_untracked(tree))) - {
         path for path, state in states.items() if state == GONE
     }
-    paths = sorted(path for path in named if not excluded(path))
+    branch, gone = _since(tree, base) if base else (set[str](), set[str]())
+    paths = sorted(path for path in named | gone if not excluded(path))
     files: dict[str, Entry] = {}
     for path in paths[:cap]:
+        if path in gone and path not in named:
+            files[path] = Entry(path, 0, 0.0, DELETED)
+            continue
         try:
             found = os.stat(tree / path)
         except OSError:
@@ -98,6 +109,8 @@ def take(tree: Path, cap: int = FILE_CAP) -> Scan:
         # A path status did not name is clean if the index has it, untracked if not
         # — decided from the two listings already taken, never by a fourth call.
         state = states.get(path, CLEAN if path in tracked else UNTRACKED)
+        if state == CLEAN and path in branch:
+            state = COMMITTED
         files[path] = Entry(path, found.st_size, found.st_mtime, state)
     return Scan(files, len(paths) > cap, len(paths))
 
@@ -122,6 +135,25 @@ def _untracked(tree: Path) -> list[str]:
     args += [f"--exclude={name}" for name in sorted(EXCLUDED)]
     raw = run.git(*args, cwd=tree)
     return [path for path in raw.out.split("\0") if path] if raw.ok else []
+
+
+def _since(tree: Path, base: str) -> tuple[set[str], set[str]]:
+    """(changed, deleted) between the base's sha and HEAD — the branch's own
+    work. One `diff --name-status`; a rename names its NEW path as changed."""
+    raw = run.git("diff", "--name-status", "-z", base, "HEAD", cwd=tree)
+    changed: set[str] = set()
+    deleted: set[str] = set()
+    if not raw.ok:
+        return changed, deleted
+    records = iter(raw.out.split("\0"))
+    for status in records:
+        if not status:
+            continue
+        path = next(records, "")
+        if status[0] in "RC":
+            path = next(records, path)  # the new name follows the old one
+        (deleted if status[0] == "D" else changed).add(path)
+    return changed, deleted
 
 
 def _states(tree: Path) -> dict[str, str]:
