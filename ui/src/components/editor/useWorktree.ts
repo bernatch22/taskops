@@ -44,8 +44,8 @@ export function treesRoute(): string {
   return "editor/trees";
 }
 
-export function treeRoute(tree: string): string {
-  return `editor/tree?tree=${encodeURIComponent(tree)}`;
+export function treeRoute(tree: string, base = ""): string {
+  return `editor/tree?tree=${encodeURIComponent(tree)}` + (base ? `&base=${encodeURIComponent(base)}` : "");
 }
 
 export function fileRoute(tree: string, path: string, base: string): string {
@@ -56,8 +56,8 @@ export function diffRoute(tree: string, path: string, base: string): string {
   return `editor/diff?tree=${encodeURIComponent(tree)}&path=${encodeURIComponent(path)}` + (base ? `&base=${encodeURIComponent(base)}` : "");
 }
 
-export function feedRoute(tree: string): string {
-  return `editor/feed?tree=${encodeURIComponent(tree)}`;
+export function feedRoute(tree: string, base = ""): string {
+  return `editor/feed?tree=${encodeURIComponent(tree)}` + (base ? `&base=${encodeURIComponent(base)}` : "");
 }
 
 /* ── the trees ─────────────────────────────────────────────────────────────── */
@@ -102,6 +102,7 @@ export function useTrees(reader: EditorReader | null | undefined): {
 export function useListing(
   reader: EditorReader | null | undefined,
   tree: string | null,
+  base = "",
 ): { listing: TreeListing | null; refusal: string | null; live: boolean } {
   const [listing, setListing] = useState<TreeListing | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -119,7 +120,7 @@ export function useListing(
     const name = tree;
     function read(): void {
       door
-        .git<TreeListing>(treeRoute(name))
+        .git<TreeListing>(treeRoute(name, base))
         .then((answer) => {
           if (mine) {
             setListing(answer);
@@ -133,14 +134,14 @@ export function useListing(
     read();
     // The frame is a poke: `hello` on (re)connect and `change` on a scan that
     // differed both re-read the listing, and only the listing.
-    const stop = door.watch(feedRoute(name), read, (up) => {
+    const stop = door.watch(feedRoute(name, base), read, (up) => {
       if (mine) setLive(up);
     });
     return () => {
       mine = false;
       stop();
     };
-  }, [reader, tree]);
+  }, [reader, tree, base]);
 
   return { listing, refusal, live };
 }

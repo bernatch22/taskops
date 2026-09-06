@@ -1,8 +1,20 @@
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { Dossier } from "../../src/components/card/Drawer";
+import { allFolders } from "../../src/components/editor/FileTree";
 import { languageOf, tokenize } from "../../src/components/editor/highlight";
-import { changedSpan, filtered, folded, lastChange, linesOf, markMap } from "../../src/components/editor/tree";
+import { match, search } from "../../src/components/editor/fuzzy";
+import {
+  ancestorsOf,
+  changedSpan,
+  filtered,
+  folded,
+  lastChange,
+  linesOf,
+  markMap,
+  visibleRows,
+  workingFolders,
+} from "../../src/components/editor/tree";
 import type { OpenTab } from "../../src/components/editor/useWorktree";
 import { TABS } from "../../src/components/chrome/TabNav";
 import { EditorView, baseFor, groupsOf, labelOf, type EditorViewProps } from "../../src/pages/Editor";
@@ -51,6 +63,12 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     diff: { on: false, patch: null, loading: false, refusal: null },
     onToggleDiff: () => {},
     now,
+    open: workingFolders(e.listing.files),
+    onToggle: () => {},
+    onCollapseAll: () => {},
+    palette: null,
+    onPalette: () => {},
+    onPick: () => {},
   };
   const page = renderToStaticMarkup(<EditorView {...base} />);
 
@@ -83,6 +101,12 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
 
   /* ── the tree: folders, states, the dot ──────────────────────────────── */
   const tree = h.slice(page, 'data-testid="editor-tree"', 'data-testid="editor-tabs"');
+  // every folder open, so every file is on screen to be checked
+  const unfolded = h.slice(
+    renderToStaticMarkup(<EditorView {...base} open={new Set(allFolders(folded(e.listing.files)))} />),
+    'data-testid="editor-tree"',
+    'data-testid="editor-tabs"',
+  );
   const states = Object.fromEntries(e.listing.files.map((f) => [f.path, f.state]));
   check(
     "the fixture tree carries every git state a file can be in",
@@ -91,12 +115,12 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check(
     "every file is drawn wearing its git state, as text and not colour alone",
     e.listing.files.every((f) =>
-      new RegExp(`data-testid="editor-file" data-path="${f.path}" data-state="${f.state}"`).test(tree),
+      new RegExp(`data-testid="editor-file" data-path="${f.path}" data-state="${f.state}"`).test(unfolded),
     ) &&
-      /aria-label="modified"[^>]*>M</.test(tree) &&
-      /aria-label="untracked"[^>]*>U</.test(tree) &&
-      /aria-label="added"[^>]*>A</.test(tree) &&
-      /aria-label="staged"[^>]*>S</.test(tree),
+      /aria-label="modified"[^>]*>M</.test(unfolded) &&
+      /aria-label="untracked"[^>]*>U</.test(unfolded) &&
+      /aria-label="added"[^>]*>A</.test(unfolded) &&
+      /aria-label="staged"[^>]*>S</.test(unfolded),
   );
   check(
     "a folder with something changed under it carries the count and the dot; a clean one neither",
@@ -104,10 +128,53 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
       /data-testid="editor-folder" data-path="docs" data-changed="0"/.test(tree) &&
       (tree.match(/data-testid="editor-folder-changed"/g) ?? []).length === 1,
   );
+  /* FOLDED BY DEFAULT, except the working set's chain: `src` holds dirty
+   * files and arrives open; `docs` is clean and arrives closed, wearing no
+   * badge. A closed folder WITH working files inside wears the count. */
   check(
-    "folders are real buttons with aria-expanded, open by default",
-    /data-testid="editor-folder"[^>]*aria-expanded="true"/.test(tree),
+    "folders arrive closed except the chain above the working set, and a closed folder with work inside wears the count",
+    /data-testid="editor-folder" data-path="src"[^>]*aria-expanded="true"/.test(tree) &&
+      /data-testid="editor-folder" data-path="docs"[^>]*aria-expanded="false"/.test(tree) &&
+      renderToStaticMarkup(<EditorView {...base} open={new Set()} />).includes('data-testid="editor-folder-badge"') &&
+      !tree.includes('data-testid="editor-folder-badge"'),
   );
+  check(
+    "the checkout has no working set and arrives closed to the root",
+    workingFolders(e.listing.files.map((f) => ({ ...f, state: "clean" as const }))).size === 0 &&
+      [...workingFolders(e.listing.files)].join(",") === "src",
+  );
+  check(
+    "a working-set file is highlighted in the row, not by the glyph alone",
+    /data-testid="editor-file" data-path="src\/app.py"[^>]*data-working="true"/.test(tree) &&
+      !/data-testid="editor-file" data-path="README.md"[^>]*data-working/.test(tree),
+  );
+  check(
+    "the header names the worktree and carries collapse-all and quick-open",
+    page.includes('data-testid="editor-tree-header"') &&
+      page.includes('data-testid="editor-collapse-all"') &&
+      page.includes('data-testid="editor-quick-open"') &&
+      /role="tree"/.test(page) &&
+      /role="treeitem" aria-expanded="true" aria-level="1"/.test(page),
+  );
+  check(
+    "↑/↓ walk the rows as drawn: an open folder's children, a closed one's not",
+    (() => {
+      const nodes = folded(e.listing.files);
+      const closed = visibleRows(nodes, new Set()).map((r) => r.node.path);
+      const opened = visibleRows(nodes, new Set(["src"])).map((r) => r.node.path);
+      return !closed.includes("src/app.py") && opened.includes("src/app.py") && opened.indexOf("src/app.py") > opened.indexOf("src");
+    })(),
+  );
+  check(
+    "a deleted file is struck through and opens nothing",
+    (() => {
+      const gone = renderToStaticMarkup(
+        <EditorView {...base} listing={{ ...e.listing, files: [...e.listing.files, { path: "src/old.py", size: 0, mtime: 0, state: "deleted" }] }} />,
+      );
+      return /data-testid="editor-file" data-path="src\/old.py" data-state="deleted"[^>]*aria-disabled="true"/.test(gone) && gone.includes("line-through");
+    })(),
+  );
+  check("ancestors are every folder above a path, nearest last", ancestorsOf("a/b/c.py").join(",") === "a,a/b" && ancestorsOf("x.py").length === 0);
   check(
     "the open file is aria-current in the tree",
     /data-testid="editor-file" data-path="src\/app.py"[^>]*aria-current="true"/.test(tree),
@@ -275,8 +342,46 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
       (nodes.find((n) => n.path === "src") as { changed: number }).changed === 4,
   );
   check(
-    "the filter is a case-insensitive substring over the whole path",
-    filtered(e.listing.files, "SRC/NEW").length === 1 && filtered(e.listing.files, "").length === e.listing.files.length,
+    "the filter is the palette's fuzzy rule: a subsequence, case-insensitive",
+    filtered(e.listing.files, "SRC/NEW").length === 1 &&
+      filtered(e.listing.files, "snpy").some((f) => f.path === "src/new.py") &&
+      filtered(e.listing.files, "").length === e.listing.files.length,
+  );
+
+  /* ── the fuzzy order, VS Code's shape ────────────────────────────────── */
+  const paths = ["src/scan.py", "docs/notes.md", "src/components/editor/tree.ts", "tests/test_scan.py", "scripts/sc.py", "a/very/long/scan-like/path/scan.py"];
+  check(
+    "a basename match beats a scattered one, and a consecutive run beats a scattered one",
+    search(paths, "scan")[0]?.path === "src/scan.py" &&
+      (match("scan", "src/scan.py")?.score ?? 0) > (match("scan", "tests/test_scan.py")?.score ?? 0) &&
+      (match("scan", "src/scan.py")?.score ?? 0) > (match("scan", "src/components/editor/tree.ts")?.score ?? -1),
+  );
+  check(
+    "a segment start beats mid-word, ties go to the shorter path, and a non-subsequence is no match",
+    (match("tr", "src/components/editor/tree.ts")?.positions[0] ?? -1) === "src/components/editor/".length &&
+      search(["aa/scan.py", "a/scan.py"], "scan")[0]?.path === "a/scan.py" &&
+      match("zzz", "src/scan.py") === null,
+  );
+  check(
+    "the matched characters are the ones lit, and the list is capped",
+    (match("scan", "src/scan.py")?.positions.join(",") ?? "") === "4,5,6,7" &&
+      search(Array.from({ length: 200 }, (_, i) => `f${i}.py`), "f").length === 50 &&
+      search(paths, "").length === paths.length,
+  );
+  const palette = renderToStaticMarkup(
+    <EditorView {...base} palette={{ query: "app", index: 0, results: search(e.listing.files.map((f) => f.path), "app") }} />,
+  );
+  check(
+    "⌘P draws the palette over the editor: the input, the results with the matched characters lit, the first row selected",
+    palette.includes('data-testid="editor-quick"') &&
+      palette.includes('data-testid="editor-quick-input"') &&
+      /data-testid="editor-quick-result" data-path="src\/app.py" aria-selected="true"/.test(palette) &&
+      (palette.match(/data-testid="editor-quick-hit"/g) ?? []).length >= 3 &&
+      !page.includes('data-testid="editor-quick"'),
+  );
+  check(
+    "a palette query nothing matches says so",
+    renderToStaticMarkup(<EditorView {...base} palette={{ query: "zzz", index: 0, results: [] }} />).includes('data-testid="editor-quick-none"'),
   );
   check(
     "marks fold into a line → kind map",

@@ -13,6 +13,7 @@
  * inside it; that is the whole reason a reader would open it. */
 
 import type { FileState, LineMark, MarkKind, TreeFile } from "../../types";
+import { search } from "./fuzzy";
 
 export interface FolderNode {
   kind: "folder";
@@ -40,7 +41,50 @@ export const STATE_GLYPH: Record<FileState, string> = {
   added: "A",
   staged: "S",
   untracked: "U",
+  committed: "C",
+  deleted: "D",
 };
+
+/** THE WORKING SET, defined once: every file whose state is not `clean` —
+ *  what the branch wrote since its base (`committed`, `deleted`) and what is
+ *  still dirty on the disk. The folders the tree opens by default, the rows
+ *  it highlights, and the badge on a closed folder all read this. */
+export function working(state: FileState): boolean {
+  return state !== "clean";
+}
+
+/** Every folder above `path`, nearest last: `a/b/c.py` → `a`, `a/b`. */
+export function ancestorsOf(path: string): string[] {
+  const out: string[] = [];
+  let at = path.indexOf("/");
+  while (at >= 0) {
+    out.push(path.slice(0, at));
+    at = path.indexOf("/", at + 1);
+  }
+  return out;
+}
+
+/** The folders that arrive OPEN: the chain above every working-set file.
+ *  The checkout has no working set, so it arrives closed to the root. */
+export function workingFolders(files: readonly TreeFile[]): Set<string> {
+  const open = new Set<string>();
+  for (const f of files) if (working(f.state)) for (const a of ancestorsOf(f.path)) open.add(a);
+  return open;
+}
+
+/** One row of the tree as drawn — the nodes reachable through the open
+ *  folders, in order — which is what ↑/↓ walk. Pure, for the harness. */
+export function visibleRows(nodes: readonly TreeNode[], open: ReadonlySet<string>): { node: TreeNode; depth: number }[] {
+  const rows: { node: TreeNode; depth: number }[] = [];
+  const walk = (list: readonly TreeNode[], depth: number): void => {
+    for (const node of list) {
+      rows.push({ node, depth });
+      if (node.kind === "folder" && open.has(node.path)) walk(node.children, depth + 1);
+    }
+  };
+  walk(nodes, 0);
+  return rows;
+}
 
 export function folded(files: readonly TreeFile[]): TreeNode[] {
   const root: FolderNode = { kind: "folder", name: "", path: "", children: [], changed: 0 };
@@ -72,7 +116,7 @@ export function folded(files: readonly TreeFile[]): TreeNode[] {
       path: file.path,
       file,
     });
-    if (file.state !== "clean") {
+    if (working(file.state)) {
       // every ancestor, up to and excluding the root
       let up = parent;
       while (up.path !== "") {
@@ -96,11 +140,13 @@ export function folded(files: readonly TreeFile[]): TreeNode[] {
   return root.children;
 }
 
-/** Case-insensitive substring over the whole path. Empty is everything. */
+/** The tree's inline filter: the SAME fuzzy rule the palette uses
+ *  (`fuzzy.ts::search`), so a path the palette finds is a path the tree
+ *  shows. Empty is everything. */
 export function filtered(files: readonly TreeFile[], query: string): TreeFile[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return [...files];
-  return files.filter((f) => f.path.toLowerCase().includes(needle));
+  if (!query.trim()) return [...files];
+  const hit = new Set(search(files.map((f) => f.path), query, files.length).map((m) => m.path));
+  return files.filter((f) => hit.has(f.path));
 }
 
 /** The file the disk touched most recently, or null for an empty tree. */

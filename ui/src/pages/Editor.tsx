@@ -33,16 +33,18 @@
  * ON THE DEPLOYED INSTANCE there is no checkout and no worktree, and the door
  * says so in one sentence (`http/editor.py::NO_CHECKOUT`). The page quotes it
  * and draws nothing else — not an empty tree, not a spinner. */
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ago } from "../format";
 import type { EditorProps } from "../components/monitor/panels";
 import { CodeView, type DiffState } from "../components/editor/CodeView";
 import { FileTree } from "../components/editor/FileTree";
 import { IconSprite } from "../components/editor/Icon";
+import { QuickOpen } from "../components/editor/QuickOpen";
 import { Tabs } from "../components/editor/Tabs";
+import { search, type Match } from "../components/editor/fuzzy";
 import { languageOf } from "../components/editor/highlight";
-import { filtered, folded, lastChange } from "../components/editor/tree";
+import { ancestorsOf, filtered, folded, lastChange, workingFolders } from "../components/editor/tree";
 import {
   useDiff,
   useListing,
@@ -114,13 +116,47 @@ export function Editor({ reader, tree, onTree, named, now }: EditorProps): React
   const { trees, refusal, loading } = useTrees(reader);
   // The checkout is first in every listing, so "nothing chosen yet" opens on it.
   const chosen = tree ?? trees?.trees[0]?.name ?? null;
-  const listing = useListing(reader, chosen);
   const base = baseFor(chosen, named);
+  const listing = useListing(reader, chosen, base);
   const files = useOpenFiles(reader, chosen, listing.listing, base);
   const [query, setQuery] = useState("");
   const [showDiff, setShowDiff] = useState(false);
   const activeTab = files.tabs.find((t) => t.path === files.active) ?? null;
   const diff = useDiff(reader, chosen, files.active, base, showDiff, activeTab?.file);
+
+  /* WHICH FOLDERS ARE OPEN — a Set of OPEN paths, seeded with the working
+   * set's ancestors and only ever GROWN by a listing: a re-read every second
+   * must not close what the reader opened, and a file that enters the working
+   * set opens its chain. A new tree starts the set over. */
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const seed = useMemo(() => workingFolders(listing.listing?.files ?? []), [listing.listing]);
+  useEffect(() => {
+    setOpen(new Set());
+  }, [chosen]);
+  useEffect(() => {
+    setOpen((was) => union(was, seed));
+  }, [seed]);
+  // The active tab's file is REVEALED: its chain opens, the tree scrolls to it.
+  useEffect(() => {
+    if (files.active) setOpen((was) => union(was, ancestorsOf(files.active!)));
+  }, [files.active]);
+
+  /* THE PALETTE. ⌘P / Ctrl+P anywhere on the page; its results are the same
+   * fuzzy rule the tree's filter uses, over the listing already in memory. */
+  const [palette, setPalette] = useState<{ query: string; index: number } | null>(null);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setPalette((was) => (was ? null : { query: "", index: 0 }));
+      } else if (e.key === "Escape") setPalette(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const paths = useMemo(() => (listing.listing?.files ?? []).filter((f) => f.state !== "deleted").map((f) => f.path), [listing.listing]);
+  const results = useMemo(() => (palette ? search(paths, palette.query) : []), [paths, palette]);
+
   return (
     <EditorView
       trees={trees}
@@ -141,8 +177,36 @@ export function Editor({ reader, tree, onTree, named, now }: EditorProps): React
       diff={{ on: showDiff, ...diff }}
       onToggleDiff={() => setShowDiff((on) => !on)}
       now={now}
+      open={open}
+      onToggle={(path) =>
+        setOpen((was) => {
+          const next = new Set(was);
+          if (next.has(path)) next.delete(path);
+          else next.add(path);
+          return next;
+        })
+      }
+      onCollapseAll={() => setOpen(new Set(seed))}
+      palette={palette ? { ...palette, results } : null}
+      onPalette={(next) => setPalette(next)}
+      onPick={(path) => {
+        files.open(path);
+        setPalette(null);
+      }}
     />
   );
+}
+
+function union(a: ReadonlySet<string>, b: Iterable<string>): ReadonlySet<string> {
+  const next = new Set(a);
+  let grew = false;
+  for (const x of b) {
+    if (!next.has(x)) {
+      next.add(x);
+      grew = true;
+    }
+  }
+  return grew ? next : a;
 }
 
 export interface EditorViewProps {
@@ -165,6 +229,15 @@ export interface EditorViewProps {
   diff: DiffState;
   onToggleDiff: () => void;
   now: number;
+  /** the OPEN folders — seeded with the working set's chain (`tree.ts`) */
+  open: ReadonlySet<string>;
+  onToggle: (path: string) => void;
+  onCollapseAll: () => void;
+  /** the quick-open palette, when it is up: what was typed, the fuzzy
+   *  results, the highlighted row */
+  palette: { query: string; index: number; results: readonly Match[] } | null;
+  onPalette: (next: { query: string; index: number } | null) => void;
+  onPick: (path: string) => void;
 }
 
 /* ── the geometry ──────────────────────────────────────────────────────────── */
@@ -339,6 +412,14 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
                 </span>
               ) : null}
             </span>
+            {p.listing.base && p.listing.base.ref !== "HEAD" ? (
+              <>
+                {dot}
+                <span data-testid="editor-listing-base">
+                  working set vs <span className="mono">{p.listing.base.ref}</span>
+                </span>
+              </>
+            ) : null}
             {newest ? (
               <>
                 {dot}
@@ -364,31 +445,50 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
           {p.loading ? "reading the worktrees on this disk…" : "no worktrees read yet"}
         </div>
       ) : (
-        <div style={shell}>
+        <div style={{ ...shell, position: "relative" }}>
+          {p.palette ? (
+            <QuickOpen
+              query={p.palette.query}
+              onQuery={(q) => p.onPalette({ query: q, index: 0 })}
+              results={p.palette.results}
+              index={p.palette.index}
+              onIndex={(i) => p.onPalette({ query: p.palette!.query, index: i })}
+              onPick={p.onPick}
+              onClose={() => p.onPalette(null)}
+            />
+          ) : null}
           <aside style={aside}>
-            <div style={{ padding: "10px 10px 8px" }}>
+            <div style={{ padding: "8px 10px 4px" }}>
               <input
                 data-testid="editor-filter"
                 type="search"
-                placeholder="filter by path"
+                placeholder="filter — fuzzy, like ⌘P"
                 value={p.query}
                 onChange={(e) => p.onQuery(e.target.value)}
                 style={filter}
               />
             </div>
-            <div style={{ minHeight: 0, overflow: "auto", padding: "0 6px 16px" }}>
-              {p.listing ? (
-                shown.length > 0 ? (
-                  <FileTree nodes={nodes} active={p.active} onOpen={p.onOpen} filtering={p.query.trim() !== ""} />
-                ) : (
-                  <div data-testid="editor-tree-none" style={{ ...note, padding: "18px 10px" }}>
-                    {files.length === 0 ? "nothing git can name in this tree" : `nothing matches “${p.query}”`}
-                  </div>
-                )
+            {p.listing ? (
+              shown.length > 0 ? (
+                <FileTree
+                  name={p.tree ?? ""}
+                  nodes={nodes}
+                  open={p.open}
+                  onToggle={p.onToggle}
+                  onCollapseAll={p.onCollapseAll}
+                  onQuickOpen={() => p.onPalette({ query: "", index: 0 })}
+                  active={p.active}
+                  onOpen={p.onOpen}
+                  filtering={p.query.trim() !== ""}
+                />
               ) : (
-                <div style={{ ...note, padding: "18px 10px" }}>reading the tree…</div>
-              )}
-            </div>
+                <div data-testid="editor-tree-none" style={{ ...note, padding: "18px 10px" }}>
+                  {files.length === 0 ? "nothing git can name in this tree" : `nothing matches “${p.query}”`}
+                </div>
+              )
+            ) : (
+              <div style={{ ...note, padding: "18px 10px" }}>reading the tree…</div>
+            )}
           </aside>
           <section style={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
             <Tabs

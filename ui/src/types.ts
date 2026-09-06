@@ -802,10 +802,12 @@ export interface EditorTrees {
 }
 
 /** What git says about one file of the working copy — the worktree decides
- *  first (`modified` wins over a staged change), then the index.
+ *  first (`modified` wins over a staged change), then the index — and, given
+ *  a base, what the BRANCH did: `committed` is clean on disk but differs from
+ *  the base, `deleted` is gone since the base (listed with no bytes).
  *
- *  @source `gitwork/scan.py::_state` */
-export type FileState = "clean" | "modified" | "added" | "staged" | "untracked";
+ *  @source `gitwork/scan.py::_state` and `::_since` */
+export type FileState = "clean" | "modified" | "added" | "staged" | "untracked" | "committed" | "deleted";
 
 /** @source `gitwork/scan.py::Entry`, via `http/editor.py::_listing` */
 export interface TreeFile {
@@ -826,6 +828,9 @@ export interface TreeListing {
   tree: string;
   branch: string;
   head: string;
+  /** what the branch's own changes were read against — `null` when the ref
+   *  named nothing (`http/listing.py`) */
+  base: EditorBase | null;
   files: TreeFile[];
   capped: boolean;
   total: number;
