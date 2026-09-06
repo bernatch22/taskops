@@ -3,6 +3,32 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.5.8 — the Editor is the whole window
+
+- **Nothing is drawn above the Editor any more** — no KPI rail, no header, no
+  tab bar. It was a card on a canvas while also being the only view that wants
+  the entire screen, and the cost was visible: a rounded top edge under a bar
+  with nothing above it, 24px of canvas down both flanks of a file tree, and a
+  bottom edge that read as a scroll that was not there. Padding zero, radius
+  zero, no outer border: the panel IS the window. It had shrunk to a small bar
+  before, and a small bar is still a lid.
+- **One thin bar inside the page** carries the way out, which tree is open and
+  what the door said about it. It sits outside the panel deliberately: the
+  refusal and the loading states replace the panel whole, and the exit must not
+  go with it. The exit is an arrow — a glyph in a bar of monospace facts, with
+  its words in `aria-label` and `title` so nothing is lost to a reader who
+  cannot see it — and `onBack` is REQUIRED by the page's props, because this is
+  the one view with no tab bar and a caller must not be able to strand somebody
+  on it by omission.
+- **`Header.compact` is deleted**: a second shape of that component nothing
+  could reach any more, still asking to be kept in step.
+- Four assertions pin the new geometry and each was measured red at its own
+  site. One of them was born FALSE and is fixed here — it read the `style`
+  attribute with the pattern's attribute order backwards, matched nothing, and
+  `undefined !== true` passed with the padding put straight back. It now has to
+  FIND the node before it says anything about it, and that blind spot is
+  mutated red too.
+
 ## 0.5.7 — the Editor, and a card that says how far along it is
 
 - **A card reports its own progress** — `taskops_update progress=0-100`, an
