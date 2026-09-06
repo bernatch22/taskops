@@ -580,6 +580,54 @@ def a_diff(root: Path) -> dict[str, Any]:
     }
 
 
+def a_worktree(root: Path) -> dict[str, Any]:
+    """The /editor doors' OWN answers over a real checkout — the Editor's half
+    of this fixture (ARCHITECTURE.md §22).
+
+    Built on `tests/test_editor.py::checkout`, which puts every git state a
+    file can be in inside one card worktree, and asked through
+    `http/editor.py::answer` exactly as the page asks: the trees, the listing,
+    a modified file WITH its marks against the chapter branch, an untracked
+    file, a binary, the patch — and both refusals, because they are what the
+    page QUOTES (the deployed instance has no checkout, and a path that leaves
+    the tree is refused in one sentence). A sentence written by hand here
+    would pass while the real one never reached a screen.
+    """
+    from taskops.http import feed, editor, treewatch
+    from taskops._errors import NotFound, BadRequest
+    from tests.test_editor import CARD, CHAPTER, checkout
+
+    repo = checkout(root)
+    trees = treewatch.Trees(feed.Hub())
+    base = CHAPTER.replace("/", "%2F")
+
+    def ask(rest: str, query: str = "") -> dict[str, Any]:
+        return editor.answer(repo, trees, "board", rest, query)
+
+    try:
+        editor.answer(None, trees, "board", "trees", "")
+    except NotFound as refusal:
+        no_checkout = str(refusal)
+    else:  # pragma: no cover - the door must refuse a host with no checkout
+        no_checkout = ""
+    try:
+        ask("file", f"tree={CARD}&path=../checkout/README.md")
+    except BadRequest as refusal:
+        outside = str(refusal)
+    else:  # pragma: no cover - the door is not a file server
+        outside = ""
+    return {
+        "trees": ask("trees"),
+        "listing": ask("tree", f"tree={CARD}"),
+        "file": ask("file", f"tree={CARD}&path=src/app.py&base={base}"),
+        "untracked": ask("file", f"tree={CARD}&path=src/new.py&base={base}"),
+        "binary": ask("file", f"tree={CARD}&path=logo.png&base={base}"),
+        "diff": ask("diff", f"tree={CARD}&path=src/app.py&base={base}"),
+        "no_checkout": no_checkout,
+        "outside": outside,
+    }
+
+
 needs_node = pytest.mark.skipif(
     shutil.which("node") is None or not (UI / "node_modules").is_dir(),
     reason="the harness needs node and `npm ci` in ui/",
@@ -801,6 +849,9 @@ def a_board(root: Path) -> dict[str, Any]:
         # report's bytes, and its own refusals (no clone here, a ref this clone
         # lacks, a path that is not a report). ARCHITECTURE.md §16.
         "git": answers,
+        # The /editor doors' own answers over a real checkout with a real card
+        # worktree — the Editor's half, ARCHITECTURE.md §22.
+        "editor": a_worktree(root.parent / "editor"),
     }
     dev.close()
     worker.close()
@@ -832,6 +883,10 @@ def test_the_pages_draw_the_board_and_the_dossier(tmp_path: Path) -> None:
         # above: a harness that silently stopped asserting it still fails.
         "ok a close draws its transition AND the note the worker signed off with",
         "ok a close with no commit says so, in the Python renderer's own words",
+        # The Editor's own claims, named for the same reason.
+        "ok the marks the door computed sit in the gutter, line by line",
+        "ok the tab re-read after a write lights exactly the lines that moved",
+        "ok a host with no checkout draws the door's own sentence and no tree",
     ):
         assert claim in done.stdout, done.stdout
     for pane in PANES:
@@ -857,7 +912,7 @@ def test_the_committed_bundle_carries_the_dashboard() -> None:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle"
     markers = (
         VIEWS + GITHUB_VISIBLE + OWN_CLONE + WORKTREES_PR + SIDE_BY_SIDE + NOTHING_DRAWN
-    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE + REPORTS + FORGE_SAID + TREE_INWARD
+    ) + CHAPTERS_LISTED + CLOSING_NOTE + ACTORS + DATE_PANES + PROSE + REPORTS + FORGE_SAID + TREE_INWARD + EDITOR
     for testid in markers:
         assert f'"{testid}"' in app, f"{testid} is not in the committed bundle — rebuild it"
     for testid in RETIRED + RETIRED_TIMESHEET:
@@ -1032,3 +1087,49 @@ _ = T0, _clock
 #: of its own and not a line in GITHUB_VISIBLE, because the whole point is that
 #: it needs no slug: a board with no forge at all still has worktrees.
 TREE_INWARD = ("card-open-tree",)
+
+#: The EDITOR's row (ARCHITECTURE.md §22), on the same terms as every row above:
+#: each is a `data-testid` written by exactly one component of this branch, and
+#: none of them is in the bundle this rebuilt over — checked one at a time
+#: against `git show HEAD:src/taskops/ui/app.js` before the list was written.
+#:
+#: Both halves of the sixth tab are in it: the LEFT pane (the tree, a folder
+#: that says something moved under it, a file wearing its git state, the
+#: filter, the capped-tree notice) and the RIGHT (the tab strip with its close
+#: and its `deleted`, the code with a mark per line, a binary named and not
+#: decoded, a cut file that says so, the diff-vs-base toggle and both of its
+#: honest empties); the one-sentence states (no checkout on this host, nothing
+#: open yet); and the three DOORS in — a worktree row, the diff page, and the
+#: dossier's Worktree block — since a page nobody can reach is not a page.
+EDITOR = (
+    "editor",  # the SIXTH tab (pages/Editor.tsx)
+    "editor-picker",  # which worktree: the checkout first, then every tree
+    "editor-picker-missing",  # …and a tree the reader was sent to that is not on this disk
+    "editor-live",  # the stream's state, said
+    "editor-last-change",  # the newest mtime in the tree — the project is moving
+    "editor-capped-tree",  # a listing the door cut SAYS so, with both numbers
+    "editor-filter",  # the path filter
+    "editor-tree",  # the left pane (components/editor/FileTree.tsx)
+    "editor-folder",  # a real button with aria-expanded
+    "editor-folder-changed",  # …and the dot when something under it moved
+    "editor-file",  # a file, wearing its git state
+    "editor-tabs",  # the strip (components/editor/Tabs.tsx)
+    "editor-tab",
+    "editor-tab-close",
+    "editor-tab-gone",  # deleted on disk since it was opened
+    "editor-path",  # the open file's path, state and base, above the code
+    "editor-base",
+    "editor-diff-toggle",  # code ↔ diff vs base
+    "editor-code",  # the pane (components/editor/CodeView.tsx)
+    "editor-line",  # one row: gutter mark, number, tokens
+    "editor-mark",
+    "editor-binary",  # "binary, N bytes" — never decoded
+    "editor-capped",  # a cut file says so
+    "editor-diff",  # the patch, through the ONE patch renderer
+    "editor-diff-empty",  # …and the honest empty
+    "editor-none",  # no checkout on this host: the door's sentence, quoted
+    "editor-empty",  # nothing open yet
+    "worktree-editor",  # the door on a Worktrees row
+    "worktree-diff-editor",  # …and on the diff page
+    "card-open-editor",  # …and in the dossier's Worktree block
+)

