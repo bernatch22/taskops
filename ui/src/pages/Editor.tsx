@@ -63,11 +63,51 @@ export function baseFor(tree: string | null, named: readonly WorktreeRow[]): str
 }
 
 /** How a tree is named in the picker: the card's title beside its id when
- *  the board knows it, the branch otherwise. */
+ *  the board knows it — and its standing, and who is in it right now — the
+ *  branch otherwise. The standing is the Worktrees index's own pill
+ *  (`WorktreeRow.status`), so the two screens cannot disagree about a tree. */
 export function labelOf(name: string, branch: string, named: readonly WorktreeRow[]): string {
   const card = named.find((w) => w.id === name);
-  if (card) return `${name} — ${card.title}`;
+  if (card) {
+    const who = card.worker ?? (card.dev ? card.dev.replace(/^dev:/, "") : null);
+    return `${name} — ${card.title} · ${card.status}${who ? ` · ${who}` : ""}`;
+  }
   return branch && branch !== name ? `${name} — ${branch}` : name;
+}
+
+/** The picker's GROUPS, in the order a reader acts: the checkout, the trees
+ *  somebody is working in, the ones waiting, the finished ones — merged apart
+ *  from not — the chapter trees, and the trees the board cannot name. Pure,
+ *  exported: a native `<optgroup>` is the one styling a `<select>` reliably
+ *  carries, and grouping by standing is what says "merged" and "working"
+ *  without a colour the option could not wear. */
+export function groupsOf(
+  trees: readonly { name: string; branch: string }[],
+  named: readonly WorktreeRow[],
+): { title: string; trees: { name: string; branch: string }[] }[] {
+  const by = new Map(named.map((w) => [w.id, w]));
+  const groups: { title: string; trees: { name: string; branch: string }[] }[] = [
+    { title: "the checkout", trees: [] },
+    { title: "working", trees: [] },
+    { title: "waiting", trees: [] },
+    { title: "done, not merged", trees: [] },
+    { title: "merged", trees: [] },
+    { title: "chapters", trees: [] },
+    { title: "not on the board", trees: [] },
+  ];
+  for (const t of trees) {
+    const row = by.get(t.name);
+    const at =
+      t.name === "main" ? 0
+      : t.name.startsWith("_ms-") ? 5
+      : !row ? 6
+      : row.status === "merged" ? 4
+      : row.status === "done, not merged" ? 3
+      : row.status.startsWith("in progress") ? 1
+      : 2;
+    groups[at]!.trees.push(t);
+  }
+  return groups.filter((g) => g.trees.length > 0);
 }
 
 export function Editor({ reader, tree, onTree, named, now }: EditorProps): React.JSX.Element {
@@ -189,13 +229,17 @@ const filter: React.CSSProperties = {
 };
 
 const picker: React.CSSProperties = {
-  fontSize: "12.5px",
-  padding: "5px 10px",
-  borderRadius: "9px",
+  fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+  fontSize: "12px",
+  letterSpacing: "-0.02em",
+  padding: "6px 30px 6px 12px",
+  borderRadius: "10px",
   color: "var(--text)",
-  background: "var(--pane)",
-  border: "1px solid var(--hair)",
-  maxWidth: "36em",
+  background: "var(--pane-2)",
+  border: "1px solid var(--hair-2)",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+  maxWidth: "44em",
+  cursor: "pointer",
 };
 
 const meta: React.CSSProperties = {
@@ -256,10 +300,14 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
               onChange={(e) => p.onTree(e.target.value)}
               style={picker}
             >
-              {p.trees.trees.map((t) => (
-                <option key={t.name} value={t.name} data-testid="editor-picker-tree">
-                  {labelOf(t.name, t.branch, p.named)}
-                </option>
+              {groupsOf(p.trees.trees, p.named).map((g) => (
+                <optgroup key={g.title} label={g.title} data-testid="editor-picker-group">
+                  {g.trees.map((t) => (
+                    <option key={t.name} value={t.name} data-testid="editor-picker-tree">
+                      {labelOf(t.name, t.branch, p.named)}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
               {/* A tree the reader was SENT to that is not on this disk — a
                   merged card whose directory was tidied. A <select> cannot

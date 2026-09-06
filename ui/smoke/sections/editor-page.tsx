@@ -5,7 +5,7 @@ import { languageOf, tokenize } from "../../src/components/editor/highlight";
 import { changedSpan, filtered, folded, lastChange, linesOf, markMap } from "../../src/components/editor/tree";
 import type { OpenTab } from "../../src/components/editor/useWorktree";
 import { TABS } from "../../src/components/chrome/TabNav";
-import { EditorView, baseFor, labelOf, type EditorViewProps } from "../../src/pages/Editor";
+import { EditorView, baseFor, groupsOf, labelOf, type EditorViewProps } from "../../src/pages/Editor";
 import { WorktreeDiff, Worktrees } from "../../src/pages/Worktrees";
 import type { Check, Fixture, Harness } from "./section";
 
@@ -285,6 +285,23 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check(
     "the base is the card's own chapter branch, and nothing for a tree the board cannot name",
     baseFor(named[0]!.id, named) === (named[0]!.milestone?.branch ?? "") && baseFor("main", named) === "" && baseFor(null, named) === "",
+  );
+  check(
+    "the picker groups trees by standing — checkout, working, waiting, done, merged, chapters — and a card's option says its standing",
+    (() => {
+      const groups = groupsOf(
+        [{ name: "main", branch: "main" }, { name: "_ms-x", branch: "ms/x" }, { name: named[0]!.id, branch: named[0]!.id }, { name: "tk-nobody", branch: "tk-nobody" }],
+        named,
+      );
+      const titles = groups.map((g) => g.title);
+      return (
+        titles[0] === "the checkout" &&
+        titles.includes("chapters") &&
+        titles.includes("not on the board") &&
+        labelOf(named[0]!.id, named[0]!.id, named).includes(named[0]!.status) &&
+        (page.match(/data-testid="editor-picker-group"/g) ?? []).length >= 1
+      );
+    })(),
   );
   check(
     "a tree is labelled by its card's title when the board knows it, its branch otherwise",
