@@ -111,6 +111,20 @@ def check_release(card: Card, facts: Facts, actor: str, note: str) -> None:
         )
 
 
+def check_progress(card: Card, facts: Facts, actor: str) -> None:
+    """A percentage is the worker's own report, so it is the worker's to write.
+
+    The same wall as closing and releasing (`_not_somebody_elses`): a lapsed
+    lease does not cost you your own card, a live holder who is somebody else
+    does. Nothing else is judged — not the direction (40 after 60 is honest when
+    the task turned out bigger) and not the step, because a guard on either
+    would only teach a worker to lie in fives.
+    """
+    if facts.status in CLOSED:
+        raise Refused(f"{card['id']} is {facts.status}; there is no progress left to report")
+    _not_somebody_elses(card, facts, actor)
+
+
 def _not_somebody_elses(card: Card, facts: Facts, actor: str) -> None:
     """A lease that lapsed does NOT cost you your own card.
 

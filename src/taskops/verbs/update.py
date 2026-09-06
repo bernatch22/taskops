@@ -30,8 +30,8 @@ from ..core.event import make
 from ..core.types import EDITABLE, LIST_FIELDS, Card, Event, role_of
 from ..store.stores import Stores
 
-# The plain fields; `after`, `milestone` and `assignee` have their own paths.
-FIELDS = tuple(f for f in EDITABLE if f not in ("after", "milestone", "assignee"))
+# The plain fields; `after`, `milestone`, `assignee` and `progress` have their own paths.
+FIELDS = tuple(f for f in EDITABLE if f not in ("after", "milestone", "assignee", "progress"))
 
 
 def run(stores: Stores, actor: str, args: _args.Args) -> dict[str, Any]:
@@ -122,7 +122,32 @@ def _edits(stores: Stores, card: Card, actor: str, args: _args.Args, now: float)
         if stone not in stores.state()["milestones"]:
             raise NotFound(f"milestone {stone} does not exist")
         events.append(make(card["id"], actor, "edited", {"field": "milestone", "to": stone}, now))
+    if "progress" in args:
+        events.append(_progress(stores, card, actor, args, now))
     return events
+
+
+def _progress(stores: Stores, card: Card, actor: str, args: _args.Args, now: float) -> Event:
+    """`progress=35` — how far along, 0–100, in the WORKER's own estimate.
+
+    Through THIS verb and not a twelfth tool, for three reasons that are one:
+    `taskops_update` changes the card and `taskops_comment` talks, and a
+    percentage is a fact about the card. The write is MCP traffic, and MCP
+    traffic is the lease's only heartbeat (ARCHITECTURE §12) — a worker that
+    reports every five or ten points is a worker the board can see is alive,
+    which is the question STALLED exists to ask. And it is an `edited` event
+    like a retitle, so the log, the fold and the thread renderer already say
+    `progress → 35` with no new kind and no new replay rule.
+
+    A report, never a state: nothing derives from it, nothing gates on it, and
+    `done` does not write 100 — a closed card is finished by its status. It is
+    guarded like a release (`core/machine.py::check_progress`) because it is
+    the worker's own word about its own card; a stranger's number on it would
+    be the one thing on the board that nobody said.
+    """
+    value = _args.number(args, "progress", default=0, low=0, high=100)
+    machine.check_progress(card, _facts.facts(stores, card, now), actor)
+    return make(card["id"], actor, "edited", {"field": "progress", "to": value}, now)
 
 
 def _transition(

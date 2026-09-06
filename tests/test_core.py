@@ -923,3 +923,28 @@ def test_the_phrase_carries_the_numbers_and_examples_a_human_can_act_on() -> Non
     many = holding.phrase(holding.compare(["a1", "b2", "c3", "d4", "e5"], []))
     assert many.endswith("a1, b2, c3, …")
     assert holding.phrase(holding.compare(["a1"], ["a1"])) == "all 1 event(s) are held here"
+
+
+# ── progress ────────────────────────────────────────────────────────────────
+
+
+def test_a_progress_edit_folds_onto_the_card_like_any_other() -> None:
+    events = [
+        ev.make("tk-aaaaaa", "dev:berna", "created", _card_body("tk-aaaaaa"), 100.0),
+        ev.make("tk-aaaaaa", "agent:berna/w1", "edited", {"field": "progress", "to": 35}, 110.0),
+    ]
+    assert replay.fold(events)["cards"]["tk-aaaaaa"].get("progress") == 35
+    # A card nobody reported on has NO key — absent, never 0 (`core/types.py`).
+    assert "progress" not in replay.fold(events[:1])["cards"]["tk-aaaaaa"]
+
+
+def test_progress_is_the_workers_to_report() -> None:
+    held = machine.Facts("open", "agent:berna/w1", "agent:berna/w1", 0)
+    machine.check_progress(_card(), held, "agent:berna/w1")
+    with pytest.raises(Refused, match="held by agent:berna/w1"):
+        machine.check_progress(_card(), held, "agent:berna/w2")
+    # A lapsed lease does not cost you your own card — closing's rule, kept.
+    lapsed = machine.Facts("open", "agent:berna/w1", None, 0)
+    machine.check_progress(_card(), lapsed, "agent:berna/w1")
+    with pytest.raises(Refused, match="no progress left"):
+        machine.check_progress(_card(), machine.Facts("done", "", None, 1), "agent:berna/w1")

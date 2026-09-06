@@ -400,7 +400,8 @@ taskops_merge      integrate DONE cards into the milestone branch (--no-ff);
                    milestone= lands a finished chapter. main is never touched
 taskops_take       claim your card and get everything back
 taskops_update     change the CARD: close, hand in for review, hand back, drop,
-                   retitle, re-spec, re-prioritise, declare a dependency
+                   report progress (progress=0-100, every 5-10 points as you
+                   work), retitle, re-spec, re-prioritise, declare a dependency
 taskops_review     the verifier's one door: claim a submitted card, then
                    verdict=pass|changes note=…
 taskops_comment    say something on ANY card, including one somebody else holds

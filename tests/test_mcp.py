@@ -1612,3 +1612,20 @@ def test_a_report_outside_the_reports_directory_is_refused_at_the_tool(
     dev, _ = seeded(boards)
     with pytest.raises(Refused, match="is not a report path"):
         call(dev, repo, "taskops_filed", path="notes/story.md", title="t", sha="9c2f1a")
+
+
+def test_progress_rides_on_update_and_every_surface_reads_it(repo: Path, boards: Any) -> None:
+    """One more argument on the one verb that changes the card — not a twelfth
+    tool. The schema bounds it, the protocol, the brief and the take teach the
+    cadence, and the board line and the card head read the number back."""
+    shape = SCHEMAS["taskops_update"]["properties"]["progress"]
+    assert (shape["type"], shape["minimum"], shape["maximum"]) == ("integer", 0, 100)
+    assert "progress=0-100 every 5–10 points" in server.INSTRUCTIONS
+    dev, cards = seeded(boards)
+    brief = call(dev, repo, "taskops_assign", tasks=[cards[0]["id"]], worktrees=False)
+    assert f"taskops_update task={cards[0]['id']} actor=agent:berna/w1 progress=<0-100>" in brief
+    worker = boards(W1)
+    assert "`taskops_update progress=<0-100>`" in call(worker, repo, "taskops_take", task=cards[0]["id"])
+    call(worker, repo, "taskops_update", task=cards[0]["id"], progress=35)
+    assert " · 35%" in call(dev, repo, "taskops_board")
+    assert "35% reported" in call(worker, repo, "taskops_card", task=cards[0]["id"])

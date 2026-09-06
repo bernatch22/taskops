@@ -139,6 +139,21 @@ export function Dossier(props: DrawerProps): React.JSX.Element {
               <span style={{ ...pill, color: "var(--text-3)", background: "var(--pane-3)" }}>
                 review · {card.review ? "on" : "off"}
               </span>
+              {/* What its worker last SAID about how far along it is. A pill and
+                  not a second bar: the tile already draws the bar, the drawer is
+                  where the card's facts are read one after another, and two
+                  drawings of one number in one page is two things that can
+                  disagree. Absent draws nothing, for `CardTile.tsx::Progress`'s
+                  reason — nobody has spoken is not 0%. */}
+              {typeof card.progress === "number" ? (
+                <span
+                  className="num"
+                  data-testid="card-progress"
+                  style={{ ...pill, color: "var(--accent)", background: "var(--accent-soft)" }}
+                >
+                  {card.progress}% reported
+                </span>
+              ) : null}
               {dossier && dossier.seconds >= 60 ? (
                 <span className="mono" style={{ ...pill, color: "var(--text-3)", background: "var(--pane-3)" }}>
                   {ago(dossier.seconds)} worked

@@ -30,6 +30,8 @@ def row(stores: Stores, card: Card, now: float, live: dict[str, str]) -> dict[st
         "quiet_for": None if holder else now - card["updated"],
         "files": card["files"],
         "labels": card["labels"],
+        # The worker's own 0–100, None until it reports one (`core/types.py::Card`).
+        "progress": card.get("progress"),
     }
 
 

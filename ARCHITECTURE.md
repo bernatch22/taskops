@@ -107,6 +107,7 @@ erDiagram
         list files "edit surface, a hint, never a lock"
         list labels
         string assignee "who it is FOR — not a claim"
+        int progress "0-100, the worker's own REPORT — absent until one is made"
         string created_by
         float created
         float updated "replay arbiter, newer-wins"
@@ -182,6 +183,18 @@ both new parameters default to "nothing under review", so a board that never
 turns it on derives exactly as it did before the feature existed
 (`tests/test_core.py::test_a_card_without_review_derives_exactly_as_before`). There is deliberately no path in
 this diagram labelled "recover": nothing is ever wrong for a recover to fix.
+
+`progress` (0–100) is the one field that is neither: STORED, like the three
+statuses, and yet no state at all — nothing derives from it, nothing gates on
+it, `done` does not write 100, and a card nobody has reported on has no key
+rather than a zero. It is a worker's own sentence about its own card
+(`verbs/update.py::_progress`), written with `taskops_update progress=` every
+5–10 points, guarded exactly as a release is (yours, and never a stranger's).
+It is not a derived state because deriving it would mean the board guessing how
+far along somebody is; it is not a lifecycle status because nothing may ever
+branch on it. What it buys beyond the number is the heartbeat: the write is MCP
+traffic, and MCP traffic is the lease's only proof of life (§12), so a worker
+that reports is a worker that cannot read as `stalled` while it is reporting.
 
 One more fact is derived the same way and is about a *reader*, not a card: a
 **pending mention** (`core/mentions.py`). Being named in a comment's optional

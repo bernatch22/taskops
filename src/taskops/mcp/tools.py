@@ -173,8 +173,8 @@ TOOLS: list[Tool] = [
         "taskops_update",
         "Change the CARD: close it (done needs a commit, or no_code=true), hand it in for "
         "review (status=review on a card that requires it), hand it back (status=released, "
-        "note= how far you got), drop it (note= why), retitle, rewrite the spec or criteria, "
-        "re-prioritise, declare a dependency. To say something: taskops_comment.",
+        "note= how far you got), drop it (note= why), report progress (progress=0-100, every "
+        "5-10 points), retitle, re-spec, re-prioritise, add a dependency. To talk: taskops_comment.",
         _update,
     ),
     _tool(

@@ -33,7 +33,8 @@ def briefs(data: dict[str, Any]) -> str:
             *_criteria(brief),
             "",
             f"1. taskops_take task={brief['task']} actor={brief['actor']}   (the spec, thread and graph)",
-            "2. implement it; commit in that directory",
+            "2. implement it; commit in that directory — and as you go, every 5–10 points:",
+            f"   taskops_update task={brief['task']} actor={brief['actor']} progress=<0-100>",
             # A reviewed card is handed IN, never closed by its worker: the
             # brief is where the exit is named, or the first close attempt is a
             # refusal the worker has to decode mid-flight.

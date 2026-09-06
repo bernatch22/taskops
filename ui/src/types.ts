@@ -67,6 +67,11 @@ export interface Card {
   files: string[];
   labels: string[];
   assignee: string; // "" is the open pool; NOT a claim — the lease is
+  /** How far along the WORKER says it is, 0–100 — `taskops_update progress=`.
+   *  `NotRequired` in Python and absent until the first report, so optional
+   *  here for the real reason and not only the header's: a card nobody has
+   *  reported on has no key, and absent is not 0. */
+  progress?: number;
   created_by: string;
   created: number;
   updated: number;
@@ -171,6 +176,16 @@ export interface BoardRow {
   quiet_for: number | null; // seconds since the owner spoke; null while somebody holds it
   files: string[];
   labels: string[];
+  /** The worker's own 0–100, `null` while nobody has reported one.
+   *
+   *  NULL and not absent on a board at this version — `verbs/_rows.py::row`
+   *  sends `card.get("progress")`, so the key is always there and its value
+   *  says whether anybody has spoken. Optional on top of that for the header's
+   *  usual reason: a board one version behind sends no key at all, and both
+   *  states mean the same thing to a reader — draw no bar.
+   *
+   *  @source `verbs/_rows.py::row` */
+  progress?: number | null;
 }
 
 /** A blocked row carries what it is waiting for — `graph.blockers`.

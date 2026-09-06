@@ -85,6 +85,10 @@ class Card(TypedDict):
     files: list[str]  # the edit surface as the planner understands it — a hint, never a lock
     labels: list[str]  # routing and search; anybody may edit them
     assignee: str  # "" is the open pool; dispatch writes it. NOT a claim — the lease is.
+    progress: NotRequired[int]
+    """0–100, the worker's own estimate, written by `taskops_update progress=`
+    and absent until the first report. A REPORT, never a state: nothing derives
+    from it and nothing gates on it (`verbs/update.py::_progress` argues it)."""
     created_by: str
     created: float
     updated: float  # the replay arbiter (newer-wins)
@@ -189,5 +193,6 @@ EDITABLE = (
     "labels",
     "assignee",
     "review",
+    "progress",
 )
 LIST_FIELDS = ("after", "files", "labels", "criteria")  # edited as a whole list, never appended to

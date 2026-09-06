@@ -2020,3 +2020,77 @@ def test_the_commits_list_is_capped_and_says_how_many_there_really_are(stores: S
     assert story["commits_total"] == _stories.COMMITS_SHOWN + extra
     assert len(story["commits"]) == _stories.COMMITS_SHOWN
     assert story["commits"][-1]["subject"] == f"c{_stories.COMMITS_SHOWN + extra - 1}"
+
+
+# ── progress ────────────────────────────────────────────────────────────────
+
+
+def test_progress_is_the_workers_own_report_and_every_row_carries_it(stores: Stores) -> None:
+    """`progress=35` rides on `update` and nowhere else: a fact about the card,
+    written by the worker, read on every row — and None until it is reported."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    assert call(stores, "board", BERNA)["groups"]["doing"][0]["progress"] is None
+    out = call(stores, "update", W1, task=card, progress=35)
+    assert out["card"]["progress"] == 35
+    assert call(stores, "board", BERNA)["groups"]["doing"][0]["progress"] == 35
+    assert call(stores, "card", W1, task=card)["card"]["progress"] == 35
+    # An `edited` in the log, so the thread already reads `progress → 35`.
+    assert [e["body"] for e in stores.events(card) if e["kind"] == "edited"] == [
+        {"field": "progress", "to": 35}
+    ]
+
+
+def test_progress_is_a_whole_number_between_0_and_100(stores: Stores) -> None:
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    for bad in (101, -1, "35", 35.5, True):
+        with pytest.raises(BadRequest, match="progress"):
+            call(stores, "update", W1, task=card, progress=bad)
+    call(stores, "update", W1, task=card, progress=0)
+    call(stores, "update", W1, task=card, progress=100)
+    # Backwards is allowed: the task turned out bigger, and saying so is honest.
+    assert call(stores, "update", W1, task=card, progress=60)["card"]["progress"] == 60
+
+
+def test_progress_is_refused_on_somebody_elses_card_and_on_a_closed_one(stores: Stores) -> None:
+    cards = planned(stores)["cards"]
+    held, given = cards[0]["id"], cards[1]["id"]
+    call(stores, "take", W1, task=held)
+    with pytest.raises(Refused, match="held by agent:berna/w1"):
+        call(stores, "update", W2, task=held, progress=50)
+    # W1's by dispatch, nobody running it — a name, because W1 is busy elsewhere
+    call(stores, "assign", BERNA, tasks=[given], workers=[W1])
+    with pytest.raises(Refused, match="belongs to agent:berna/w1"):
+        call(stores, "update", W2, task=given, progress=50)
+    call(stores, "update", W1, task=held, status="done", no_code=True, comment="done")
+    with pytest.raises(Refused, match="no progress left"):
+        call(stores, "update", W1, task=held, progress=100)
+
+
+def test_progress_survives_a_release_and_the_next_worker_is_shown_it(stores: Stores) -> None:
+    """The number belongs to the CARD, not to the worker that wrote it: a
+    released card keeps it, and the take that resumes it reads it beside the
+    note — where the last worker stopped, in two vocabularies."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    call(stores, "update", W1, task=card, progress=40)
+    call(stores, "update", W1, task=card, status="released", comment="parser done, tax left")
+    ready = {r["id"]: r for r in call(stores, "board", BERNA)["groups"]["take"]}
+    assert ready[card]["progress"] == 40
+    got = call(stores, "take", W2, task=card)
+    assert got["card"]["progress"] == 40 and got["resume"] == "parser done, tax left"
+
+
+def test_a_progress_report_is_a_heartbeat(stores: Stores, clock: Callable[[float], None]) -> None:
+    """The argument for `update` over a twelfth tool: the write is MCP traffic,
+    and MCP traffic is the lease's only heartbeat — a worker that reports every
+    few points never reads as STALLED while it is reporting."""
+    card = planned(stores)["cards"][0]["id"]
+    call(stores, "take", W1, task=card)
+    clock(LEASE_TTL - 60)
+    call(stores, "update", W1, task=card, progress=20)
+    clock(LEASE_TTL - 60)
+    board = call(stores, "board", BERNA)
+    assert [r["id"] for r in board["groups"]["doing"]] == [card]
+    assert board["groups"]["stalled"] == []

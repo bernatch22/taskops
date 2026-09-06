@@ -50,6 +50,8 @@ def _head(data: dict[str, Any], card: dict[str, Any], now: float) -> list[str]:
     ]
     if card.get("labels"):
         facts.append(" ".join(f"#{label}" for label in as_strings(card.get("labels"))))
+    if isinstance(card.get("progress"), int):
+        facts.append(f"{card['progress']}% reported")
     spent = float(data.get("seconds") or 0)
     if spent >= 60:
         facts.append(f"{human(spent)} worked")
@@ -157,6 +159,8 @@ def _world(data: dict[str, Any]) -> list[str]:
         "",
         f"worktree: `{data.get('worktree')}`   branch: `{data.get('branch')}`",
         "",
+        "Say how far along you are as you go — `taskops_update progress=<0-100>`, every",
+        "5–10 points; the board draws it and the lease hears you.",
         "Commit in there — the `Task:` trailer is stamped for you. Never `git switch`,",
         "never merge, never push to main. Stuck or out of context →",
         '`taskops_update status=released note="got as far as X"`.',

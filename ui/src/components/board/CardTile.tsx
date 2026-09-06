@@ -145,6 +145,62 @@ const pill: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+/** How far along its worker SAYS it is — `taskops_update progress=`, drawn as a
+ *  track and a number.
+ *
+ *  Absent draws NOTHING, and that is the whole design of this component: the
+ *  board's own vocabulary is that a card nobody reported on has no key
+ *  (`core/types.py::Card.progress`), so an empty track at 0% would be the tile
+ *  inventing a fact — "this worker says it has done nothing" is a different
+ *  sentence from "nobody has said". A bar that appears when somebody speaks is
+ *  also the only version that reads as news.
+ *
+ *  It is REPORTED, never derived: nothing on the board computes it, `done` does
+ *  not write 100, and a closed card keeps whatever its worker last said. So the
+ *  number is drawn beside the track rather than left to the eye — a bar alone
+ *  invites the reader to measure it, and what it means is exactly the number a
+ *  person typed.
+ *
+ *  Clamped here rather than trusted: the server bounds it 0–100
+ *  (`mcp/schema.py`), and a board one version behind — or one that grows a
+ *  wider range later — must not draw a fill past its own track. */
+function Progress({ value }: { value: number }): React.JSX.Element {
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div
+      data-testid="progress"
+      data-progress={pct}
+      title={`${pct}% — reported by whoever is working it`}
+      style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "11px" }}
+    >
+      <div
+        style={{
+          flex: 1,
+          height: "4px",
+          borderRadius: "20px",
+          background: "var(--pane-3)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            borderRadius: "20px",
+            background: "var(--accent)",
+            // The tile's own easing, so a card that reports 35 → 40 while you
+            // are looking at it moves the way everything else on this page does.
+            transition: "width 220ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+          }}
+        />
+      </div>
+      <span className="num" style={{ fontSize: "10.5px", color: "var(--text-3)" }}>
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
 export function CardTile(props: CardTileProps): React.JSX.Element {
   const { row, chip, marker, note, waitingOn, chapter, tileRef, recentComment, onOpen } = props;
   const [lift, setLift] = useState(false);
@@ -264,6 +320,8 @@ export function CardTile(props: CardTileProps): React.JSX.Element {
           <Markdown text={note} inline />
         </div>
       ) : null}
+
+      {typeof row.progress === "number" ? <Progress value={row.progress} /> : null}
 
       {waitingOn && waitingOn.length > 0 ? (
         <div

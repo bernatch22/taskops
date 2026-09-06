@@ -122,8 +122,12 @@ def _group(title: str, rows: object, now: float, extra: list[str] | None = None)
         who = row.get("holder") or row.get("assignee") or ""
         since = row.get("since")
         when = f" · {ago(now - float(since))}" if isinstance(since, (int, float)) else ""
+        # The worker's own estimate, right after the clock: `35%` beside `2h ago`
+        # is the difference between a card that is moving and one that is not.
+        done = row.get("progress")
+        tail = f" · {done}%" if isinstance(done, int) and not isinstance(done, bool) else ""
         waiting = _strs(row.get("waiting_on"))
-        tail = f" · waits on {', '.join(waiting)}" if waiting else ""
+        tail += f" · waits on {', '.join(waiting)}" if waiting else ""
         quiet = row.get("quiet_for")
         if isinstance(quiet, (int, float)) and who:
             # STALLED says how long since its owner said ANYTHING. Not a guess

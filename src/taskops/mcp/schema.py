@@ -126,6 +126,14 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             },
             "review": _flag("this card must pass review before it closes (flip after planning)"),
             "no_code": _flag("closing with no commit — say what happened instead"),
+            "progress": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "how far along you are, 0–100, in your own estimate — report it "
+                "every 5–10 points as you work; the board draws it. The card's worker writes "
+                "it: its holder, or whoever it is assigned to",
+            },
             "after": _text("tk-… this card waits for"),
             "milestone": _text("move the card — or, with no task=, update the milestone"),
             "title": _text("rename"),

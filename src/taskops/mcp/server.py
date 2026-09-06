@@ -47,7 +47,8 @@ it) on EVERY taskops call — all sub-agents share this ONE server · taskops_ta
 returns everything, ordered; work in that worktree · done needs a card-bound
 commit or no_code=true + note (a commit needs NO card: card-less ones are
 recorded at project level) · review=true card → hand IN: status=review note=…,
-stay reachable · stuck → status=released note=… — never silence · update
+stay reachable · as you go, progress=0-100 every 5–10 points (the board draws it)
+· stuck → status=released note=… — never silence · update
 changes the card, comment talks: you may write on ANY open card, and a ✉ in
 the pulse line means you were named — answer on that card and it clears (no mark-as-read) · never git switch / merge / push main / touch another worktree.
 
