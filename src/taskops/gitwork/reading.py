@@ -77,19 +77,20 @@ def read(path: Path, cap: int = CAP) -> Read:
 
 def base_of(tree: Path, ref: str) -> Base | None:
     """The commit the working copy is compared against, or None when `ref`
-    names nothing this tree can see. Both names pass `diff.resolve`, the
+    names nothing this tree can see.
+
+    `diff.compare_range(ref, HEAD)` is the whole arithmetic, REUSED: the
+    merge-base while the card is in flight, and — once the card is integrated
+    and its tip is an ancestor of the chapter — the point it forked from, read
+    off the merge that brought it in. Seen live on a card the orchestrator had
+    just merged: `merge-base(ms/…, HEAD)` was HEAD itself, and every line the
+    card wrote read as unchanged. Both names pass `diff.resolve` inside it, the
     package's one door from a string to a sha."""
-    head = diff.resolve(tree, "HEAD")
-    if head is None:
-        return None
     if not ref:
-        return Base("HEAD", head)
-    left = diff.resolve(tree, ref)
-    if left is None:
-        return None
-    got = run.git("merge-base", left, head, cwd=tree)
-    sha = got.out.strip()
-    return Base(ref, sha if got.ok and re.fullmatch(r"[0-9a-f]{40}", sha) else left)
+        head = diff.resolve(tree, "HEAD")
+        return Base("HEAD", head) if head else None
+    found = diff.compare_range(tree, ref, "HEAD")
+    return Base(ref, found[0]) if found else None
 
 
 def tracked(tree: Path, rel: str) -> bool:
