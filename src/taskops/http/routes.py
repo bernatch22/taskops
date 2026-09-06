@@ -23,6 +23,8 @@ strip runs after the board segment is taken.
 
 from __future__ import annotations
 
+from urllib.parse import unquote
+
 
 def split(path: str) -> tuple[str, str]:
     clean = path.partition("?")[0].strip("/")
@@ -30,3 +32,15 @@ def split(path: str) -> tuple[str, str]:
     if tail.startswith("api/"):
         tail = tail[4:]
     return board, tail
+
+
+def param(query: str, key: str) -> str:
+    """One value out of a query string, decoded, "" when absent. Here beside
+    `split` because it is the same kind of fact — how a request names things —
+    and the git door and the editor door both read `?path=`: two copies of a
+    decoder is how one of them comes to read `+` differently."""
+    for part in query.split("&"):
+        name, _, value = part.partition("=")
+        if name == key:
+            return unquote(value.replace("+", " "))
+    return ""

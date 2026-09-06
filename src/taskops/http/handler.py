@@ -10,13 +10,12 @@ import json
 from typing import TYPE_CHECKING, Any, Callable, cast
 from http.server import BaseHTTPRequestHandler
 
-from . import rpc, feed, page, admin, login, static, gitdoor, gitpack
+from . import rpc, feed, page, admin, login, editor, health, static, gitdoor, gitpack
 from .. import _clock
 from .auth import Credential, token_in, anonymous
 from .mounts import NAME
 from .routes import split
 from .._errors import BadRequest, TaskopsError
-from .._version import __version__
 
 if TYPE_CHECKING:
     from .mounts import Mounts
@@ -56,22 +55,15 @@ class Handler(BaseHTTPRequestHandler):
         self.mounts.touch()
         board, tail = split(self.path)
         if self.path.rstrip("/") == "/healthz":
-            data: dict[str, Any] = {"boards": self.mounts.count()}
-            if self.mounts.repo is not None:
-                # IDENTITY, and only for a WINDOW: `taskops ui` must be able to
-                # tell "our window is up" from "something answered that port" —
-                # reusing by liveness alone reopened tabs onto a four-day-old
-                # binary (`cli/window.py`). A board HOST keeps the terse answer:
-                # its healthz is public, and a server path in it is a leak.
-                data["window"] = str(self.mounts.repo)
-                data["version"] = __version__
-            self._json(200, {"ok": True, "seq": 0, "data": data})
+            self._json(200, {"ok": True, "seq": 0, "data": health.answer(self.mounts)})
         elif tail == "feed":
             self._feed(board)
         elif tail == "repo.git/info/refs":
             gitpack.advertise(self, board)  # git's first ask, clone and push alike
         elif tail.startswith("git/"):
             self._git(board, tail[4:])
+        elif tail.startswith("editor/"):
+            editor.serve(self, board, tail[7:])  # the worktrees on THIS disk (§22)
         elif tail.startswith("ui"):
             page.answer(self, board, tail[2:])  # 0.5.0's address, kept — links were pasted
         elif self.mounts.ui is None and NAME.match(board) and (not tail or static.asset(tail)):

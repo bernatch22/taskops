@@ -42,6 +42,7 @@ from urllib.parse import unquote
 
 from . import stale
 from ..core import reports
+from .routes import param
 from .._errors import NotFound, BadRequest
 from ..gitwork import diff, patch
 
@@ -104,7 +105,7 @@ def answer(
     if repo is None:
         raise NotFound(NO_REPO)
     kind, _, rest = tail.partition("/")
-    path = _param(query, "path") or None
+    path = param(query, "path") or None
     if kind == "file" and rest:
         return _file(repo, unquote(rest), path or "", hosted)
     if kind == "commit" and rest:
@@ -161,14 +162,6 @@ def _file(repo: Path, rev: str, wanted: str, hosted: bool) -> dict[str, Any]:
         "truncated": cut,
         "cap": patch.CAP,
     }
-
-
-def _param(query: str, key: str) -> str:
-    for part in query.split("&"):
-        name, _, value = part.partition("=")
-        if name == key:
-            return unquote(value.replace("+", " "))
-    return ""
 
 
 def _kind(path: str) -> str:

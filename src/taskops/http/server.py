@@ -6,6 +6,7 @@
     GET  /<board>/feed           WebSocket (SSE fallback) — the UI's live wire
     POST /<board>/invite/redeem  burn an invite, get a personal credential
     GET  /<board>/git/* · /ui/*  diffs and the bundle, ONLY on a host inside a repo
+    GET  /<board>/editor/*       the checkout's worktrees, their files, a live stream — a WINDOW only (§22)
     GET  /healthz
 
 The boards themselves live in `mounts.py`; the routing itself — one method per
@@ -29,6 +30,7 @@ from http.server import ThreadingHTTPServer
 from .mounts import Mounts
 from .handler import Handler
 from .upstream import Upstream
+from .treewatch import Trees
 
 
 class BoardServer(ThreadingHTTPServer):
@@ -40,6 +42,9 @@ class BoardServer(ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int], mounts: Mounts) -> None:
         self.mounts = mounts
+        # The Editor's scans, per process like the mounts — `treewatch.py` says
+        # why the cache is here and not on a clock.
+        self.editor = Trees(mounts.hub)
         super().__init__(address, Handler)
 
     def server_close(self) -> None:
