@@ -53,6 +53,19 @@
   --disc-l: 62%;
   --disc-bg-a: 0.2;
   --disc-fg-l: 79%;
+  /* The Editor's syntax ink (components/editor/highlight.ts). Six kinds and no
+     more: a keyword, a string, a comment, a number, a tag, an attribute. They
+     sit beside the palette rather than borrowing from it because `--ok` and
+     `--warn` are STATUS colours — added and changed lines wear those in the
+     gutter — and a string drawn in the same green as an added line would make
+     the two facts read as one. Muted on purpose: code is read for hours. */
+  --code-keyword: #c4b5fd;
+  --code-string: #9fcfa6;
+  --code-comment: #6f7387;
+  --code-number: #e2b27a;
+  --code-tag: #86bfe6;
+  --code-attr: #d9a8d6;
+  --code-flash: rgba(145, 132, 217, 0.28);
 }
 
 [data-tk="light"] {
@@ -92,6 +105,14 @@
   --disc-l: 48%;
   --disc-bg-a: 0.15;
   --disc-fg-l: 33%;
+  /* The same six on paper: darker ink, same hues. */
+  --code-keyword: #5b4fc4;
+  --code-string: #1f7a4a;
+  --code-comment: #86899b;
+  --code-number: #9a6512;
+  --code-tag: #1f6fa8;
+  --code-attr: #8a3f8f;
+  --code-flash: rgba(91, 79, 196, 0.16);
 }
 
 html,
@@ -164,6 +185,16 @@ input::placeholder {
   56%,
   100% {
     opacity: 0;
+  }
+}
+/* A line the disk just changed: lit, then back to rest. The Editor keys the
+   row on the change's timestamp, so a second change restarts it. */
+@keyframes tk-flash {
+  from {
+    background: var(--code-flash);
+  }
+  to {
+    background: transparent;
   }
 }
 @keyframes tk-fade {

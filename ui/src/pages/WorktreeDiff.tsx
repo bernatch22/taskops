@@ -144,6 +144,7 @@ export function WorktreeDiff({
   now = Date.now() / 1000,
   onComment,
   readOnly,
+  onOpenEditor,
 }: WorktreeDiffProps & ThreadProps): React.JSX.Element {
   /* The one piece of state this page owns. `split` by default — side by side is
    * the reason the page is not the drawer's pane. It is passed DOWN into
@@ -246,6 +247,21 @@ export function WorktreeDiff({
           <span className="mono" data-testid="worktree-diff-dir">
             {row.dir || TREE_DIR + head}
           </span>
+          {/* The code itself, live off the disk — this page is the PATCH, the
+              Editor is the files. Drawn only when there is one to send to. */}
+          {onOpenEditor ? (
+            <>
+              {dot}
+              <button
+                type="button"
+                data-testid="worktree-diff-editor"
+                onClick={() => onOpenEditor(head)}
+                style={{ all: "unset", cursor: "pointer", color: "var(--accent)" }}
+              >
+                open in the editor →
+              </button>
+            </>
+          ) : null}
           {forge ? (
             <>
               {dot}

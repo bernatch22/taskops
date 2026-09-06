@@ -68,6 +68,7 @@ import type {
 } from "../../types";
 import type { Tone } from "../board/CardTile";
 import type { HoursChoice } from "../../hoursWindow";
+import type { EditorReader } from "../editor/useWorktree";
 /** Type-only, and it is the door's client as `links.tsx` declares it —
  *  structurally, so this seam names the reader the cascade already takes rather
  *  than inventing a second spelling of it. */
@@ -473,6 +474,10 @@ export interface WorktreesProps {
    *  up, because the page that owns the view state is the page that owns the
    *  props of what it switches to. */
   reader?: GitReader | null | undefined;
+  /** Send the reader to the EDITOR on this tree (`pages/Editor.tsx`) — the
+   *  code as it stands on disk, rather than the patch. Optional: a caller with
+   *  no editor to send to draws no such door, never a dead one. */
+  onOpenEditor?: ((tree: string) => void) | undefined;
 }
 
 /** THE FULL-WIDTH DIFF PAGE — the second surface this chapter adds.
@@ -507,6 +512,9 @@ export interface WorktreeDiffProps {
   /** Back to the table. The page owns no router and no history entry — the
    *  selection is one `useState` in `pages/Worktrees.tsx` and this clears it. */
   onBack: () => void;
+  /** The same door `WorktreesProps.onOpenEditor` is, on the page: this tree,
+   *  in the Editor. Optional for the same reason. */
+  onOpenEditor?: ((tree: string) => void) | undefined;
 }
 
 /** THE CARD'S OWN THREAD, on the diff page — and why it is a SEPARATE interface
@@ -787,4 +795,28 @@ export interface SwarmProps {
   /** `board.groups.stalled` — an `assignee` and no holder anywhere. Nothing
    *  running, nothing written; the state the board has no repair verb for. */
   stalled: readonly BoardRow[];
+}
+
+/* ── The EDITOR VIEW — the sixth tab, and not a Monitor pane ───────────────
+ *
+ * Numbered out of the run for the reason the Worktrees and Actors views are:
+ * a VIEW, not a pane, and the pane count is what `tests/test_ui.py::PANES`
+ * asserts. It reads NOTHING off the board payload but `named` — the same
+ * `rows()` the Worktrees index folds, for a card's title beside its tree and
+ * the chapter branch its marks are read against. Everything else it draws is
+ * on the DISK, read through `http/editor.py`'s doors (ARCHITECTURE.md §22). */
+
+export interface EditorProps {
+  /** The /editor doors' client: the /git-shaped GET plus the second stream
+   *  (`components/editor/useWorktree.ts::EditorReader`). `null` renders every
+   *  empty state and asks for nothing — the headless harness. */
+  reader: EditorReader | null | undefined;
+  /** WHICH tree is open — App's state, beside `tab` and `tree`, because two
+   *  other views send the reader here. `null` opens on the checkout. */
+  tree: string | null;
+  onTree: (name: string) => void;
+  /** `rows(board.groups, board.milestones)` — the Worktrees index's own fold,
+   *  so a tree's card title and its chapter branch come from ONE place. */
+  named: readonly WorktreeRow[];
+  now: number;
 }

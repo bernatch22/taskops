@@ -242,10 +242,17 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check("selecting the tab you are on returns to the report index", onTab("reports").report === null);
   check("and so does leaving for another one", onTab("board").report === null);
   /* The whole list, which `sections/actors.tsx` used to own: Reports is the
-   * FIFTH tab and the last one, and `App`'s page map is a `Record<TabId, …>`,
-   * so a tab here with no page is a compile error rather than a dead pill. */
+   * LAST tab, after Nova's four, and `App`'s page map is a `Record<TabId, …>`,
+   * so a tab here with no page is a compile error rather than a dead pill.
+   *
+   * It pinned "fifth" until the Editor arrived between Worktrees and Reports
+   * (ARCHITECTURE.md §22). The ordinal was the implementation; the contract
+   * this file argues is the ORDER — Nova's four first, in Nova's order, and a
+   * report, being what a chapter leaves behind, last of all — and that is
+   * what is asserted now. `sections/editor-page.tsx` pins the Editor's slot. */
+  const ids = TABS.map((t) => t.id);
   check(
-    "Reports is the fifth tab, after Nova's four",
-    TABS.map((t) => t.id).join(" ") === "monitor board actors worktrees reports",
+    "Reports is the last tab, after Nova's four",
+    ids.slice(0, 4).join(" ") === "monitor board actors worktrees" && ids[ids.length - 1] === "reports",
   );
 }

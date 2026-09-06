@@ -781,3 +781,104 @@ export interface ActivityPayload {
   cards_total: number;
   pulse: Pulse;
 }
+
+/* ── the Editor — the worktrees on THIS disk (http/editor.py) ────────────── */
+
+/** One inhabited directory: the checkout (`main`) or a tree under
+ *  `.taskops/trees/`. `dir` is repo-relative and "" for the checkout.
+ *
+ *  @source `gitwork/inhabited.py::Tree`, via `http/editor.py::answer` (`editor/trees`) */
+export interface EditorTree {
+  name: string;
+  dir: string;
+  branch: string; // "" on a detached HEAD
+  head: string; // 40-hex, "" when git could not say
+}
+
+/** @source `http/editor.py::answer` (`editor/trees`) */
+export interface EditorTrees {
+  checkout: string;
+  trees: EditorTree[];
+}
+
+/** What git says about one file of the working copy — the worktree decides
+ *  first (`modified` wins over a staged change), then the index.
+ *
+ *  @source `gitwork/scan.py::_state` */
+export type FileState = "clean" | "modified" | "added" | "staged" | "untracked";
+
+/** @source `gitwork/scan.py::Entry`, via `http/editor.py::_listing` */
+export interface TreeFile {
+  path: string;
+  size: number;
+  mtime: number; // epoch seconds, as the disk reports it
+  state: FileState;
+}
+
+/** One tree's files, as `GET /<board>/editor/tree?tree=` answers them.
+ *
+ *  `capped` with `total` and `cap` rather than a silently short list: a tree
+ *  the door could not name whole SAYS so. `seq` bumps when the scan differs
+ *  from the one before it — the same number the tree's feed carries.
+ *
+ *  @source `http/editor.py::_listing` */
+export interface TreeListing {
+  tree: string;
+  branch: string;
+  head: string;
+  files: TreeFile[];
+  capped: boolean;
+  total: number;
+  cap: number; // `gitwork/scan.py::FILE_CAP`
+  seq: number;
+  at: number;
+}
+
+/** @source `gitwork/reading.py::Mark.kind` */
+export type MarkKind = "added" | "modified" | "deleted";
+
+/** `[first line, last line, kind]` — 1-based, inclusive, on the file AS IT
+ *  STANDS; a `deleted` mark is the line something was removed after.
+ *  @source `gitwork/reading.py::Mark`, via `http/editor.py::answer` */
+export type LineMark = [number, number, MarkKind];
+
+/** What the file was compared against: the ref asked for and the merge-base
+ *  actually diffed. `null` on the answer when the ref names nothing.
+ *  @source `gitwork/reading.py::Base` */
+export interface EditorBase {
+  ref: string;
+  sha: string;
+}
+
+/** One file of a worktree, off the disk — `GET /<board>/editor/file?tree=&path=`.
+ *
+ *  `binary` with `text: ""` is a real answer and draws as "binary, N bytes";
+ *  `truncated` + `cap` is `GitDiff`'s vocabulary, so one sentence says a cut
+ *  file was cut. `marks` is empty for a binary and for a file with no base.
+ *
+ *  @source `http/editor.py::answer` (`editor/file`) */
+export interface EditorFile {
+  tree: string;
+  path: string;
+  base: EditorBase | null;
+  text: string;
+  binary: boolean;
+  size: number;
+  mtime: number;
+  truncated: boolean;
+  cap: number; // bytes; `gitwork/reading.py::CAP`
+  tracked: boolean;
+  marks: LineMark[];
+}
+
+/** The same file as a unified patch against the same base — what the Worktrees
+ *  page draws, for one file of the working copy.
+ *  @source `http/editor.py::answer` (`editor/diff`) */
+export interface EditorDiff {
+  tree: string;
+  path: string;
+  base: EditorBase | null;
+  patch: string;
+  truncated: boolean;
+  cap: number;
+}

@@ -55,7 +55,8 @@ export interface Env {
 export interface Client {
   /** Run a verb. Resolves with `data`; rejects with RpcError on `ok:false`. */
   rpc<T>(verb: RpcVerb, args?: Record<string, unknown>): Promise<T>;
-  /** Read the /git door — the ONE GET this client makes.
+  /** Read a GET door under `/api/` — the /git door, and since the Editor the
+   *  /editor doors, which answer the same envelope (`http/editor.py`).
    *
    *  It is a sibling of `rpc` and not a second client: same base, same token,
    *  same envelope, same `RpcError`. It is a GET because it is a READ of a path
@@ -63,7 +64,8 @@ export interface Client {
    *  nothing else), and because a diff is cacheable by the browser the way a
    *  verb call is not.
    *
-   *  `route` comes from `links.tsx::gitRoute` — the caller never spells a path
+   *  `route` comes from `links.tsx::gitRoute` or `components/editor/useWorktree.ts`
+   *  — the caller never spells a path
    *  here, so the one place that knows the door's shape is the one place that
    *  knows the cascade it feeds. A refusal (no repo on this host, an unknown
    *  ref, no credential) rejects with the server's own words, which is what
@@ -72,6 +74,12 @@ export interface Client {
   /** Open the feed. `onSignal` fires per frame, `onLive` on every state change.
    *  Returns the stop function; calling it closes and stops reconnecting. */
   subscribe(onSignal: () => void, onLive: (live: boolean) => void): () => void;
+  /** Open a SECOND stream on another door — the Editor's per-tree feed,
+   *  `editor/feed?tree=<name>` — with the very same reconnect loop, the same
+   *  token and the same frame rule as `subscribe`: a frame is a poke, never a
+   *  payload. It is `subscribe` with the route as an argument, and `subscribe`
+   *  is this with the route fixed; there is one loop, not two. */
+  watch(route: string, onSignal: () => void, onLive: (live: boolean) => void): () => void;
   /** The token in use, "" when there is none — the page asks for one then. */
   token(): string;
   /** Remember a token the human pasted. */
@@ -182,15 +190,21 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
     return unwrap<T>(await response.json());
   }
 
-  function feedUrl(scheme: "ws" | "http"): string {
+  function feedUrl(scheme: "ws" | "http", route: string): string {
     const origin = env.origin ?? globalThis.location?.origin ?? "";
-    const url = new URL(base + "/api/feed", origin || "http://localhost");
+    // `route` may carry its own query (`editor/feed?tree=…`); `searchParams`
+    // appends the token after it rather than clobbering it.
+    const url = new URL(base + "/api/" + route, origin || "http://localhost");
     if (scheme === "ws") url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set("token", token());
     return url.toString();
   }
 
   function subscribe(onSignal: () => void, onLive: (live: boolean) => void): () => void {
+    return open("feed", onSignal, onLive);
+  }
+
+  function open(route: string, onSignal: () => void, onLive: (live: boolean) => void): () => void {
     const later = env.setTimeout ?? globalThis.setTimeout;
     const cancel = env.clearTimeout ?? (globalThis.clearTimeout as (id: unknown) => void);
     let stopped = false;
@@ -226,7 +240,7 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
       if (stopped) return;
       const Socket = env.WebSocket ?? globalThis.WebSocket;
       if (!Socket) return events();
-      const socket = new Socket(feedUrl("ws"));
+      const socket = new Socket(feedUrl("ws", route));
       let opened = false;
       close = () => socket.close();
       socket.addEventListener("open", () => {
@@ -256,7 +270,7 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
       if (stopped) return;
       const Stream = env.EventSource ?? globalThis.EventSource;
       if (!Stream) return retry(); // no SSE either: back to WS, later
-      const source = new Stream(feedUrl("http"));
+      const source = new Stream(feedUrl("http", route));
       close = () => source.close();
       source.addEventListener("open", () => {
         attempt = 0;
@@ -293,6 +307,7 @@ export function createClient(base: string, storage: Storage, env: Env = {}): Cli
     rpc,
     git,
     subscribe,
+    watch: open,
     token,
     setToken(value: string) {
       try {

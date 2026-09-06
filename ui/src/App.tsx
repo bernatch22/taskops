@@ -6,8 +6,8 @@
  * own fetch would only manage to paint a board half a second older than the rail
  * above it. Pages receive data; they never ask for it.
  *
- * Five pages, in TabNav's order: Monitor, the Board, Actors, Worktrees and
- * Reports — the
+ * Six pages, in TabNav's order: Monitor, the Board, Actors, Worktrees, the
+ * Editor and Reports — the
  * tab list and the branch below it are two halves of one fact, and a tab with no
  * branch here USED to fall through to the Board, which is a dead tab that still
  * looks alive: it highlights, the view does not change, and nothing says why.
@@ -45,9 +45,10 @@ import type { ActivityPayload } from "./types";
 import { Actors } from "./pages/Actors";
 import { ChapterStory } from "./components/story/ChapterStory";
 import { Board } from "./pages/Board";
+import { Editor } from "./pages/Editor";
 import { Monitor } from "./pages/Monitor";
 import { Reports } from "./pages/Reports";
-import { Worktrees } from "./pages/Worktrees";
+import { Worktrees, rows } from "./pages/Worktrees";
 import { applyTheme, readTheme, type Theme } from "./theme/theme";
 import { DEFAULT_HOURS_CHOICE, windowFor } from "./hoursWindow";
 import type { HoursChoice } from "./hoursWindow";
@@ -135,6 +136,12 @@ export function App({ client }: { client: Client }): React.JSX.Element {
   // Unlike a tree it opens no card: a report belongs to a CHAPTER, not to a card,
   // so there is no dossier to fetch beside it.
   const [report, setReport] = useState<string | null>(null);
+  /* WHICH WORKTREE THE EDITOR IS ON — up here because two other views send
+   * the reader there (a worktree row, the dossier's Worktree block), and
+   * deliberately NOT in `onTab`'s clearing: an editor is a place you come back
+   * to, and the tree you left it on is the tree you want. `null` opens on the
+   * checkout (`pages/Editor.tsx`). */
+  const [editorTree, setEditorTree] = useState<string | null>(null);
   // The chapter in focus lives HERE, next to the tab, for the same reason: it is
   // view state that decides an ARGUMENT to the one fetch, never a second fetch.
   const [milestone, setMilestone] = useState("");
@@ -183,6 +190,16 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     if (tree !== view.tree) openTree(view.tree);
     if (report !== view.report) setReport(view.report);
     setTab(view.tab);
+  }
+
+  /* Into the Editor, on this tree. The drawer closes on the way — a dossier
+   * left floating over an editor is the letterbox the diff page removed — and
+   * the Worktrees selection stays: `onTab` clears it the moment the reader
+   * comes back to that tab, exactly as it always has. */
+  function openEditor(name: string): void {
+    setEditorTree(name);
+    openCard(null);
+    setTab("editor");
   }
 
   // A filter naming a chapter nobody can see would narrow the page with no way
@@ -323,10 +340,25 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 reader={client}
                 openTree={tree}
                 onOpenTree={openTree}
+                onOpenEditor={openEditor}
                 dossier={card}
                 team={board.team}
                 onComment={comment}
                 readOnly={watching(board.pulse)}
+              />
+            ),
+            /* The SIXTH view. Reads nothing off the board but `named` — the
+               Worktrees index's own fold, for a tree's card title and the
+               chapter branch its gutter marks are read against. Everything
+               else it draws is on the DISK, through the /editor doors, on a
+               stream of its own (`components/editor/useWorktree.ts`). */
+            editor: () => (
+              <Editor
+                reader={client}
+                tree={editorTree}
+                onTree={setEditorTree}
+                named={rows(board.groups, board.milestones)}
+                now={Date.now() / 1000}
               />
             ),
             /* The fifth view. The LIST is a slice of the one board answer —
@@ -375,6 +407,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
             openTree(id);
             setTab("worktrees");
           }}
+          onOpenEditor={openEditor}
         />
       ) : null}
 

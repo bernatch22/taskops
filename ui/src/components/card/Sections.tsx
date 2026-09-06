@@ -93,6 +93,7 @@ export function Body({
   repo,
   reader,
   onOpenTree,
+  onOpenEditor,
 }: {
   dossier: CardPayload;
   now: number;
@@ -101,6 +102,9 @@ export function Body({
    *  looks like (the smoke harness renders the body alone): no row, rather
    *  than a dead one. */
   onOpenTree?: ((id: string) => void) | undefined;
+  /** Open the same worktree in the EDITOR — its files as they stand on disk
+   *  (`pages/Editor.tsx`). Optional on the same terms. */
+  onOpenEditor?: ((id: string) => void) | undefined;
   /** Where this repo lives on the web, or nothing — the whole GitHub switch
    *  (`links.tsx`). OPTIONAL so that a caller that has not been taught to pass
    *  it renders exactly the document this file rendered before. */
@@ -188,16 +192,29 @@ export function Body({
 
                 No `repo` is needed for it and so no slug can withhold it: a
                 board with no forge at all still has worktrees. */}
-            {onOpenTree ? (
-              <div style={{ marginTop: "7px" }}>
-                <button
-                  type="button"
-                  data-testid="card-open-tree"
-                  onClick={() => onOpenTree(card.id)}
-                  style={treeLink}
-                >
-                  open worktree →
-                </button>
+            {onOpenTree || onOpenEditor ? (
+              <div style={{ marginTop: "7px", display: "flex", gap: "14px" }}>
+                {onOpenTree ? (
+                  <button
+                    type="button"
+                    data-testid="card-open-tree"
+                    onClick={() => onOpenTree(card.id)}
+                    style={treeLink}
+                  >
+                    open worktree →
+                  </button>
+                ) : null}
+                {/* The files rather than the patch: the Editor on this tree. */}
+                {onOpenEditor ? (
+                  <button
+                    type="button"
+                    data-testid="card-open-editor"
+                    onClick={() => onOpenEditor(card.id)}
+                    style={treeLink}
+                  >
+                    read the code →
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

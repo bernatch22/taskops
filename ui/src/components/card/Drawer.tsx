@@ -45,6 +45,9 @@ export interface DrawerProps {
    *  and the open tree both live. Optional: a caller with nowhere to send the
    *  reader draws no row rather than a dead one (`Sections.tsx::Body`). */
   onOpenTree?: ((id: string) => void) | undefined;
+  /** Open this card's worktree in the EDITOR — the files, not the patch. Same
+   *  door shape, same optionality, same reason. */
+  onOpenEditor?: ((id: string) => void) | undefined;
   /** This window is watching a public board as `anon` — the comment box renders
    *  its refusal instead of a form (`CommentBox.tsx::watching`). Optional and
    *  defaulting to false: every existing caller is a reader with a credential. */
@@ -68,8 +71,19 @@ export function Drawer(props: DrawerProps): React.JSX.Element {
 }
 
 export function Dossier(props: DrawerProps): React.JSX.Element {
-  const { dossier, openId, team, now, onClose, onComment, repo, reader, readOnly, onOpenTree } =
-    props;
+  const {
+    dossier,
+    openId,
+    team,
+    now,
+    onClose,
+    onComment,
+    repo,
+    reader,
+    readOnly,
+    onOpenTree,
+    onOpenEditor,
+  } = props;
   const card = dossier?.card;
   const tone = dossier ? (STATE[dossier.state] ?? "neutral") : "neutral";
   const holder = dossier?.lease?.actor ?? "";
@@ -158,7 +172,14 @@ export function Dossier(props: DrawerProps): React.JSX.Element {
 
       <div style={{ overflowY: "auto", padding: "22px 28px 26px", display: "flex", flexDirection: "column", gap: "22px" }}>
         {dossier && card ? (
-          <Body dossier={dossier} now={now} repo={repo} reader={reader} onOpenTree={onOpenTree} />
+          <Body
+            dossier={dossier}
+            now={now}
+            repo={repo}
+            reader={reader}
+            onOpenTree={onOpenTree}
+            onOpenEditor={onOpenEditor}
+          />
         ) : null}
       </div>
 

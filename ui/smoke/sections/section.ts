@@ -17,7 +17,16 @@
  * else it builds itself, in its own scope, which is what makes the collided
  * `const`s (`reviewed`, `handedBoard`) impossible by construction. */
 import type { rows } from "../../src/pages/Worktrees";
-import type { BoardPayload, CardPayload, GitDiff, GitFile } from "../../src/types";
+import type {
+  BoardPayload,
+  CardPayload,
+  EditorDiff,
+  EditorFile,
+  EditorTrees,
+  GitDiff,
+  GitFile,
+  TreeListing,
+} from "../../src/types";
 
 /** The fixture, as `tests/test_ui.py` writes it. */
 export interface Fixture {
@@ -48,6 +57,22 @@ export interface Fixture {
    *  one. Their histories are where `submitted`, `reviewed` and `status` bodies
    *  come from — see `sections/thread-closing-note.tsx`. */
   closed: CardPayload[];
+  /** the /editor doors' own answers over a real checkout with a real card
+   *  worktree (`tests/test_editor.py::checkout`): the trees, one tree's
+   *  listing with every git state in it, a modified file with its marks, an
+   *  untracked one, a binary, the patch, and the two refusals the page quotes
+   *  — the deployed instance's "no checkout" and the path wall. All from
+   *  `http/editor.py`, never a shape written by hand. */
+  editor: {
+    trees: EditorTrees;
+    listing: TreeListing;
+    file: EditorFile;
+    untracked: EditorFile;
+    binary: EditorFile;
+    diff: EditorDiff;
+    no_checkout: string;
+    outside: string;
+  };
 }
 
 /** How a section reports: one line per claim, a failure carrying its own detail. */

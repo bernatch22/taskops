@@ -375,10 +375,12 @@ function Row({
   w,
   repo,
   onOpen,
+  onEditor,
 }: {
   w: WorktreeRow;
   repo: WorktreesProps["repo"];
   onOpen: (id: string) => void;
+  onEditor?: ((id: string) => void) | undefined;
 }): React.JSX.Element {
   // The row's branch IS its card id (`WorktreeRow`); the base is THIS row's own
   // chapter branch (`baseOf`), never the chapter in focus, and when it cannot be
@@ -468,6 +470,30 @@ function Row({
           </span>
         ) : null}
       </PaneButton>
+      {/* INTO THE EDITOR — the tree's code as it stands on disk. A sibling of
+          the tile for the reason the compare anchor is: a control inside a
+          button is unreachable by keyboard. Drawn only when there is an
+          editor to send to. */}
+      {onEditor ? (
+        <button
+          type="button"
+          data-testid="worktree-editor"
+          title={`read ${w.id}'s files in the Editor`}
+          onClick={() => onEditor(w.id)}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 14px",
+            borderTop: "1px solid var(--hair)",
+            color: "var(--accent)",
+            fontSize: "12px",
+          }}
+        >
+          <span className="mono">{"{ }"}</span>
+        </button>
+      ) : null}
       {diff ? (
         <Ext
           href={diff}
@@ -493,11 +519,13 @@ function Column({
   blocks,
   repo,
   onOpen,
+  onEditor,
 }: {
   title: string;
   blocks: readonly { title: string; rows: WorktreeRow[] }[];
   repo: WorktreesProps["repo"];
   onOpen: (id: string) => void;
+  onEditor?: ((id: string) => void) | undefined;
 }): React.JSX.Element {
   // Never zero: the caller only builds a Column for a column that has rows.
   const total = blocks.reduce((n, b) => n + b.rows.length, 0);
@@ -515,7 +543,7 @@ function Column({
               {b.title}
             </div>
             {b.rows.map((w) => (
-              <Row key={w.id} w={w} repo={repo} onOpen={onOpen} />
+              <Row key={w.id} w={w} repo={repo} onOpen={onOpen} onEditor={onEditor} />
             ))}
           </div>
         ))}
@@ -546,6 +574,7 @@ export function Worktrees({
   reader,
   openTree,
   onOpenTree,
+  onOpenEditor,
   ...thread
 }: WorktreesProps & Controlled): React.JSX.Element {
   const [own, setOwn] = useState<string | null>(null);
@@ -579,6 +608,7 @@ export function Worktrees({
         repo={repo}
         reader={reader}
         onBack={() => select(null)}
+        onOpenEditor={onOpenEditor}
         {...thread}
       />
     );
@@ -607,6 +637,7 @@ export function Worktrees({
               blocks={c.blocks}
               repo={repo}
               onOpen={select}
+              onEditor={onOpenEditor}
             />
           ))}
         </div>
