@@ -44,6 +44,10 @@ export interface HeaderProps {
   onToggleTheme: () => void;
   /** The centre column — TabNav. */
   children?: React.ReactNode;
+  /** A SMALL bar: the Editor is on, and every pixel of height is code. The
+   *  same three columns, scaled down and with no breathing room — never a
+   *  second header to keep in step. */
+  compact?: boolean | undefined;
 }
 
 const bar: React.CSSProperties = {
@@ -88,7 +92,7 @@ export function Header(props: HeaderProps): React.JSX.Element {
   const dotSoft = live ? "var(--ok-soft)" : "var(--danger-soft)";
 
   return (
-    <div style={bar}>
+    <div style={props.compact ? { ...bar, minHeight: "44px", padding: "4px 0", zoom: 0.82 } : bar} data-compact={props.compact ? "true" : undefined}>
       <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
         <div style={mark}>
           <div

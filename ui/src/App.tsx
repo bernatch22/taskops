@@ -234,10 +234,16 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     setTheme(next);
   }
 
+  /* THE EDITOR TAKES THE HEIGHT. On that tab the chrome shrinks to a small
+   * bar and the KPI rail is not drawn at all — the tiles are a board fact the
+   * reader came here to stop looking at, and the code is what the screen is
+   * for. Every other tab is drawn exactly as before. */
+  const compact = tab === "editor";
   return (
     <div style={shell}>
       <header style={{ padding: "0 24px" }}>
         <Header
+          compact={compact}
           milestone={board?.pulse.milestone ?? ""}
           milestones={board?.milestones ?? []}
           landedTotal={board?.landed_total}
@@ -251,7 +257,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
         >
           <TabNav tabs={TABS} active={tab} onSelect={selectTab} />
         </Header>
-        {board ? <KpiRail board={board} /> : null}
+        {board && !compact ? <KpiRail board={board} /> : null}
       </header>
 
       <main style={{ minHeight: 0, overflow: "hidden" }}>
