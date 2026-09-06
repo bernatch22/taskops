@@ -240,7 +240,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
    * for. Every other tab is drawn exactly as before. */
   const compact = tab === "editor";
   return (
-    <div style={shell}>
+    <div style={compact ? { ...shell, height: "100dvh", minHeight: 0 } : shell}>
       <header style={{ padding: "0 24px" }}>
         <Header
           compact={compact}
@@ -260,7 +260,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
         {board && !compact ? <KpiRail board={board} /> : null}
       </header>
 
-      <main style={{ minHeight: 0, overflow: "hidden" }}>
+      <main style={{ minHeight: 0, overflow: "hidden", display: compact ? "flex" : undefined, flexDirection: "column" }}>
         {/* The refusal is shown with the server's own words: a Refused message
             NAMES the call that fixes it, and paraphrasing it here would throw
             away the only instruction the reader gets. */}

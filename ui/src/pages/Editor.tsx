@@ -33,12 +33,13 @@
  * ON THE DEPLOYED INSTANCE there is no checkout and no worktree, and the door
  * says so in one sentence (`http/editor.py::NO_CHECKOUT`). The page quotes it
  * and draws nothing else — not an empty tree, not a spinner. */
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { ago } from "../format";
 import type { EditorProps } from "../components/monitor/panels";
 import { CodeView, type DiffState } from "../components/editor/CodeView";
 import { FileTree } from "../components/editor/FileTree";
+import { IconSprite } from "../components/editor/Icon";
 import { Tabs } from "../components/editor/Tabs";
 import { languageOf } from "../components/editor/highlight";
 import { filtered, folded, lastChange } from "../components/editor/tree";
@@ -128,39 +129,25 @@ export interface EditorViewProps {
 
 /* ── the geometry ──────────────────────────────────────────────────────────── */
 
-/* THE PAGE FILLS THE VIEWPORT BELOW THE CHROME, and that is measured, not
- * assumed. Every other view scrolls as a document — the shell is `min-height:
- * 100vh` with its `1fr` row sized to content — which is right for a list and
- * wrong for an editor, whose two panes must each scroll INSIDE the window or
- * the tree walks off the top while you read line 300. The header's height is
- * not a constant (the KPI rail comes and goes with the board), so the shell
- * measures where it starts and takes the rest: `calc(100vh - top - gutter)`.
- * Before the first measurement — and under `react-dom/server`, where no
- * effect runs — it wears a viewport fraction, `card/Patch.tsx`'s own idiom
- * for a pane that must not be a fixed number of pixels. */
-const GUTTER = 26;
-const UNMEASURED = "72vh";
-
-function useViewportHeight(): [React.RefObject<HTMLDivElement>, string] {
-  const ref = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState(UNMEASURED);
-  useEffect(() => {
-    function measure(): void {
-      const top = ref.current?.getBoundingClientRect().top;
-      if (top !== undefined) setHeight(`calc(100vh - ${Math.round(top)}px - ${GUTTER}px)`);
-    }
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
-  return [ref, height];
-}
-
+/* THE PAGE FILLS THE VIEWPORT BELOW THE CHROME, by construction and not by
+ * measurement. A first version measured the shell's top and set
+ * `calc(100vh - top)` from an effect — and the effect ran before the shell
+ * existed (it mounts only once the trees are read), so the page sat on its
+ * 72vh fallback and left the bottom fifth of a 1150px window blank. Now the
+ * chain is a flex column with `min-height: 0` at every link: `App` bounds
+ * the shell to `100dvh` on this tab, `<main>` is `minHeight: 0`, this page
+ * is `height: 100%`, the panel takes `flex: 1 1 0`, and the tree and the
+ * code each scroll inside their own box. The page never scrolls. */
 const page: React.CSSProperties = {
-  padding: "0 24px 26px",
+  height: "100%",
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  padding: "0 24px 0",  // to the bottom EDGE: every pixel the chrome leaves is code
 };
 
 const head: React.CSSProperties = {
+  flex: "none",
   display: "flex",
   alignItems: "baseline",
   justifyContent: "space-between",
@@ -170,12 +157,14 @@ const head: React.CSSProperties = {
 };
 
 const shell: React.CSSProperties = {
+  flex: "1 1 0px",
   minHeight: 0,
   display: "grid",
   gridTemplateColumns: "minmax(220px, 300px) minmax(0, 1fr)",
-  borderRadius: "16px",
+  borderRadius: "16px 16px 0 0",
   background: "var(--pane)",
   border: "1px solid var(--hair)",
+  borderBottom: "none",
   overflow: "hidden",
 };
 
@@ -245,7 +234,6 @@ const dot = (
 );
 
 export function EditorView(p: EditorViewProps): React.JSX.Element {
-  const [shellRef, shellHeight] = useViewportHeight();
   const files = p.listing?.files ?? [];
   const shown = filtered(files, p.query);
   const nodes = folded(shown);
@@ -254,6 +242,7 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
   const activeEntry = activeTab ? files.find((f) => f.path === activeTab.path) : undefined;
   return (
     <div style={page} data-testid="editor">
+      <IconSprite />
       <div style={head}>
         <div style={{ display: "flex", alignItems: "baseline", gap: "14px", flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 500, letterSpacing: "-0.035em" }}>
@@ -319,7 +308,7 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
       </div>
 
       {p.refusal ? (
-        <div data-testid="editor-none" style={note}>
+        <div data-testid="editor-none" style={{ ...note, flex: "none" }}>
           {p.refusal}
         </div>
       ) : !p.trees ? (
@@ -327,7 +316,7 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
           {p.loading ? "reading the worktrees on this disk…" : "no worktrees read yet"}
         </div>
       ) : (
-        <div ref={shellRef} style={{ ...shell, height: shellHeight }}>
+        <div style={shell}>
           <aside style={aside}>
             <div style={{ padding: "10px 10px 8px" }}>
               <input
