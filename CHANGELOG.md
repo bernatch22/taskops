@@ -3,7 +3,33 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
-## Unreleased — the Editor: a worktree's files, live off the disk
+## 0.5.7 — the Editor, and a card that says how far along it is
+
+- **A card reports its own progress** — `taskops_update progress=0-100`, an
+  argument on the verb that already changes the card and deliberately not a
+  twelfth tool. Stored as an `edited` event, so the log, the fold and the
+  thread renderer read it with no new kind and no new replay rule. A REPORT and
+  never a state (ARCHITECTURE §3): nothing derives from it, nothing gates on
+  it, `done` does not write 100, and a card nobody has spoken about carries NO
+  key rather than a zero — the tile draws a bar only once somebody has spoken.
+  Guarded exactly as a release is: yours, never a stranger's, refused on a
+  closed card, and backwards is allowed because a task that turned out bigger
+  is honest. The cadence rides where a worker actually reads it — the assign
+  brief, the take's footer and the MCP protocol text — and the write doubles as
+  the lease's heartbeat, so a worker that reports cannot read as STALLED while
+  it is reporting. On screen: a track and its number in the tile, one pill in
+  the drawer, `· 35%` on the board's text line.
+- **The board stopped going grey when you switch chapter.** Every tile arrived
+  inverted and the play that reveals them never ran, so the columns drew their
+  counts over nothing. Three defects, each found only after the one above it
+  was fixed: a cancelled play was dropped with its styles instead of being
+  played; rects were measured WITH the animation's own transforms, so the
+  offsets cascaded (6px → -12px → -6.66px → 12.99px); and the release looked
+  ids up in a ref map React had already emptied, since children detach in the
+  mutation phase before a parent's cleanup runs. All three now decided in
+  `components/board/flip.ts`, where a headless test can reach them, and
+  verified in a browser on the only shape that reproduces it — two chapters
+  that both have tiles: 0 stuck rounds of 6, where the same probe read 5 of 6.
 
 - **A sixth tab, Editor** (`ui/src/pages/Editor.tsx`): pick a worktree — the
   checkout first, then every directory under `.taskops/trees/` — and read its
