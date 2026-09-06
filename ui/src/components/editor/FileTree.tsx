@@ -18,6 +18,7 @@ import { useState } from "react";
 
 import { TONE_FG } from "../board/CardTile";
 import type { FileState } from "../../types";
+import { FileGlyph, FolderGlyph } from "./Icon";
 import { STATE_GLYPH, type FolderNode, type TreeNode } from "./tree";
 
 /** The status pair the gutter already wears (`links.tsx`'s rule): added is
@@ -101,6 +102,7 @@ export function FileTree({ nodes, active, onOpen, filtering }: FileTreeProps): R
           <span style={{ ...glyph, color: STATE_INK[node.file.state] }} aria-label={node.file.state}>
             {STATE_GLYPH[node.file.state]}
           </span>
+          <FileGlyph path={node.path} />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{node.name}</span>
         </button>
       );
@@ -141,6 +143,7 @@ function Folder({
         style={{ ...row, paddingLeft: `${8 + depth * 14}px`, color: "var(--text-2)" }}
       >
         <span style={{ ...glyph, color: "var(--text-3)" }}>{open ? "▾" : "▸"}</span>
+        <FolderGlyph open={open} />
         <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{node.name}</span>
         {/* Something under it moved: a dot in the warn ink, and the count in
             the title. A closed folder with nothing to say draws nothing. */}

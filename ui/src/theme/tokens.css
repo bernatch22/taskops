@@ -66,6 +66,27 @@
   --code-tag: #86bfe6;
   --code-attr: #d9a8d6;
   --code-flash: rgba(145, 132, 217, 0.28);
+  /* The file icons (components/editor/icons.ts): one ink per family, the
+     hues the world already reads these files by, muted for the dark ground. */
+  --icon-python: #6fa8dc;
+  --icon-typescript: #5b9be6;
+  --icon-javascript: #e0c357;
+  --icon-json: #d9b64a;
+  --icon-yaml: #c976b8;
+  --icon-toml: #b09a7c;
+  --icon-markdown: #8fa7c2;
+  --icon-sql: #e19a5a;
+  --icon-shell: #7fc98a;
+  --icon-html: #e88a6a;
+  --icon-css: #6fb2e0;
+  --icon-lock: #8d90a3;
+  --icon-docker: #5fb0e8;
+  --icon-env: #c8d16a;
+  --icon-git: #e6845e;
+  --icon-image: #b993e0;
+  --icon-file: #7d8196;
+  --icon-folder: #a6a9bf;
+  --icon-folder-open: #b5abfc;
 }
 
 [data-tk="light"] {
@@ -113,6 +134,26 @@
   --code-tag: #1f6fa8;
   --code-attr: #8a3f8f;
   --code-flash: rgba(91, 79, 196, 0.16);
+  /* The same families on paper: darker inks, same hues. */
+  --icon-python: #2f6fae;
+  --icon-typescript: #2d6fc4;
+  --icon-javascript: #a88a12;
+  --icon-json: #9c7f10;
+  --icon-yaml: #a24a90;
+  --icon-toml: #7d6647;
+  --icon-markdown: #4f6d8f;
+  --icon-sql: #b8651f;
+  --icon-shell: #2f8a4a;
+  --icon-html: #c4522e;
+  --icon-css: #2a7bb8;
+  --icon-lock: #6d7085;
+  --icon-docker: #1f7fc0;
+  --icon-env: #7e8a12;
+  --icon-git: #c25a2e;
+  --icon-image: #7f52b8;
+  --icon-file: #7a7d92;
+  --icon-folder: #8a8da3;
+  --icon-folder-open: #5b4fc4;
 }
 
 html,
