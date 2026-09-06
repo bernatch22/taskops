@@ -18,6 +18,12 @@ here, never written twice.
   the page re-reads only the open tabs that moved, lights the changed lines and
   keeps the scroll; a "last change: <file> · <ago>" line says the project is
   moving. Doors in from every worktree row, the diff page and the dossier.
+- **The tree folds to the working set** — what the branch wrote since its
+  base (`committed`, `deleted`, one `git diff --name-status` per scan) plus
+  the dirt — every other folder closed; ⌘P/Ctrl+P quick open with VS Code's
+  fuzzy rule (one definition, also the tree's filter); an Explorer-shaped
+  sidebar with keyboard navigation, file icons from one inline sprite, a tab
+  strip that scrolls on its own axis, and the whole page at viewport height.
 - **`GET /<board>/editor/{trees,tree,file,diff,feed}`** (`http/editor.py`),
   same token door and envelope as `/git`, served ONLY by a window — the
   deployed host says so in one sentence. Files come only from inside the
