@@ -112,7 +112,7 @@ export function groupsOf(
   return groups.filter((g) => g.trees.length > 0);
 }
 
-export function Editor({ reader, tree, onTree, named, now }: EditorProps): React.JSX.Element {
+export function Editor({ reader, tree, onTree, onBack, named, now }: EditorProps): React.JSX.Element {
   const { trees, refusal, loading } = useTrees(reader);
   // The checkout is first in every listing, so "nothing chosen yet" opens on it.
   const chosen = tree ?? trees?.trees[0]?.name ?? null;
@@ -164,6 +164,7 @@ export function Editor({ reader, tree, onTree, named, now }: EditorProps): React
       loading={loading}
       tree={chosen}
       onTree={onTree}
+      onBack={onBack}
       named={named}
       listing={listing.listing}
       live={listing.live}
@@ -216,6 +217,8 @@ export interface EditorViewProps {
   loading: boolean;
   tree: string | null;
   onTree: (name: string) => void;
+  /** the one way out — this page draws no tab bar (`panels.ts::EditorProps`) */
+  onBack: () => void;
   named: readonly WorktreeRow[];
   listing: TreeListing | null;
   live: boolean;
@@ -242,31 +245,67 @@ export interface EditorViewProps {
 
 /* ── the geometry ──────────────────────────────────────────────────────────── */
 
-/* THE PAGE FILLS THE VIEWPORT BELOW THE CHROME, by construction and not by
- * measurement. A first version measured the shell's top and set
- * `calc(100vh - top)` from an effect — and the effect ran before the shell
- * existed (it mounts only once the trees are read), so the page sat on its
- * 72vh fallback and left the bottom fifth of a 1150px window blank. Now the
- * chain is a flex column with `min-height: 0` at every link: `App` bounds
- * the shell to `100dvh` on this tab, `<main>` is `minHeight: 0`, this page
- * is `height: 100%`, the panel takes `flex: 1 1 0`, and the tree and the
- * code each scroll inside their own box. The page never scrolls. */
+/* THE PAGE IS THE WHOLE VIEWPORT, by construction and not by measurement. A
+ * first version measured the shell's top and set `calc(100vh - top)` from an
+ * effect — and the effect ran before the shell existed (it mounts only once the
+ * trees are read), so the page sat on its 72vh fallback and left the bottom
+ * fifth of a 1150px window blank. The chain is a flex column with
+ * `min-height: 0` at every link: `App` bounds the shell to `100dvh` on this
+ * tab, `<main>` is `minHeight: 0`, this page is `height: 100%`, the panel takes
+ * `flex: 1 1 0`, and the tree and the code each scroll inside their own box.
+ * The page never scrolls.
+ *
+ * FULL BLEED, and that is the whole of this tab's chrome decision. Every other
+ * view is a card on a canvas — side padding, a 16px radius, a hairline — and
+ * this one was drawn the same way while ALSO being the only view that wants the
+ * whole screen. What that cost was visible: a rounded top edge under a bar that
+ * had nothing above it, 24px of canvas down both sides of a file tree, and a
+ * bottom edge that read as a scroll that was not there. So the padding is zero,
+ * the radius is zero, the outer border is gone, and `App` draws NO header at
+ * all on this tab (`App.tsx`, `compact`). The price is that the tab bar is not
+ * on screen, which is why `onBack` exists and is required, not optional: a page
+ * with no way out is not a decision anybody gets to make twice. */
 const page: React.CSSProperties = {
   height: "100%",
   minHeight: 0,
   display: "flex",
   flexDirection: "column",
-  padding: "0 24px 0",  // to the bottom EDGE: every pixel the chrome leaves is code
 };
 
+/* The one bar, INSIDE the page and full width: back, which tree, and what the
+ * door said about it. It stays outside `shell` on purpose — the refusal and the
+ * loading states replace the shell entirely, and the way out must not go with
+ * it. A hairline under it and no radius: it is an edge of the window now, not
+ * the lid of a card. */
 const head: React.CSSProperties = {
   flex: "none",
   display: "flex",
-  alignItems: "baseline",
+  alignItems: "center",
   justifyContent: "space-between",
   gap: "16px",
   flexWrap: "wrap",
-  marginBottom: "12px",
+  padding: "7px 12px",
+  background: "var(--pane-2)",
+  borderBottom: "1px solid var(--hair)",
+};
+
+/** The way out, and the only one on this screen. An icon and not a word for the
+ *  reason the tile is a button and not a link: it sits in a bar of monospace
+ *  facts, a label would be the loudest thing in it, and ← is the one glyph a
+ *  reader does not have to be taught. It carries its words in `aria-label` and
+ *  `title`, so nothing is lost to somebody who cannot see it. */
+const back: React.CSSProperties = {
+  all: "unset",
+  boxSizing: "border-box",
+  cursor: "pointer",
+  flex: "none",
+  width: "26px",
+  height: "26px",
+  display: "grid",
+  placeItems: "center",
+  borderRadius: "8px",
+  color: "var(--text-2)",
+  background: "var(--pane-3)",
 };
 
 const shell: React.CSSProperties = {
@@ -274,10 +313,7 @@ const shell: React.CSSProperties = {
   minHeight: 0,
   display: "grid",
   gridTemplateColumns: "minmax(220px, 300px) minmax(0, 1fr)",
-  borderRadius: "16px 16px 0 0",
   background: "var(--pane)",
-  border: "1px solid var(--hair)",
-  borderBottom: "none",
   overflow: "hidden",
 };
 
@@ -361,10 +397,25 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
     <div style={page} data-testid="editor">
       <IconSprite />
       <div style={head}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: "14px", flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 500, letterSpacing: "-0.035em" }}>
-            Editor
-          </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            data-testid="editor-back"
+            aria-label="leave the Editor"
+            title="leave the Editor"
+            onClick={p.onBack}
+            style={back}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none">
+              <path
+                d="M9.5 3.5 5 8l4.5 4.5"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
           {p.trees ? (
             <select
               data-testid="editor-picker"

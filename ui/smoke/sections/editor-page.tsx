@@ -50,6 +50,7 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     loading: false,
     tree: e.listing.tree,
     onTree: () => {},
+    onBack: () => {},
     named,
     listing: e.listing,
     live: true,
@@ -71,6 +72,46 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     onPick: () => {},
   };
   const page = renderToStaticMarkup(<EditorView {...base} />);
+
+  /* ── the page is the whole window, and it has a way out ──────────────────
+   *
+   * This tab draws no header and no tab bar (`App.tsx`), so the back button is
+   * the ONLY way off it. That makes it the one control here whose absence is
+   * not a cosmetic regression: a reader who lost it has to reload the page.
+   * Pinned by its testid AND by carrying its words for somebody who cannot see
+   * the glyph — an unlabelled ← is a button that says nothing at all. */
+  check(
+    "the way out is drawn, and it says what it does in words",
+    /data-testid="editor-back"/.test(page) &&
+      /data-testid="editor-back"[^>]*aria-label="leave the Editor"/.test(page),
+    page.slice(0, 900),
+  );
+  check(
+    "and it is a button, so it is reachable by keyboard",
+    /<button[^>]*data-testid="editor-back"/.test(page),
+  );
+
+  /* FULL BLEED. The three shapes that made this view read as a card floating on
+   * a canvas — a rounded top edge with nothing above it, side padding down both
+   * flanks, an outer hairline — are gone, and their absence is what a reader
+   * sees. A test on the presence of a testid cannot catch any of them coming
+   * back, so this reads the geometry itself. */
+  /* The root's OWN style, and the match is asserted rather than assumed. The
+   * first version of this check read `exec(...)?.[1]?.includes("padding") !==
+   * true` against a pattern whose attribute order was backwards, so it matched
+   * nothing, and `undefined !== true` is TRUE — it passed with the padding put
+   * back. A test that cannot fail is worse than no test, so the group has to be
+   * FOUND before anything is said about it. */
+  const rootStyle = /<div style="([^"]*)" data-testid="editor"/.exec(page)?.[1];
+  check(
+    "the page carries no padding of its own — every pixel is tree or code",
+    rootStyle !== undefined && !rootStyle.includes("padding"),
+    rootStyle ?? "the editor root was not found — has its markup changed?",
+  );
+  check(
+    "and no rounded lid over a window that has nothing above it",
+    !page.includes("border-radius:16px 16px 0 0"),
+  );
 
   /* ── the picker, the checkout first ──────────────────────────────────── */
   check("the editor is the page", page.includes('data-testid="editor"'));

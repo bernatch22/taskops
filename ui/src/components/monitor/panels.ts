@@ -815,6 +815,10 @@ export interface EditorProps {
    *  other views send the reader here. `null` opens on the checkout. */
   tree: string | null;
   onTree: (name: string) => void;
+  /** Leave the Editor. It is the ONLY way out of this tab, because the Editor
+   *  is the one page drawn with no chrome above it — the whole viewport is
+   *  code, so the tab bar that would take you elsewhere is not on screen. */
+  onBack: () => void;
   /** `rows(board.groups, board.milestones)` — the Worktrees index's own fold,
    *  so a tree's card title and its chapter branch come from ONE place. */
   named: readonly WorktreeRow[];

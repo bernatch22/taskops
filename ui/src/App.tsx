@@ -234,16 +234,23 @@ export function App({ client }: { client: Client }): React.JSX.Element {
     setTheme(next);
   }
 
-  /* THE EDITOR TAKES THE HEIGHT. On that tab the chrome shrinks to a small
-   * bar and the KPI rail is not drawn at all — the tiles are a board fact the
-   * reader came here to stop looking at, and the code is what the screen is
-   * for. Every other tab is drawn exactly as before. */
+  /* THE EDITOR TAKES THE WHOLE WINDOW. On that tab NOTHING above it is drawn —
+   * not the KPI rail, not the header, not the tab bar: the tiles and the
+   * chapter picker are board facts the reader came here to stop looking at, and
+   * a file tree pinned under two bars of chrome is the one view that was never
+   * a card on a canvas. It shrank to a small bar first and that was still a
+   * card: a rounded top edge with nothing above it and 24px of canvas down both
+   * sides (`pages/Editor.tsx` argues the geometry).
+   *
+   * The way back is the page's own, `onBack` — required by its props, so a
+   * future caller cannot forget it and strand the reader. Every other tab is
+   * drawn exactly as before. */
   const compact = tab === "editor";
   return (
-    <div style={compact ? { ...shell, height: "100dvh", minHeight: 0 } : shell}>
+    <div style={compact ? { ...shell, height: "100dvh", minHeight: 0, gridTemplateRows: "minmax(0, 1fr)" } : shell}>
+      {compact ? null : (
       <header style={{ padding: "0 24px" }}>
         <Header
-          compact={compact}
           milestone={board?.pulse.milestone ?? ""}
           milestones={board?.milestones ?? []}
           landedTotal={board?.landed_total}
@@ -257,8 +264,9 @@ export function App({ client }: { client: Client }): React.JSX.Element {
         >
           <TabNav tabs={TABS} active={tab} onSelect={selectTab} />
         </Header>
-        {board && !compact ? <KpiRail board={board} /> : null}
+        {board ? <KpiRail board={board} /> : null}
       </header>
+      )}
 
       <main style={{ minHeight: 0, overflow: "hidden", display: compact ? "flex" : undefined, flexDirection: "column" }}>
         {/* The refusal is shown with the server's own words: a Refused message
@@ -363,6 +371,7 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 reader={client}
                 tree={editorTree}
                 onTree={setEditorTree}
+                onBack={() => selectTab("monitor")}
                 named={rows(board.groups, board.milestones)}
                 now={Date.now() / 1000}
               />

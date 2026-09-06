@@ -44,11 +44,12 @@ export interface HeaderProps {
   onToggleTheme: () => void;
   /** The centre column — TabNav. */
   children?: React.ReactNode;
-  /** A SMALL bar: the Editor is on, and every pixel of height is code. The
-   *  same three columns, scaled down and with no breathing room — never a
-   *  second header to keep in step. */
-  compact?: boolean | undefined;
 }
+
+/* There WAS a `compact` here — a scaled-down bar for the Editor, which wanted
+ * the height. It is gone because that tab now draws no header at all
+ * (`App.tsx`), so the prop could only ever be false: a second shape of this
+ * component that nothing could reach, still asking to be kept in step. */
 
 const bar: React.CSSProperties = {
   display: "grid",
@@ -92,7 +93,7 @@ export function Header(props: HeaderProps): React.JSX.Element {
   const dotSoft = live ? "var(--ok-soft)" : "var(--danger-soft)";
 
   return (
-    <div style={props.compact ? { ...bar, minHeight: "44px", padding: "4px 0", zoom: 0.82 } : bar} data-compact={props.compact ? "true" : undefined}>
+    <div style={bar}>
       <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
         <div style={mark}>
           <div
