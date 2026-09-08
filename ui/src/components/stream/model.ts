@@ -39,7 +39,6 @@
  */
 
 import { changed, oneLine, prose } from "../card/Thread";
-import { trim } from "../toasts/model";
 import type { Event } from "../../types";
 
 /** How far apart two events by one worker on one card can be and still read as
@@ -92,6 +91,27 @@ export const FILTERS: readonly { id: Filter; name: string }[] = [
   { id: "review", name: "review" },
   { id: "chapter", name: "chapter" },
 ];
+
+/** How many rows each family holds, plus `all` — the number beside every
+ *  filter on the page's left column. It is what makes the filter list a
+ *  READING of the log rather than six buttons: 38 comments against 4 chapter
+ *  facts says where the board's noise is before you click anything.
+ *
+ *  Counted over the rows the CARD selection already narrowed, never over the
+ *  whole log: following one card and then seeing "code 40" — the board's total
+ *  — would be two numbers about two different questions in one column. */
+export function counts(events: readonly Event[]): Record<Filter, number> {
+  const out: Record<Filter, number> = {
+    all: events.length,
+    talk: 0,
+    work: 0,
+    code: 0,
+    review: 0,
+    chapter: 0,
+  };
+  for (const event of events) out[familyOf(event)] += 1;
+  return out;
+}
 
 /** The rows a filter and a card selection leave. Both narrow; neither reorders.
  *  `task` is the reader clicking a card id to follow one card — `null` is every
@@ -222,13 +242,17 @@ export function roll(moment: Moment): string {
  *  (a release and the comment before it), and all of them are shown: the roll
  *  says what happened, these say what was SAID.
  *
- *  `trim` is the toasts' own cut, imported rather than re-derived: the same
- *  sentence must not read two lengths on two surfaces. */
-export function said(moment: Moment, limit: number): readonly { id: string; text: string }[] {
+ *  It is returned WHOLE and uncut. It used to come back through the toasts'
+ *  `trim`, and that was wrong the moment the rail started rendering markdown:
+ *  a cut at 96 characters lands inside a fence or a link as often as not, and
+ *  what the reader then sees is not a shortened comment but a broken one. The
+ *  clamp is the VIEW's (a height, undone by expanding the entry), where it can
+ *  be undone; a cut in the model cannot. */
+export function said(moment: Moment): readonly { id: string; text: string }[] {
   const out: { id: string; text: string }[] = [];
   for (const event of moment.events) {
     const written = prose(event);
-    if (written) out.push({ id: event.id, text: trim(written, limit) });
+    if (written) out.push({ id: event.id, text: written });
   }
   return out;
 }
@@ -301,4 +325,101 @@ export function dayLabel(ts: number, now: number): string {
   if (key === dayKey(now - 86400)) return "yesterday";
   const at = new Date(ts * 1000);
   return `${at.getDate()} ${MONTHS[at.getMonth()] ?? ""}`;
+}
+
+/* ── the files a moment names, and why they are worth extracting ─────────────
+ *
+ * This is what makes the rail a place you ACT from rather than a place you
+ * read. A worker says "3 commits · 2 files · +41 −7" and the reader's next
+ * question is always the same one: which files, and what do they look like
+ * now. Every other answer to that costs a tab change, a tree pick and a fuzzy
+ * search; here it is one click, into the editor already on screen.
+ *
+ * THREE SOURCES, in descending order of how much they can be trusted:
+ *
+ *   1. a `commit` event's `numstat` keys — git's own answer, exact, never a
+ *      guess. `gitwork/bind.py::commit_facts` writes them.
+ *   2. a `created` event's `card.files` — the edit surface the planner
+ *      declared. A statement of intent, so it is second: the card may name a
+ *      file the work never touched.
+ *   3. what the PROSE names. A guess, and it is treated as one (see below).
+ *
+ * WHY THE PROSE IS GUESSED AT ALL, and how the guess is kept honest. Agents
+ * write to each other in this thread constantly, and what they write is full
+ * of paths: "the fix site is `verbs/_facts.py::pending_mentions`", "see
+ * ui/src/useEvents.ts". Those are the most valuable links on the surface and
+ * there is no structured field carrying them — the body is prose. So they are
+ * extracted, and the extraction is deliberately CONSERVATIVE: a false negative
+ * costs a click, a false positive puts a chip on screen that opens a refusal,
+ * which is the rail lying about the disk.
+ *
+ * The rules, each one a shape actually seen in this board's own log:
+ *   · inside backticks, or bare — agents write both
+ *   · a trailing `::symbol`, `:line` or `:line:col` is STRIPPED, because
+ *     `verbs/events.py:53` names a file, not a file called "events.py:53"
+ *   · it must look like a path: a slash, or a bare name with a short extension
+ *   · never a URL, never something with whitespace, never a bare directory
+ *   · capped, so one enormous commit does not flood the entry
+ */
+
+/** A path candidate, cleaned, or "" when the token is not one. Pure and
+ *  exported so every rule above is pinned by calling it with the string that
+ *  motivated it. */
+export function pathOf(token: string): string {
+  let t = token.trim().replace(/^[('"`[]+/, "").replace(/[)'"`\],.;:]+$/, "");
+  if (!t || /\s/.test(t)) return "";
+  if (/^[a-z]+:\/\//i.test(t)) return ""; // a URL is not a file on this disk
+  // `file.py::symbol` and `file.py:53` and `file.py:53:7` all name `file.py`.
+  t = t.split("::")[0] ?? "";
+  t = t.replace(/:\d+(?::\d+)?$/, "");
+  if (!t || t.endsWith("/") || t.startsWith("/")) return "";
+  const named = /(^|\/)[\w.@+-]+\.[A-Za-z][\w]{0,7}$/.test(t);
+  if (!named) return "";
+  return t;
+}
+
+/** Every path a piece of prose names, in the order it names them, deduped.
+ *  Backticked runs are read first because that is where an agent puts a path
+ *  on purpose; the bare scan then catches the ones written plainly. */
+export function paths(text: string): readonly string[] {
+  const out: string[] = [];
+  const add = (token: string): void => {
+    const path = pathOf(token);
+    if (path && !out.includes(path)) out.push(path);
+  };
+  for (const [, inside] of text.matchAll(/`([^`\n]+)`/g)) add(inside ?? "");
+  for (const [token] of text.matchAll(/[\w.@+/-]*\/[\w.@+-]+/g)) add(token);
+  return out;
+}
+
+/** How many file chips one entry may wear. Six is two rows at the rail's
+ *  width; past that the entry is about a sweep, and the card is the place to
+ *  read a sweep. */
+export const FILES_SHOWN = 6;
+
+/** The files a moment names — git's answer first, the planner's second, the
+ *  prose's third, deduped in that order and capped. */
+export function touched(moment: Moment, cap: number = FILES_SHOWN): readonly string[] {
+  const out: string[] = [];
+  const add = (path: string): void => {
+    if (path && !out.includes(path)) out.push(path);
+  };
+  for (const event of moment.events) {
+    if (event.kind !== "commit") continue;
+    const raw = event.body["numstat"];
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      for (const path of Object.keys(raw as Record<string, unknown>)) add(path);
+    }
+  }
+  for (const event of moment.events) {
+    if (event.kind !== "created") continue;
+    const card = event.body["card"];
+    const files = card && typeof card === "object" ? (card as { files?: unknown }).files : null;
+    if (Array.isArray(files)) for (const f of files) if (typeof f === "string") add(f);
+  }
+  for (const event of moment.events) {
+    const written = prose(event);
+    if (written) for (const path of paths(written)) add(path);
+  }
+  return out.slice(0, cap);
 }

@@ -54,6 +54,7 @@ import {
 } from "../components/editor/useWorktree";
 import type { WorktreeRow } from "../components/monitor/panels";
 import { StreamRail } from "../components/stream/Stream";
+import { DEFAULT_WIDTH, Grip } from "../components/stream/Grip";
 import type { EventFeed } from "../useEvents";
 import type { EditorTrees, TreeListing } from "../types";
 
@@ -114,7 +115,20 @@ export function groupsOf(
   return groups.filter((g) => g.trees.length > 0);
 }
 
-export function Editor({ reader, tree, onTree, onBack, named, now, feed, stream, onStream, onOpenCard }: EditorProps): React.JSX.Element {
+export function Editor({
+  reader,
+  tree,
+  onTree,
+  onBack,
+  named,
+  now,
+  feed,
+  stream,
+  onStream,
+  streamWidth,
+  onStreamWidth,
+  onOpenCard,
+}: EditorProps): React.JSX.Element {
   const { trees, refusal, loading } = useTrees(reader);
   // The checkout is first in every listing, so "nothing chosen yet" opens on it.
   const chosen = tree ?? trees?.trees[0]?.name ?? null;
@@ -157,6 +171,37 @@ export function Editor({ reader, tree, onTree, onBack, named, now, feed, stream,
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const paths = useMemo(() => (listing.listing?.files ?? []).filter((f) => f.state !== "deleted").map((f) => f.path), [listing.listing]);
+
+  /* OPENING A FILE THE STREAM NAMES — the one control on the rail that leaves
+   * it, and the reason the rail is worth its column.
+   *
+   * It cannot be one call. `useOpenFiles.open` fetches through a closure over
+   * the tree that was current when it was built, so switching the tree and
+   * opening in the same handler asks the OLD tree for a path that belongs to
+   * the new one. So the ask is remembered and the effect below opens it once
+   * `chosen` has actually moved — which is also what makes the file arrive
+   * against the right base, since the listing is re-read with the tree.
+   *
+   * The tree is switched only when the moment's card HAS a worktree on this
+   * disk. It usually does while the work is live; once a card is merged and
+   * its directory tidied there is nothing to switch to, and the path is opened
+   * in whatever tree the reader is in — the honest answer, because the file
+   * still exists, in the trunk. */
+  const [pending, setPending] = useState<{ tree: string; path: string } | null>(null);
+  function openFromStream(task: string, path: string): void {
+    const elsewhere = trees?.trees.some((t) => t.name === task) === true && task !== chosen;
+    if (!elsewhere) {
+      files.open(path);
+      return;
+    }
+    setPending({ tree: task, path });
+    onTree(task);
+  }
+  useEffect(() => {
+    if (!pending || chosen !== pending.tree) return;
+    files.open(pending.path);
+    setPending(null);
+  }, [pending, chosen, files]);
   const results = useMemo(() => (palette ? search(paths, palette.query) : []), [paths, palette]);
 
   return (
@@ -171,7 +216,10 @@ export function Editor({ reader, tree, onTree, onBack, named, now, feed, stream,
       feed={feed}
       stream={stream}
       onStream={onStream}
+      streamWidth={streamWidth}
+      onStreamWidth={onStreamWidth}
       onOpenCard={onOpenCard}
+      onOpenFile={openFromStream}
       listing={listing.listing}
       live={listing.live}
       query={query}
@@ -252,7 +300,11 @@ export interface EditorViewProps {
   /** the rail is open */
   stream: boolean;
   onStream: (open: boolean) => void;
+  streamWidth: number;
+  onStreamWidth: (px: number) => void;
   onOpenCard: (task: string) => void;
+  /** open a file the rail names, switching worktree when the card has one */
+  onOpenFile: (task: string, path: string) => void;
 }
 
 /* ── the geometry ──────────────────────────────────────────────────────────── */
@@ -335,9 +387,9 @@ const shell: React.CSSProperties = {
  * then out of the middle. Pure and exported for the reason `onTab` is
  * (`App.tsx`): no handler fires under `react-dom/server`, so a rule left inside
  * the render would have no test at all. */
-export function columnsFor(stream: boolean): string {
+export function columnsFor(stream: boolean, width: number = DEFAULT_WIDTH): string {
   return stream
-    ? "minmax(190px, 250px) minmax(0, 1fr) minmax(268px, 330px)"
+    ? `minmax(180px, 240px) minmax(0, 1fr) ${Math.round(width)}px`
     : "minmax(220px, 300px) minmax(0, 1fr)";
 }
 
@@ -535,7 +587,7 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
           {p.loading ? "reading the worktrees on this disk…" : "no worktrees read yet"}
         </div>
       ) : (
-        <div style={{ ...shell, gridTemplateColumns: columnsFor(p.stream), position: "relative" }}>
+        <div style={{ ...shell, gridTemplateColumns: columnsFor(p.stream, p.streamWidth), position: "relative" }}>
           {p.palette ? (
             <QuickOpen
               query={p.palette.query}
@@ -653,9 +705,22 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
           {p.stream ? (
             <div
               data-testid="editor-stream"
-              style={{ minHeight: 0, minWidth: 0, display: "grid", overflow: "hidden", borderLeft: "1px solid var(--hair)" }}
+              style={{
+                position: "relative",
+                minHeight: 0,
+                minWidth: 0,
+                display: "grid",
+                overflow: "hidden",
+                borderLeft: "1px solid var(--hair)",
+              }}
             >
-              <StreamRail feed={p.feed} now={p.now} onOpen={p.onOpenCard} />
+              <Grip width={p.streamWidth} onWidth={p.onStreamWidth} />
+              <StreamRail
+                feed={p.feed}
+                now={p.now}
+                onOpen={p.onOpenCard}
+                onOpenFile={p.onOpenFile}
+              />
             </div>
           ) : null}
         </div>

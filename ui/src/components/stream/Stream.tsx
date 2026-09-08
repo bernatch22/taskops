@@ -28,33 +28,24 @@
  * other surface uses; the Drawer is mounted once in App, over whichever page is
  * on, so this rail draws no dossier of its own.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
-
 import { ago, shortActor } from "../../format";
 import { DOT } from "../card/Thread";
 import { TONE_FG, type Tone } from "../board/CardTile";
-import { prefersReducedMotion } from "../board/flip";
+import { Markdown } from "../shared/Markdown";
 import {
   FILTERS,
-  FRESH_MS,
   arrivedAt,
   dayKey,
   dayLabel,
-  fresh,
   freshness,
-  keep,
-  moments,
   roll,
   said,
+  touched,
   type Filter,
   type Moment,
 } from "./model";
+import { useStream } from "./useStream";
 import { EMPTY_FEED, type EventFeed } from "../../useEvents";
-
-/** How often the rail re-judges what is still lit. Finer than the toasts' 500ms
- *  because the window it draws is shorter (`ENTER_MS` is 1.2s), and it stops
- *  itself the moment nothing is fresh — an idle rail has no timer at all. */
-export const TICK_MS = 250;
 
 /** The prose cut, at this column's width. Shorter than the toasts' 120: a
  *  toast is two lines across the bottom of the screen, this is a 320px rail. */
@@ -81,6 +72,20 @@ export interface StreamProps {
   more: boolean;
   loading: boolean;
   onMore: () => void;
+  /** Draw the filter chips in this component's own header. TRUE in the Editor's
+   *  rail, where 320px leaves room for nothing else; FALSE on the full page,
+   *  which draws a filter LIST with counts in a column of its own
+   *  (`pages/Stream.tsx`). The chrome is the only thing the two mounts differ
+   *  in — every decision is `useStream`, shared. */
+  chips: boolean;
+  /** which moments have their prose open, by key */
+  expanded: ReadonlySet<string>;
+  onExpand: (key: string) => void;
+  /** Open a file the entry names, in the editor beside it. `null` on a mount
+   *  with no editor to open into — the chips are then not drawn at all rather
+   *  than drawn dead, because a control that does nothing is worse than no
+   *  control (`model.ts::touched` argues what earns a chip). */
+  onOpenFile: ((task: string, path: string) => void) | null;
   /** how many entries arrived above a reader who has scrolled away from the top */
   waiting: number;
   onTop: () => void;
@@ -98,7 +103,7 @@ const head: React.CSSProperties = {
   background: "var(--pane-2)",
 };
 
-const chips: React.CSSProperties = {
+const chipRow: React.CSSProperties = {
   display: "flex",
   gap: "3px",
   overflowX: "auto",
@@ -197,22 +202,62 @@ function skin(state: "entering" | "fresh" | "rest"): React.CSSProperties {
   return { ...lit, animation: "tk-lift 260ms cubic-bezier(0.2,0.8,0.2,1)" };
 }
 
-/** One entry: who, on what, how long ago, what they did, and what they said. */
+/** How tall a collapsed entry's prose may stand, before expanding. Roughly
+ *  four lines at the rail's width — enough to tell a one-line "done" from a
+ *  paragraph worth opening, short enough that one talkative worker cannot own
+ *  the column. */
+const CLAMP = "5.6em";
+
+const chipFile: React.CSSProperties = {
+  all: "unset",
+  boxSizing: "border-box",
+  cursor: "pointer",
+  fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+  fontSize: "10px",
+  letterSpacing: "-0.02em",
+  padding: "2px 7px",
+  borderRadius: "7px",
+  color: "var(--text-2)",
+  background: "var(--pane-3)",
+  border: "1px solid var(--hair)",
+  maxWidth: "100%",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+/** One entry: who, on what, how long ago, what they did, what they said — and
+ *  the FILES they named, which is the only control here that leaves the rail.
+ *
+ *  Three separate acts, three separate controls, never nested (a button inside
+ *  a button is markup no browser agrees about):
+ *    · the card chip FOLLOWS that card in this rail
+ *    · `↗` opens the card's dossier in the popup
+ *    · the body EXPANDS the prose in place
+ *    · a file chip opens that file in the editor beside it
+ */
 function Entry({
   moment,
   state,
   now,
+  open,
+  onExpand,
   onOpen,
   onTask,
+  onOpenFile,
 }: {
   moment: Moment;
   state: "entering" | "fresh" | "rest";
   now: number;
+  open: boolean;
+  onExpand: (key: string) => void;
   onOpen: (task: string) => void;
   onTask: (task: string) => void;
+  onOpenFile: ((task: string, path: string) => void) | null;
 }): React.JSX.Element {
   const tone: Tone = DOT[moment.events[0]!.kind] ?? "neutral";
-  const spoken = said(moment, SAID_LIMIT);
+  const spoken = said(moment);
+  const files = onOpenFile ? touched(moment) : [];
   return (
     <li
       data-testid="stream-entry"
@@ -228,9 +273,6 @@ function Entry({
         <span style={{ fontSize: "11.5px", color: "var(--text-2)" }} title={moment.actor}>
           {shortActor(moment.actor)}
         </span>
-        {/* The card id NARROWS the rail; the entry itself OPENS the card. Two
-            buttons side by side and never nested: a button inside a button is
-            markup no browser agrees about, and these are two different acts. */}
         <button
           type="button"
           data-testid="stream-follow"
@@ -245,17 +287,29 @@ function Entry({
         <span className="num" style={{ fontSize: "10.5px", color: "var(--faint)" }}>
           {ago(now - moment.ts)}
         </span>
+        <button
+          type="button"
+          data-testid="stream-open"
+          aria-label={`open ${moment.task}`}
+          title={`open ${moment.task}`}
+          onClick={() => onOpen(moment.task)}
+          style={{ ...chip(false), fontSize: "11px", padding: "1px 5px", color: "var(--text-3)" }}
+        >
+          ↗
+        </button>
       </div>
-      <button
-        type="button"
-        data-testid="stream-open"
-        aria-label={`open ${moment.task}`}
-        onClick={() => onOpen(moment.task)}
-        style={body(tone)}
-      >
-        <span
+      <div style={body(tone)}>
+        <button
+          type="button"
+          data-testid="stream-roll"
+          aria-expanded={open}
+          onClick={() => onExpand(moment.key)}
           style={{
+            all: "unset",
+            boxSizing: "border-box",
+            cursor: spoken.length > 0 ? "pointer" : "default",
             display: "block",
+            width: "100%",
             fontSize: "12.5px",
             color: "var(--text-2)",
             lineHeight: 1.5,
@@ -263,17 +317,54 @@ function Entry({
           }}
         >
           {roll(moment)}
-        </span>
-        {spoken.map((line) => (
-          <span
-            key={line.id}
+        </button>
+        {spoken.length > 0 ? (
+          /* MARKDOWN, the same renderer a comment gets in the drawer — a fence,
+             a list and a `path` read here exactly as they read there, because
+             it is the same component over the same parser. Collapsed it is
+             clamped by HEIGHT and not by a cut in the text: a cut lands inside
+             a fence as often as not, and what the reader sees then is not a
+             shortened comment but a broken one (`model.ts::said`). */
+          <div
             data-testid="stream-said"
-            style={{ display: "block", fontSize: "12px", color: "var(--text)", marginTop: "5px", lineHeight: 1.5 }}
+            style={{
+              marginTop: "5px",
+              maxHeight: open ? undefined : CLAMP,
+              overflow: open ? undefined : "hidden",
+              // The fade says "there is more" without a word and without
+              // measuring anything: a collapsed block ends in the pane's own
+              // colour, an expanded one ends where the text does.
+              maskImage: open ? undefined : "linear-gradient(180deg, #000 60%, transparent)",
+              WebkitMaskImage: open ? undefined : "linear-gradient(180deg, #000 60%, transparent)",
+              fontSize: "12px",
+            }}
           >
-            {line.text}
-          </span>
-        ))}
-      </button>
+            {spoken.map((line) => (
+              <Markdown key={line.id} text={line.text} />
+            ))}
+          </div>
+        ) : null}
+        {files.length > 0 ? (
+          <div
+            data-testid="stream-files"
+            style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "7px" }}
+          >
+            {files.map((path) => (
+              <button
+                key={path}
+                type="button"
+                data-testid="stream-file"
+                data-path={path}
+                title={`open ${path}`}
+                onClick={() => onOpenFile?.(moment.task, path)}
+                style={chipFile}
+              >
+                {path}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -304,20 +395,22 @@ export function Stream(p: StreamProps): React.JSX.Element {
             {p.total === null ? "—" : p.total.toLocaleString()}
           </span>
         </div>
-        <div style={chips} data-testid="stream-filters">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              data-filter={f.id}
-              aria-pressed={p.filter === f.id}
-              onClick={() => p.onFilter(f.id)}
-              style={chip(p.filter === f.id)}
-            >
-              {f.name}
-            </button>
-          ))}
-        </div>
+        {p.chips ? (
+          <div style={chipRow} data-testid="stream-filters">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                data-filter={f.id}
+                aria-pressed={p.filter === f.id}
+                onClick={() => p.onFilter(f.id)}
+                style={chip(p.filter === f.id)}
+              >
+                {f.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {/* The reader's place is never taken. The pill appears only when both
@@ -357,8 +450,11 @@ export function Stream(p: StreamProps): React.JSX.Element {
                       moment={moment}
                       state={state}
                       now={p.now}
+                      open={p.expanded.has(moment.key)}
+                      onExpand={p.onExpand}
                       onOpen={p.onOpen}
                       onTask={p.onTask}
+                      onOpenFile={p.onOpenFile}
                     />
                   </ul>
                 </li>
@@ -384,83 +480,36 @@ export function Stream(p: StreamProps): React.JSX.Element {
   );
 }
 
-/** The container: the filter, the scroll position, and ONE timer.
- *
- *  The timer runs only while something is still inside its freshness window and
- *  clears itself the moment nothing is — an idle rail has no clock. It is
- *  restarted by a NEW arrival (`youngest` changes identity), which is the whole
- *  scheduling rule: `useToasts` reached the same shape from the same premise. */
+/** The RAIL: the Editor's third column. Everything stateful is `useStream`,
+ *  shared with the full page, so the two mounts cannot come to disagree about
+ *  what is new or which family is on. This adds the chrome that only fits a
+ *  narrow column: the chips in the header rather than a list beside it. */
 export function StreamRail({
   feed,
   now,
   onOpen,
+  onOpenFile,
 }: {
   feed: EventFeed;
   /** the board's clock in seconds — App's, so the rail cannot disagree with the page */
   now: number;
   onOpen: (task: string) => void;
+  /** open one of the files an entry names, in the editor beside this rail */
+  onOpenFile?: (task: string, path: string) => void;
 }): React.JSX.Element {
-  const [filter, setFilter] = useState<Filter>("all");
-  const [task, setTask] = useState<string | null>(null);
-  const [atTop, setAtTop] = useState(true);
-  const [at, setAt] = useState<number>(() => Date.now());
-  const box = useRef<HTMLDivElement | null>(null);
-
-  const shown = useMemo(
-    () => moments(keep(feed.events, filter, task)),
-    [feed.events, filter, task],
-  );
-
-  const youngest = useMemo(() => {
-    let latest = 0;
-    for (const stamp of feed.arrivals.values()) if (stamp > latest) latest = stamp;
-    return latest;
-  }, [feed.arrivals]);
-
-  useEffect(() => {
-    setAt(Date.now());
-    if (youngest === 0) return;
-    const timer = setInterval(() => {
-      const tick = Date.now();
-      setAt(tick);
-      if (tick - youngest >= FRESH_MS) clearInterval(timer);
-    }, TICK_MS);
-    return () => clearInterval(timer);
-  }, [youngest]);
-
-  /* Asked LIVE, every render, never read once at import: a reader who turns
-     motion off mid-session is obeyed on the next frame (`flip.ts`). */
-  const reduced = prefersReducedMotion(typeof window === "undefined" ? undefined : window);
-
+  const state = useStream(feed);
   return (
     <Stream
-      moments={shown}
+      {...state}
       arrivals={feed.arrivals}
-      at={at}
       now={now}
       total={feed.total}
-      filter={filter}
-      onFilter={(next) => {
-        setFilter(next);
-        box.current?.scrollTo({ top: 0 });
-        setAtTop(true);
-      }}
-      task={task}
-      onTask={setTask}
       onOpen={onOpen}
       more={feed.more}
       loading={feed.loading}
       onMore={feed.loadMore}
-      waiting={atTop ? 0 : fresh(shown, feed.arrivals, at)}
-      onTop={() => {
-        box.current?.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
-        setAtTop(true);
-      }}
-      onList={(el) => {
-        box.current = el;
-      }}
-      onScroll={() => setAtTop((box.current?.scrollTop ?? 0) <= 4)}
-      reduced={reduced}
+      chips={true}
+      onOpenFile={onOpenFile ?? null}
     />
   );
 }

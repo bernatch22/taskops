@@ -46,6 +46,7 @@ import { Actors } from "./pages/Actors";
 import { ChapterStory } from "./components/story/ChapterStory";
 import { Board } from "./pages/Board";
 import { Editor } from "./pages/Editor";
+import { DEFAULT_WIDTH } from "./components/stream/Grip";
 import { Monitor } from "./pages/Monitor";
 import { Reports } from "./pages/Reports";
 import { Worktrees, rows } from "./pages/Worktrees";
@@ -152,6 +153,11 @@ export function App({ client }: { client: Client }): React.JSX.Element {
    * decision was "the code gets the window" would be that decision taken back
    * on the reader's behalf. */
   const [stream, setStream] = useState(false);
+  /* HOW WIDE the rail stands. Up here beside `stream` and `editorTree` for the
+   * same reason all three are: it is the shape of a screen the reader comes
+   * back to, and a component reset from outside itself is the bug `tree` moved
+   * up here to stop having (`components/stream/Grip.tsx` owns the drag). */
+  const [streamWidth, setStreamWidth] = useState(DEFAULT_WIDTH);
   // The chapter in focus lives HERE, next to the tab, for the same reason: it is
   // view state that decides an ARGUMENT to the one fetch, never a second fetch.
   const [milestone, setMilestone] = useState("");
@@ -389,6 +395,8 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 feed={feed}
                 stream={stream}
                 onStream={setStream}
+                streamWidth={streamWidth}
+                onStreamWidth={setStreamWidth}
                 /* The one door into the Drawer, which is mounted below over
                    whichever page is on. The Editor's `tree` is null on this
                    tab, so the dossier opens over the code exactly as it opens

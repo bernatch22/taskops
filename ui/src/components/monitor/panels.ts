@@ -835,6 +835,10 @@ export interface EditorProps {
    *  they left. */
   stream: boolean;
   onStream: (open: boolean) => void;
+  /** how wide the rail stands, in px — App's, so a reader who sizes it and
+   *  leaves the tab comes back to the size they chose (`stream/Grip.tsx`). */
+  streamWidth: number;
+  onStreamWidth: (px: number) => void;
   /** open a card's dossier — App's `openCard`, the one door into the Drawer,
    *  which is mounted once over whichever page is on. */
   onOpenCard: (task: string) => void;

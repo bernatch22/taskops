@@ -9,11 +9,15 @@ import {
   freshness,
   keep,
   moments,
+  pathOf,
+  paths,
   progressOf,
   roll,
   said,
+  touched,
 } from "../../src/components/stream/model";
 import { changed } from "../../src/components/card/Thread";
+import { DEFAULT_WIDTH, MAX_WIDTH, MIN_WIDTH, widthAfter } from "../../src/components/stream/Grip";
 import { EMPTY_FEED } from "../../src/useEvents";
 import { merge, stamp } from "../../src/useEvents";
 import { workingFolders } from "../../src/components/editor/tree";
@@ -34,6 +38,7 @@ import type { Check, Fixture, Harness } from "./section";
  */
 export async function run(fixture: Fixture, check: Check, h: Harness): Promise<void> {
   const { now } = h;
+  const opened: string[] = [];
   const e = fixture.editor;
 
   /* A minute of a real board, newest first, the way the feed hands it over.
@@ -89,7 +94,7 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     "the numstat fold is shared with the Event stream",
     changed([log[2]!]) === "2 files · +30 −2 · 1 binary",
   );
-  check("what was SAID is carried out of the run", said(folded[0]!, 96)[0]!.text.startsWith("the fold is on"));
+  check("what was SAID is carried out of the run, WHOLE", said(folded[0]!)[0]!.text === log[1]!.body["text"]);
 
   /* ── new is the CLIENT's clock, and it decays by arithmetic ─────────────── */
 
@@ -142,6 +147,10 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
       more={true}
       loading={false}
       onMore={() => {}}
+      chips={true}
+      expanded={new Set(["e5"])}
+      onExpand={() => {}}
+      onOpenFile={(task, path) => opened.push(`${task}:${path}`)}
       waiting={3}
       onTop={() => {}}
       onList={() => {}}
@@ -161,6 +170,33 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check("an entry opens the card popup", rail.includes('aria-label="open tk-4b37dd"'));
   check("what arrived above the reader is offered, never forced", rail.includes("↑ 3 new"));
   check("older is reachable", rail.includes('data-testid="stream-more"'));
+
+  const railOpen = renderToStaticMarkup(
+    <Stream
+      moments={folded}
+      arrivals={arrivals}
+      at={at + 500}
+      now={now}
+      total={1284}
+      filter="all"
+      onFilter={() => {}}
+      task={null}
+      onTask={() => {}}
+      onOpen={() => {}}
+      more={false}
+      loading={false}
+      onMore={() => {}}
+      chips={true}
+      expanded={new Set(folded.map((m) => m.key))}
+      onExpand={() => {}}
+      onOpenFile={() => {}}
+      waiting={0}
+      onTop={() => {}}
+      onList={() => {}}
+      onScroll={() => {}}
+      reduced={false}
+    />,
+  );
   check("yesterday is named, not dated", dayLabel(now - 86400, now) === "yesterday");
 
   /* An empty rail says WHICH empty it is: nothing asked, nothing happened, or
@@ -181,6 +217,10 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
         more={false}
         loading={false}
         onMore={() => {}}
+        chips={true}
+        expanded={new Set()}
+        onExpand={() => {}}
+        onOpenFile={() => {}}
         waiting={0}
         onTop={() => {}}
         onList={() => {}}
@@ -191,6 +231,99 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check("no client is said, not drawn as an empty log", asked("all", null, null).includes("no client to ask with"));
   check("an empty log is said in its own words", asked("all", null, 0).includes("Nothing has happened on this board yet"));
   check("a filter with no rows blames the filter", asked("code", "tk-1", 12).includes("Widen the filter"));
+
+  /* ── the files the agents name, which is what the rail is FOR ───────────── */
+
+  check(
+    "a commit's numstat is the authoritative source of paths",
+    touched(folded[0]!).slice(0, 2).join() === "ui/src/a.tsx,logo.png",
+  );
+  check("a path is not listed twice across a run", touched(folded[0]!).filter((f) => f === "ui/src/a.tsx").length === 1);
+  // The prose half — this is a GUESS and it is kept conservative on purpose.
+  check("a backticked path in a comment is offered", paths("see `verbs/events.py` for it")[0] === "verbs/events.py");
+  check("a bare path is offered too", paths("look at ui/src/useEvents.ts now")[0] === "ui/src/useEvents.ts");
+  check("a ::symbol suffix names the FILE, not a file with that name", pathOf("verbs/_facts.py::pending_mentions") === "verbs/_facts.py");
+  check("a :line suffix likewise", pathOf("verbs/events.py:53") === "verbs/events.py");
+  check("a :line:col suffix likewise", pathOf("src/a.ts:12:4") === "src/a.ts");
+  check("a URL is never a file on this disk", pathOf("https://pypi.org/p/x.py") === "");
+  check("a bare directory is not a file", pathOf("src/taskops/") === "");
+  check("prose with no path offers none", paths("this needs a rethink, honestly").length === 0);
+  check("surrounding punctuation is stripped", pathOf("(`ui/src/App.tsx`),") === "ui/src/App.tsx");
+  check("the chips are capped", touched(folded[0]!, 1).length === 1);
+
+  const withFiles = renderToStaticMarkup(
+    <Stream
+      moments={folded}
+      arrivals={arrivals}
+      at={at + 500}
+      now={now}
+      total={12}
+      filter="all"
+      onFilter={() => {}}
+      task={null}
+      onTask={() => {}}
+      onOpen={() => {}}
+      more={false}
+      loading={false}
+      onMore={() => {}}
+      chips={true}
+      expanded={new Set()}
+      onExpand={() => {}}
+      onOpenFile={() => {}}
+      waiting={0}
+      onTop={() => {}}
+      onList={() => {}}
+      onScroll={() => {}}
+      reduced={false}
+    />,
+  );
+  check("an entry wears the files it named", withFiles.includes('data-path="ui/src/a.tsx"'));
+  const noEditor = renderToStaticMarkup(
+    <Stream
+      moments={folded}
+      arrivals={arrivals}
+      at={at + 500}
+      now={now}
+      total={12}
+      filter="all"
+      onFilter={() => {}}
+      task={null}
+      onTask={() => {}}
+      onOpen={() => {}}
+      more={false}
+      loading={false}
+      onMore={() => {}}
+      chips={true}
+      expanded={new Set()}
+      onExpand={() => {}}
+      onOpenFile={null}
+      waiting={0}
+      onTop={() => {}}
+      onList={() => {}}
+      onScroll={() => {}}
+      reduced={false}
+    />,
+  );
+  check(
+    "a mount with no editor draws NO file chips, rather than dead ones",
+    !noEditor.includes('data-testid="stream-file"') && withFiles.includes('data-testid="stream-file"'),
+  );
+
+  /* ── markdown, and a clamp that is a height and never a cut ─────────────── */
+
+  check("the prose is rendered as markdown, the drawer's own renderer", rail.includes('data-testid="markdown"'));
+  check("a collapsed entry is clamped by height", rail.includes("max-height:5.6em"));
+  check("an expanded one is not", !railOpen.includes("max-height:5.6em"));
+  check("the roll says whether it is open", rail.includes('aria-expanded="false"') && railOpen.includes('aria-expanded="true"'));
+
+  /* ── the grip: the sign of the drag is the whole reason it is a function ── */
+
+  check("dragging LEFT widens the rail on the right", widthAfter(320, -80) === 400);
+  check("dragging right narrows it", widthAfter(320, 80) === 240);
+  check("it clamps at the floor", widthAfter(300, 500) === MIN_WIDTH);
+  check("and at the ceiling", widthAfter(700, -900) === MAX_WIDTH);
+  check("the reader's width reaches the grid", columnsFor(true, 420).endsWith("420px"));
+  check("shut, the width is not even asked for", columnsFor(false, 420) === "minmax(220px, 300px) minmax(0, 1fr)");
 
   /* ── the Editor's third column ──────────────────────────────────────────── */
 
@@ -224,7 +357,10 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     feed: EMPTY_FEED,
     stream: false,
     onStream: () => {},
+    streamWidth: DEFAULT_WIDTH,
+    onStreamWidth: () => {},
     onOpenCard: () => {},
+    onOpenFile: () => {},
   };
   const shut = renderToStaticMarkup(<EditorView {...base} />);
   const open = renderToStaticMarkup(<EditorView {...base} stream={true} />);
@@ -233,9 +369,10 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
   check("the switch is on the bar either way", shut.includes('data-testid="editor-stream-toggle"'));
   check("the switch says which way it is", shut.includes(">stream<") && open.includes("stream ✕"));
   check("open draws the third column", open.includes('data-testid="editor-stream"'));
+  check("with a grip to widen it by hand", open.includes('data-testid="stream-grip"'));
   check("and the rail inside it", open.includes('data-testid="stream"'));
   /* The width comes out of the TREE, not out of the code: a file tree reads at
      200px and a code pane does not. */
-  check("the rail is a third column, taken off the tree", columnsFor(true).startsWith("minmax(190px, 250px)"));
+  check("the rail is a third column, taken off the tree", columnsFor(true).startsWith("minmax(180px, 240px)"));
   check("shut, the two columns are untouched", columnsFor(false) === "minmax(220px, 300px) minmax(0, 1fr)");
 }

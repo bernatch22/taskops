@@ -76,7 +76,10 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     feed: EMPTY_FEED,
     stream: false,
     onStream: () => {},
+    streamWidth: 320,
+    onStreamWidth: () => {},
     onOpenCard: () => {},
+    onOpenFile: () => {},
   };
   const page = renderToStaticMarkup(<EditorView {...base} />);
 
