@@ -93,8 +93,19 @@ class Cache:
         rows = self._query("SELECT kind, COUNT(*) FROM events GROUP BY kind")
         return {str(kind): int(n) for kind, n in rows}
 
-    def since(self, seq: int) -> list[tuple[int, Event]]:
-        return self._events("WHERE seq > ? ORDER BY seq", (seq,))
+    def since(self, seq: int, limit: int | None = None) -> list[tuple[int, Event]]:
+        """Everything after `seq`, OLDEST first — replay's order, and the order
+        a live reader catches up in.
+
+        `limit` is for the second caller only (`verbs/events.py`'s `after=`): a
+        page of a CATCH-UP is read forwards, so the cap has to fall on the
+        oldest end and not on the newest, which is the one thing a descending
+        `page()` cannot do. Replay passes nothing and reads the tail whole —
+        that is what makes a cache rebuildable.
+        """
+        if limit is None:
+            return self._events("WHERE seq > ? ORDER BY seq", (seq,))
+        return self._events("WHERE seq > ? ORDER BY seq LIMIT ?", (seq, limit))
 
     def page(self, before: int | None, limit: int) -> list[tuple[int, Event]]:
         """One page of the whole log, NEWEST FIRST, by keyset on `seq`.

@@ -1499,6 +1499,64 @@ def test_a_page_is_refused_a_size_it_cannot_serve(stores: Stores) -> None:
         call(stores, "events", BERNA, limit=5000)
 
 
+def test_after_answers_exactly_what_arrived_since_the_cursor_the_reader_holds(
+    stores: Stores,
+) -> None:
+    """The live half. A reader keeps the `head` of the answer it read and asks
+    `after=` with it; what comes back is the rows written in between, OLDEST
+    first, and nothing else. No arithmetic over a page, no dedupe by id — the
+    shape `ui/src/components/toasts/model.ts` had to derive is now answered."""
+    _noisy(stores)
+    cursor = call(stores, "events", BERNA, limit=5)["head"]
+    quiet = call(stores, "events", BERNA, after=cursor)
+    assert quiet["events"] == [] and quiet["next"] is None  # nothing moved
+
+    card = call(stores, "board", BERNA)["groups"]["take"][0]["id"]
+    for i in range(3):
+        call(stores, "update", BERNA, task=card, comment=f"live{i}")
+    written, _ = log.read(stores.log_path)
+
+    caught = call(stores, "events", BERNA, after=cursor)
+    assert [e["id"] for e in caught["events"]] == [e["id"] for e in written[-3:]]
+    assert [e["body"]["text"] for e in caught["events"]] == ["live0", "live1", "live2"]
+    assert caught["next"] is None  # a short page IS caught up
+    assert caught["head"] == stores.head()
+
+
+def test_a_catch_up_larger_than_one_page_walks_forward_and_loses_nothing(
+    stores: Stores,
+) -> None:
+    """The case the client-side arithmetic could not survive: more events than
+    a page arrived while nobody was reading. `next` carries the catch-up
+    forward exactly as it carries history backwards — same word, direction of
+    travel."""
+    _noisy(stores)
+    cursor = call(stores, "events", BERNA, limit=1)["head"]
+    card = call(stores, "board", BERNA)["groups"]["take"][0]["id"]
+    for i in range(11):
+        call(stores, "update", BERNA, task=card, comment=f"burst{i}")
+    written, _ = log.read(stores.log_path)
+
+    seen: list[str] = []
+    at, pages = cursor, 0
+    while True:
+        page = call(stores, "events", BERNA, after=at, limit=4)
+        seen += [e["id"] for e in page["events"]]
+        pages += 1
+        if page["next"] is None:
+            break
+        at = page["next"]
+    assert pages > 2, "the fixture must actually cross a page boundary"
+    assert seen == [e["id"] for e in written[-11:]]  # order kept, nothing dropped
+    assert len(set(seen)) == len(seen)  # nothing served twice
+
+
+def test_the_log_refuses_to_be_read_in_two_directions_at_once(stores: Stores) -> None:
+    _noisy(stores)
+    with pytest.raises(BadRequest, match="ask one of them"):
+        call(stores, "events", BERNA, before=3, after=1)
+
+
 # ── the wave: what is safe to dispatch together (core/seams.py) ──────────────
 
 
