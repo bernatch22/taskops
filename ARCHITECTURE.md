@@ -3112,3 +3112,104 @@ or highlight.js with the eleven grammars): keyword, string, comment, number,
 tag, attribute — enough to read by, in six `--code-*` tokens that live in
 `theme/tokens.css` beside the palette rather than borrowing its status colours.
 The bundle grew 288 307 → 313 294 bytes for the whole feature.
+
+## 23. The Stream — the log beside the code, live (2026-09-08)
+
+Berna asked for "un streaming de comentarios en tiempo real … cada progress,
+cada comment, se muestra, se highlitean los nuevos, se puede ver el card tipo
+popup … al lado del editor … con una excelente organización y agrupación". It
+is a third column inside the Editor (`ui/src/components/stream/`), shut by
+default, opened from the one bar that page has.
+
+**The socket did not change, and that is the whole design.** `http/feed.py`
+publishes `{"type":"change","verb","seq"}` and nothing else, because that is
+what lets a PUBLIC board's feed open with no credential: a watcher learns only
+THAT the board moved and re-reads through `/rpc`, where the anonymous gate
+applies again in full. A live comment column is exactly the feature that would
+have tempted a payload onto that frame, and the day a message carries a card
+that door has to close with it. So: the socket pokes, the page reads.
+
+**What DID change is the direction the log can be read in.** `events` used to
+answer backwards only — newest-first pages on a `before=` cursor — so "what
+arrived since I looked" was a thing the client had to DERIVE: `head - lastHead`
+rows off page one, plus a set of already-seen ids as the safety net for a burst
+larger than a page (`ui/src/components/toasts/model.ts` is the post-mortem of
+that arithmetic, and it is exact only until it is not).
+
+```
+events                        → the newest page          next = the older cursor
+events before=<seq>           → further back             next = the older cursor
+events after=<seq>            → what arrived since,      next = carry on from here
+                                OLDEST first                   (a full page means more)
+```
+
+`next` means the same thing in both directions — the cursor for the page you
+have not read yet, in the direction you are reading — and the two cannot be
+asked at once, which is two questions and is refused as one. The SQL is
+`store/cache.py::since`, which replay already used, given a `limit`: a
+catch-up is capped on the OLDEST end, which is the one thing a descending
+`page()` cannot do.
+
+**The cursor a live reader carries is `head`, not a seq per row.** The rowid is
+still dropped on the way out (`verbs/events.py:53` was and remains the shape).
+A reader keeps the `head` of the answer it read and asks `after=<that head>`;
+what comes back IS the news, by construction — no arithmetic, no dedupe, and no
+way to be wrong when six hundred events landed while the tab was asleep, because
+then it pages forward on `next` and, past `CATCH_UP_PAGES`, starts over on page
+one rather than drawing a list with a hole in the middle.
+
+**Still ONE read of the log.** `useEvents` is called in `App`, once, and three
+surfaces are handed the result — the Monitor's Event stream, the comment toasts,
+and this rail. The change is that it CATCHES UP instead of starting over: new
+rows are prepended, the reader's scrollback survives, and a quiet board answers
+with an empty list instead of fifty rows on every poke.
+
+**What arrived is stamped in the CLIENT's clock**, never in `Event.ts`. A
+comment written three minutes ago that reaches this tab now is new HERE, and a
+rail that highlighted by `ts` would show it already faded — `toasts/model.ts::
+Toast.shown` decided the same thing first, for the same reason. The stamps are
+pruned to a minute, so the map is bounded by what arrived, not by how long the
+tab has been open. Nothing is stored: there are no read-receipts on this board
+and there is no mark-as-read verb, by design (§11), so "new" is arithmetic that
+dies with the tab.
+
+**The organisation is a MOMENT, not a row.** The Monitor's pane draws one row
+per event and is right to: it answers "what happened, in order, ever". A 320px
+column beside the code answers "what are the workers doing right now", and at
+that question one row per event is noise — a `taskops_plan` of nine cards is
+nine identical rows. So consecutive events by the same actor on the same card
+within `MOMENT_GAP_S` (120s) fold into one entry, counted, sized and ended with
+the worker's own number: `2 commits · 2 files · +41 −7 · progress → 68`. The
+fold is on (actor, task) because a worker moving between cards is the change a
+reader wants to see, and it is CONSECUTIVE-only, so an entry can never be
+hoisted above events that happened after it. Files are counted per PATH across
+the run — one file touched in three commits is one file — through
+`Thread.tsx::changed`, which is the Event stream's own numstat fold given a
+list; a second definition of "how much changed" is the drift `format.ts` is the
+post-mortem of.
+
+**Three ways to narrow, none of them a fetch:** five families (`talk` `work`
+`code` `review` `chapter`, every kind in `core/kinds.py` in exactly one), one
+card followed by clicking its id, and `older` for history. `progress` needs no
+branch anywhere — it is an `edited` event (`verbs/update.py::_progress` argues
+why it is not a kind of its own) and the roll-up reads it off the body.
+
+**The reader's place is never taken.** New entries land on top; a reader who has
+scrolled down into history does not have the list move under them, and a pill
+says how many are waiting above. The card popup is `openCard` — App's one door
+into the Drawer, which is mounted once over whichever page is on — so the rail
+draws no dossier of its own and the same card opens identically from the Board,
+the Monitor and here.
+
+**What the headless harness does and does not pin**
+(`ui/smoke/sections/stream-rail.tsx`): the fold, the roll-up, the numstat, the
+freshness tiers, the merge, the arrival stamps, the narrowing, the entry markup,
+the three empty states and the Editor's third column — all pure functions or
+`Stream`, which renders under `react-dom/server` with no client, no socket and
+no timer. Not pinned, and said rather than faked with a jsdom: the scroll
+position, the one interval, and the catch-up walk. The `after=` half is pinned
+on the server, where it is decided (`tests/test_verbs.py`), including the
+burst-larger-than-a-page case the client arithmetic could not survive.
+
+The bundle grew 330 231 → 341 411 bytes for the whole feature: the model, the
+rail and the Editor's third column, no dependency added.

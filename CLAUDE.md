@@ -270,6 +270,12 @@ what it exists to report, not a fault.
   cannot conflict.
 - **Do not run browser/UI demos unless asked.** The UI is tested headlessly
   through `react-dom/server`, no browser and no jsdom.
+- **The Editor carries the Stream rail** — the log, live, in a third column,
+  shut by default (ARCHITECTURE §23). It fetches NOTHING: `useEvents` is read
+  once in `App` and three surfaces share it, and the socket frame is still a
+  signal, never a payload. A run of events by one worker on one card inside two
+  minutes is ONE entry; "new" is stamped in the reader's clock and fades by
+  arithmetic, because there is no mark-as-read verb and never will be.
 - One card rebuilds the bundle at the end of a wave. N cards rebuilding it is
   N-1 conflicts by construction.
 

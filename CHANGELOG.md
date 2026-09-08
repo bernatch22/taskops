@@ -3,6 +3,41 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## Unreleased — the Stream, beside the code
+
+- **A live rail inside the Editor**: every comment, every commit, every
+  `progress` a worker reports, as it happens, in a third column you open from
+  the page's one bar. Shut by default — the Editor's whole decision is that the
+  code gets the window, and a live column appearing unasked would be that
+  decision taken back on the reader's behalf.
+- **The socket did not change.** A frame is still `{"type":"change","verb","seq"}`
+  and nothing else, which is what lets a public board's feed open with no
+  credential. The socket pokes; the page reads.
+- **`events` can be read forwards**: `after=<seq>` answers exactly the rows
+  written since the cursor a reader already holds, oldest first, and pages
+  forward on `next` when the catch-up is bigger than one page. The cursor is
+  `head` — the rowid is still not sent per row. What that replaces is the
+  arithmetic the client had to do over page one (`head - lastHead` rows plus a
+  seen-set), which was exact only until a burst was larger than a page.
+- **The one log read catches up instead of starting over.** New rows are
+  prepended, so a reader's scrollback survives a board that is moving, and a
+  quiet board answers with an empty list instead of fifty rows on every poke.
+  Three surfaces still share one read: the Monitor's pane, the toasts, the rail.
+- **A run of work is one entry.** Consecutive events by one worker on one card
+  within two minutes fold together, counted and sized:
+  `2 commits · 2 files · +41 −7 · progress → 68`. Nine rows from one
+  `taskops_plan` were the shape this exists to stop drawing.
+- **What arrived is marked and fades by arithmetic** — stamped in the reader's
+  own clock, never the event's, so a comment that reaches the tab late is new
+  HERE. Nothing is stored: no badge, no counter, no read-receipt.
+- **The reader's place is never taken**: entries land on top, a reader scrolled
+  into history is not moved, and a pill says how many are waiting above.
+- Filter by family (talk · work · code · review · chapter), follow one card by
+  clicking its id, open its dossier in the popup every other view uses.
+- Five mutations, one site at a time, and one of them found a fixture that was
+  not exercising the rule it claimed to pin.
+- The bundle grew 330 231 → 341 411 bytes. No dependency added.
+
 ## 0.5.8 — the Editor is the whole window
 
 - **Nothing is drawn above the Editor any more** — no KPI rail, no header, no
