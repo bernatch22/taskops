@@ -3,7 +3,7 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
-## Unreleased — the Stream, beside the code
+## 0.6.0 — the Stream, beside the code
 
 - **A live rail inside the Editor**: every comment, every commit, every
   `progress` a worker reports, as it happens, in a third column you open from
