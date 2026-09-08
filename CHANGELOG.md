@@ -3,6 +3,37 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## 0.6.1 — the Stream earns its column
+
+- **Open the files the agents name.** Every entry now wears the paths it
+  named, and a click opens that file in the editor beside it — switching to
+  the card's own worktree when it has one on this disk. Three sources, in
+  descending order of trust: a commit's `numstat` keys (git's own answer), a
+  created card's declared `files`, and what the prose names.
+- **The prose half is a guess and is kept one.** Agents write paths to each
+  other constantly — "the fix site is `verbs/_facts.py::pending_mentions`" —
+  and no structured field carries them. So they are extracted, narrowly:
+  backticked or bare, a trailing `::symbol` / `:line` / `:line:col` stripped
+  because `events.py:53` names a file and not a file with that name, never a
+  URL, never a bare directory, capped. A false negative costs a click; a false
+  positive is the rail lying about the disk.
+- **Markdown**, the drawer's own renderer over the same parser, so a fence, a
+  list and a `path` read here exactly as they read there. The 96-character cut
+  is gone: it landed inside a fence as often as not, and what the reader saw
+  was not a shortened comment but a broken one. The clamp is now a HEIGHT,
+  undone by expanding the entry — and expansion is a set, not a flag, because
+  a reader opens two comments to compare them as often as one.
+- **The rail resizes by hand**: a grip on its edge, 240–760px, double-click to
+  reset, and the width is remembered across leaving the tab. The listeners are
+  on the document and not the handle — bound to a 6px strip they are lost the
+  first time the pointer outruns the render.
+- `useStream` is the container half, extracted so a second mount of the same
+  picture cannot come to disagree about what is new or which family is on.
+- Four mutations, one site at a time. Two assertions were born FALSE and found
+  by running them: a path cleaner that did not strip backticks, and a "draws
+  no chips" claim asserted against a mount that HAD an editor.
+- The bundle grew 341 411 → 345 368 bytes.
+
 ## 0.6.0 — the Stream, beside the code
 
 - **A live rail inside the Editor**: every comment, every commit, every
