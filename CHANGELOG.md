@@ -3,6 +3,21 @@
 The source of truth for release notes — GitHub Releases are extracted from
 here, never written twice.
 
+## Unreleased
+
+- **The page is served so a browser cannot keep a build you replaced.** The
+  bundle's URL never changes while its content changes on every build and every
+  upgrade, and it went out with no `Cache-Control`, no `ETag` and no
+  `Last-Modified`. A browser given neither a freshness signal nor a validator
+  applies its own heuristic and can go on serving the build it already has —
+  without ever reaching the process again, so neither restarting the server nor
+  upgrading the wheel fixes it. Now `no-cache` (which is *ask me first*, not *do
+  not store*) plus a content-addressed `ETag`, so a reader already holding the
+  build gets a 304 and no body: one round trip, not 345 KB. The tag is a hash
+  and not an mtime — a wheel is unpacked afresh on every install, so mtimes move
+  whether or not a byte did. Refusals (410, 404) carry neither header.
+- Three mutations, one site at a time: the header, the 304, and the refusal.
+
 ## 0.6.1 — the Stream earns its column
 
 - **Open the files the agents name.** Every entry now wears the paths it

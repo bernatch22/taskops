@@ -78,7 +78,7 @@ class Handler(BaseHTTPRequestHandler):
                 # the page at the board's OWN address; assets are a CLOSED set
                 page.answer(self, board, tail)
         elif (found := static.at_root(self.mounts.ui, self.path)) is not None:
-            self._send(200, *found)  # a WINDOW serves its page at the ROOT
+            page.deliver(self, 200, *found)  # a WINDOW serves its page at the ROOT
         else:
             self._fail(404, BadRequest(f"nothing at {self.path}"))
 

@@ -107,6 +107,80 @@ def test_the_window_serves_its_page_at_the_root(
     assert _get(port, "/app.js").startswith(b"(()") or b"function" in _get(port, "/app.js")
 
 
+def _head(port: int, path: str, headers: dict[str, str] | None = None) -> tuple[int, dict[str, str]]:
+    """(status, headers) for a real GET, without keeping the body."""
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    request = Request(f"http://127.0.0.1:{port}{path}", headers=headers or {})  # noqa: S310
+    try:
+        with urlopen(request, timeout=5) as answer:  # noqa: S310
+            return int(answer.status), {k.lower(): v for k, v in answer.headers.items()}
+    except HTTPError as err:
+        return int(err.code), {k.lower(): v for k, v in err.headers.items()}
+
+
+def test_the_bundle_is_served_so_a_browser_cannot_keep_a_build_you_replaced(
+    own_window: tuple[BoardServer, Path, int],
+) -> None:
+    """THE bug this pins, and it cost a real afternoon (2026-09-08): the bundle's
+    URL never changes while its content changes on every build and every
+    upgrade, and it was served with no Cache-Control and no validator. A browser
+    given neither applies its own heuristic and can go on serving the previous
+    build after an install — silently, and without ever reaching this process
+    again, so no amount of restarting the server fixes it.
+
+    `static.payload` already re-reads the file per request so the SERVER cannot
+    be stale; this is the same rule carried to the only other party that can be.
+    """
+    _, _, port = own_window
+    status, headers = _head(port, "/app.js")
+    assert status == 200
+    assert headers["cache-control"] == "no-cache"  # "ask me first", not "do not store"
+    assert headers["etag"], "no validator means the ask cannot be answered cheaply"
+
+
+def test_a_reader_already_holding_the_build_is_answered_304_and_no_body(
+    own_window: tuple[BoardServer, Path, int],
+) -> None:
+    """The other half: `no-cache` costs one round trip and NOT 345 KB, or the
+    correctness would be paid for in bandwidth on every page load."""
+    _, _, port = own_window
+    _, headers = _head(port, "/app.js")
+    status, again = _head(port, "/app.js", {"If-None-Match": headers["etag"]})
+    assert status == 304
+    assert again.get("content-length") == "0"
+    assert again["etag"] == headers["etag"]
+    # A DIFFERENT build must not be 304'd onto the reader.
+    fresh, _ = _head(port, "/app.js", {"If-None-Match": '"0000000000000000"'})
+    assert fresh == 200
+
+
+def test_a_refusal_carries_no_validator_and_no_cache_header(tmp_path: Path) -> None:
+    """410 and 404 are sentences about the board's STATE. Caching a `NO_UI` past
+    the push that ends it is this same bug pointing the other way."""
+    from taskops.http import page
+
+    seen: list[tuple[str, str]] = []
+
+    class Fake:
+        headers: dict[str, str] = {}
+        wfile = type("W", (), {"write": staticmethod(lambda _: None)})()
+
+        def send_response(self, code: int, message: str | None = None) -> None:
+            seen.append(("status", str(code)))
+
+        def send_header(self, keyword: str, value: str) -> None:
+            seen.append((keyword.lower(), value))
+
+        def end_headers(self) -> None:
+            pass
+
+    page.deliver(Fake(), 410, b"no window here", "text/plain; charset=utf-8")
+    assert ("status", "410") in seen
+    assert not any(k in ("etag", "cache-control") for k, _ in seen)
+
+
 def test_the_root_page_does_not_swallow_a_mistyped_path(
     own_window: tuple[BoardServer, Path, int],
 ) -> None:

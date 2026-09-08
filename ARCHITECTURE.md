@@ -3213,3 +3213,30 @@ burst-larger-than-a-page case the client arithmetic could not survive.
 
 The bundle grew 330 231 → 341 411 bytes for the whole feature: the model, the
 rail and the Editor's third column, no dependency added.
+
+### The page is served so a browser cannot keep a build you replaced (2026-09-08)
+
+`static.payload` re-reads the bundle from disk on every request, and its
+docstring says why: `taskops ui` is a developer's own process and a cache would
+serve the previous build after every `node ui/build.mjs`. That rule was only
+carried half way. The response went out with `Content-Type` and
+`Content-Length` and NOTHING else — no `Cache-Control`, no `ETag`, no
+`Last-Modified` — while the URL (`/app.js`, one name, three mounts) never
+changes and the content changes on every build and every upgrade.
+
+A browser handed neither a freshness signal nor a validator applies its own
+heuristic, and can go on serving the build it already has — silently, and
+without ever reaching the process again, so restarting the server does not fix
+it and neither does upgrading the wheel. It cost an afternoon of "I just
+installed it, where is it".
+
+`http/page.py::deliver` is the whole fix and it lives there because that module
+is already "how a page is answered": `no-cache` (which is *ask me first*, never
+*do not store*) plus a content-addressed `ETag`, so a reader who already holds
+the build gets a 304 and no body and the correctness costs one round trip
+rather than 345 KB. The tag is a hash and not an mtime on purpose — a wheel is
+unpacked afresh on every install, so mtimes move whether or not a byte did, and
+a validator that lies in THAT direction is worse than none. A refusal (410
+`NO_UI`, 404) carries neither header: caching one of those past the push that
+ends it is the same bug pointing the other way.
+`tests/test_window.py::test_the_bundle_is_served_so_a_browser_cannot_keep_a_build_you_replaced`.
