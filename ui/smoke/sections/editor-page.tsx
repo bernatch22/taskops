@@ -19,6 +19,7 @@ import type { OpenTab } from "../../src/components/editor/useWorktree";
 import { TABS } from "../../src/components/chrome/TabNav";
 import { EditorView, baseFor, groupsOf, labelOf, type EditorViewProps } from "../../src/pages/Editor";
 import { WorktreeDiff, Worktrees } from "../../src/pages/Worktrees";
+import { EMPTY_FEED } from "../../src/useEvents";
 import type { Check, Fixture, Harness } from "./section";
 
 /* THE EDITOR (ARCHITECTURE.md §22), pinned from the door's OWN answers over a
@@ -70,6 +71,12 @@ export async function run(fixture: Fixture, check: Check, h: Harness): Promise<v
     palette: null,
     onPalette: () => {},
     onPick: () => {},
+    // The Stream rail's own section drives it (`sections/stream-rail.tsx`);
+    // here it is SHUT, which is the state the Editor opens in.
+    feed: EMPTY_FEED,
+    stream: false,
+    onStream: () => {},
+    onOpenCard: () => {},
   };
   const page = renderToStaticMarkup(<EditorView {...base} />);
 

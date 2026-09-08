@@ -142,6 +142,16 @@ export function App({ client }: { client: Client }): React.JSX.Element {
    * to, and the tree you left it on is the tree you want. `null` opens on the
    * checkout (`pages/Editor.tsx`). */
   const [editorTree, setEditorTree] = useState<string | null>(null);
+  /* IS THE STREAM RAIL OPEN — beside `editorTree` and for the identical reason:
+   * it is the shape of the Editor, and an editor is a place you come back to.
+   * Not in `onTab`'s clearing, and not inside the page: a component being reset
+   * from outside itself is the bug `tree` moved up here to stop having.
+   *
+   * It opens SHUT. The rail is the reader asking to watch the board while they
+   * read code, and a live column that appears unasked on a page whose whole
+   * decision was "the code gets the window" would be that decision taken back
+   * on the reader's behalf. */
+  const [stream, setStream] = useState(false);
   // The chapter in focus lives HERE, next to the tab, for the same reason: it is
   // view state that decides an ARGUMENT to the one fetch, never a second fetch.
   const [milestone, setMilestone] = useState("");
@@ -374,6 +384,16 @@ export function App({ client }: { client: Client }): React.JSX.Element {
                 onBack={() => selectTab("monitor")}
                 named={rows(board.groups, board.milestones)}
                 now={Date.now() / 1000}
+                /* The SAME feed the Monitor's pane and the toasts read — one
+                   log read, three surfaces (`useEvents.ts`). */
+                feed={feed}
+                stream={stream}
+                onStream={setStream}
+                /* The one door into the Drawer, which is mounted below over
+                   whichever page is on. The Editor's `tree` is null on this
+                   tab, so the dossier opens over the code exactly as it opens
+                   over the Board. */
+                onOpenCard={openCard}
               />
             ),
             /* The fifth view. The LIST is a slice of the one board answer —

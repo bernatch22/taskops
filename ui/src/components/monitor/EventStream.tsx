@@ -40,7 +40,7 @@
  * time (every other surface shows an age), and a one-caller formatter in
  * `format.ts` would invite the next panel to fold its own in. */
 import { ago, shortActor } from "../../format";
-import { DOT, oneLine } from "../card/Thread";
+import { DOT, changed, oneLine } from "../card/Thread";
 import { TONE_BG, TONE_FG } from "../board/CardTile";
 import { Pane, PaneEmpty } from "./Pane";
 import type { EventFeed } from "../../useEvents";
@@ -86,36 +86,13 @@ export const FIXTURE_EVENTS: readonly Event[] = [
   { id: "f8", task: "project", actor: "dev:berna", kind: "milestone", body: { op: "opened" }, ts: 420 },
 ];
 
-/** A commit's `numstat`, folded to one phrase — `3 files · +41 −7 · 1 binary`.
- *
- *  The honest-binary rule, the same one `mcp/dossier.py::_sized` follows and
- *  for the same reason: a file whose pair is `null` is one git could not count
- *  (it prints `-` for a binary), which is NOT the same fact as a file that
- *  changed by nothing. It is counted as a binary and never as `+0 −0`. And a
- *  commit event written before commits carried counts has no `numstat` at all —
- *  absent returns null here and the line is simply not drawn, rather than
- *  claiming a commit touched nothing. */
+/** This row's own numstat, from the ONE fold (`Thread.tsx::changed`). It was
+ *  a copy here until the Stream rail wanted the same phrase for a whole run of
+ *  commits; a second definition of "how much changed" is exactly the drift
+ *  `format.ts`'s docstring is the post-mortem of. A single event is a list of
+ *  one, and `changed` returns null for anything that is not a counted commit. */
 function sizes(event: Event): string | null {
-  if (event.kind !== "commit") return null;
-  const raw = event.body["numstat"];
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const counts = Object.values(raw as Record<string, unknown>);
-  if (counts.length === 0) return null;
-  let added = 0;
-  let deleted = 0;
-  let binary = 0;
-  for (const pair of counts) {
-    if (pair === null) {
-      binary += 1;
-    } else if (Array.isArray(pair) && pair.length === 2) {
-      added += typeof pair[0] === "number" ? pair[0] : 0;
-      deleted += typeof pair[1] === "number" ? pair[1] : 0;
-    }
-  }
-  const files = `${counts.length} file${counts.length === 1 ? "" : "s"}`;
-  const parts = [files, `+${added} −${deleted}`];
-  if (binary > 0) parts.push(`${binary} binary`);
-  return parts.join(" · ");
+  return changed([event]);
 }
 
 const pill: React.CSSProperties = {

@@ -119,6 +119,50 @@ export function oneLine(event: Event): string {
   return phrase || written;
 }
 
+/** How much a run of events CHANGED, folded to one phrase — `3 files · +41 −7 ·
+ *  1 binary`, or null when there is nothing to count.
+ *
+ *  It takes a LIST because two surfaces ask the same question at two scales:
+ *  the Event stream asks it of one commit row, the Stream rail asks it of a
+ *  whole moment (`components/stream/model.ts` — several commits by one worker
+ *  inside two minutes are one entry, and the reader wants the run's total, not
+ *  three separate totals). One event is a list of one; there is no second fold.
+ *
+ *  The honest-binary rule, the same one `mcp/dossier.py::_sized` follows and
+ *  for the same reason: a file whose pair is `null` is one git could not count
+ *  (it prints `-` for a binary), which is NOT the same fact as a file that
+ *  changed by nothing. It is counted as a binary and never as `+0 −0`. And a
+ *  commit event written before commits carried counts has no `numstat` at all —
+ *  it contributes nothing rather than claiming a commit touched nothing.
+ *
+ *  Files are counted per PATH across the run, not per commit: a worker who
+ *  touched one file in three commits changed one file, and saying "3 files"
+ *  there would be the roll-up inventing a fact. */
+export function changed(events: readonly Event[]): string | null {
+  const paths = new Set<string>();
+  let added = 0;
+  let deleted = 0;
+  const binaries = new Set<string>();
+  for (const event of events) {
+    if (event.kind !== "commit") continue;
+    const raw = event.body["numstat"];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    for (const [path, pair] of Object.entries(raw as Record<string, unknown>)) {
+      paths.add(path);
+      if (pair === null) {
+        binaries.add(path);
+      } else if (Array.isArray(pair) && pair.length === 2) {
+        added += typeof pair[0] === "number" ? pair[0] : 0;
+        deleted += typeof pair[1] === "number" ? pair[1] : 0;
+      }
+    }
+  }
+  if (paths.size === 0) return null;
+  const parts = [`${paths.size} file${paths.size === 1 ? "" : "s"}`, `+${added} −${deleted}`];
+  if (binaries.size > 0) parts.push(`${binaries.size} binary`);
+  return parts.join(" · ");
+}
+
 function addressed(event: Event): string[] {
   const to = event.body["mentions"];
   return Array.isArray(to) ? to.filter((who): who is string => typeof who === "string") : [];

@@ -26,6 +26,20 @@
  * delta, and a page of history toasted on mount would be 50 notifications for
  * things that happened yesterday.
  *
+ * ── THE WIRE CAN ANSWER IT DIRECTLY NOW, and this still derives (2026-09-08) ─
+ *
+ * `events after=<head>` returns exactly the rows written since a cursor, and
+ * `useEvents` both asks it and hands the arrivals out as `feed.arrivals` — so
+ * the paragraph above describes a derivation the wire no longer forces. It is
+ * kept, unchanged, because it is now EXACT rather than approximate: the list
+ * this hook is handed no longer resets to page one, so its first `delta` rows
+ * ARE the arrivals, and the over-count the id set guards against cannot happen
+ * (a catch-up bigger than a page walks forward on `next` — `verbs/events.py`).
+ * The safety net stays because it costs nothing and because "shown once, ever"
+ * is a promise about notifications, not an artefact of the cursor. A rewrite
+ * onto `feed.arrivals` is a simplification available to whoever wants it; it is
+ * not a fix, and it is not being done under cover of a different chapter.
+ *
  * Nothing here is stored anywhere. There are no read-receipts on this board, by
  * design (CLAUDE.md: no mark-as-read verb, ever) — "already toasted" is a set
  * that lives as long as the tab and dies with it.

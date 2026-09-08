@@ -53,6 +53,8 @@ import {
   type OpenTab,
 } from "../components/editor/useWorktree";
 import type { WorktreeRow } from "../components/monitor/panels";
+import { StreamRail } from "../components/stream/Stream";
+import type { EventFeed } from "../useEvents";
 import type { EditorTrees, TreeListing } from "../types";
 
 /** The base a tree's marks are read against: the CARD's own chapter branch
@@ -112,7 +114,7 @@ export function groupsOf(
   return groups.filter((g) => g.trees.length > 0);
 }
 
-export function Editor({ reader, tree, onTree, onBack, named, now }: EditorProps): React.JSX.Element {
+export function Editor({ reader, tree, onTree, onBack, named, now, feed, stream, onStream, onOpenCard }: EditorProps): React.JSX.Element {
   const { trees, refusal, loading } = useTrees(reader);
   // The checkout is first in every listing, so "nothing chosen yet" opens on it.
   const chosen = tree ?? trees?.trees[0]?.name ?? null;
@@ -166,6 +168,10 @@ export function Editor({ reader, tree, onTree, onBack, named, now }: EditorProps
       onTree={onTree}
       onBack={onBack}
       named={named}
+      feed={feed}
+      stream={stream}
+      onStream={onStream}
+      onOpenCard={onOpenCard}
       listing={listing.listing}
       live={listing.live}
       query={query}
@@ -241,6 +247,12 @@ export interface EditorViewProps {
   palette: { query: string; index: number; results: readonly Match[] } | null;
   onPalette: (next: { query: string; index: number } | null) => void;
   onPick: (path: string) => void;
+  /** THE LOG, App's one read — the Stream rail's rows (`panels.ts::EditorProps`) */
+  feed: EventFeed;
+  /** the rail is open */
+  stream: boolean;
+  onStream: (open: boolean) => void;
+  onOpenCard: (task: string) => void;
 }
 
 /* ── the geometry ──────────────────────────────────────────────────────────── */
@@ -316,6 +328,18 @@ const shell: React.CSSProperties = {
   background: "var(--pane)",
   overflow: "hidden",
 };
+
+/* THE THREE-COLUMN SHAPE, when the Stream rail is open. The tree gives up the
+ * width, not the code: a file tree reads fine at 200px and a 60-column code
+ * pane does not, so the rail is taken out of the LEFT column first and only
+ * then out of the middle. Pure and exported for the reason `onTab` is
+ * (`App.tsx`): no handler fires under `react-dom/server`, so a rule left inside
+ * the render would have no test at all. */
+export function columnsFor(stream: boolean): string {
+  return stream
+    ? "minmax(190px, 250px) minmax(0, 1fr) minmax(268px, 330px)"
+    : "minmax(220px, 300px) minmax(0, 1fr)";
+}
 
 const aside: React.CSSProperties = {
   minHeight: 0,
@@ -485,6 +509,21 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
             </span>
           </div>
         ) : null}
+        {/* THE RAIL'S SWITCH, in the one bar this page has. It is not a tab and
+            not an overlay: the Editor is the only view a reader SITS in while
+            other workers are moving, so what they are doing belongs beside the
+            code, not behind it. Open or shut is App's state (`panels.ts`), so
+            leaving the tab and coming back lands on the screen you left. */}
+        <button
+          type="button"
+          data-testid="editor-stream-toggle"
+          aria-pressed={p.stream}
+          title={p.stream ? "hide the live stream" : "show what the board is doing, live"}
+          onClick={() => p.onStream(!p.stream)}
+          style={toggle(p.stream)}
+        >
+          {p.stream ? "stream ✕" : "stream"}
+        </button>
       </div>
 
       {p.refusal ? (
@@ -496,7 +535,7 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
           {p.loading ? "reading the worktrees on this disk…" : "no worktrees read yet"}
         </div>
       ) : (
-        <div style={{ ...shell, position: "relative" }}>
+        <div style={{ ...shell, gridTemplateColumns: columnsFor(p.stream), position: "relative" }}>
           {p.palette ? (
             <QuickOpen
               query={p.palette.query}
@@ -608,6 +647,17 @@ export function EditorView(p: EditorViewProps): React.JSX.Element {
               </div>
             )}
           </section>
+          {/* THE THIRD COLUMN. It draws from App's ONE log read and opens cards
+              through App's one door; it fetches nothing and owns nothing but
+              its own filter and scroll position (`components/stream/Stream.tsx`). */}
+          {p.stream ? (
+            <div
+              data-testid="editor-stream"
+              style={{ minHeight: 0, minWidth: 0, display: "grid", overflow: "hidden", borderLeft: "1px solid var(--hair)" }}
+            >
+              <StreamRail feed={p.feed} now={p.now} onOpen={p.onOpenCard} />
+            </div>
+          ) : null}
         </div>
       )}
     </div>

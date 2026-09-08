@@ -69,6 +69,7 @@ import type {
 import type { Tone } from "../board/CardTile";
 import type { HoursChoice } from "../../hoursWindow";
 import type { EditorReader } from "../editor/useWorktree";
+import type { EventFeed } from "../../useEvents";
 /** Type-only, and it is the door's client as `links.tsx` declares it —
  *  structurally, so this seam names the reader the cascade already takes rather
  *  than inventing a second spelling of it. */
@@ -823,4 +824,18 @@ export interface EditorProps {
    *  so a tree's card title and its chapter branch come from ONE place. */
   named: readonly WorktreeRow[];
   now: number;
+  /** THE LOG, the same one read App owns (`useEvents.ts`) — never a second
+   *  fetch. The Editor is the one page a reader sits inside while other
+   *  workers are moving, so it is the one page that carries the Stream rail
+   *  (`components/stream/Stream.tsx` argues what that rail answers that the
+   *  Monitor's Event stream does not). */
+  feed: EventFeed;
+  /** the rail is open. App's state, beside `tree`: like the tree it is left
+   *  open, so a reader who comes back to the Editor comes back to the screen
+   *  they left. */
+  stream: boolean;
+  onStream: (open: boolean) => void;
+  /** open a card's dossier — App's `openCard`, the one door into the Drawer,
+   *  which is mounted once over whichever page is on. */
+  onOpenCard: (task: string) => void;
 }
